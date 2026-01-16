@@ -83,7 +83,7 @@ function initDb(db: Database.Database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL UNIQUE,
       slack_webhook TEXT,
-      line_notify_token TEXT,
+      discord_webhook TEXT,
       notify_on_price_drop INTEGER NOT NULL DEFAULT 1,
       notify_on_target_price INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),

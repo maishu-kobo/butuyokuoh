@@ -69,8 +69,8 @@ export async function sendSlackNotification(
   }
 }
 
-export async function sendLineNotification(
-  token: string,
+export async function sendDiscordNotification(
+  webhookUrl: string,
   payload: NotificationPayload
 ): Promise<boolean> {
   const { item, oldPrice, newPrice, targetPrice, type } = payload;
@@ -83,25 +83,49 @@ export async function sendLineNotification(
   const priceChange = oldPrice - newPrice;
   const changePercent = Math.round((priceChange / oldPrice) * 100);
 
-  const message = `${title}\n\n` +
-    `商品: ${item.name}\n` +
-    `旧価格: ¥${oldPrice.toLocaleString()}\n` +
-    `新価格: ¥${newPrice.toLocaleString()} (-¥${priceChange.toLocaleString()}, -${changePercent}%)\n` +
-    (targetPrice ? `目標価格: ¥${targetPrice.toLocaleString()}\n` : '') +
-    `\n${item.url}`;
+  const embed = {
+    title: title,
+    description: item.name,
+    url: item.url,
+    color: type === 'target_reached' ? 0x00ff00 : 0xffa500,
+    fields: [
+      {
+        name: '旧価格',
+        value: `¥${oldPrice.toLocaleString()}`,
+        inline: true,
+      },
+      {
+        name: '新価格',
+        value: `¥${newPrice.toLocaleString()}`,
+        inline: true,
+      },
+      {
+        name: '値下げ',
+        value: `-¥${priceChange.toLocaleString()} (-${changePercent}%)`,
+        inline: true,
+      },
+    ],
+    thumbnail: item.image_url ? { url: item.image_url } : undefined,
+    timestamp: new Date().toISOString(),
+  };
+
+  if (targetPrice) {
+    embed.fields.push({
+      name: '目標価格',
+      value: `¥${targetPrice.toLocaleString()}`,
+      inline: true,
+    });
+  }
 
   try {
-    const res = await fetch('https://notify-api.line.me/api/notify', {
+    const res = await fetch(webhookUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: `message=${encodeURIComponent(message)}`,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds: [embed] }),
     });
     return res.ok;
   } catch (error) {
-    console.error('LINE notification failed:', error);
+    console.error('Discord notification failed:', error);
     return false;
   }
 }

@@ -13,7 +13,7 @@ export default function SettingsPage() {
   const [displayToken, setDisplayToken] = useState<string | null>(null);
   const [notifySettings, setNotifySettings] = useState({
     slack_webhook: '',
-    line_notify_token: '',
+    discord_webhook: '',
     notify_on_price_drop: true,
     notify_on_target_price: true,
   });
@@ -48,7 +48,7 @@ export default function SettingsPage() {
           const data = await res.json();
           setNotifySettings({
             slack_webhook: data.slack_webhook || '',
-            line_notify_token: data.line_notify_token || '',
+            discord_webhook: data.discord_webhook || '',
             notify_on_price_drop: !!data.notify_on_price_drop,
             notify_on_target_price: !!data.notify_on_target_price,
           });
@@ -203,22 +203,20 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              {/* LINE */}
+              {/* Discord */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  LINE Notify トークン
+                  Discord Webhook URL
                 </label>
                 <input
-                  type="text"
-                  value={notifySettings.line_notify_token}
-                  onChange={(e) => setNotifySettings({ ...notifySettings, line_notify_token: e.target.value })}
-                  placeholder="LINE Notifyトークンを入力"
+                  type="url"
+                  value={notifySettings.discord_webhook}
+                  onChange={(e) => setNotifySettings({ ...notifySettings, discord_webhook: e.target.value })}
+                  placeholder="https://discord.com/api/webhooks/..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  <a href="https://notify-bot.line.me/my/" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
-                    LINE Notifyでトークンを発行
-                  </a>
+                  サーバー設定 → 連携サービス → ウェブフック → 新しいウェブフック
                 </p>
               </div>
 

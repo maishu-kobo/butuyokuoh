@@ -58,7 +58,7 @@ export interface UserNotificationSettings {
   id: number;
   user_id: number;
   slack_webhook: string | null;
-  line_notify_token: string | null;
+  discord_webhook: string | null;
   notify_on_price_drop: boolean;
   notify_on_target_price: boolean;
   created_at: string;

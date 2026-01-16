@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { scrapeUrl } from '../src/lib/scraper';
-import { sendSlackNotification, sendLineNotification, NotificationPayload } from '../src/lib/notifier';
+import { sendSlackNotification, sendDiscordNotification, NotificationPayload } from '../src/lib/notifier';
 
 const dbPath = path.join(process.cwd(), 'data', 'butuyokuoh.db');
 const db = new Database(dbPath);
@@ -19,7 +19,7 @@ interface Item {
 interface UserSettings {
   user_id: number;
   slack_webhook: string | null;
-  line_notify_token: string | null;
+  discord_webhook: string | null;
   notify_on_price_drop: number;
   notify_on_target_price: number;
 }
@@ -88,9 +88,9 @@ async function checkPrices() {
               await sendSlackNotification(userSettings.slack_webhook, payload);
               console.log(`    - Slack: sent`);
             }
-            if (userSettings.line_notify_token) {
-              await sendLineNotification(userSettings.line_notify_token, payload);
-              console.log(`    - LINE: sent`);
+            if (userSettings.discord_webhook) {
+              await sendDiscordNotification(userSettings.discord_webhook, payload);
+              console.log(`    - Discord: sent`);
             }
           }
           // 価格下落通知
@@ -101,9 +101,9 @@ async function checkPrices() {
               await sendSlackNotification(userSettings.slack_webhook, payload);
               console.log(`    - Slack: sent`);
             }
-            if (userSettings.line_notify_token) {
-              await sendLineNotification(userSettings.line_notify_token, payload);
-              console.log(`    - LINE: sent`);
+            if (userSettings.discord_webhook) {
+              await sendDiscordNotification(userSettings.discord_webhook, payload);
+              console.log(`    - Discord: sent`);
             }
           }
         }
