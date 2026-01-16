@@ -169,7 +169,7 @@ export default function Home() {
         <div className="max-w-4xl mx-auto px-4">
           <nav className="flex gap-1">
             <button
-              onClick={() => setActiveTab('list')}
+              onClick={() => { setActiveTab('list'); fetchItems(); }}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
                 activeTab === 'list' 
                   ? 'border-orange-500 text-orange-600' 

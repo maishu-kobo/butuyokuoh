@@ -43,12 +43,17 @@ export async function PATCH(
   const updates: string[] = [];
   const values: unknown[] = [];
 
-  const allowedFields = ['name', 'priority', 'planned_purchase_date', 'comparison_group_id', 'category_id', 'notes', 'is_purchased', 'purchased_at'];
+  const allowedFields = ['name', 'priority', 'planned_purchase_date', 'comparison_group_id', 'category_id', 'notes', 'is_purchased', 'purchased_at', 'target_price'];
   
   for (const field of allowedFields) {
     if (body[field] !== undefined) {
       updates.push(`${field} = ?`);
-      values.push(body[field]);
+      // SQLiteはbooleanをサポートしないので0/1に変換
+      let value = body[field];
+      if (typeof value === 'boolean') {
+        value = value ? 1 : 0;
+      }
+      values.push(value);
     }
   }
 
@@ -56,7 +61,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   }
 
-  updates.push('updated_at = datetime("now")');
+  updates.push("updated_at = datetime('now')");
   values.push(id);
 
   db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...values);

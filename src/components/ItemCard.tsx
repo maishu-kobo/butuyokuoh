@@ -19,6 +19,7 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
     priority: item.priority,
     planned_purchase_date: item.planned_purchase_date || '',
     notes: item.notes || '',
+    target_price: item.target_price || '',
   });
 
   const handleRefresh = async () => {
@@ -35,14 +36,16 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
     await fetch(`/api/items/${item.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(editData),
+      body: JSON.stringify({
+        ...editData,
+        target_price: editData.target_price || null,
+      }),
     });
     setEditing(false);
     onUpdate();
   };
 
   const handlePurchased = async () => {
-    if (!confirm('このアイテムを購入済みにしますか？')) return;
     await fetch(`/api/items/${item.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -139,12 +142,19 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
             )}
           </div>
 
-          {item.planned_purchase_date && (
-            <div className="mt-1 text-sm text-gray-500 flex items-center gap-1">
-              <Calendar size={14} />
-              購入予定: {item.planned_purchase_date}
-            </div>
-          )}
+          <div className="mt-1 flex flex-wrap gap-3 text-sm text-gray-500">
+            {item.planned_purchase_date && (
+              <span className="flex items-center gap-1">
+                <Calendar size={14} />
+                購入予定: {item.planned_purchase_date}
+              </span>
+            )}
+            {item.target_price && (
+              <span className="flex items-center gap-1 text-orange-600">
+                🎯 目標: ¥{item.target_price.toLocaleString()}
+              </span>
+            )}
+          </div>
 
           {item.notes && (
             <p className="mt-1 text-sm text-gray-600 line-clamp-1">{item.notes}</p>
@@ -220,6 +230,16 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
                 type="date"
                 value={editData.planned_purchase_date}
                 onChange={(e) => setEditData({ ...editData, planned_purchase_date: e.target.value })}
+                className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">目標価格（通知用）</label>
+              <input
+                type="number"
+                value={editData.target_price}
+                onChange={(e) => setEditData({ ...editData, target_price: e.target.value ? Number(e.target.value) : '' })}
+                placeholder="この価格以下になったら通知"
                 className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
               />
             </div>

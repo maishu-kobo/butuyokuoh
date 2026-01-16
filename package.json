@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "check-prices": "npx tsx scripts/check-prices.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -32,6 +33,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.2",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

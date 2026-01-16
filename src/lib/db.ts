@@ -43,6 +43,7 @@ function initDb(db: Database.Database) {
       notes TEXT,
       is_purchased INTEGER NOT NULL DEFAULT 0,
       purchased_at TEXT,
+      target_price INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (comparison_group_id) REFERENCES comparison_groups(id),
@@ -73,10 +74,20 @@ function initDb(db: Database.Database) {
       item_id INTEGER NOT NULL UNIQUE,
       target_price INTEGER,
       notify_on_any_drop INTEGER NOT NULL DEFAULT 0,
-      slack_webhook TEXT,
-      email TEXT,
       enabled INTEGER NOT NULL DEFAULT 1,
       FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS user_notification_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL UNIQUE,
+      slack_webhook TEXT,
+      line_notify_token TEXT,
+      notify_on_price_drop INTEGER NOT NULL DEFAULT 1,
+      notify_on_target_price INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS categories (

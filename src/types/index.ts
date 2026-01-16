@@ -16,6 +16,7 @@ export interface Item {
   notes: string | null;
   is_purchased: boolean;
   purchased_at: string | null;
+  target_price: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -49,9 +50,18 @@ export interface NotificationSetting {
   item_id: number;
   target_price: number | null;
   notify_on_any_drop: boolean;
-  slack_webhook: string | null;
-  email: string | null;
   enabled: boolean;
+}
+
+export interface UserNotificationSettings {
+  id: number;
+  user_id: number;
+  slack_webhook: string | null;
+  line_notify_token: string | null;
+  notify_on_price_drop: boolean;
+  notify_on_target_price: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface BudgetCalculation {

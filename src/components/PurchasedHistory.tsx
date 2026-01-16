@@ -35,7 +35,6 @@ export default function PurchasedHistory() {
   }, []);
 
   const handleUndo = async (id: number) => {
-    if (!confirm('このアイテムを未購入に戻しますか？')) return;
     await fetch(`/api/items/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

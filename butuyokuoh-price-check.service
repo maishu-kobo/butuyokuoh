@@ -1,0 +1,11 @@
+[Unit]
+Description=Butuyokuoh Price Check
+After=network.target
+
+[Service]
+Type=oneshot
+User=exedev
+WorkingDirectory=/home/exedev/butuyokuoh
+ExecStart=/usr/bin/npm run check-prices
+StandardOutput=journal
+StandardError=journal

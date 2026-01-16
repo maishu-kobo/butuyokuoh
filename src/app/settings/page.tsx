@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
-import { Crown, ArrowLeft, Copy, Check, Key } from 'lucide-react';
+import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function SettingsPage() {
@@ -11,6 +11,14 @@ export default function SettingsPage() {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [displayToken, setDisplayToken] = useState<string | null>(null);
+  const [notifySettings, setNotifySettings] = useState({
+    slack_webhook: '',
+    line_notify_token: '',
+    notify_on_price_drop: true,
+    notify_on_target_price: true,
+  });
+  const [savingNotify, setSavingNotify] = useState(false);
+  const [notifySaved, setNotifySaved] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -31,10 +39,49 @@ export default function SettingsPage() {
         console.error('Failed to fetch token');
       }
     };
+    
+    // 通知設定を取得
+    const fetchNotifySettings = async () => {
+      try {
+        const res = await fetch('/api/notification-settings');
+        if (res.ok) {
+          const data = await res.json();
+          setNotifySettings({
+            slack_webhook: data.slack_webhook || '',
+            line_notify_token: data.line_notify_token || '',
+            notify_on_price_drop: !!data.notify_on_price_drop,
+            notify_on_target_price: !!data.notify_on_target_price,
+          });
+        }
+      } catch (e) {
+        console.error('Failed to fetch notification settings');
+      }
+    };
+    
     if (user) {
       fetchToken();
+      fetchNotifySettings();
     }
   }, [user]);
+
+  const saveNotifySettings = async () => {
+    setSavingNotify(true);
+    try {
+      const res = await fetch('/api/notification-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(notifySettings),
+      });
+      if (res.ok) {
+        setNotifySaved(true);
+        setTimeout(() => setNotifySaved(false), 2000);
+      }
+    } catch (e) {
+      console.error('Failed to save notification settings');
+    } finally {
+      setSavingNotify(false);
+    }
+  };
 
   const copyToken = async () => {
     if (displayToken) {
@@ -124,6 +171,93 @@ export default function SettingsPage() {
             <p className="text-xs text-gray-500 mt-2">
               ※ このトークンは他人に共有しないでください
             </p>
+          </div>
+
+          {/* 価格通知設定 */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Bell size={20} className="text-orange-500" />
+              <h3 className="font-semibold text-gray-900">価格通知設定</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              価格が下がったときや目標価格に達したときに通知を受け取れます。
+            </p>
+            
+            <div className="space-y-4">
+              {/* Slack */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Slack Webhook URL
+                </label>
+                <input
+                  type="url"
+                  value={notifySettings.slack_webhook}
+                  onChange={(e) => setNotifySettings({ ...notifySettings, slack_webhook: e.target.value })}
+                  placeholder="https://hooks.slack.com/services/..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  <a href="https://api.slack.com/messaging/webhooks" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+                    Webhook URLの取得方法
+                  </a>
+                </p>
+              </div>
+
+              {/* LINE */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  LINE Notify トークン
+                </label>
+                <input
+                  type="text"
+                  value={notifySettings.line_notify_token}
+                  onChange={(e) => setNotifySettings({ ...notifySettings, line_notify_token: e.target.value })}
+                  placeholder="LINE Notifyトークンを入力"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  <a href="https://notify-bot.line.me/my/" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+                    LINE Notifyでトークンを発行
+                  </a>
+                </p>
+              </div>
+
+              {/* 通知オプション */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={notifySettings.notify_on_price_drop}
+                    onChange={(e) => setNotifySettings({ ...notifySettings, notify_on_price_drop: e.target.checked })}
+                    className="rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                  />
+                  <span className="text-sm text-gray-700">価格が下がったら通知</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={notifySettings.notify_on_target_price}
+                    onChange={(e) => setNotifySettings({ ...notifySettings, notify_on_target_price: e.target.checked })}
+                    className="rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                  />
+                  <span className="text-sm text-gray-700">目標価格に達したら通知</span>
+                </label>
+              </div>
+
+              <button
+                onClick={saveNotifySettings}
+                disabled={savingNotify}
+                className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:opacity-50 flex items-center gap-2"
+              >
+                {savingNotify ? (
+                  <><Loader2 size={18} className="animate-spin" /> 保存中...</>
+                ) : notifySaved ? (
+                  <><Check size={18} /> 保存しました</>
+                ) : (
+                  '保存'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </main>
