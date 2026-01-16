@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { getUserIdFromToken } from '@/lib/auth';
 
 interface ImportItem {
   name: string;
@@ -13,12 +14,28 @@ export async function POST(request: NextRequest) {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   };
 
   try {
     const body = await request.json();
-    const { source, items } = body as { source: string; items: ImportItem[] };
+    const { source, items, token } = body as { source: string; items: ImportItem[]; token?: string };
+
+    // トークンからユーザーIDを取得
+    if (!token) {
+      return NextResponse.json(
+        { error: '認証トークンが必要です' },
+        { status: 401, headers }
+      );
+    }
+
+    const userId = getUserIdFromToken(token);
+    if (!userId) {
+      return NextResponse.json(
+        { error: '無効なトークンです' },
+        { status: 401, headers }
+      );
+    }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
@@ -29,8 +46,8 @@ export async function POST(request: NextRequest) {
 
     const db = getDb();
     const insertStmt = db.prepare(`
-      INSERT OR IGNORE INTO items (name, url, image_url, current_price, original_price, source, source_name, priority)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const priceHistoryStmt = db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)');
 
@@ -42,13 +59,14 @@ export async function POST(request: NextRequest) {
     for (const item of items) {
       try {
         // 既存チェック
-        const existing = db.prepare('SELECT id FROM items WHERE url = ?').get(item.url);
+        const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, item.url);
         if (existing) {
           skipped++;
           continue;
         }
 
         const result = insertStmt.run(
+          userId,
           item.name,
           item.url,
           item.imageUrl,
@@ -94,7 +112,7 @@ export async function OPTIONS() {
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },
   });
 }

@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { getCurrentUser } from '@/lib/auth';
 import type { Item } from '@/types';
 
 export async function GET(request: NextRequest) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+  }
+
   const searchParams = request.nextUrl.searchParams;
   const month = searchParams.get('month'); // YYYY-MM format
 
@@ -11,9 +17,10 @@ export async function GET(request: NextRequest) {
   let query = `
     SELECT * FROM items 
     WHERE is_purchased = 0 
+    AND user_id = ?
     AND planned_purchase_date IS NOT NULL
   `;
-  const params: string[] = [];
+  const params: (string | number)[] = [user.id];
 
   if (month) {
     query += ` AND strftime('%Y-%m', planned_purchase_date) = ?`;

@@ -5,12 +5,16 @@ import { Item, ComparisonGroup } from '@/types';
 import ItemCard from '@/components/ItemCard';
 import AddItemForm from '@/components/AddItemForm';
 import BudgetView from '@/components/BudgetView';
-import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload } from 'lucide-react';
+import LoginForm from '@/components/LoginForm';
+import { useAuth } from '@/components/AuthProvider';
+import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Settings } from 'lucide-react';
+import Link from 'next/link';
 import ImportWishlistModal from '@/components/ImportWishlistModal';
 
 type Tab = 'list' | 'budget' | 'groups';
 
 export default function Home() {
+  const { user, loading: authLoading, logout } = useAuth();
   const [items, setItems] = useState<Item[]>([]);
   const [groups, setGroups] = useState<ComparisonGroup[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>('list');
@@ -33,9 +37,11 @@ export default function Home() {
   };
 
   useEffect(() => {
-    fetchItems();
-    fetchGroups();
-  }, []);
+    if (user) {
+      fetchItems();
+      fetchGroups();
+    }
+  }, [user]);
 
   const handleDelete = async (id: number) => {
     if (!confirm('本当に削除しますか？')) return;
@@ -74,6 +80,19 @@ export default function Home() {
     return acc;
   }, {});
 
+  // 認証チェック
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-gray-500">読み込み中...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginForm />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-100">
       {/* ヘッダー */}
@@ -83,7 +102,29 @@ export default function Home() {
             <Crown size={32} className="text-yellow-300" />
             <h1 className="text-2xl font-bold">物欲王</h1>
           </div>
-          <p className="mt-1 text-amber-100 text-sm">すべてのほしいものを一つに</p>
+          <div className="flex items-center justify-between">
+            <p className="mt-1 text-amber-100 text-sm">すべてのほしいものを一つに</p>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 text-amber-100 text-sm">
+                <User size={16} />
+                <span>{user.name || user.email}</span>
+              </div>
+              <Link
+                href="/settings"
+                className="flex items-center gap-1 text-amber-100 hover:text-white text-sm"
+              >
+                <Settings size={16} />
+                設定
+              </Link>
+              <button
+                onClick={logout}
+                className="flex items-center gap-1 text-amber-100 hover:text-white text-sm"
+              >
+                <LogOut size={16} />
+                ログアウト
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 

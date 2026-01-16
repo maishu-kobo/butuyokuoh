@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { scrapeUrl } from '@/lib/scraper';
+import { getCurrentUser } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+  }
+
   const { id } = await params;
   const db = getDb();
-  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
+  const item = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id);
   
   if (!item) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
@@ -21,11 +26,16 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+  }
+
   const { id } = await params;
   const body = await request.json();
   const db = getDb();
 
-  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
+  const item = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id);
   if (!item) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
@@ -59,10 +69,15 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+  }
+
   const { id } = await params;
   const db = getDb();
   
-  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
+  const item = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id);
   if (!item) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }

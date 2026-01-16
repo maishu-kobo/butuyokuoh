@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { scrapeUrl } from '@/lib/scraper';
+import { getCurrentUser } from '@/lib/auth';
 
 interface DbItem {
   id: number;
@@ -12,10 +13,15 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+  }
+
   const { id } = await params;
   const db = getDb();
   
-  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as DbItem | undefined;
+  const item = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id) as DbItem | undefined;
   if (!item) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }

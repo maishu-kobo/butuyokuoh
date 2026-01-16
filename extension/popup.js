@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', async () => {
   const serverUrlInput = document.getElementById('serverUrl');
+  const authTokenInput = document.getElementById('authToken');
   const saveSettingsBtn = document.getElementById('saveSettings');
   const pageInfo = document.getElementById('pageInfo');
   const importBtn = document.getElementById('importBtn');
@@ -7,12 +8,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   const status = document.getElementById('status');
 
   // 設定を読み込み
-  const settings = await chrome.storage.sync.get(['serverUrl']);
+  const settings = await chrome.storage.sync.get(['serverUrl', 'authToken']);
   serverUrlInput.value = settings.serverUrl || 'https://butuyokuoh.exe.xyz:8000';
+  authTokenInput.value = settings.authToken || '';
 
   // 設定を保存
   saveSettingsBtn.addEventListener('click', async () => {
-    await chrome.storage.sync.set({ serverUrl: serverUrlInput.value });
+    await chrome.storage.sync.set({ 
+      serverUrl: serverUrlInput.value,
+      authToken: authTokenInput.value
+    });
     showStatus('保存しました', 'success');
   });
 
@@ -44,8 +49,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // インポートボタン
   importBtn.addEventListener('click', async () => {
     const serverUrl = serverUrlInput.value.replace(/\/$/, '');
+    const authToken = authTokenInput.value;
+
     if (!serverUrl) {
       showStatus('サーバーURLを設定してください', 'error');
+      return;
+    }
+
+    if (!authToken) {
+      showStatus('認証トークンを設定してください', 'error');
       return;
     }
 
@@ -71,6 +83,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         body: JSON.stringify({
           source: pageType,
           items: response.items,
+          token: authToken,
         }),
       });
 
