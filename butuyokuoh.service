@@ -1,0 +1,16 @@
+[Unit]
+Description=Butuyokuoh - Wishlist Manager
+After=network.target
+
+[Service]
+Type=simple
+User=exedev
+WorkingDirectory=/home/exedev/butuyokuoh
+Environment=PORT=8000
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run start
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
