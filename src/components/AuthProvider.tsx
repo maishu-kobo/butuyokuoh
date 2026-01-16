@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useSession, signOut as nextAuthSignOut } from 'next-auth/react';
 
 interface User {
   id: number;
@@ -20,24 +21,42 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { data: session, status } = useSession();
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // セッション確認
-    checkSession();
-  }, []);
+    if (status === 'loading') {
+      setLoading(true);
+      return;
+    }
 
-  const checkSession = async () => {
+    if (session?.user) {
+      // NextAuth session exists
+      setUser({
+        id: Number(session.user.id),
+        email: session.user.email!,
+        name: session.user.name || null,
+      });
+      setLoading(false);
+    } else {
+      // Check legacy cookie-based session
+      checkLegacySession();
+    }
+  }, [session, status]);
+
+  const checkLegacySession = async () => {
     try {
       const res = await fetch('/api/auth/me');
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
+      } else {
+        setUser(null);
       }
     } catch (e) {
-      // セッションなし
+      setUser(null);
     } finally {
       setLoading(false);
     }
@@ -76,7 +95,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    // Logout from both NextAuth and legacy session
     await fetch('/api/auth/logout', { method: 'POST' });
+    await nextAuthSignOut({ redirect: false });
     setUser(null);
     setToken(null);
   };
