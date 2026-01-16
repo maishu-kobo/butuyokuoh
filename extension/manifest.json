@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "物欲王 - ほしいものリストインポーター",
+  "version": "1.0.0",
+  "description": "Amazonや楽天のほしいものリストを物欲王にインポート",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.amazon.co.jp/*",
+    "https://www.amazon.com/*",
+    "https://my.bookmark.rakuten.co.jp/*",
+    "https://item.rakuten.co.jp/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.amazon.co.jp/hz/wishlist/*",
+        "https://www.amazon.co.jp/gp/registry/wishlist/*",
+        "https://www.amazon.com/hz/wishlist/*"
+      ],
+      "js": ["content-amazon.js"]
+    },
+    {
+      "matches": [
+        "https://my.bookmark.rakuten.co.jp/*"
+      ],
+      "js": ["content-rakuten.js"]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
