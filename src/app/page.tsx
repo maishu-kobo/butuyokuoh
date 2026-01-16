@@ -5,7 +5,8 @@ import { Item, ComparisonGroup } from '@/types';
 import ItemCard from '@/components/ItemCard';
 import AddItemForm from '@/components/AddItemForm';
 import BudgetView from '@/components/BudgetView';
-import { Crown, List, Wallet, Layers, Plus, RefreshCw } from 'lucide-react';
+import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload } from 'lucide-react';
+import ImportWishlistModal from '@/components/ImportWishlistModal';
 
 type Tab = 'list' | 'budget' | 'groups';
 
@@ -16,6 +17,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
+  const [showImportModal, setShowImportModal] = useState(false);
 
   const fetchItems = async () => {
     const res = await fetch('/api/items');
@@ -134,14 +136,23 @@ export default function Home() {
               <h2 className="text-lg font-semibold text-gray-700">
                 ほしいものリスト ({items.length}件)
               </h2>
-              <button
-                onClick={handleRefreshAll}
-                disabled={refreshing || items.length === 0}
-                className="flex items-center gap-1 text-sm text-gray-500 hover:text-blue-500 disabled:opacity-50"
-              >
-                <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-                全て更新
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  className="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600"
+                >
+                  <Upload size={16} />
+                  インポート
+                </button>
+                <button
+                  onClick={handleRefreshAll}
+                  disabled={refreshing || items.length === 0}
+                  className="flex items-center gap-1 text-sm text-gray-500 hover:text-blue-500 disabled:opacity-50"
+                >
+                  <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                  全て更新
+                </button>
+              </div>
             </div>
 
             <AddItemForm onAdd={fetchItems} comparisonGroups={groups} />
@@ -234,6 +245,12 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      <ImportWishlistModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImported={fetchItems}
+      />
     </div>
   );
 }
