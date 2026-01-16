@@ -8,7 +8,7 @@ import BudgetView from '@/components/BudgetView';
 import PurchasedHistory from '@/components/PurchasedHistory';
 import LoginForm from '@/components/LoginForm';
 import { useAuth } from '@/components/AuthProvider';
-import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Settings, Tag, X, ShoppingBag } from 'lucide-react';
+import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Settings, Tag, X, ShoppingBag, Search, ArrowUpDown } from 'lucide-react';
 import Link from 'next/link';
 import ImportWishlistModal from '@/components/ImportWishlistModal';
 
@@ -27,6 +27,9 @@ export default function Home() {
   const [newCategoryColor, setNewCategoryColor] = useState('#6b7280');
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'priority' | 'price_asc' | 'price_desc' | 'date_new' | 'date_old' | 'name'>('priority');
+  const [selectedPriority, setSelectedPriority] = useState<number | null>(null);
 
   const fetchItems = async () => {
     const res = await fetch('/api/items');
@@ -103,10 +106,39 @@ export default function Home() {
     fetchItems();
   };
 
-  // カテゴリフィルター適用
-  const filteredItems = selectedCategory
-    ? items.filter(item => item.category_id === selectedCategory)
-    : items;
+  // フィルター適用（カテゴリ、検索、優先度）
+  const filteredItems = items
+    .filter(item => {
+      // カテゴリフィルター
+      if (selectedCategory && item.category_id !== selectedCategory) return false;
+      // 優先度フィルター
+      if (selectedPriority && item.priority !== selectedPriority) return false;
+      // 検索フィルター
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return item.name.toLowerCase().includes(query) ||
+               item.notes?.toLowerCase().includes(query) ||
+               item.category_name?.toLowerCase().includes(query);
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'price_asc':
+          return (a.current_price || 0) - (b.current_price || 0);
+        case 'price_desc':
+          return (b.current_price || 0) - (a.current_price || 0);
+        case 'date_new':
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case 'date_old':
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'name':
+          return a.name.localeCompare(b.name, 'ja');
+        case 'priority':
+        default:
+          return a.priority - b.priority;
+      }
+    });
 
   // グループごとにアイテムを分類
   const groupedItems = filteredItems.reduce<Record<string, Item[]>>((acc, item) => {
@@ -231,38 +263,88 @@ export default function Home() {
       <main className="max-w-4xl mx-auto px-4 py-6">
         {activeTab === 'list' && (
           <div className="space-y-4">
-            {/* カテゴリフィルター */}
-            {categories.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setSelectedCategory(null)}
-                  className={`px-3 py-1 rounded-full text-sm transition-colors ${
-                    selectedCategory === null
-                      ? 'bg-orange-500 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  すべて
-                </button>
-                {categories.map((cat) => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSelectedCategory(cat.id)}
-                    className={`px-3 py-1 rounded-full text-sm transition-colors ${
-                      selectedCategory === cat.id
-                        ? 'text-white'
-                        : 'text-gray-700 hover:opacity-80'
-                    }`}
-                    style={{
-                      backgroundColor: selectedCategory === cat.id ? cat.color : `${cat.color}30`,
-                      borderColor: cat.color,
-                    }}
-                  >
-                    {cat.name}
-                  </button>
-                ))}
+            {/* 検索・並び替え・フィルター */}
+            <div className="bg-white rounded-lg shadow p-4 space-y-3">
+              {/* 検索バー */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="商品名、メモ、カテゴリで検索..."
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
               </div>
-            )}
+
+              {/* 並び替え・優先度フィルター */}
+              <div className="flex flex-wrap gap-3">
+                <div className="flex items-center gap-2">
+                  <ArrowUpDown size={16} className="text-gray-500" />
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="priority">優先度順</option>
+                    <option value="price_asc">価格が安い順</option>
+                    <option value="price_desc">価格が高い順</option>
+                    <option value="date_new">新しい順</option>
+                    <option value="date_old">古い順</option>
+                    <option value="name">名前順</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">優先度:</span>
+                  <select
+                    value={selectedPriority || ''}
+                    onChange={(e) => setSelectedPriority(e.target.value ? Number(e.target.value) : null)}
+                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="">すべて</option>
+                    <option value="1">最高</option>
+                    <option value="2">高</option>
+                    <option value="3">普通</option>
+                    <option value="4">低</option>
+                    <option value="5">最低</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* カテゴリフィルター */}
+              {categories.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setSelectedCategory(null)}
+                    className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                      selectedCategory === null
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    すべて
+                  </button>
+                  {categories.map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setSelectedCategory(cat.id)}
+                      className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                        selectedCategory === cat.id
+                          ? 'text-white'
+                          : 'text-gray-700 hover:opacity-80'
+                      }`}
+                      style={{
+                        backgroundColor: selectedCategory === cat.id ? cat.color : `${cat.color}30`,
+                        borderColor: cat.color,
+                      }}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-semibold text-gray-700">
