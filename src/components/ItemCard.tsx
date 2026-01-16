@@ -20,6 +20,7 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
     planned_purchase_date: item.planned_purchase_date || '',
     notes: item.notes || '',
     target_price: item.target_price || '',
+    target_currency: item.target_currency || 'JPY',
   });
 
   const handleRefresh = async () => {
@@ -39,6 +40,7 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
       body: JSON.stringify({
         ...editData,
         target_price: editData.target_price || null,
+        target_currency: editData.target_currency,
       }),
     });
     setEditing(false);
@@ -151,7 +153,7 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
             )}
             {item.target_price && (
               <span className="flex items-center gap-1 text-orange-600">
-                🎯 目標: ¥{item.target_price.toLocaleString()}
+                🎯 目標: {item.target_currency === 'USD' ? '$' : '¥'}{item.target_price.toLocaleString()}
               </span>
             )}
           </div>
@@ -235,13 +237,23 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">目標価格（通知用）</label>
-              <input
-                type="number"
-                value={editData.target_price}
-                onChange={(e) => setEditData({ ...editData, target_price: e.target.value ? Number(e.target.value) : '' })}
-                placeholder="この価格以下になったら通知"
-                className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              />
+              <div className="mt-1 flex gap-2">
+                <select
+                  value={editData.target_currency}
+                  onChange={(e) => setEditData({ ...editData, target_currency: e.target.value as 'JPY' | 'USD' })}
+                  className="rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                >
+                  <option value="JPY">¥ (円)</option>
+                  <option value="USD">$ (USD)</option>
+                </select>
+                <input
+                  type="number"
+                  value={editData.target_price}
+                  onChange={(e) => setEditData({ ...editData, target_price: e.target.value ? Number(e.target.value) : '' })}
+                  placeholder="この価格以下になったら通知"
+                  className="flex-1 rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                />
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">メモ</label>

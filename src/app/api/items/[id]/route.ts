@@ -43,7 +43,7 @@ export async function PATCH(
   const updates: string[] = [];
   const values: unknown[] = [];
 
-  const allowedFields = ['name', 'priority', 'planned_purchase_date', 'comparison_group_id', 'category_id', 'notes', 'is_purchased', 'purchased_at', 'target_price'];
+  const allowedFields = ['name', 'priority', 'planned_purchase_date', 'comparison_group_id', 'category_id', 'notes', 'is_purchased', 'purchased_at', 'target_price', 'target_currency'];
   
   for (const field of allowedFields) {
     if (body[field] !== undefined) {
