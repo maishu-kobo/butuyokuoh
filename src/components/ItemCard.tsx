@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Item } from '@/types';
-import { Trash2, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Calendar, Star } from 'lucide-react';
+import { Trash2, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Calendar, Flag } from 'lucide-react';
 import PriceChart from './PriceChart';
 
 interface ItemCardProps {
@@ -97,14 +97,18 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
                     {item.category_name}
                   </span>
                 )}
-                <div className="flex items-center">
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <Star
-                      key={n}
-                      size={14}
-                      className={n <= item.priority ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}
-                    />
-                  ))}
+                <div 
+                  className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded ${
+                    item.priority <= 2 
+                      ? 'bg-red-100 text-red-700' 
+                      : item.priority === 3 
+                        ? 'bg-yellow-100 text-yellow-700' 
+                        : 'bg-gray-100 text-gray-600'
+                  }`}
+                  title="優先度"
+                >
+                  <Flag size={12} />
+                  {['', '最高', '高', '普通', '低', '最低'][item.priority]}
                 </div>
               </div>
               <h3 className="font-semibold text-gray-900 line-clamp-2">{item.name}</h3>
@@ -170,9 +174,9 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
         <div className="flex gap-2">
           <button
             onClick={handlePurchased}
-            className="text-sm px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
+            className="text-sm px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
           >
-            購入済み
+            購入済みにする
           </button>
           <button
             onClick={() => onDelete(item.id)}
