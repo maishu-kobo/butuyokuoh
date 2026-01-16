@@ -15,6 +15,7 @@ export interface Item {
   category_color?: string | null;
   notes: string | null;
   is_purchased: boolean;
+  purchased_at: string | null;
   created_at: string;
   updated_at: string;
 }

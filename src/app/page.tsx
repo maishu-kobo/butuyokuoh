@@ -5,13 +5,14 @@ import { Item, ComparisonGroup, Category } from '@/types';
 import ItemCard from '@/components/ItemCard';
 import AddItemForm from '@/components/AddItemForm';
 import BudgetView from '@/components/BudgetView';
+import PurchasedHistory from '@/components/PurchasedHistory';
 import LoginForm from '@/components/LoginForm';
 import { useAuth } from '@/components/AuthProvider';
-import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Settings, Tag, X } from 'lucide-react';
+import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Settings, Tag, X, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
 import ImportWishlistModal from '@/components/ImportWishlistModal';
 
-type Tab = 'list' | 'budget' | 'groups' | 'categories';
+type Tab = 'list' | 'budget' | 'groups' | 'categories' | 'purchased';
 
 export default function Home() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -210,6 +211,17 @@ export default function Home() {
             >
               <Tag size={18} />
               カテゴリ
+            </button>
+            <button
+              onClick={() => setActiveTab('purchased')}
+              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                activeTab === 'purchased' 
+                  ? 'border-orange-500 text-orange-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <ShoppingBag size={18} />
+              購入済
             </button>
           </nav>
         </div>
@@ -424,6 +436,8 @@ export default function Home() {
             )}
           </div>
         )}
+
+        {activeTab === 'purchased' && <PurchasedHistory />}
       </main>
 
       <ImportWishlistModal

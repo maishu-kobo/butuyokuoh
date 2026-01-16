@@ -42,10 +42,14 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
   };
 
   const handlePurchased = async () => {
+    if (!confirm('このアイテムを購入済みにしますか？')) return;
     await fetch(`/api/items/${item.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_purchased: true }),
+      body: JSON.stringify({ 
+        is_purchased: true,
+        purchased_at: new Date().toISOString().split('T')[0],
+      }),
     });
     onUpdate();
   };

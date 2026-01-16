@@ -42,6 +42,7 @@ function initDb(db: Database.Database) {
       category_id INTEGER,
       notes TEXT,
       is_purchased INTEGER NOT NULL DEFAULT 0,
+      purchased_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (comparison_group_id) REFERENCES comparison_groups(id),
