@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
-import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2 } from 'lucide-react';
+import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2, Download } from 'lucide-react';
 import Link from 'next/link';
 
 export default function SettingsPage() {
@@ -171,6 +171,40 @@ export default function SettingsPage() {
             <p className="text-xs text-gray-500 mt-2">
               ※ このトークンは他人に共有しないでください
             </p>
+          </div>
+
+          {/* データエクスポート */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Download size={20} className="text-orange-500" />
+              <h3 className="font-semibold text-gray-900">データエクスポート</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              データをCSV形式でダウンロードできます。ExcelやGoogleスプレッドシートで開けます。
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <a
+                href="/api/export?filter=wishlist"
+                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center gap-2"
+              >
+                <Download size={18} />
+                ほしいものリスト
+              </a>
+              <a
+                href="/api/export?filter=purchased"
+                className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 flex items-center gap-2"
+              >
+                <Download size={18} />
+                購入済み
+              </a>
+              <a
+                href="/api/export?filter=all"
+                className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 flex items-center gap-2"
+              >
+                <Download size={18} />
+                すべて
+              </a>
+            </div>
           </div>
 
           {/* 価格通知設定 */}
