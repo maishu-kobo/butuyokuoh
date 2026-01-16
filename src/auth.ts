@@ -5,6 +5,7 @@ import { getDb } from '@/lib/db';
 import { verifyPassword, User } from '@/lib/auth';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  trustHost: true,
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,

@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 import { getDb } from './db';
+import { auth } from '@/auth';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'butuyokuoh-secret-key-change-in-production';
 const TOKEN_COOKIE_NAME = 'butuyokuoh_token';
@@ -43,6 +44,19 @@ export function verifyToken(token: string): JWTPayload | null {
 }
 
 export async function getCurrentUser(): Promise<User | null> {
+  // First check NextAuth session
+  try {
+    const session = await auth();
+    if (session?.user?.id) {
+      const db = getDb();
+      const user = db.prepare('SELECT id, email, name, created_at FROM users WHERE id = ?').get(Number(session.user.id)) as User | undefined;
+      if (user) return user;
+    }
+  } catch (e) {
+    // NextAuth not available, continue to legacy auth
+  }
+
+  // Fallback to legacy cookie-based auth
   const cookieStore = await cookies();
   const token = cookieStore.get(TOKEN_COOKIE_NAME)?.value;
   

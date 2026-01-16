@@ -45,21 +45,38 @@ npm run start
 
 各ユーザーのデータは完全に分離されています。
 
-### Chrome拡張機能
+### ブラウザ拡張機能
 
 Amazonや楽天にログインした状態でほしいものリストをインポートできます。
 
+#### 対応ブラウザ
+
+Chromiumベースのブラウザで動作します。
+
+| ブラウザ | 対応 | 拡張機能ページ |
+|---------|:----:|---------------|
+| Google Chrome | ✅ | `chrome://extensions/` |
+| Microsoft Edge | ✅ | `edge://extensions/` |
+| Brave | ✅ | `brave://extensions/` |
+| Vivaldi | ✅ | `vivaldi://extensions/` |
+| Opera | ✅ | `opera://extensions/` |
+| Arc | ✅ | `arc://extensions/` |
+| Dia | ✅ | 設定 → 拡張機能 |
+| Atlas | ✅ | 設定 → 拡張機能 |
+| Firefox | ❌ | 非対応 |
+| Safari | ❌ | 非対応 |
+
 #### インストール方法
 
-1. Chromeで `chrome://extensions/` を開く
-2. 右上の「デベロッパーモード」をON
+1. ブラウザの拡張機能ページを開く（上記表を参照）
+2. 「デベロッパーモード」または「開発者モード」をONにする
 3. 「パッケージ化されていない拡張機能を読み込む」をクリック
 4. `extension` フォルダを選択
 
 #### 使い方
 
 1. 物欲王にログインし、「設定」ページで認証トークンをコピー
-2. Chrome拡張機能を開き、サーバーURLとトークンを設定・保存
+2. 拡張機能アイコン（👑）をクリックし、サーバーURLとトークンを設定・保存
 3. Amazonまたは楽天にログイン
 4. ほしいものリストページを開く
    - Amazon: `https://www.amazon.co.jp/hz/wishlist/ls/XXXXX`
@@ -137,10 +154,11 @@ butuyokuoh/
 
 ## TODO
 
-- [ ] 価格下落通知 (Slack/メール)
+- [ ] 価格下落通知 (Slack/メール/LINE)
 - [ ] 定期価格チェック (cron)
-- [ ] ユーザー認証
+- [x] ユーザー認証（メール/パスワード、Google SSO）
 - [ ] エクスポート機能
+- [ ] LINE/Discord SSO
 
 ## ライセンス
 
