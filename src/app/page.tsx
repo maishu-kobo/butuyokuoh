@@ -1,26 +1,30 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Item, ComparisonGroup } from '@/types';
+import { Item, ComparisonGroup, Category } from '@/types';
 import ItemCard from '@/components/ItemCard';
 import AddItemForm from '@/components/AddItemForm';
 import BudgetView from '@/components/BudgetView';
 import LoginForm from '@/components/LoginForm';
 import { useAuth } from '@/components/AuthProvider';
-import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Settings } from 'lucide-react';
+import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Settings, Tag, X } from 'lucide-react';
 import Link from 'next/link';
 import ImportWishlistModal from '@/components/ImportWishlistModal';
 
-type Tab = 'list' | 'budget' | 'groups';
+type Tab = 'list' | 'budget' | 'groups' | 'categories';
 
 export default function Home() {
   const { user, loading: authLoading, logout } = useAuth();
   const [items, setItems] = useState<Item[]>([]);
   const [groups, setGroups] = useState<ComparisonGroup[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>('list');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryColor, setNewCategoryColor] = useState('#6b7280');
+  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
 
   const fetchItems = async () => {
@@ -36,10 +40,17 @@ export default function Home() {
     setGroups(data);
   };
 
+  const fetchCategories = async () => {
+    const res = await fetch('/api/categories');
+    const data = await res.json();
+    setCategories(data);
+  };
+
   useEffect(() => {
     if (user) {
       fetchItems();
       fetchGroups();
+      fetchCategories();
     }
   }, [user]);
 
@@ -72,8 +83,32 @@ export default function Home() {
     fetchGroups();
   };
 
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    await fetch('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newCategoryName, color: newCategoryColor }),
+    });
+    setNewCategoryName('');
+    setNewCategoryColor('#6b7280');
+    fetchCategories();
+  };
+
+  const handleDeleteCategory = async (id: number) => {
+    if (!confirm('このカテゴリを削除しますか？\nアイテムは削除されず、カテゴリなしになります。')) return;
+    await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+    fetchCategories();
+    fetchItems();
+  };
+
+  // カテゴリフィルター適用
+  const filteredItems = selectedCategory
+    ? items.filter(item => item.category_id === selectedCategory)
+    : items;
+
   // グループごとにアイテムを分類
-  const groupedItems = items.reduce<Record<string, Item[]>>((acc, item) => {
+  const groupedItems = filteredItems.reduce<Record<string, Item[]>>((acc, item) => {
     const key = item.comparison_group_id ? `group-${item.comparison_group_id}` : 'ungrouped';
     if (!acc[key]) acc[key] = [];
     acc[key].push(item);
@@ -165,6 +200,17 @@ export default function Home() {
               <Layers size={18} />
               比較
             </button>
+            <button
+              onClick={() => setActiveTab('categories')}
+              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                activeTab === 'categories' 
+                  ? 'border-orange-500 text-orange-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Tag size={18} />
+              カテゴリ
+            </button>
           </nav>
         </div>
       </div>
@@ -173,9 +219,42 @@ export default function Home() {
       <main className="max-w-4xl mx-auto px-4 py-6">
         {activeTab === 'list' && (
           <div className="space-y-4">
+            {/* カテゴリフィルター */}
+            {categories.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setSelectedCategory(null)}
+                  className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                    selectedCategory === null
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  すべて
+                </button>
+                {categories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSelectedCategory(cat.id)}
+                    className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                      selectedCategory === cat.id
+                        ? 'text-white'
+                        : 'text-gray-700 hover:opacity-80'
+                    }`}
+                    style={{
+                      backgroundColor: selectedCategory === cat.id ? cat.color : `${cat.color}30`,
+                      borderColor: cat.color,
+                    }}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-semibold text-gray-700">
-                ほしいものリスト ({items.length}件)
+                ほしいものリスト ({filteredItems.length}件{selectedCategory ? ` / 全${items.length}件` : ''})
               </h2>
               <div className="flex items-center gap-3">
                 <button
@@ -196,7 +275,7 @@ export default function Home() {
               </div>
             </div>
 
-            <AddItemForm onAdd={fetchItems} comparisonGroups={groups} />
+            <AddItemForm onAdd={fetchItems} comparisonGroups={groups} categories={categories} />
 
             {loading ? (
               <div className="text-center py-8 text-gray-500">読み込み中...</div>
@@ -206,7 +285,7 @@ export default function Home() {
               </div>
             ) : (
               <div className="space-y-4">
-                {items.map((item) => (
+                {filteredItems.map((item) => (
                   <ItemCard
                     key={item.id}
                     item={item}
@@ -282,6 +361,66 @@ export default function Home() {
                   </div>
                 );
               })
+            )}
+          </div>
+        )}
+
+        {activeTab === 'categories' && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-semibold text-gray-700">カテゴリ管理</h2>
+            
+            <div className="bg-white rounded-lg shadow p-4">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="新しいカテゴリ名"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="color"
+                  value={newCategoryColor}
+                  onChange={(e) => setNewCategoryColor(e.target.value)}
+                  className="w-12 h-10 border border-gray-300 rounded-md cursor-pointer"
+                  title="カテゴリの色"
+                />
+                <button
+                  onClick={handleAddCategory}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center gap-1"
+                >
+                  <Plus size={18} />
+                  追加
+                </button>
+              </div>
+            </div>
+
+            {categories.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                カテゴリがありません
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg shadow overflow-hidden">
+                {categories.map((cat) => (
+                  <div key={cat.id} className="flex items-center gap-3 px-4 py-3 border-b last:border-0">
+                    <div
+                      className="w-4 h-4 rounded-full"
+                      style={{ backgroundColor: cat.color }}
+                    />
+                    <span className="flex-1 font-medium">{cat.name}</span>
+                    <span className="text-sm text-gray-500">
+                      {(cat as Category & { item_count?: number }).item_count || 0}件
+                    </span>
+                    <button
+                      onClick={() => handleDeleteCategory(cat.id)}
+                      className="text-gray-400 hover:text-red-500"
+                      title="削除"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}

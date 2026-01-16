@@ -82,10 +82,21 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
         <div className="flex-1 p-4">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <span className={`text-xs px-2 py-0.5 rounded ${sourceColors[item.source] || sourceColors.other}`}>
                   {item.source_name || item.source}
                 </span>
+                {item.category_name && item.category_color && (
+                  <span
+                    className="text-xs px-2 py-0.5 rounded"
+                    style={{
+                      backgroundColor: `${item.category_color}20`,
+                      color: item.category_color,
+                    }}
+                  >
+                    {item.category_name}
+                  </span>
+                )}
                 <div className="flex items-center">
                   {[1, 2, 3, 4, 5].map((n) => (
                     <Star

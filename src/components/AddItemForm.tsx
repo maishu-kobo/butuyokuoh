@@ -2,14 +2,15 @@
 
 import { useState } from 'react';
 import { Plus, X } from 'lucide-react';
-import { ComparisonGroup } from '@/types';
+import { ComparisonGroup, Category } from '@/types';
 
 interface AddItemFormProps {
   onAdd: () => void;
   comparisonGroups: ComparisonGroup[];
+  categories: Category[];
 }
 
-export default function AddItemForm({ onAdd, comparisonGroups }: AddItemFormProps) {
+export default function AddItemForm({ onAdd, comparisonGroups, categories }: AddItemFormProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -19,6 +20,7 @@ export default function AddItemForm({ onAdd, comparisonGroups }: AddItemFormProp
     planned_purchase_date: '',
     notes: '',
     comparison_group_id: '',
+    category_id: '',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,6 +35,7 @@ export default function AddItemForm({ onAdd, comparisonGroups }: AddItemFormProp
         body: JSON.stringify({
           ...formData,
           comparison_group_id: formData.comparison_group_id ? Number(formData.comparison_group_id) : null,
+          category_id: formData.category_id ? Number(formData.category_id) : null,
         }),
       });
 
@@ -41,7 +44,7 @@ export default function AddItemForm({ onAdd, comparisonGroups }: AddItemFormProp
         throw new Error(data.error || '追加に失敗しました');
       }
 
-      setFormData({ url: '', priority: 3, planned_purchase_date: '', notes: '', comparison_group_id: '' });
+      setFormData({ url: '', priority: 3, planned_purchase_date: '', notes: '', comparison_group_id: '', category_id: '' });
       setIsOpen(false);
       onAdd();
     } catch (err) {
@@ -114,21 +117,39 @@ export default function AddItemForm({ onAdd, comparisonGroups }: AddItemFormProp
           </div>
         </div>
 
-        {comparisonGroups.length > 0 && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">比較グループ</label>
-            <select
-              value={formData.comparison_group_id}
-              onChange={(e) => setFormData({ ...formData, comparison_group_id: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">なし</option>
-              {comparisonGroups.map((g) => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
+        <div className="grid grid-cols-2 gap-4">
+          {categories.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">カテゴリ</label>
+              <select
+                value={formData.category_id}
+                onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">なし</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {comparisonGroups.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">比較グループ</label>
+              <select
+                value={formData.comparison_group_id}
+                onChange={(e) => setFormData({ ...formData, comparison_group_id: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">なし</option>
+                {comparisonGroups.map((g) => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">メモ</label>

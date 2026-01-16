@@ -39,11 +39,13 @@ function initDb(db: Database.Database) {
       priority INTEGER NOT NULL DEFAULT 3,
       planned_purchase_date TEXT,
       comparison_group_id INTEGER,
+      category_id INTEGER,
       notes TEXT,
       is_purchased INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (comparison_group_id) REFERENCES comparison_groups(id),
+      FOREIGN KEY (category_id) REFERENCES categories(id) ON SET NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       UNIQUE(user_id, url)
     );
@@ -76,10 +78,23 @@ function initDb(db: Database.Database) {
       FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      color TEXT NOT NULL DEFAULT '#6b7280',
+      icon TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(user_id, name)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_items_user ON items(user_id);
     CREATE INDEX IF NOT EXISTS idx_items_priority ON items(priority);
     CREATE INDEX IF NOT EXISTS idx_items_planned_date ON items(planned_purchase_date);
     CREATE INDEX IF NOT EXISTS idx_price_history_item ON price_history(item_id, recorded_at);
     CREATE INDEX IF NOT EXISTS idx_comparison_groups_user ON comparison_groups(user_id);
+    CREATE INDEX IF NOT EXISTS idx_categories_user ON categories(user_id);
   `);
 }

@@ -10,10 +10,23 @@ export interface Item {
   priority: number; // 1-5
   planned_purchase_date: string | null;
   comparison_group_id: number | null;
+  category_id: number | null;
+  category_name?: string | null;
+  category_color?: string | null;
   notes: string | null;
   is_purchased: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface Category {
+  id: number;
+  user_id: number;
+  name: string;
+  color: string;
+  icon: string | null;
+  sort_order: number;
+  created_at: string;
 }
 
 export interface PriceHistory {

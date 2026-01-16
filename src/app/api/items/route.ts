@@ -14,9 +14,12 @@ export async function GET() {
     SELECT 
       i.*,
       cg.name as comparison_group_name,
-      cg.priority as group_priority
+      cg.priority as group_priority,
+      cat.name as category_name,
+      cat.color as category_color
     FROM items i
     LEFT JOIN comparison_groups cg ON i.comparison_group_id = cg.id
+    LEFT JOIN categories cat ON i.category_id = cat.id
     WHERE i.is_purchased = 0 AND i.user_id = ?
     ORDER BY 
       COALESCE(cg.priority, i.priority) ASC,
@@ -34,7 +37,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { url, priority = 3, planned_purchase_date, notes, comparison_group_id } = body;
+  const { url, priority = 3, planned_purchase_date, notes, comparison_group_id, category_id } = body;
 
   if (!url) {
     return NextResponse.json({ error: 'URL is required' }, { status: 400 });
@@ -52,8 +55,8 @@ export async function POST(request: NextRequest) {
   const scraped = await scrapeUrl(url);
 
   const stmt = db.prepare(`
-    INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority, planned_purchase_date, comparison_group_id, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority, planned_purchase_date, comparison_group_id, category_id, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const result = stmt.run(
@@ -68,6 +71,7 @@ export async function POST(request: NextRequest) {
     priority,
     planned_purchase_date || null,
     comparison_group_id || null,
+    category_id || null,
     notes || null
   );
 
