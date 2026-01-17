@@ -199,8 +199,8 @@ export default function Home() {
 
       {/* タブ */}
       <div className="bg-white shadow sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4">
-          <nav className="flex gap-1">
+        <div className="max-w-4xl mx-auto px-4 overflow-x-auto">
+          <nav className="flex gap-1 min-w-max">
             <button
               onClick={() => { setActiveTab('list'); fetchItems(); }}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
