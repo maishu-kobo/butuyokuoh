@@ -159,8 +159,10 @@ export default function Home() {
       }
     },
     trackMouse: false,
-    preventScrollOnSwipe: false,
-    delta: 50,
+    preventScrollOnSwipe: true,
+    delta: 30,
+    swipeDuration: 500,
+    touchEventOptions: { passive: false },
   });
 
   // フィルター適用（カテゴリ、検索、優先度）
@@ -219,7 +221,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div {...swipeHandlers} className="min-h-screen bg-gray-100">
       {/* ヘッダー */}
       <header className="bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg">
         <div className="max-w-4xl mx-auto px-4 py-6">
@@ -339,7 +341,7 @@ export default function Home() {
       </div>
 
       {/* メインコンテンツ */}
-      <main {...swipeHandlers} className="max-w-4xl mx-auto px-4 py-6 overflow-hidden">
+      <main className="max-w-4xl mx-auto px-4 py-6 overflow-hidden">
         <div className={animationClass}>
         {activeTab === 'list' && (
           <div className="space-y-4">
