@@ -10,35 +10,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 function getRakutenProductInfo() {
   try {
-    // 方法1: JSON-LDから取得を試みる
-    const jsonLd = document.querySelector('script[type="application/ld+json"]');
-    if (jsonLd) {
+    const url = window.location.href.split('?')[0];
+
+    // 方法1: window.itemData から取得（楽天の新しいページ）
+    if (window.itemData) {
       try {
-        const data = JSON.parse(jsonLd.textContent);
-        if (data.name && data.offers) {
-          return {
-            name: data.name,
-            url: window.location.href.split('?')[0],
-            price: data.offers.price ? parseInt(data.offers.price, 10) : null,
-            imageUrl: data.image || null,
-          };
-        }
+        const data = window.itemData;
+        return {
+          name: data.title || data.name,
+          url: url,
+          price: data.taxIncludedPrice || data.price || null,
+          imageUrl: data.images?.[0] || data.imageUrl || null,
+        };
       } catch (e) {
-        console.log('JSON-LD parse failed:', e);
+        console.log('itemData parse failed:', e);
       }
     }
 
-    // 方法2: Next.jsのデータから取得を試みる
+    // 方法2: __NEXT_DATA__ から取得
     const nextDataEl = document.getElementById('__NEXT_DATA__');
     if (nextDataEl) {
       try {
         const nextData = JSON.parse(nextDataEl.textContent);
         const pageProps = nextData?.props?.pageProps;
-        if (pageProps?.item || pageProps?.product) {
-          const item = pageProps.item || pageProps.product;
+        // メイン商品データを探す
+        const item = pageProps?.item || pageProps?.product || pageProps?.itemData;
+        if (item) {
           return {
             name: item.title || item.name,
-            url: window.location.href.split('?')[0],
+            url: url,
             price: item.taxIncludedPrice || item.price || null,
             imageUrl: item.images?.[0] || item.imageUrl || null,
           };
@@ -48,48 +48,61 @@ function getRakutenProductInfo() {
       }
     }
 
-    // 方法3: DOMから取得（従来の方法 + 新セレクター）
-    // 商品名
-    const nameEl = document.querySelector('.item-name') ||
-                   document.querySelector('[class*="ItemName"]') ||
-                   document.querySelector('[class*="item_name"]') ||
-                   document.querySelector('[class*="itemName"]') ||
-                   document.querySelector('h1.normal_reserve_item_name') ||
-                   document.querySelector('.page-heading--title') ||
-                   document.querySelector('title');
-
-    let name = nameEl?.textContent?.trim();
-
-    // titleタグから取得した場合、余分な部分を削除
-    if (nameEl?.tagName === 'TITLE' && name) {
-      name = name.replace(/\s*[|｜:：].*/g, '').trim();
+    // 方法3: scriptタグ内のitemInfoSkuを探す
+    const scripts = document.querySelectorAll('script:not([src])');
+    for (const script of scripts) {
+      const content = script.textContent || '';
+      // itemInfoSku または itemData を探す
+      const match = content.match(/(?:itemInfoSku|itemData)\s*[=:]\s*(\{[\s\S]*?\});/);
+      if (match) {
+        try {
+          const data = JSON.parse(match[1]);
+          if (data.title || data.name) {
+            return {
+              name: data.title || data.name,
+              url: url,
+              price: data.taxIncludedPrice || data.price || null,
+              imageUrl: data.images?.[0] || data.imageUrl || null,
+            };
+          }
+        } catch (e) {
+          console.log('Script data parse failed:', e);
+        }
+      }
     }
 
-    if (!name) return null;
+    // 方法4: メタタグから取得
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    const ogImage = document.querySelector('meta[property="og:image"]');
+    if (ogTitle?.content) {
+      // 価格をDOMから取得
+      const priceEl = document.querySelector('[class*="Price__value"]') ||
+                      document.querySelector('[class*="price-"]') ||
+                      document.querySelector('.price2');
+      const priceText = priceEl?.textContent || '';
+      const priceMatch = priceText.match(/([\d,]+)/);
+      const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null;
 
-    // URL
-    const url = window.location.href.split('?')[0];
+      return {
+        name: ogTitle.content.replace(/\s*[|｜【].*/g, '').trim(),
+        url: url,
+        price: price,
+        imageUrl: ogImage?.content || null,
+      };
+    }
 
-    // 価格（新しいセレクターを追加）
-    const priceEl = document.querySelector('[class*="Price__value"]') ||
-                    document.querySelector('[class*="price-"]') ||
-                    document.querySelector('.price2') ||
-                    document.querySelector('[class*="important"]') ||
-                    document.querySelector('[data-testid="price"]');
-    const priceText = priceEl?.textContent || '';
-    const priceMatch = priceText.match(/([\d,]+)/);
-    const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null;
+    // 方法5: titleタグから最終手段として取得
+    const title = document.title;
+    if (title) {
+      return {
+        name: title.replace(/\s*[|｜:：].*/g, '').trim(),
+        url: url,
+        price: null,
+        imageUrl: null,
+      };
+    }
 
-    // 画像（新しいセレクターを追加）
-    const imgEl = document.querySelector('[class*="ImageMain"] img') ||
-                  document.querySelector('[class*="image-gallery"] img') ||
-                  document.querySelector('.rakutenLimitedId_ImageMain1-3 img') ||
-                  document.querySelector('#rakutenLimitedId_ImageMain1-3 img') ||
-                  document.querySelector('[class*="mainImage"] img') ||
-                  document.querySelector('.image-main img');
-    const imageUrl = imgEl?.src || null;
-
-    return { name, url, price, imageUrl };
+    return null;
   } catch (e) {
     console.error('Error getting product info:', e);
     return null;
