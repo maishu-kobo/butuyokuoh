@@ -206,18 +206,19 @@
     .priority-selector {
       display: flex;
       gap: 4px;
+      flex-wrap: wrap;
     }
     .priority-btn {
-      width: 32px;
-      height: 32px;
+      padding: 6px 10px;
       border: 1px solid #d1d5db;
       border-radius: 4px;
       background: white;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
+      white-space: nowrap;
     }
     .priority-btn:hover {
       background: #f9fafb;
@@ -267,11 +268,11 @@
         <div class="input-group">
           <label>優先度</label>
           <div class="priority-selector" id="prioritySelector">
-            <button class="priority-btn" data-value="1">🔥</button>
-            <button class="priority-btn" data-value="2">⭐</button>
-            <button class="priority-btn selected" data-value="3">●</button>
-            <button class="priority-btn" data-value="4">○</button>
-            <button class="priority-btn" data-value="5">・</button>
+            <button class="priority-btn" data-value="1" title="最高">🔥 最高</button>
+            <button class="priority-btn" data-value="2" title="高">⭐ 高</button>
+            <button class="priority-btn selected" data-value="3" title="普通">● 普通</button>
+            <button class="priority-btn" data-value="4" title="低">○ 低</button>
+            <button class="priority-btn" data-value="5" title="最低">・ 最低</button>
           </div>
         </div>
 
