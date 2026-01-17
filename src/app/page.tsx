@@ -242,7 +242,7 @@ export default function Home() {
               }`}
             >
               <Wallet size={18} />
-              予算
+              出費予定
             </button>
             <button
               onClick={() => setActiveTab('groups')}
