@@ -250,7 +250,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
       {/* 価格チャート */}
       {showChart && (
         <div className="p-4 border-t">
-          <PriceChart itemId={item.id} />
+          <PriceChart itemId={item.id} url={item.url} source={item.source} />
         </div>
       )}
 
