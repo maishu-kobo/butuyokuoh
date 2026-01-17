@@ -14,10 +14,26 @@ import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Set
 import Link from 'next/link';
 import ImportWishlistModal from '@/components/ImportWishlistModal';
 import { useSwipeable } from 'react-swipeable';
+import { motion, AnimatePresence } from 'framer-motion';
 
 type Tab = 'list' | 'budget' | 'groups' | 'categories' | 'purchased' | 'trash' | 'stats';
 
 const TABS: Tab[] = ['list', 'budget', 'purchased', 'stats', 'groups', 'categories', 'trash'];
+
+const slideVariants = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? 300 : -300,
+    opacity: 0,
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+  },
+  exit: (direction: number) => ({
+    x: direction < 0 ? 300 : -300,
+    opacity: 0,
+  }),
+};
 
 export default function Home() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -25,6 +41,7 @@ export default function Home() {
   const [groups, setGroups] = useState<ComparisonGroup[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>('list');
+  const [slideDirection, setSlideDirection] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -131,17 +148,27 @@ export default function Home() {
     fetchItems();
   };
 
+  // タブ切り替え関数
+  const changeTab = (newTab: Tab) => {
+    const currentIndex = TABS.indexOf(activeTab);
+    const newIndex = TABS.indexOf(newTab);
+    setSlideDirection(newIndex > currentIndex ? 1 : -1);
+    setActiveTab(newTab);
+  };
+
   // スワイプでタブ切り替え
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => {
       const currentIndex = TABS.indexOf(activeTab);
       if (currentIndex < TABS.length - 1) {
+        setSlideDirection(1);
         setActiveTab(TABS[currentIndex + 1]);
       }
     },
     onSwipedRight: () => {
       const currentIndex = TABS.indexOf(activeTab);
       if (currentIndex > 0) {
+        setSlideDirection(-1);
         setActiveTab(TABS[currentIndex - 1]);
       }
     },
@@ -245,10 +272,10 @@ export default function Home() {
         <div className="max-w-4xl mx-auto px-4 overflow-x-auto">
           <nav className="flex gap-1 min-w-max">
             <button
-              onClick={() => { setActiveTab('list'); fetchItems(); }}
+              onClick={() => { changeTab('list'); fetchItems(); }}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'list' 
-                  ? 'border-orange-500 text-orange-600' 
+                activeTab === 'list'
+                  ? 'border-orange-500 text-orange-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -256,10 +283,10 @@ export default function Home() {
               リスト
             </button>
             <button
-              onClick={() => setActiveTab('budget')}
+              onClick={() => changeTab('budget')}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'budget' 
-                  ? 'border-orange-500 text-orange-600' 
+                activeTab === 'budget'
+                  ? 'border-orange-500 text-orange-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -267,10 +294,10 @@ export default function Home() {
               出費予定
             </button>
             <button
-              onClick={() => setActiveTab('purchased')}
+              onClick={() => changeTab('purchased')}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'purchased' 
-                  ? 'border-orange-500 text-orange-600' 
+                activeTab === 'purchased'
+                  ? 'border-orange-500 text-orange-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -278,10 +305,10 @@ export default function Home() {
               購入済
             </button>
             <button
-              onClick={() => setActiveTab('stats')}
+              onClick={() => changeTab('stats')}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'stats' 
-                  ? 'border-orange-500 text-orange-600' 
+                activeTab === 'stats'
+                  ? 'border-orange-500 text-orange-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -289,10 +316,10 @@ export default function Home() {
               統計
             </button>
             <button
-              onClick={() => setActiveTab('groups')}
+              onClick={() => changeTab('groups')}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'groups' 
-                  ? 'border-orange-500 text-orange-600' 
+                activeTab === 'groups'
+                  ? 'border-orange-500 text-orange-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -300,10 +327,10 @@ export default function Home() {
               比較
             </button>
             <button
-              onClick={() => setActiveTab('categories')}
+              onClick={() => changeTab('categories')}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'categories' 
-                  ? 'border-orange-500 text-orange-600' 
+                activeTab === 'categories'
+                  ? 'border-orange-500 text-orange-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -311,10 +338,10 @@ export default function Home() {
               カテゴリ
             </button>
             <button
-              onClick={() => setActiveTab('trash')}
+              onClick={() => changeTab('trash')}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'trash' 
-                  ? 'border-orange-500 text-orange-600' 
+                activeTab === 'trash'
+                  ? 'border-orange-500 text-orange-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -326,7 +353,17 @@ export default function Home() {
       </div>
 
       {/* メインコンテンツ */}
-      <main {...swipeHandlers} className="max-w-4xl mx-auto px-4 py-6">
+      <main {...swipeHandlers} className="max-w-4xl mx-auto px-4 py-6 overflow-hidden">
+        <AnimatePresence mode="wait" custom={slideDirection}>
+          <motion.div
+            key={activeTab}
+            custom={slideDirection}
+            variants={slideVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ duration: 0.2, ease: "easeInOut" }}
+          >
         {activeTab === 'list' && (
           <div className="space-y-4">
             {/* 検索・並び替え・フィルター */}
@@ -633,6 +670,8 @@ export default function Home() {
         {activeTab === 'trash' && <TrashView />}
 
         {activeTab === 'stats' && <StatsView />}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       <ImportWishlistModal
