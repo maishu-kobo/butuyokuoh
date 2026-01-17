@@ -7,13 +7,14 @@ import AddItemForm from '@/components/AddItemForm';
 import BudgetView from '@/components/BudgetView';
 import PurchasedHistory from '@/components/PurchasedHistory';
 import TrashView from '@/components/TrashView';
+import StatsView from '@/components/StatsView';
 import LoginForm from '@/components/LoginForm';
 import { useAuth } from '@/components/AuthProvider';
-import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Settings, Tag, X, ShoppingBag, Search, ArrowUpDown, Trash2 } from 'lucide-react';
+import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Settings, Tag, X, ShoppingBag, Search, ArrowUpDown, Trash2, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import ImportWishlistModal from '@/components/ImportWishlistModal';
 
-type Tab = 'list' | 'budget' | 'groups' | 'categories' | 'purchased' | 'trash';
+type Tab = 'list' | 'budget' | 'groups' | 'categories' | 'purchased' | 'trash' | 'stats';
 
 export default function Home() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -265,6 +266,17 @@ export default function Home() {
             >
               <Trash2 size={18} />
               ゴミ箱
+            </button>
+            <button
+              onClick={() => setActiveTab('stats')}
+              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                activeTab === 'stats' 
+                  ? 'border-orange-500 text-orange-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <BarChart3 size={18} />
+              統計
             </button>
           </nav>
         </div>
@@ -533,6 +545,8 @@ export default function Home() {
         {activeTab === 'purchased' && <PurchasedHistory />}
 
         {activeTab === 'trash' && <TrashView />}
+
+        {activeTab === 'stats' && <StatsView />}
       </main>
 
       <ImportWishlistModal
