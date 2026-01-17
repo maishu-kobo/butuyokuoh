@@ -10,7 +10,7 @@ import TrashView from '@/components/TrashView';
 import StatsView from '@/components/StatsView';
 import LoginForm from '@/components/LoginForm';
 import { useAuth } from '@/components/AuthProvider';
-import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Settings, Tag, X, ShoppingBag, Search, ArrowUpDown, Trash2, BarChart3 } from 'lucide-react';
+import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Settings, Tag, X, ShoppingBag, Search, ArrowUpDown, Trash2, BarChart3, Pencil, Check } from 'lucide-react';
 import Link from 'next/link';
 import ImportWishlistModal from '@/components/ImportWishlistModal';
 
@@ -28,6 +28,9 @@ export default function Home() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#6b7280');
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState('');
+  const [editCategoryColor, setEditCategoryColor] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'priority' | 'price_asc' | 'price_desc' | 'date_new' | 'date_old' | 'name'>('priority');
@@ -103,6 +106,24 @@ export default function Home() {
   const handleDeleteCategory = async (id: number) => {
     if (!confirm('このカテゴリを削除しますか？\nアイテムは削除されず、カテゴリなしになります。')) return;
     await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+    fetchCategories();
+    fetchItems();
+  };
+
+  const startEditCategory = (cat: Category) => {
+    setEditingCategoryId(cat.id);
+    setEditCategoryName(cat.name);
+    setEditCategoryColor(cat.color);
+  };
+
+  const handleUpdateCategory = async () => {
+    if (!editingCategoryId || !editCategoryName.trim()) return;
+    await fetch(`/api/categories/${editingCategoryId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editCategoryName, color: editCategoryColor }),
+    });
+    setEditingCategoryId(null);
     fetchCategories();
     fetchItems();
   };
@@ -522,21 +543,62 @@ export default function Home() {
               <div className="bg-white rounded-lg shadow overflow-hidden">
                 {categories.map((cat) => (
                   <div key={cat.id} className="flex items-center gap-3 px-4 py-3 border-b last:border-0">
-                    <div
-                      className="w-4 h-4 rounded-full"
-                      style={{ backgroundColor: cat.color }}
-                    />
-                    <span className="flex-1 font-medium">{cat.name}</span>
-                    <span className="text-sm text-gray-500">
-                      {(cat as Category & { item_count?: number }).item_count || 0}件
-                    </span>
-                    <button
-                      onClick={() => handleDeleteCategory(cat.id)}
-                      className="text-gray-400 hover:text-red-500"
-                      title="削除"
-                    >
-                      <X size={18} />
-                    </button>
+                    {editingCategoryId === cat.id ? (
+                      <>
+                        <input
+                          type="color"
+                          value={editCategoryColor}
+                          onChange={(e) => setEditCategoryColor(e.target.value)}
+                          className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          value={editCategoryName}
+                          onChange={(e) => setEditCategoryName(e.target.value)}
+                          className="flex-1 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          autoFocus
+                        />
+                        <button
+                          onClick={handleUpdateCategory}
+                          className="text-green-500 hover:text-green-600"
+                          title="保存"
+                        >
+                          <Check size={18} />
+                        </button>
+                        <button
+                          onClick={() => setEditingCategoryId(null)}
+                          className="text-gray-400 hover:text-gray-600"
+                          title="キャンセル"
+                        >
+                          <X size={18} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div
+                          className="w-4 h-4 rounded-full"
+                          style={{ backgroundColor: cat.color }}
+                        />
+                        <span className="flex-1 font-medium">{cat.name}</span>
+                        <span className="text-sm text-gray-500">
+                          {(cat as Category & { item_count?: number }).item_count || 0}件
+                        </span>
+                        <button
+                          onClick={() => startEditCategory(cat)}
+                          className="text-gray-400 hover:text-blue-500"
+                          title="編集"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCategory(cat.id)}
+                          className="text-gray-400 hover:text-red-500"
+                          title="削除"
+                        >
+                          <X size={18} />
+                        </button>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
