@@ -154,10 +154,14 @@ butuyokuoh/
 
 ## TODO
 
-- [ ] 価格下落通知 (Slack/メール/LINE)
-- [ ] 定期価格チェック (cron)
+- [x] 価格下落通知 (Slack/Discord Webhook)
+- [x] 定期価格チェック (6時間ごと自動実行)
 - [x] ユーザー認証（メール/パスワード、Google SSO）
-- [ ] エクスポート機能
+- [x] エクスポート機能 (CSV)
+- [x] PWA対応
+- [x] 統計ダッシュボード
+- [x] ゴミ箱機能
+- [x] 検索・ソート機能
 - [ ] LINE/Discord SSO
 
 ## ライセンス
