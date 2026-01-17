@@ -10,7 +10,7 @@ import TrashView from '@/components/TrashView';
 import StatsView from '@/components/StatsView';
 import LoginForm from '@/components/LoginForm';
 import { useAuth } from '@/components/AuthProvider';
-import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Settings, Tag, X, ShoppingBag, Search, ArrowUpDown, Trash2, BarChart3, Pencil, Check } from 'lucide-react';
+import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Settings, Tag, X, ShoppingBag, Search, ArrowUpDown, Trash2, BarChart3, Pencil, Check, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import ImportWishlistModal from '@/components/ImportWishlistModal';
 import { useSwipeable } from 'react-swipeable';
@@ -35,10 +35,13 @@ export default function Home() {
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [editCategoryName, setEditCategoryName] = useState('');
   const [editCategoryColor, setEditCategoryColor] = useState('');
+  const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
+  const [editGroupName, setEditGroupName] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'priority' | 'price_asc' | 'price_desc' | 'date_new' | 'date_old' | 'name'>('priority');
   const [selectedPriority, setSelectedPriority] = useState<number | null>(null);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const fetchItems = async () => {
     const res = await fetch('/api/items');
@@ -130,6 +133,29 @@ export default function Home() {
     setEditingCategoryId(null);
     fetchCategories();
     fetchItems();
+  };
+
+  const handleDeleteGroup = async (id: number) => {
+    if (!confirm('この比較グループを削除しますか？\nアイテムは削除されず、グループなしになります。')) return;
+    await fetch(`/api/comparison-groups/${id}`, { method: 'DELETE' });
+    fetchGroups();
+    fetchItems();
+  };
+
+  const startEditGroup = (group: ComparisonGroup) => {
+    setEditingGroupId(group.id);
+    setEditGroupName(group.name);
+  };
+
+  const handleUpdateGroup = async () => {
+    if (!editingGroupId || !editGroupName.trim()) return;
+    await fetch(`/api/comparison-groups/${editingGroupId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editGroupName }),
+    });
+    setEditingGroupId(null);
+    fetchGroups();
   };
 
   // タブ切り替え関数
@@ -345,85 +371,107 @@ export default function Home() {
         <div className={animationClass}>
         {activeTab === 'list' && (
           <div className="space-y-4">
-            {/* 検索・並び替え・フィルター */}
-            <div className="bg-white rounded-lg shadow p-4 space-y-3">
-              {/* 検索バー */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="商品名、メモ、カテゴリで検索..."
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                />
-              </div>
-
-              {/* 並び替え・優先度フィルター */}
-              <div className="flex flex-wrap gap-3">
+            {/* 検索・並び替え・フィルター (折りたたみ式) */}
+            <div className="bg-white rounded-lg shadow">
+              {/* 折りたたみヘッダー */}
+              <button
+                onClick={() => setIsFilterOpen(!isFilterOpen)}
+                className="w-full px-4 py-2.5 flex items-center justify-between text-gray-600 hover:bg-gray-50 transition-colors rounded-lg"
+              >
                 <div className="flex items-center gap-2">
-                  <ArrowUpDown size={16} className="text-gray-500" />
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  >
-                    <option value="priority">優先度順</option>
-                    <option value="price_asc">価格が安い順</option>
-                    <option value="price_desc">価格が高い順</option>
-                    <option value="date_new">新しい順</option>
-                    <option value="date_old">古い順</option>
-                    <option value="name">名前順</option>
-                  </select>
+                  <SlidersHorizontal size={18} className="text-gray-400" />
+                  <span className="text-sm font-medium">検索・フィルター</span>
+                  {(searchQuery || selectedCategory || selectedPriority || sortBy !== 'priority') && (
+                    <span className="px-1.5 py-0.5 bg-orange-100 text-orange-600 text-xs rounded-full">
+                      適用中
+                    </span>
+                  )}
                 </div>
+                {isFilterOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              </button>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">優先度:</span>
-                  <select
-                    value={selectedPriority || ''}
-                    onChange={(e) => setSelectedPriority(e.target.value ? Number(e.target.value) : null)}
-                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  >
-                    <option value="">すべて</option>
-                    <option value="1">最高</option>
-                    <option value="2">高</option>
-                    <option value="3">普通</option>
-                    <option value="4">低</option>
-                    <option value="5">最低</option>
-                  </select>
-                </div>
-              </div>
+              {/* 折りたたみコンテンツ */}
+              {isFilterOpen && (
+                <div className="px-4 pb-4 space-y-3 border-t border-gray-100">
+                  {/* 検索バー */}
+                  <div className="relative pt-3">
+                    <Search className="absolute left-3 top-1/2 translate-y-0.5 text-gray-400" size={18} />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="商品名、メモ、カテゴリで検索..."
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                  </div>
 
-              {/* カテゴリフィルター */}
-              {categories.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => setSelectedCategory(null)}
-                    className={`px-3 py-1 rounded-full text-sm transition-colors ${
-                      selectedCategory === null
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                    }`}
-                  >
-                    すべて
-                  </button>
-                  {categories.map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setSelectedCategory(cat.id)}
-                      className={`px-3 py-1 rounded-full text-sm transition-colors ${
-                        selectedCategory === cat.id
-                          ? 'text-white'
-                          : 'text-gray-700 hover:opacity-80'
-                      }`}
-                      style={{
-                        backgroundColor: selectedCategory === cat.id ? cat.color : `${cat.color}30`,
-                        borderColor: cat.color,
-                      }}
-                    >
-                      {cat.name}
-                    </button>
-                  ))}
+                  {/* 並び替え・優先度フィルター */}
+                  <div className="flex flex-wrap gap-3">
+                    <div className="flex items-center gap-2">
+                      <ArrowUpDown size={16} className="text-gray-500" />
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                        className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      >
+                        <option value="priority">優先度順</option>
+                        <option value="price_asc">価格が安い順</option>
+                        <option value="price_desc">価格が高い順</option>
+                        <option value="date_new">新しい順</option>
+                        <option value="date_old">古い順</option>
+                        <option value="name">名前順</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-500">優先度:</span>
+                      <select
+                        value={selectedPriority || ''}
+                        onChange={(e) => setSelectedPriority(e.target.value ? Number(e.target.value) : null)}
+                        className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      >
+                        <option value="">すべて</option>
+                        <option value="1">最高</option>
+                        <option value="2">高</option>
+                        <option value="3">普通</option>
+                        <option value="4">低</option>
+                        <option value="5">最低</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* カテゴリフィルター */}
+                  {categories.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setSelectedCategory(null)}
+                        className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                          selectedCategory === null
+                            ? 'bg-orange-500 text-white'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        すべて
+                      </button>
+                      {categories.map((cat) => (
+                        <button
+                          key={cat.id}
+                          onClick={() => setSelectedCategory(cat.id)}
+                          className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                            selectedCategory === cat.id
+                              ? 'text-white'
+                              : 'text-gray-700 hover:opacity-80'
+                          }`}
+                          style={{
+                            backgroundColor: selectedCategory === cat.id ? cat.color : `${cat.color}30`,
+                            borderColor: cat.color,
+                          }}
+                        >
+                          {cat.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -511,8 +559,54 @@ export default function Home() {
                 return (
                   <div key={group.id} className="bg-white rounded-lg shadow overflow-hidden">
                     <div className="bg-gray-50 px-4 py-3 border-b">
-                      <h3 className="font-semibold">{group.name}</h3>
-                      <p className="text-sm text-gray-500">{groupItems.length}件のアイテム</p>
+                      {editingGroupId === group.id ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={editGroupName}
+                            onChange={(e) => setEditGroupName(e.target.value)}
+                            className="flex-1 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                          />
+                          <button
+                            onClick={handleUpdateGroup}
+                            className="text-green-500 hover:text-green-600"
+                            title="保存"
+                          >
+                            <Check size={18} />
+                          </button>
+                          <button
+                            onClick={() => setEditingGroupId(null)}
+                            className="text-gray-400 hover:text-gray-600"
+                            title="キャンセル"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-semibold">{group.name}</h3>
+                            <p className="text-sm text-gray-500">{groupItems.length}件のアイテム</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => startEditGroup(group)}
+                              className="text-gray-400 hover:text-blue-500"
+                              title="名前を変更"
+                            >
+                              <Pencil size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteGroup(group.id)}
+                              className="text-gray-400 hover:text-red-500"
+                              title="削除"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     {groupItems.length > 0 ? (
                       <div className="p-4 space-y-3">
