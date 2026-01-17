@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "物欲王 - ほしいものリストインポーター",
-  "version": "1.0.0",
-  "description": "Amazonや楽天のほしいものリストを物欲王にインポート",
+  "name": "物欲王 - ほしいものリストマネージャー",
+  "version": "1.1.0",
+  "description": "Amazonや楽天の商品をワンクリックで物欲王に追加",
   "permissions": [
     "activeTab",
     "storage"
@@ -35,6 +35,23 @@
         "https://my.bookmark.rakuten.co.jp/*"
       ],
       "js": ["content-rakuten.js"]
+    },
+    {
+      "matches": [
+        "https://www.amazon.co.jp/dp/*",
+        "https://www.amazon.co.jp/*/dp/*",
+        "https://www.amazon.co.jp/gp/product/*",
+        "https://www.amazon.com/dp/*",
+        "https://www.amazon.com/*/dp/*",
+        "https://www.amazon.com/gp/product/*"
+      ],
+      "js": ["content-amazon-product.js"]
+    },
+    {
+      "matches": [
+        "https://item.rakuten.co.jp/*"
+      ],
+      "js": ["content-rakuten-product.js"]
     }
   ],
   "icons": {

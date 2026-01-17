@@ -55,14 +55,14 @@
       color: #6b7280;
       margin-bottom: 4px;
     }
-    .input-group input {
+    .input-group input, .input-group select {
       width: 100%;
       padding: 8px 12px;
       border: 1px solid #d1d5db;
       border-radius: 6px;
       font-size: 14px;
     }
-    .input-group input:focus {
+    .input-group input:focus, .input-group select:focus {
       outline: none;
       border-color: #f59e0b;
       box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
@@ -82,14 +82,14 @@
       transition: background 0.2s;
     }
     .btn-primary {
-      background: #3b82f6;
+      background: #f59e0b;
       color: white;
     }
     .btn-primary:hover {
-      background: #2563eb;
+      background: #d97706;
     }
     .btn-primary:disabled {
-      background: #93c5fd;
+      background: #fcd34d;
       cursor: not-allowed;
     }
     .btn-secondary {
@@ -98,6 +98,17 @@
     }
     .btn-secondary:hover {
       background: #d1d5db;
+    }
+    .btn-import {
+      background: #3b82f6;
+      color: white;
+    }
+    .btn-import:hover {
+      background: #2563eb;
+    }
+    .btn-import:disabled {
+      background: #93c5fd;
+      cursor: not-allowed;
     }
     .status {
       margin-top: 12px;
@@ -153,6 +164,85 @@
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+    /* 商品プレビュー */
+    .product-preview {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .product-image {
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
+      border-radius: 6px;
+      background: #f9fafb;
+    }
+    .product-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .product-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: #111827;
+      margin-bottom: 4px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .product-price {
+      font-size: 16px;
+      font-weight: 600;
+      color: #ea580c;
+    }
+    .product-source {
+      font-size: 11px;
+      color: #6b7280;
+      margin-top: 2px;
+    }
+    .priority-selector {
+      display: flex;
+      gap: 4px;
+    }
+    .priority-btn {
+      width: 32px;
+      height: 32px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      background: white;
+      cursor: pointer;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .priority-btn:hover {
+      background: #f9fafb;
+    }
+    .priority-btn.selected {
+      background: #fef3c7;
+      border-color: #f59e0b;
+    }
+    .settings-toggle {
+      font-size: 12px;
+      color: #6b7280;
+      cursor: pointer;
+      text-decoration: underline;
+      margin-top: 8px;
+      display: inline-block;
+    }
+    .settings-panel {
+      display: none;
+    }
+    .settings-panel.show {
+      display: block;
+    }
+    .hidden {
+      display: none !important;
+    }
   </style>
 </head>
 <body>
@@ -162,11 +252,79 @@
   </div>
 
   <div class="content">
-    <div class="section">
+    <!-- 商品ページモード -->
+    <div id="productMode" class="hidden">
+      <div class="section">
+        <div class="product-preview">
+          <img id="productImage" class="product-image" src="" alt="">
+          <div class="product-info">
+            <div id="productName" class="product-name"></div>
+            <div id="productPrice" class="product-price"></div>
+            <div id="productSource" class="product-source"></div>
+          </div>
+        </div>
+        
+        <div class="input-group">
+          <label>優先度</label>
+          <div class="priority-selector" id="prioritySelector">
+            <button class="priority-btn" data-value="1">🔥</button>
+            <button class="priority-btn" data-value="2">⭐</button>
+            <button class="priority-btn selected" data-value="3">●</button>
+            <button class="priority-btn" data-value="4">○</button>
+            <button class="priority-btn" data-value="5">・</button>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label>カテゴリ（任意）</label>
+          <select id="categorySelect">
+            <option value="">なし</option>
+          </select>
+        </div>
+
+        <button class="btn btn-primary" id="addBtn">
+          <span id="addBtnText">👑 物欲王に追加</span>
+        </button>
+        <div class="status" id="addStatus"></div>
+      </div>
+    </div>
+
+    <!-- インポートモード -->
+    <div id="importMode" class="hidden">
+      <div class="section">
+        <div class="section-title">ほしいものリストインポート</div>
+        <div class="page-info" id="pageInfo">
+          読み込み中...
+        </div>
+        <button class="btn btn-import" id="importBtn" disabled>
+          <span id="importBtnText">インポート</span>
+        </button>
+        <div class="status" id="importStatus"></div>
+        <p class="help-text">
+          Amazonまたは楽天のほしいものリストページを開いてからインポートしてください。
+        </p>
+      </div>
+    </div>
+
+    <!-- 非対応ページモード -->
+    <div id="unsupportedMode" class="hidden">
+      <div class="section">
+        <div class="page-info unsupported">
+          ⚠️ このページは対応していません
+        </div>
+        <p class="help-text">
+          Amazonまたは楽天の商品ページ、またはほしいものリストページでご利用ください。
+        </p>
+      </div>
+    </div>
+
+    <!-- 設定 -->
+    <span class="settings-toggle" id="settingsToggle">⚙️ 設定</span>
+    <div class="section settings-panel" id="settingsPanel">
       <div class="section-title">サーバー設定</div>
       <div class="input-group">
         <label>物欲王のURL</label>
-        <input type="url" id="serverUrl" placeholder="https://butuyokuoh.exe.xyz:8000">
+        <input type="url" id="serverUrl" placeholder="https://butsuyokuoh.exe.xyz:8000">
       </div>
       <div class="input-group">
         <label>認証トークン</label>
@@ -175,20 +333,6 @@
       <button class="btn btn-secondary" id="saveSettings">保存</button>
       <p class="help-text" style="margin-top: 8px;">
         トークンは物欲王の設定ページから取得できます
-      </p>
-    </div>
-
-    <div class="section">
-      <div class="section-title">現在のページ</div>
-      <div class="page-info" id="pageInfo">
-        読み込み中...
-      </div>
-      <button class="btn btn-primary" id="importBtn" disabled>
-        <span id="importBtnText">インポート</span>
-      </button>
-      <div class="status" id="status"></div>
-      <p class="help-text">
-        Amazonまたは楽天のほしいものリストページを開いてからインポートしてください。
       </p>
     </div>
   </div>
