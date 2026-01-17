@@ -49,7 +49,7 @@ function initDb(db: Database.Database) {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (comparison_group_id) REFERENCES comparison_groups(id),
-      FOREIGN KEY (category_id) REFERENCES categories(id) ON SET NULL,
+      FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       UNIQUE(user_id, url)
     );
