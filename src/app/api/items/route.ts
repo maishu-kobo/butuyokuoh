@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { url, priority = 3, planned_purchase_date, notes, comparison_group_id, category_id } = body;
+  const { url, priority = 3, planned_purchase_date, notes, comparison_group_id, category_id, quantity = 1 } = body;
 
   if (!url) {
     return NextResponse.json({ error: 'URL is required' }, { status: 400 });
@@ -55,8 +55,8 @@ export async function POST(request: NextRequest) {
   const scraped = await scrapeUrl(url);
 
   const stmt = db.prepare(`
-    INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority, planned_purchase_date, comparison_group_id, category_id, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority, planned_purchase_date, comparison_group_id, category_id, notes, quantity)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const result = stmt.run(
@@ -72,7 +72,8 @@ export async function POST(request: NextRequest) {
     planned_purchase_date || null,
     comparison_group_id || null,
     category_id || null,
-    notes || null
+    notes || null,
+    quantity
   );
 
   // 価格履歴に追加

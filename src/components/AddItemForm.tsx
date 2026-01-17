@@ -21,6 +21,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
     notes: '',
     comparison_group_id: '',
     category_id: '',
+    quantity: 1,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -36,6 +37,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
           ...formData,
           comparison_group_id: formData.comparison_group_id ? Number(formData.comparison_group_id) : null,
           category_id: formData.category_id ? Number(formData.category_id) : null,
+          quantity: Number(formData.quantity) || 1,
         }),
       });
 
@@ -44,7 +46,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
         throw new Error(data.error || '追加に失敗しました');
       }
 
-      setFormData({ url: '', priority: 3, planned_purchase_date: '', notes: '', comparison_group_id: '', category_id: '' });
+      setFormData({ url: '', priority: 3, planned_purchase_date: '', notes: '', comparison_group_id: '', category_id: '', quantity: 1 });
       setIsOpen(false);
       onAdd();
     } catch (err) {
@@ -112,6 +114,17 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
               type="date"
               value={formData.planned_purchase_date}
               onChange={(e) => setFormData({ ...formData, planned_purchase_date: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">個数</label>
+            <input
+              type="number"
+              min="1"
+              value={formData.quantity}
+              onChange={(e) => setFormData({ ...formData, quantity: Math.max(1, Number(e.target.value) || 1) })}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>

@@ -70,10 +70,10 @@ export default function BudgetView() {
   const months = Object.keys(budget).sort();
   const totalBudget = months.reduce((sum, m) => sum + budget[m].total, 0);
   
-  // 選択したアイテムの合計
+  // 選択したアイテムの合計（個数を考慮）
   const selectedTotal = allItems
     .filter(item => selectedIds.has(item.id))
-    .reduce((sum, item) => sum + (item.current_price || 0), 0);
+    .reduce((sum, item) => sum + (item.current_price || 0) * (item.quantity || 1), 0);
 
   return (
     <div className="space-y-4">
@@ -169,9 +169,15 @@ export default function BudgetView() {
                         </span>
                         <span className={`flex-1 truncate ${isSelected ? 'text-blue-700' : 'text-gray-700'}`}>
                           {item.name}
+                          {(item.quantity || 1) > 1 && (
+                            <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
+                          )}
                         </span>
-                        <span className={`ml-2 ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600'}`}>
-                          ¥{item.current_price?.toLocaleString() || '---'}
+                        <span className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600'}`}>
+                          {(item.quantity || 1) > 1 
+                            ? `¥${((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}`
+                            : `¥${item.current_price?.toLocaleString() || '---'}`
+                          }
                         </span>
                       </div>
                     );

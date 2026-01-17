@@ -25,6 +25,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     target_currency: item.target_currency || 'JPY',
     category_id: item.category_id || '',
     comparison_group_id: item.comparison_group_id || '',
+    quantity: item.quantity || 1,
   });
 
   const handleRefresh = async () => {
@@ -47,6 +48,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
         target_currency: editData.target_currency,
         category_id: editData.category_id ? Number(editData.category_id) : null,
         comparison_group_id: editData.comparison_group_id ? Number(editData.comparison_group_id) : null,
+        quantity: Number(editData.quantity) || 1,
       }),
     });
     setEditing(false);
@@ -138,10 +140,15 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             </a>
           </div>
 
-          <div className="mt-2 flex items-baseline gap-2">
+          <div className="mt-2 flex items-baseline gap-2 flex-wrap">
             <span className="text-xl font-bold text-gray-900">
               ¥{item.current_price?.toLocaleString() || '---'}
             </span>
+            {(item.quantity || 1) > 1 && (
+              <span className="text-sm text-gray-600">
+                × {item.quantity} = ¥{((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}
+              </span>
+            )}
             {priceChange !== 0 && (
               <span className={`text-sm flex items-center ${priceChange < 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {priceChange < 0 ? <TrendingDown size={14} /> : <TrendingUp size={14} />}
@@ -232,14 +239,26 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">購入予定日</label>
-              <input
-                type="date"
-                value={editData.planned_purchase_date}
-                onChange={(e) => setEditData({ ...editData, planned_purchase_date: e.target.value })}
-                className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">購入予定日</label>
+                <input
+                  type="date"
+                  value={editData.planned_purchase_date}
+                  onChange={(e) => setEditData({ ...editData, planned_purchase_date: e.target.value })}
+                  className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">個数</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={editData.quantity}
+                  onChange={(e) => setEditData({ ...editData, quantity: Math.max(1, Number(e.target.value) || 1) })}
+                  className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                />
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">目標価格（通知用）</label>

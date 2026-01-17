@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
         byMonth[monthKey] = { items: [], total: 0 };
       }
       byMonth[monthKey].items.push(item);
-      byMonth[monthKey].total += item.current_price || 0;
+      byMonth[monthKey].total += (item.current_price || 0) * (item.quantity || 1);
     }
   }
 

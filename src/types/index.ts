@@ -18,6 +18,7 @@ export interface Item {
   purchased_at: string | null;
   target_price: number | null;
   target_currency: 'JPY' | 'USD' | null;
+  quantity: number;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
