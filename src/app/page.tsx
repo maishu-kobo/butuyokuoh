@@ -408,6 +408,8 @@ export default function Home() {
                     item={item}
                     onUpdate={fetchItems}
                     onDelete={handleDelete}
+                    categories={categories}
+                    comparisonGroups={groups}
                   />
                 ))}
               </div>

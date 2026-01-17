@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Item } from '@/types';
+import { Item, Category, ComparisonGroup } from '@/types';
 import { Trash2, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Calendar, Flag } from 'lucide-react';
 import PriceChart from './PriceChart';
 
@@ -9,9 +9,11 @@ interface ItemCardProps {
   item: Item;
   onUpdate: () => void;
   onDelete: (id: number) => void;
+  categories?: Category[];
+  comparisonGroups?: ComparisonGroup[];
 }
 
-export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
+export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [] }: ItemCardProps) {
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -21,6 +23,8 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
     notes: item.notes || '',
     target_price: item.target_price || '',
     target_currency: item.target_currency || 'JPY',
+    category_id: item.category_id || '',
+    comparison_group_id: item.comparison_group_id || '',
   });
 
   const handleRefresh = async () => {
@@ -41,6 +45,8 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
         ...editData,
         target_price: editData.target_price || null,
         target_currency: editData.target_currency,
+        category_id: editData.category_id ? Number(editData.category_id) : null,
+        comparison_group_id: editData.comparison_group_id ? Number(editData.comparison_group_id) : null,
       }),
     });
     setEditing(false);
@@ -253,6 +259,34 @@ export default function ItemCard({ item, onUpdate, onDelete }: ItemCardProps) {
                   placeholder="この価格以下になったら通知"
                   className="flex-1 rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">カテゴリ</label>
+                <select
+                  value={editData.category_id}
+                  onChange={(e) => setEditData({ ...editData, category_id: e.target.value })}
+                  className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                >
+                  <option value="">なし</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">比較グループ</label>
+                <select
+                  value={editData.comparison_group_id}
+                  onChange={(e) => setEditData({ ...editData, comparison_group_id: e.target.value })}
+                  className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                >
+                  <option value="">なし</option>
+                  {comparisonGroups.map((g) => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
             <div>
