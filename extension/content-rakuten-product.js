@@ -83,8 +83,14 @@ function getRakutenProductInfo() {
       const priceMatch = priceText.match(/([\d,]+)/);
       const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null;
 
+      // 「【楽天市場】」を先頭から削除し、末尾の「:ショップ名」も削除
+      let name = ogTitle.content
+        .replace(/^【楽天市場】/, '')
+        .replace(/\s*[:：][^:：]*$/, '')
+        .trim();
+
       return {
-        name: ogTitle.content.replace(/\s*[|｜【].*/g, '').trim(),
+        name: name,
         url: url,
         price: price,
         imageUrl: ogImage?.content || null,
