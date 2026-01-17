@@ -13,8 +13,11 @@ import { useAuth } from '@/components/AuthProvider';
 import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Settings, Tag, X, ShoppingBag, Search, ArrowUpDown, Trash2, BarChart3, Pencil, Check } from 'lucide-react';
 import Link from 'next/link';
 import ImportWishlistModal from '@/components/ImportWishlistModal';
+import { useSwipeable } from 'react-swipeable';
 
 type Tab = 'list' | 'budget' | 'groups' | 'categories' | 'purchased' | 'trash' | 'stats';
+
+const TABS: Tab[] = ['list', 'budget', 'purchased', 'stats', 'groups', 'categories', 'trash'];
 
 export default function Home() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -127,6 +130,25 @@ export default function Home() {
     fetchCategories();
     fetchItems();
   };
+
+  // スワイプでタブ切り替え
+  const swipeHandlers = useSwipeable({
+    onSwipedLeft: () => {
+      const currentIndex = TABS.indexOf(activeTab);
+      if (currentIndex < TABS.length - 1) {
+        setActiveTab(TABS[currentIndex + 1]);
+      }
+    },
+    onSwipedRight: () => {
+      const currentIndex = TABS.indexOf(activeTab);
+      if (currentIndex > 0) {
+        setActiveTab(TABS[currentIndex - 1]);
+      }
+    },
+    trackMouse: false,
+    preventScrollOnSwipe: false,
+    delta: 50,
+  });
 
   // フィルター適用（カテゴリ、検索、優先度）
   const filteredItems = items
@@ -304,7 +326,7 @@ export default function Home() {
       </div>
 
       {/* メインコンテンツ */}
-      <main className="max-w-4xl mx-auto px-4 py-6">
+      <main {...swipeHandlers} className="max-w-4xl mx-auto px-4 py-6">
         {activeTab === 'list' && (
           <div className="space-y-4">
             {/* 検索・並び替え・フィルター */}
