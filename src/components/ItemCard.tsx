@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Item, Category, ComparisonGroup } from '@/types';
-import { Trash2, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Calendar, Flag } from 'lucide-react';
+import { Trash2, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Calendar, Flag, Upload, ImageIcon } from 'lucide-react';
 import PriceChart from './PriceChart';
 
 interface ItemCardProps {
@@ -26,7 +26,12 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     category_id: item.category_id || '',
     comparison_group_id: item.comparison_group_id || '',
     quantity: item.quantity || 1,
+    image_url: item.image_url || '',
+    current_price: item.current_price || '',
   });
+  const [showImageEdit, setShowImageEdit] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -35,6 +40,29 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
       onUpdate();
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        const { url } = await res.json();
+        setEditData({ ...editData, image_url: url });
+      }
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -49,9 +77,12 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
         category_id: editData.category_id ? Number(editData.category_id) : null,
         comparison_group_id: editData.comparison_group_id ? Number(editData.comparison_group_id) : null,
         quantity: Number(editData.quantity) || 1,
+        image_url: editData.image_url || null,
+        current_price: editData.current_price ? Number(editData.current_price) : null,
       }),
     });
     setEditing(false);
+    setShowImageEdit(false);
     onUpdate();
   };
 
@@ -238,6 +269,62 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   <option key={n} value={n}>{n} - {['', '最高', '高', '普通', '低', '最低'][n]}</option>
                 ))}
               </select>
+            </div>
+
+            {/* 画像・価格の手動編集（折りたたみ） */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowImageEdit(!showImageEdit)}
+                className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+              >
+                <ImageIcon size={12} />
+                {showImageEdit ? '画像・価格の編集を閉じる' : '画像・価格を手動で編集'}
+              </button>
+              {showImageEdit && (
+                <div className="mt-2 space-y-2 p-2 bg-gray-100 rounded">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">価格</label>
+                    <input
+                      type="number"
+                      value={editData.current_price}
+                      onChange={(e) => setEditData({ ...editData, current_price: e.target.value })}
+                      placeholder="例: 3990"
+                      className="block w-full text-sm rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">画像URL</label>
+                    <div className="flex gap-1">
+                      <input
+                        type="text"
+                        value={editData.image_url}
+                        onChange={(e) => setEditData({ ...editData, image_url: e.target.value })}
+                        placeholder="画像URLを入力"
+                        className="flex-1 text-sm rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      />
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleImageUpload}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                        className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-white disabled:opacity-50"
+                      >
+                        <Upload size={12} />
+                      </button>
+                    </div>
+                    {editData.image_url && (
+                      <img src={editData.image_url} alt="プレビュー" className="mt-1 h-12 w-12 object-cover rounded" />
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

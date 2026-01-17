@@ -37,13 +37,63 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { url, priority = 3, planned_purchase_date, notes, comparison_group_id, category_id, quantity = 1 } = body;
+  const { 
+    url, 
+    priority = 3, 
+    planned_purchase_date, 
+    notes, 
+    comparison_group_id, 
+    category_id, 
+    quantity = 1,
+    // 手動追加用フィールド
+    manual = false,
+    name: manualName,
+    price: manualPrice,
+    image_url: manualImageUrl,
+  } = body;
 
+  const db = getDb();
+
+  // 手動追加モード
+  if (manual) {
+    if (!manualName) {
+      return NextResponse.json({ error: '商品名は必須です' }, { status: 400 });
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, priority, planned_purchase_date, comparison_group_id, category_id, notes, quantity)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const manualUrl = url || `manual://${Date.now()}`; // URLなしの場合はダミーURL
+    const result = stmt.run(
+      user.id,
+      manualName,
+      manualUrl,
+      manualImageUrl || null,
+      manualPrice || null,
+      manualPrice || null,
+      'other',
+      priority,
+      planned_purchase_date || null,
+      comparison_group_id || null,
+      category_id || null,
+      notes || null,
+      quantity
+    );
+
+    if (manualPrice) {
+      db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(result.lastInsertRowid, manualPrice);
+    }
+
+    const item = db.prepare('SELECT * FROM items WHERE id = ?').get(result.lastInsertRowid);
+    return NextResponse.json(item, { status: 201 });
+  }
+
+  // URLベースの追加（通常モード）
   if (!url) {
     return NextResponse.json({ error: 'URL is required' }, { status: 400 });
   }
-
-  const db = getDb();
 
   // 重複チェック（同じユーザー内で）
   const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(user.id, url);
