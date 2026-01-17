@@ -245,6 +245,28 @@ export default function Home() {
               出費予定
             </button>
             <button
+              onClick={() => setActiveTab('purchased')}
+              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                activeTab === 'purchased' 
+                  ? 'border-orange-500 text-orange-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <ShoppingBag size={18} />
+              購入済
+            </button>
+            <button
+              onClick={() => setActiveTab('stats')}
+              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+                activeTab === 'stats' 
+                  ? 'border-orange-500 text-orange-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <BarChart3 size={18} />
+              統計
+            </button>
+            <button
               onClick={() => setActiveTab('groups')}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
                 activeTab === 'groups' 
@@ -267,17 +289,6 @@ export default function Home() {
               カテゴリ
             </button>
             <button
-              onClick={() => setActiveTab('purchased')}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'purchased' 
-                  ? 'border-orange-500 text-orange-600' 
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <ShoppingBag size={18} />
-              購入済
-            </button>
-            <button
               onClick={() => setActiveTab('trash')}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
                 activeTab === 'trash' 
@@ -287,17 +298,6 @@ export default function Home() {
             >
               <Trash2 size={18} />
               ゴミ箱
-            </button>
-            <button
-              onClick={() => setActiveTab('stats')}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === 'stats' 
-                  ? 'border-orange-500 text-orange-600' 
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <BarChart3 size={18} />
-              統計
             </button>
           </nav>
         </div>
