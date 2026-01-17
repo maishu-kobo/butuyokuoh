@@ -23,3 +23,34 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* タブ切り替えアニメーション */
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    transform: translateX(-100px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.slide-in-right {
+  animation: slideInFromRight 0.2s ease-out;
+}
+
+.slide-in-left {
+  animation: slideInFromLeft 0.2s ease-out;
+}

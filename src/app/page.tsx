@@ -14,26 +14,10 @@ import { Crown, List, Wallet, Layers, Plus, RefreshCw, Upload, LogOut, User, Set
 import Link from 'next/link';
 import ImportWishlistModal from '@/components/ImportWishlistModal';
 import { useSwipeable } from 'react-swipeable';
-import { motion, AnimatePresence } from 'framer-motion';
 
 type Tab = 'list' | 'budget' | 'groups' | 'categories' | 'purchased' | 'trash' | 'stats';
 
 const TABS: Tab[] = ['list', 'budget', 'purchased', 'stats', 'groups', 'categories', 'trash'];
-
-const slideVariants = {
-  enter: (direction: number) => ({
-    x: direction > 0 ? 300 : -300,
-    opacity: 0,
-  }),
-  center: {
-    x: 0,
-    opacity: 1,
-  },
-  exit: (direction: number) => ({
-    x: direction < 0 ? 300 : -300,
-    opacity: 0,
-  }),
-};
 
 export default function Home() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -41,7 +25,7 @@ export default function Home() {
   const [groups, setGroups] = useState<ComparisonGroup[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>('list');
-  const [slideDirection, setSlideDirection] = useState(0);
+  const [animationClass, setAnimationClass] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -149,11 +133,15 @@ export default function Home() {
   };
 
   // タブ切り替え関数
-  const changeTab = (newTab: Tab) => {
+  const changeTab = (newTab: Tab, direction?: 'left' | 'right') => {
+    if (newTab === activeTab) return;
     const currentIndex = TABS.indexOf(activeTab);
     const newIndex = TABS.indexOf(newTab);
-    setSlideDirection(newIndex > currentIndex ? 1 : -1);
+    const dir = direction || (newIndex > currentIndex ? 'left' : 'right');
+    setAnimationClass(dir === 'left' ? 'slide-in-right' : 'slide-in-left');
     setActiveTab(newTab);
+    // アニメーション後にクラスをクリア
+    setTimeout(() => setAnimationClass(''), 200);
   };
 
   // スワイプでタブ切り替え
@@ -161,15 +149,13 @@ export default function Home() {
     onSwipedLeft: () => {
       const currentIndex = TABS.indexOf(activeTab);
       if (currentIndex < TABS.length - 1) {
-        setSlideDirection(1);
-        setActiveTab(TABS[currentIndex + 1]);
+        changeTab(TABS[currentIndex + 1], 'left');
       }
     },
     onSwipedRight: () => {
       const currentIndex = TABS.indexOf(activeTab);
       if (currentIndex > 0) {
-        setSlideDirection(-1);
-        setActiveTab(TABS[currentIndex - 1]);
+        changeTab(TABS[currentIndex - 1], 'right');
       }
     },
     trackMouse: false,
@@ -354,16 +340,7 @@ export default function Home() {
 
       {/* メインコンテンツ */}
       <main {...swipeHandlers} className="max-w-4xl mx-auto px-4 py-6 overflow-hidden">
-        <AnimatePresence mode="wait" custom={slideDirection}>
-          <motion.div
-            key={activeTab}
-            custom={slideDirection}
-            variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: 0.2, ease: "easeInOut" }}
-          >
+        <div className={animationClass}>
         {activeTab === 'list' && (
           <div className="space-y-4">
             {/* 検索・並び替え・フィルター */}
@@ -670,8 +647,7 @@ export default function Home() {
         {activeTab === 'trash' && <TrashView />}
 
         {activeTab === 'stats' && <StatsView />}
-          </motion.div>
-        </AnimatePresence>
+        </div>
       </main>
 
       <ImportWishlistModal
