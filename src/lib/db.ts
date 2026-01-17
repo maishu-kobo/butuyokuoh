@@ -45,6 +45,7 @@ function initDb(db: Database.Database) {
       purchased_at TEXT,
       target_price INTEGER,
       target_currency TEXT DEFAULT 'JPY',
+      deleted_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (comparison_group_id) REFERENCES comparison_groups(id),

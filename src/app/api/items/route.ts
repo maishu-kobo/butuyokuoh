@@ -20,7 +20,7 @@ export async function GET() {
     FROM items i
     LEFT JOIN comparison_groups cg ON i.comparison_group_id = cg.id
     LEFT JOIN categories cat ON i.category_id = cat.id
-    WHERE i.is_purchased = 0 AND i.user_id = ?
+    WHERE i.is_purchased = 0 AND i.user_id = ? AND i.deleted_at IS NULL
     ORDER BY 
       COALESCE(cg.priority, i.priority) ASC,
       i.planned_purchase_date ASC NULLS LAST,

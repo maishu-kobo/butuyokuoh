@@ -87,6 +87,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
 
-  db.prepare('DELETE FROM items WHERE id = ?').run(id);
+  // ソフトデリート（ゴミ箱に移動）
+  db.prepare("UPDATE items SET deleted_at = datetime('now') WHERE id = ?").run(id);
   return NextResponse.json({ success: true });
 }
