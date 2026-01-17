@@ -11,7 +11,8 @@
     "https://www.amazon.co.jp/*",
     "https://www.amazon.com/*",
     "https://my.bookmark.rakuten.co.jp/*",
-    "https://item.rakuten.co.jp/*"
+    "https://item.rakuten.co.jp/*",
+    "https://butsuyokuoh.exe.xyz:8000/*"
   ],
   "action": {
     "default_popup": "popup.html",
