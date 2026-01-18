@@ -14,16 +14,31 @@ export interface WishlistResult {
   error?: string;
 }
 
-// 許可されたウィシュリストドメイン（完全一致）
-const ALLOWED_WISHLIST_DOMAINS = new Set([
+// 許可されたAmazonウィシュリストドメイン（完全一致）
+const AMAZON_WISHLIST_DOMAINS = new Set([
   'www.amazon.co.jp',
   'www.amazon.jp',
   'www.amazon.com',
   'amazon.co.jp',
   'amazon.jp',
   'amazon.com',
+]);
+
+// 許可された楽天ウィシュリストドメイン
+const RAKUTEN_WISHLIST_DOMAINS = new Set([
   'my.bookmark.rakuten.co.jp',
 ]);
+
+/**
+ * URLのホスト名を取得（SSRF対策のガード）
+ */
+function getHostname(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
 
 /**
  * ウィシュリストURLを検証
@@ -40,18 +55,16 @@ function validateWishlistUrl(listUrl: string): { isValid: boolean; source: 'amaz
 
     const hostname = parsedUrl.hostname.toLowerCase();
 
-    // ドメインの完全一致チェック
-    if (!ALLOWED_WISHLIST_DOMAINS.has(hostname)) {
-      return { isValid: false, source: null, sanitizedUrl: '' };
-    }
-
     // ソースを判定（完全一致）
     let source: 'amazon' | 'rakuten' | null = null;
-    if (hostname === 'www.amazon.co.jp' || hostname === 'www.amazon.jp' || hostname === 'www.amazon.com' ||
-        hostname === 'amazon.co.jp' || hostname === 'amazon.jp' || hostname === 'amazon.com') {
+    if (AMAZON_WISHLIST_DOMAINS.has(hostname)) {
       source = 'amazon';
-    } else if (hostname === 'my.bookmark.rakuten.co.jp') {
+    } else if (RAKUTEN_WISHLIST_DOMAINS.has(hostname)) {
       source = 'rakuten';
+    }
+
+    if (!source) {
+      return { isValid: false, source: null, sanitizedUrl: '' };
     }
 
     // URLを再構築
@@ -64,6 +77,17 @@ function validateWishlistUrl(listUrl: string): { isValid: boolean; source: 'amaz
 }
 
 export async function scrapeAmazonWishlist(sanitizedUrl: string): Promise<WishlistResult> {
+  // SSRF対策: page.goto直前にホスト名を再検証
+  const hostname = getHostname(sanitizedUrl);
+  if (!hostname || !AMAZON_WISHLIST_DOMAINS.has(hostname)) {
+    return {
+      source: 'amazon',
+      listName: 'エラー',
+      items: [],
+      error: '無効なURLです',
+    };
+  }
+
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -78,7 +102,6 @@ export async function scrapeAmazonWishlist(sanitizedUrl: string): Promise<Wishli
       'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
     });
 
-    // sanitizedUrlは既に検証済み
     await page.goto(sanitizedUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
     // リスト名を取得
@@ -159,6 +182,17 @@ export async function scrapeAmazonWishlist(sanitizedUrl: string): Promise<Wishli
 }
 
 export async function scrapeRakutenFavorites(sanitizedUrl: string): Promise<WishlistResult> {
+  // SSRF対策: page.goto直前にホスト名を再検証
+  const hostname = getHostname(sanitizedUrl);
+  if (!hostname || !RAKUTEN_WISHLIST_DOMAINS.has(hostname)) {
+    return {
+      source: 'rakuten',
+      listName: 'エラー',
+      items: [],
+      error: '無効なURLです',
+    };
+  }
+
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -173,7 +207,6 @@ export async function scrapeRakutenFavorites(sanitizedUrl: string): Promise<Wish
       'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
     });
 
-    // sanitizedUrlは既に検証済み
     await page.goto(sanitizedUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
     // スクロールして全アイテムを読み込む

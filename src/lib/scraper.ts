@@ -8,6 +8,35 @@ export interface ScrapedItem {
   sourceName: string | null;
 }
 
+// 許可されたAmazonドメイン
+const AMAZON_DOMAINS = new Set([
+  'www.amazon.co.jp',
+  'www.amazon.jp',
+  'www.amazon.com',
+  'amazon.co.jp',
+  'amazon.jp',
+  'amazon.com',
+]);
+
+// 許可された楽天ドメイン
+const RAKUTEN_DOMAINS = new Set([
+  'item.rakuten.co.jp',
+  'my.bookmark.rakuten.co.jp',
+  'books.rakuten.co.jp',
+  'product.rakuten.co.jp',
+]);
+
+/**
+ * URLのホスト名を取得（SSRF対策のガード）
+ */
+function getHostname(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 export async function scrapeUrl(url: string): Promise<ScrapedItem> {
   const validation = validateAndSanitizeUrl(url);
 
@@ -36,6 +65,18 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
 }
 
 async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
+  // SSRF対策: fetch直前にホスト名を再検証
+  const hostname = getHostname(sanitizedUrl);
+  if (!hostname || !AMAZON_DOMAINS.has(hostname)) {
+    return {
+      name: '無効なURL',
+      price: null,
+      imageUrl: null,
+      source: 'amazon',
+      sourceName: 'Amazon',
+    };
+  }
+
   try {
     const response = await fetch(sanitizedUrl, {
       headers: {
@@ -77,6 +118,18 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
 }
 
 async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
+  // SSRF対策: fetch直前にホスト名を再検証
+  const hostname = getHostname(sanitizedUrl);
+  if (!hostname || !RAKUTEN_DOMAINS.has(hostname)) {
+    return {
+      name: '無効なURL',
+      price: null,
+      imageUrl: null,
+      source: 'rakuten',
+      sourceName: '楽天市場',
+    };
+  }
+
   try {
     const response = await fetch(sanitizedUrl, {
       headers: {
@@ -119,6 +172,24 @@ async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
 }
 
 async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<ScrapedItem> {
+  // SSRF対策: fetch直前にホスト名を再検証（ローカルIPをブロック）
+  const actualHostname = getHostname(sanitizedUrl);
+  if (!actualHostname ||
+      actualHostname === 'localhost' ||
+      actualHostname === '127.0.0.1' ||
+      actualHostname.startsWith('192.168.') ||
+      actualHostname.startsWith('10.') ||
+      actualHostname.startsWith('172.16.') ||
+      actualHostname.endsWith('.local')) {
+    return {
+      name: '無効なURL',
+      price: null,
+      imageUrl: null,
+      source: 'other',
+      sourceName: null,
+    };
+  }
+
   try {
     const response = await fetch(sanitizedUrl, {
       headers: {
@@ -138,10 +209,14 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
     if (jsonLdMatch) {
       for (const match of jsonLdMatch) {
         try {
-          // scriptタグを除去（正規表現で安全に処理）
-          const jsonContent = match
-            .replace(/<script[^>]*>/gi, '')
-            .replace(/<\/script>/gi, '');
+          // scriptタグを完全に除去（ループで繰り返し置換）
+          let jsonContent = match;
+          let prevLength = 0;
+          while (jsonContent.length !== prevLength) {
+            prevLength = jsonContent.length;
+            jsonContent = jsonContent.replace(/<script[^>]*>/gi, '');
+            jsonContent = jsonContent.replace(/<\/script>/gi, '');
+          }
           const data = JSON.parse(jsonContent);
           if (data.offers?.price) {
             price = parseInt(data.offers.price, 10);
