@@ -379,7 +379,7 @@ export default function Home() {
       </header>
 
       {/* ナビゲーション（ピル型タブ） */}
-      <div className="bg-white dark:bg-slate-800 shadow-sm sticky top-0 z-10">
+      <div className="bg-white dark:bg-slate-800 shadow-sm sticky top-0 z-20">
         <div className="max-w-4xl mx-auto px-4 py-3">
           <nav className="flex gap-1.5 overflow-x-auto scrollbar-hide">
             <button
