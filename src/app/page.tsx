@@ -2,17 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import { Item, ComparisonGroup, Category } from '@/types';
-import ItemCard from '@/components/ItemCard';
+import SortableItemCard from '@/components/SortableItemCard';
 import AddItemForm from '@/components/AddItemForm';
 import BudgetView from '@/components/BudgetView';
 import PurchasedHistory from '@/components/PurchasedHistory';
 import StatsView from '@/components/StatsView';
 import LoginForm from '@/components/LoginForm';
 import { useAuth } from '@/components/AuthProvider';
-import { Crown, List, Wallet, RefreshCw, Upload, LogOut, User, Settings, ShoppingBag, Search, ArrowUpDown, BarChart3, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
+import { Crown, List, Wallet, RefreshCw, Upload, LogOut, User, Settings, ShoppingBag, Search, ArrowUpDown, BarChart3, ChevronDown, ChevronUp, SlidersHorizontal, Layers, CheckSquare, X, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import ImportWishlistModal from '@/components/ImportWishlistModal';
 import { useSwipeable } from 'react-swipeable';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
 type Tab = 'list' | 'budget' | 'purchased' | 'stats';
 
@@ -28,11 +30,14 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'priority' | 'price_asc' | 'price_desc' | 'date_new' | 'date_old' | 'name'>('priority');
   const [selectedPriority, setSelectedPriority] = useState<number | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
 
   const fetchItems = async () => {
     const res = await fetch('/api/items');
@@ -78,6 +83,152 @@ export default function Home() {
     }
   };
 
+  // ドラッグ&ドロップ用のsensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // ドラッグ&ドロップが有効かどうか（優先度順の時のみ）
+  const isDragEnabled = sortBy === 'priority' && !selectedCategory && !selectedGroup && !selectedPriority && !searchQuery;
+
+  // ドラッグ終了時のハンドラ
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = filteredItems.findIndex(item => item.id === active.id);
+    const newIndex = filteredItems.findIndex(item => item.id === over.id);
+    
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    // 新しい順序で配列を作成
+    const newItems = [...filteredItems];
+    const [movedItem] = newItems.splice(oldIndex, 1);
+    newItems.splice(newIndex, 0, movedItem);
+    
+    // 全アイテムのsort_orderを一括更新
+    const updates = newItems.map((item, index) => ({
+      id: item.id,
+      sort_order: index,
+    }));
+    
+    // APIで一括更新
+    await Promise.all(
+      updates.map(({ id, sort_order }) =>
+        fetch(`/api/items/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sort_order }),
+        })
+      )
+    );
+    
+    fetchItems();
+  };
+
+  // 選択モードのトグル
+  const toggleSelectionMode = () => {
+    setSelectionMode(!selectionMode);
+    setSelectedItems(new Set());
+  };
+
+  // アイテムの選択トグル
+  const toggleItemSelection = (id: number) => {
+    const newSelected = new Set(selectedItems);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedItems(newSelected);
+  };
+
+  // 全選択
+  const selectAll = () => {
+    setSelectedItems(new Set(filteredItems.map(item => item.id)));
+  };
+
+  // 選択解除
+  const deselectAll = () => {
+    setSelectedItems(new Set());
+  };
+
+  // 一括削除
+  const handleBulkDelete = async () => {
+    if (selectedItems.size === 0) return;
+    if (!confirm(`${selectedItems.size}件のアイテムを削除しますか？`)) return;
+    
+    await Promise.all(
+      Array.from(selectedItems).map(id =>
+        fetch(`/api/items/${id}`, { method: 'DELETE' })
+      )
+    );
+    setSelectedItems(new Set());
+    fetchItems();
+  };
+
+  // 一括カテゴリ変更
+  const handleBulkCategoryChange = async (categoryId: number | null) => {
+    if (selectedItems.size === 0) return;
+    
+    await Promise.all(
+      Array.from(selectedItems).map(id =>
+        fetch(`/api/items/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category_id: categoryId }),
+        })
+      )
+    );
+    setSelectedItems(new Set());
+    fetchItems();
+  };
+
+  // 一括グループ変更
+  const handleBulkGroupChange = async (groupId: number | null) => {
+    if (selectedItems.size === 0) return;
+    
+    await Promise.all(
+      Array.from(selectedItems).map(id =>
+        fetch(`/api/items/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ comparison_group_id: groupId }),
+        })
+      )
+    );
+    setSelectedItems(new Set());
+    fetchItems();
+  };
+
+  // 一括購入済み
+  const handleBulkPurchased = async () => {
+    if (selectedItems.size === 0) return;
+    if (!confirm(`${selectedItems.size}件のアイテムを購入済みにしますか？`)) return;
+    
+    const today = new Date().toISOString().split('T')[0];
+    await Promise.all(
+      Array.from(selectedItems).map(id =>
+        fetch(`/api/items/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_purchased: true, purchased_at: today }),
+        })
+      )
+    );
+    setSelectedItems(new Set());
+    setSelectionMode(false);
+    fetchItems();
+  };
+
   // タブ切り替え関数
   const changeTab = (newTab: Tab, direction?: 'left' | 'right') => {
     if (newTab === activeTab) return;
@@ -110,11 +261,12 @@ export default function Home() {
     touchEventOptions: { passive: false },
   });
 
-  // フィルター適用（カテゴリ、検索、優先度）
+  // フィルター適用（カテゴリ、検索、優先度、比較グループ）
   const filteredItems = items
     .filter(item => {
       if (selectedCategory && item.category_id !== selectedCategory) return false;
       if (selectedPriority && item.priority !== selectedPriority) return false;
+      if (selectedGroup && item.comparison_group_id !== selectedGroup) return false;
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return item.name.toLowerCase().includes(query) ||
@@ -148,6 +300,11 @@ export default function Home() {
     return sum + (price * quantity);
   }, 0);
 
+  // 比較グループフィルター時の最安価格を計算
+  const lowestPriceInGroup = selectedGroup
+    ? Math.min(...filteredItems.filter(i => i.current_price).map(i => i.current_price!))
+    : null;
+
   // 認証チェック
   if (authLoading) {
     return (
@@ -162,7 +319,7 @@ export default function Home() {
   }
 
   return (
-    <div {...swipeHandlers} className="min-h-screen bg-slate-50">
+    <div {...swipeHandlers} className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* ヘッダー */}
       <header className="bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg">
         <div className="max-w-4xl mx-auto px-4 py-4">
@@ -196,51 +353,51 @@ export default function Home() {
       </header>
 
       {/* ナビゲーション（ピル型タブ） */}
-      <div className="bg-white shadow-sm sticky top-0 z-10">
+      <div className="bg-white dark:bg-slate-800 shadow-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3">
-          <nav className="flex gap-2">
+          <nav className="flex gap-1.5 overflow-x-auto scrollbar-hide">
             <button
               onClick={() => { changeTab('list'); fetchItems(); }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'list'
                   ? 'bg-orange-500 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
-              <List size={18} />
+              <List size={16} />
               リスト
             </button>
             <button
               onClick={() => changeTab('budget')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'budget'
                   ? 'bg-orange-500 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
-              <Wallet size={18} />
+              <Wallet size={16} />
               出費予定
             </button>
             <button
               onClick={() => changeTab('purchased')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'purchased'
                   ? 'bg-orange-500 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
-              <ShoppingBag size={18} />
+              <ShoppingBag size={16} />
               購入済
             </button>
             <button
               onClick={() => changeTab('stats')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'stats'
                   ? 'bg-orange-500 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
-              <BarChart3 size={18} />
+              <BarChart3 size={16} />
               統計
             </button>
           </nav>
@@ -253,31 +410,27 @@ export default function Home() {
         {activeTab === 'list' && (
           <div className="space-y-4">
             {/* サマリーカード */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="bg-white rounded-2xl shadow-sm p-4">
-                <p className="text-xs text-slate-500 mb-1">アイテム数</p>
-                <p className="text-2xl font-bold text-slate-800">{items.length}<span className="text-sm font-normal text-slate-500">件</span></p>
+            <div className="flex gap-3">
+              <div className="flex-1 bg-white dark:bg-slate-800 rounded-xl shadow-sm px-4 py-2.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400">アイテム数</p>
+                <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{items.length}<span className="text-sm font-normal text-slate-500 dark:text-slate-400 ml-0.5">件</span></p>
               </div>
-              <div className="bg-white rounded-2xl shadow-sm p-4">
-                <p className="text-xs text-slate-500 mb-1">合計金額</p>
-                <p className="text-2xl font-bold text-orange-500">¥{totalAmount.toLocaleString()}</p>
-              </div>
-              <div className="hidden sm:block bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl shadow-sm p-4 text-white">
-                <p className="text-xs text-orange-100 mb-1">カテゴリ</p>
-                <p className="text-2xl font-bold">{categories.length}<span className="text-sm font-normal text-orange-100">個</span></p>
+              <div className="flex-1 bg-white dark:bg-slate-800 rounded-xl shadow-sm px-4 py-2.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400">合計金額</p>
+                <p className="text-xl font-bold text-orange-500">¥{totalAmount.toLocaleString()}</p>
               </div>
             </div>
 
             {/* 検索・並び替え・フィルター (折りたたみ式) */}
-            <div className="bg-white rounded-2xl shadow-sm">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm">
               <button
                 onClick={() => setIsFilterOpen(!isFilterOpen)}
-                className="w-full px-4 py-3 flex items-center justify-between text-slate-600 hover:bg-slate-50 transition-colors rounded-2xl"
+                className="w-full px-4 py-3 flex items-center justify-between text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors rounded-2xl"
               >
                 <div className="flex items-center gap-2">
                   <SlidersHorizontal size={18} className="text-slate-400" />
                   <span className="text-sm font-medium">検索・フィルター</span>
-                  {(searchQuery || selectedCategory || selectedPriority || sortBy !== 'priority') && (
+                  {(searchQuery || selectedCategory || selectedPriority || selectedGroup || sortBy !== 'priority') && (
                     <span className="px-2 py-0.5 bg-orange-100 text-orange-600 text-xs font-medium rounded-full">
                       適用中
                     </span>
@@ -287,7 +440,7 @@ export default function Home() {
               </button>
 
               {isFilterOpen && (
-                <div className="px-4 pb-4 space-y-3 border-t border-slate-100">
+                <div className="px-4 pb-4 space-y-3 border-t border-slate-100 dark:border-slate-700">
                   <div className="relative pt-3">
                     <Search className="absolute left-3 top-1/2 translate-y-0.5 text-slate-400" size={18} />
                     <input
@@ -295,17 +448,17 @@ export default function Home() {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="商品名、メモ、カテゴリで検索..."
-                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                     />
                   </div>
 
                   <div className="flex flex-wrap gap-3">
                     <div className="flex items-center gap-2">
-                      <ArrowUpDown size={16} className="text-slate-500" />
+                      <ArrowUpDown size={16} className="text-slate-500 dark:text-slate-400" />
                       <select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                        className="px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        className="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                       >
                         <option value="priority">優先度順</option>
                         <option value="price_asc">価格が安い順</option>
@@ -317,11 +470,11 @@ export default function Home() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-500">優先度:</span>
+                      <span className="text-sm text-slate-500 dark:text-slate-400">優先度:</span>
                       <select
                         value={selectedPriority || ''}
                         onChange={(e) => setSelectedPriority(e.target.value ? Number(e.target.value) : null)}
-                        className="px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        className="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                       >
                         <option value="">すべて</option>
                         <option value="1">最高</option>
@@ -340,7 +493,7 @@ export default function Home() {
                         className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                           selectedCategory === null
                             ? 'bg-orange-500 text-white'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                         }`}
                       >
                         すべて
@@ -364,55 +517,141 @@ export default function Home() {
                       ))}
                     </div>
                   )}
+
+                  {/* 比較グループフィルター */}
+                  {groups.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+                        <Layers size={16} />
+                        <span>比較:</span>
+                      </div>
+                      <button
+                        onClick={() => setSelectedGroup(null)}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                          selectedGroup === null
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                        }`}
+                      >
+                        すべて
+                      </button>
+                      {groups.map((group) => (
+                        <button
+                          key={group.id}
+                          onClick={() => setSelectedGroup(group.id)}
+                          className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                            selectedGroup === group.id
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                          }`}
+                        >
+                          {group.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
             {/* アクションバー */}
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-slate-700">
-                ほしいものリスト ({filteredItems.length}件{selectedCategory ? ` / 全${items.length}件` : ''})
+              <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200">
+                {selectionMode 
+                  ? `${selectedItems.size}件選択中`
+                  : `ほしいものリスト (${filteredItems.length}件${selectedCategory ? ` / 全${items.length}件` : ''})`
+                }
               </h2>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowImportModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-                >
-                  <Upload size={16} />
-                  インポート
-                </button>
-                <button
-                  onClick={handleRefreshAll}
-                  disabled={refreshing || items.length === 0}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-                  全て更新
-                </button>
+                {selectionMode ? (
+                  <>
+                    <button
+                      onClick={selectAll}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
+                    >
+                      全選択
+                    </button>
+                    <button
+                      onClick={deselectAll}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
+                    >
+                      選択解除
+                    </button>
+                    <button
+                      onClick={toggleSelectionMode}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                    >
+                      <X size={16} />
+                      キャンセル
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={toggleSelectionMode}
+                      disabled={items.length === 0}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <CheckSquare size={16} />
+                      選択
+                    </button>
+                    <button
+                      onClick={() => setShowImportModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                    >
+                      <Upload size={16} />
+                      インポート
+                    </button>
+                    <button
+                      onClick={handleRefreshAll}
+                      disabled={refreshing || items.length === 0}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                      全て更新
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
             <AddItemForm onAdd={fetchItems} comparisonGroups={groups} categories={categories} />
 
             {loading ? (
-              <div className="text-center py-12 text-slate-500">読み込み中...</div>
+              <div className="text-center py-12 text-slate-500 dark:text-slate-400">読み込み中...</div>
             ) : items.length === 0 ? (
-              <div className="text-center py-12 text-slate-500">
+              <div className="text-center py-12 text-slate-500 dark:text-slate-400">
                 まだアイテムがありません。上のフォームから追加してください。
               </div>
             ) : (
-              <div className="space-y-3">
-                {filteredItems.map((item) => (
-                  <ItemCard
-                    key={item.id}
-                    item={item}
-                    onUpdate={fetchItems}
-                    onDelete={handleDelete}
-                    categories={categories}
-                    comparisonGroups={groups}
-                  />
-                ))}
-              </div>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={filteredItems.map(item => item.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-3">
+                    {filteredItems.map((item) => (
+                      <SortableItemCard
+                        key={item.id}
+                        item={item}
+                        onUpdate={fetchItems}
+                        onDelete={handleDelete}
+                        categories={categories}
+                        comparisonGroups={groups}
+                        isLowestPrice={selectedGroup !== null && lowestPriceInGroup !== null && item.current_price === lowestPriceInGroup}
+                        isDragEnabled={isDragEnabled && !selectionMode}
+                        selectionMode={selectionMode}
+                        isSelected={selectedItems.has(item.id)}
+                        onToggleSelect={toggleItemSelection}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
             )}
           </div>
         )}
@@ -424,6 +663,69 @@ export default function Home() {
         {activeTab === 'stats' && <StatsView />}
         </div>
       </main>
+
+      {/* 一括操作バー（選択時のみ表示） */}
+      {selectionMode && selectedItems.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shadow-lg z-50">
+          <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              {selectedItems.size}件選択中
+            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* カテゴリ変更 */}
+              <select
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === '') return;
+                  handleBulkCategoryChange(value === 'none' ? null : Number(value));
+                  e.target.value = '';
+                }}
+                className="px-3 py-1.5 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                defaultValue=""
+              >
+                <option value="" disabled>カテゴリ変更</option>
+                <option value="none">なし</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+              {/* グループ変更 */}
+              <select
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === '') return;
+                  handleBulkGroupChange(value === 'none' ? null : Number(value));
+                  e.target.value = '';
+                }}
+                className="px-3 py-1.5 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                defaultValue=""
+              >
+                <option value="" disabled>グループ変更</option>
+                <option value="none">なし</option>
+                {groups.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+              {/* 購入済み */}
+              <button
+                onClick={handleBulkPurchased}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
+              >
+                <ShoppingBag size={16} />
+                購入済み
+              </button>
+              {/* 削除 */}
+              <button
+                onClick={handleBulkDelete}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+              >
+                <Trash2 size={16} />
+                削除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ImportWishlistModal
         isOpen={showImportModal}

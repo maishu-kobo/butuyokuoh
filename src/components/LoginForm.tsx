@@ -44,7 +44,7 @@ export default function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gray-100 dark:bg-slate-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* ヘッダー */}
         <div className="text-center mb-8">
@@ -53,17 +53,17 @@ export default function LoginForm() {
               <Crown size={32} className="text-yellow-300" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">物欲王</h1>
-          <p className="text-gray-500 mt-1">すべてのほしいものを一つに</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">物欲王</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">すべてのほしいものを一つに</p>
         </div>
 
         {/* フォーム */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
           {/* Googleログインボタン */}
           <button
             onClick={handleGoogleLogin}
             disabled={loading}
-            className="w-full py-3 px-4 border border-gray-300 rounded-md flex items-center justify-center gap-3 hover:bg-gray-50 transition-colors disabled:opacity-50 mb-6"
+            className="w-full py-3 px-4 border border-gray-300 dark:border-slate-600 rounded-md flex items-center justify-center gap-3 hover:bg-gray-50 transition-colors disabled:opacity-50 mb-6"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path
@@ -88,10 +88,10 @@ export default function LoginForm() {
 
           <div className="relative mb-6">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300"></div>
+              <div className="w-full border-t border-gray-300 dark:border-slate-600"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">または</span>
+              <span className="px-2 bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400">または</span>
             </div>
           </div>
 
@@ -102,7 +102,7 @@ export default function LoginForm() {
               className={`flex-1 py-2 text-center font-medium border-b-2 transition-colors ${
                 isLogin
                   ? 'border-orange-500 text-orange-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700'
               }`}
             >
               ログイン
@@ -113,7 +113,7 @@ export default function LoginForm() {
               className={`flex-1 py-2 text-center font-medium border-b-2 transition-colors ${
                 !isLogin
                   ? 'border-orange-500 text-orange-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700'
               }`}
             >
               新規登録
@@ -133,7 +133,7 @@ export default function LoginForm() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="お名前"
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
                 </div>
               </div>
@@ -151,7 +151,7 @@ export default function LoginForm() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="email@example.com"
                   required
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               </div>
             </div>
@@ -169,7 +169,7 @@ export default function LoginForm() {
                   placeholder="6文字以上"
                   required
                   minLength={6}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               </div>
             </div>

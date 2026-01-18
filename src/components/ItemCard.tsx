@@ -11,9 +11,10 @@ interface ItemCardProps {
   onDelete: (id: number) => void;
   categories?: Category[];
   comparisonGroups?: ComparisonGroup[];
+  isLowestPrice?: boolean;
 }
 
-export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [] }: ItemCardProps) {
+export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false }: ItemCardProps) {
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -98,21 +99,29 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     onUpdate();
   };
 
-  const priceChange = item.original_price && item.current_price 
-    ? item.current_price - item.original_price 
+  // 前回価格との差分（previous_priceがあればそれを使用、なければoriginal_price）
+  const previousPrice = item.previous_price ?? item.original_price;
+  const priceChange = previousPrice && item.current_price 
+    ? item.current_price - previousPrice 
     : 0;
 
   const sourceColors: Record<string, string> = {
     amazon: 'bg-orange-100 text-orange-800',
     rakuten: 'bg-red-100 text-red-800',
-    other: 'bg-gray-100 text-gray-800',
+    other: 'bg-gray-100 dark:bg-slate-700 text-gray-800',
+  };
+
+  const sourceNames: Record<string, string> = {
+    amazon: 'Amazon',
+    rakuten: '楽天',
+    other: 'その他',
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+    <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
       <div className="flex">
         {/* 画像 */}
-        <div className="w-32 h-32 flex-shrink-0 bg-gray-100">
+        <div className="w-32 h-32 flex-shrink-0 bg-gray-100 dark:bg-slate-700">
           {item.image_url ? (
             <img 
               src={item.image_url} 
@@ -120,7 +129,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
               className="w-full h-full object-contain"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-gray-400">
+            <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
               No Image
             </div>
           )}
@@ -132,7 +141,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <span className={`text-xs px-2 py-0.5 rounded ${sourceColors[item.source] || sourceColors.other}`}>
-                  {item.source_name || item.source}
+                  {item.source_name || sourceNames[item.source] || 'その他'}
                 </span>
                 {item.category_name && item.category_color && (
                   <span
@@ -151,7 +160,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                       ? 'bg-red-100 text-red-700' 
                       : item.priority === 3 
                         ? 'bg-yellow-100 text-yellow-700' 
-                        : 'bg-gray-100 text-gray-600'
+                        : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300'
                   }`}
                   title="優先度"
                 >
@@ -159,24 +168,29 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   {['', '最高', '高', '普通', '低', '最低'][item.priority]}
                 </div>
               </div>
-              <h3 className="font-semibold text-gray-900 line-clamp-2">{item.name}</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">{item.name}</h3>
             </div>
             <a
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-400 hover:text-blue-500 ml-2"
+              className="text-gray-400 dark:text-gray-500 hover:text-blue-500 ml-2"
             >
               <ExternalLink size={18} />
             </a>
           </div>
 
           <div className="mt-2 flex items-baseline gap-2 flex-wrap">
-            <span className="text-xl font-bold text-gray-900">
+            <span className={`text-xl font-bold ${isLowestPrice ? 'text-green-600' : 'text-gray-900 dark:text-gray-100'}`}>
               ¥{item.current_price?.toLocaleString() || '---'}
             </span>
+            {isLowestPrice && (
+              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">
+                🏷️ 最安
+              </span>
+            )}
             {(item.quantity || 1) > 1 && (
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-gray-600 dark:text-gray-300">
                 × {item.quantity} = ¥{((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}
               </span>
             )}
@@ -188,7 +202,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             )}
           </div>
 
-          <div className="mt-1 flex flex-wrap gap-3 text-sm text-gray-500">
+          <div className="mt-1 flex flex-wrap gap-3 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
             {item.planned_purchase_date && (
               <span className="flex items-center gap-1">
                 <Calendar size={14} />
@@ -203,30 +217,30 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           </div>
 
           {item.notes && (
-            <p className="mt-1 text-sm text-gray-600 line-clamp-1">{item.notes}</p>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-1">{item.notes}</p>
           )}
         </div>
       </div>
 
       {/* アクション */}
-      <div className="px-4 py-2 bg-gray-50 flex items-center justify-between border-t">
+      <div className="px-4 py-2 bg-gray-50 dark:bg-slate-700 flex items-center justify-between border-t">
         <div className="flex gap-2">
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="text-gray-500 hover:text-blue-500 disabled:opacity-50"
+            className="text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500 disabled:opacity-50"
           >
             <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
           </button>
           <button
             onClick={() => setShowChart(!showChart)}
-            className="text-sm text-gray-500 hover:text-blue-500"
+            className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500"
           >
             価格推移
           </button>
           <button
             onClick={() => setEditing(!editing)}
-            className="text-sm text-gray-500 hover:text-blue-500"
+            className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500"
           >
             編集
           </button>
@@ -256,14 +270,14 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
 
       {/* 編集フォーム */}
       {editing && (
-        <div className="p-4 border-t bg-gray-50">
+        <div className="p-4 border-t bg-gray-50 dark:bg-slate-700">
           <div className="grid gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700">優先度</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">優先度</label>
               <select
                 value={editData.priority}
                 onChange={(e) => setEditData({ ...editData, priority: Number(e.target.value) })}
-                className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className="mt-1 block w-full rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
               >
                 {[1, 2, 3, 4, 5].map((n) => (
                   <option key={n} value={n}>{n} - {['', '最高', '高', '普通', '低', '最低'][n]}</option>
@@ -276,32 +290,32 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
               <button
                 type="button"
                 onClick={() => setShowImageEdit(!showImageEdit)}
-                className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+                className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-300 flex items-center gap-1"
               >
                 <ImageIcon size={12} />
                 {showImageEdit ? '画像・価格の編集を閉じる' : '画像・価格を手動で編集'}
               </button>
               {showImageEdit && (
-                <div className="mt-2 space-y-2 p-2 bg-gray-100 rounded">
+                <div className="mt-2 space-y-2 p-2 bg-gray-100 dark:bg-slate-700 rounded">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">価格</label>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-1">価格</label>
                     <input
                       type="number"
                       value={editData.current_price}
                       onChange={(e) => setEditData({ ...editData, current_price: e.target.value })}
                       placeholder="例: 3990"
-                      className="block w-full text-sm rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      className="block w-full text-sm rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">画像URL</label>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-1">画像URL</label>
                     <div className="flex gap-1">
                       <input
                         type="text"
                         value={editData.image_url}
                         onChange={(e) => setEditData({ ...editData, image_url: e.target.value })}
                         placeholder="画像URLを入力"
-                        className="flex-1 text-sm rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="flex-1 text-sm rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                       />
                       <input
                         type="file"
@@ -314,7 +328,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={uploading}
-                        className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-white disabled:opacity-50"
+                        className="px-2 py-1 text-xs border border-gray-300 dark:border-slate-600 rounded hover:bg-white disabled:opacity-50"
                       >
                         <Upload size={12} />
                       </button>
@@ -328,32 +342,32 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700">購入予定日</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">購入予定日</label>
                 <input
                   type="date"
                   value={editData.planned_purchase_date}
                   onChange={(e) => setEditData({ ...editData, planned_purchase_date: e.target.value })}
-                  className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">個数</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">個数</label>
                 <input
                   type="number"
                   min="1"
                   value={editData.quantity}
                   onChange={(e) => setEditData({ ...editData, quantity: Math.max(1, Number(e.target.value) || 1) })}
-                  className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">目標価格（通知用）</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">目標価格（通知用）</label>
               <div className="mt-1 flex gap-2">
                 <select
                   value={editData.target_currency}
                   onChange={(e) => setEditData({ ...editData, target_currency: e.target.value as 'JPY' | 'USD' })}
-                  className="rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 >
                   <option value="JPY">¥ (円)</option>
                   <option value="USD">$ (USD)</option>
@@ -363,17 +377,17 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   value={editData.target_price}
                   onChange={(e) => setEditData({ ...editData, target_price: e.target.value ? Number(e.target.value) : '' })}
                   placeholder="この価格以下になったら通知"
-                  className="flex-1 rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="flex-1 rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700">カテゴリ</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">カテゴリ</label>
                 <select
                   value={editData.category_id}
                   onChange={(e) => setEditData({ ...editData, category_id: e.target.value })}
-                  className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 >
                   <option value="">なし</option>
                   {categories.map((c) => (
@@ -382,11 +396,11 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">比較グループ</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">比較グループ</label>
                 <select
                   value={editData.comparison_group_id}
                   onChange={(e) => setEditData({ ...editData, comparison_group_id: e.target.value })}
-                  className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 >
                   <option value="">なし</option>
                   {comparisonGroups.map((g) => (
@@ -396,18 +410,18 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">メモ</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">メモ</label>
               <textarea
                 value={editData.notes}
                 onChange={(e) => setEditData({ ...editData, notes: e.target.value })}
-                className="mt-1 block w-full rounded border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className="mt-1 block w-full rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 rows={2}
               />
             </div>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setEditing(false)}
-                className="px-3 py-1 text-gray-600 hover:text-gray-800"
+                className="px-3 py-1 text-gray-600 dark:text-gray-300 hover:text-gray-800"
               >
                 キャンセル
               </button>
