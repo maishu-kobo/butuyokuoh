@@ -37,6 +37,18 @@ function isAmazonUrl(url: string | undefined): boolean {
   }
 }
 
+// 楽天のURLかどうかを判定
+function isRakutenUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    return hostname.includes('rakuten.co.jp');
+  } catch {
+    return false;
+  }
+}
+
 export default function PriceChart({ itemId, url, source }: PriceChartProps) {
   const [history, setHistory] = useState<PriceHistory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +56,11 @@ export default function PriceChart({ itemId, url, source }: PriceChartProps) {
 
   // Amazonの場合、ASINを抽出
   const isAmazon = source === 'amazon' || isAmazonUrl(url);
+  const isRakuten = source === 'rakuten' || isRakutenUrl(url);
   const asin = url ? extractAsin(url) : null;
+  
+  // Amazon・楽天はサーバー側での価格取得ができない
+  const cannotAutoCollect = isAmazon || isRakuten;
 
   useEffect(() => {
     fetch(`/api/items/${itemId}/price-history`)
@@ -97,7 +113,14 @@ export default function PriceChart({ itemId, url, source }: PriceChartProps) {
     return (
       <div className="h-48 flex flex-col items-center justify-center text-gray-500">
         <p>価格履歴がまだありません</p>
-        <p className="text-xs mt-1">登録後、6時間ごとに価格を自動収集します</p>
+        {cannotAutoCollect ? (
+          <p className="text-xs mt-1 text-center">
+            {isAmazon ? 'Amazon' : '楽天'}の商品はボット対策により<br />
+            サーバーからの価格収集ができません
+          </p>
+        ) : (
+          <p className="text-xs mt-1">登録後、6時間ごとに価格を自動収集します</p>
+        )}
         {isAmazon && asin && (
           <button
             onClick={() => setShowKeepa(true)}
@@ -137,11 +160,18 @@ export default function PriceChart({ itemId, url, source }: PriceChartProps) {
         <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
           <div className="text-center">
             <p className="text-2xl font-bold text-blue-600">¥{history[0].price.toLocaleString()}</p>
-            <p className="text-xs text-gray-500 mt-1">{chartData[0].fullDate} 時点</p>
+            <p className="text-xs text-gray-500 mt-1">{chartData[0].fullDate} 時点（登録時）</p>
           </div>
-          <p className="text-xs text-gray-400 mt-3 text-center">
-            次回の価格収集後にグラフが表示されます
-          </p>
+          {cannotAutoCollect ? (
+            <p className="text-xs text-gray-400 mt-3 text-center">
+              {isAmazon ? 'Amazon' : '楽天'}の商品はボット対策により<br />
+              サーバーからの定期的な価格収集ができません
+            </p>
+          ) : (
+            <p className="text-xs text-gray-400 mt-3 text-center">
+              次回の価格収集後にグラフが表示されます
+            </p>
+          )}
         </div>
       </div>
     );
