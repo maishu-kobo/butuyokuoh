@@ -104,34 +104,56 @@ export default function Home() {
     
     if (!over || active.id === over.id) return;
 
-    const oldIndex = filteredItems.findIndex(item => item.id === active.id);
-    const newIndex = filteredItems.findIndex(item => item.id === over.id);
+    const activeItem = filteredItems.find(item => item.id === active.id);
+    const overItem = filteredItems.find(item => item.id === over.id);
+    
+    if (!activeItem || !overItem) return;
+    
+    // 同一優先度内でのみ並び替えを許可
+    if (activeItem.priority !== overItem.priority) return;
+    
+    // 同じ優先度のアイテムのみを抽出
+    const samePriorityItems = filteredItems.filter(item => item.priority === activeItem.priority);
+    const oldIndex = samePriorityItems.findIndex(item => item.id === active.id);
+    const newIndex = samePriorityItems.findIndex(item => item.id === over.id);
     
     if (oldIndex === -1 || newIndex === -1) return;
 
     // 新しい順序で配列を作成
-    const newItems = [...filteredItems];
-    const [movedItem] = newItems.splice(oldIndex, 1);
-    newItems.splice(newIndex, 0, movedItem);
+    const reorderedItems = [...samePriorityItems];
+    const [movedItem] = reorderedItems.splice(oldIndex, 1);
+    reorderedItems.splice(newIndex, 0, movedItem);
     
-    // 全アイテムのsort_orderを一括更新
-    const updates = newItems.map((item, index) => ({
-      id: item.id,
-      sort_order: index,
-    }));
+    // 同一優先度内のsort_orderを計算
+    const newSortOrders = new Map<number, number>();
+    reorderedItems.forEach((item, index) => {
+      newSortOrders.set(item.id, index);
+    });
     
-    // APIで一括更新
-    await Promise.all(
-      updates.map(({ id, sort_order }) =>
-        fetch(`/api/items/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sort_order }),
-        })
-      )
+    // 楽観的更新: 即座にローカル状態を更新
+    setItems(prevItems => 
+      prevItems.map(item => ({
+        ...item,
+        sort_order: newSortOrders.has(item.id) ? newSortOrders.get(item.id)! : item.sort_order,
+      }))
     );
     
-    fetchItems();
+    // バックグラウンドでAPIを一括更新
+    try {
+      await Promise.all(
+        Array.from(newSortOrders.entries()).map(([id, sort_order]) =>
+          fetch(`/api/items/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sort_order }),
+          })
+        )
+      );
+    } catch (error) {
+      // エラー時は再取得して整合性を保つ
+      console.error('Failed to update sort order:', error);
+      fetchItems();
+    }
   };
 
   // 選択モードのトグル
@@ -289,7 +311,11 @@ export default function Home() {
           return a.name.localeCompare(b.name, 'ja');
         case 'priority':
         default:
-          return a.priority - b.priority;
+          // 優先度でソート、同じ優先度ならsort_orderでソート
+          if (a.priority !== b.priority) {
+            return a.priority - b.priority;
+          }
+          return (a.sort_order ?? 0) - (b.sort_order ?? 0);
       }
     });
 
