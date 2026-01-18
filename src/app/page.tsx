@@ -581,14 +581,14 @@ export default function Home() {
             </div>
 
             {/* アクションバー */}
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
               <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200">
                 {selectionMode 
                   ? `${selectedItems.size}件選択中`
                   : `ほしいものリスト (${filteredItems.length}件${selectedCategory ? ` / 全${items.length}件` : ''})`
                 }
               </h2>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {selectionMode ? (
                   <>
                     <button
