@@ -3,6 +3,30 @@ import { getDb } from '@/lib/db';
 import { scrapeWishlist } from '@/lib/wishlist-scraper';
 import { getCurrentUser } from '@/lib/auth';
 
+// URLを正規化する関数
+function normalizeAmazonUrl(url: string): string {
+  try {
+    // ASINを抽出
+    const asinMatch = url.match(/\/dp\/([A-Z0-9]{10})/) || 
+                      url.match(/\/gp\/product\/([A-Z0-9]{10})/) ||
+                      url.match(/\/ASIN\/([A-Z0-9]{10})/);
+    if (asinMatch) {
+      // ドメインを抽出
+      const domainMatch = url.match(/amazon\.(co\.jp|jp|com)/);
+      const domain = domainMatch ? domainMatch[1] : 'co.jp';
+      return `https://www.amazon.${domain}/dp/${asinMatch[1]}`;
+    }
+    return url;
+  } catch {
+    return url;
+  }
+}
+
+interface SkippedItem {
+  name: string;
+  reason: string;
+}
+
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
@@ -17,8 +41,17 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    console.log('[Import] Starting import for URL:', url);
+    
     // ほしいものリストをスクレイピング
     const result = await scrapeWishlist(url);
+    
+    console.log('[Import] Scraping result:', {
+      source: result.source,
+      listName: result.listName,
+      itemCount: result.items.length,
+      error: result.error,
+    });
 
     if (result.error) {
       return NextResponse.json({ error: result.error }, { status: 400 });
@@ -31,47 +64,93 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getDb();
-    const insertStmt = db.prepare(`
-      INSERT OR IGNORE INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    const priceHistoryStmt = db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)');
-
+    
     let imported = 0;
     let skipped = 0;
+    const skippedItems: SkippedItem[] = [];
+    const importedItems: string[] = [];
 
     for (const item of result.items) {
       try {
-        const existingItem = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(user.id, item.url);
-        if (existingItem) {
+        // URLを正規化
+        const normalizedUrl = normalizeAmazonUrl(item.url);
+        
+        console.log('[Import] Processing item:', {
+          name: item.name?.substring(0, 50),
+          originalUrl: item.url,
+          normalizedUrl,
+          price: item.price,
+        });
+
+        // 必須フィールドのチェック
+        if (!item.name || !normalizedUrl) {
+          console.log('[Import] Skipping - missing required fields');
           skipped++;
+          skippedItems.push({
+            name: item.name || 'Unknown',
+            reason: '商品名またはURLが取得できませんでした',
+          });
+          continue;
+        }
+
+        // 重複チェック（正規化されたURLで確認）
+        const existingItem = db.prepare(
+          'SELECT id, url FROM items WHERE user_id = ? AND (url = ? OR url = ?)'
+        ).get(user.id, normalizedUrl, item.url);
+        
+        if (existingItem) {
+          console.log('[Import] Skipping - already exists');
+          skipped++;
+          skippedItems.push({
+            name: item.name.substring(0, 50),
+            reason: '既に登録済みのアイテムです',
+          });
           continue;
         }
 
         const sourceName = result.source === 'amazon' ? 'Amazon' : '楽天市場';
-        const insertResult = insertStmt.run(
+        
+        // INSERTを実行
+        const insertResult = db.prepare(`
+          INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
           user.id,
           item.name,
-          item.url,
+          normalizedUrl,
           item.imageUrl,
           item.price,
           item.price,
           result.source,
           sourceName,
-          3 // デフォルト優先度
+          3
         );
 
-        if (insertResult.changes > 0 && item.price) {
-          priceHistoryStmt.run(insertResult.lastInsertRowid, item.price);
-        }
+        console.log('[Import] Insert result:', { changes: insertResult.changes, lastId: insertResult.lastInsertRowid });
 
         if (insertResult.changes > 0) {
           imported++;
+          importedItems.push(item.name.substring(0, 50));
+          
+          // 価格履歴に追加
+          if (item.price) {
+            db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(
+              insertResult.lastInsertRowid, 
+              item.price
+            );
+          }
         }
       } catch (e) {
-        console.error('Error inserting item:', e);
+        console.error('[Import] Error inserting item:', e);
+        skipped++;
+        skippedItems.push({
+          name: item.name?.substring(0, 50) || 'Unknown',
+          reason: `データベースエラー: ${e instanceof Error ? e.message : 'Unknown error'}`,
+        });
       }
     }
+
+    console.log('[Import] Final result:', { imported, skipped, total: result.items.length });
 
     return NextResponse.json({
       success: true,
@@ -80,11 +159,16 @@ export async function POST(request: NextRequest) {
       total: result.items.length,
       imported,
       skipped,
+      skippedItems: skippedItems.slice(0, 10), // 最大で10件まで返す
+      importedItems: importedItems.slice(0, 5), // 最初の5件を返す
+      message: imported > 0 
+        ? `${imported}件のアイテムをインポートしました` 
+        : 'すべてのアイテムが既に登録済みです',
     });
   } catch (error) {
-    console.error('Import wishlist error:', error);
+    console.error('[Import] Import wishlist error:', error);
     return NextResponse.json({ 
-      error: 'インポートに失敗しました。URLが正しいか確認してください。' 
+      error: `インポートに失敗しました: ${error instanceof Error ? error.message : 'Unknown error'}` 
     }, { status: 500 });
   }
 }
