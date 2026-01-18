@@ -195,6 +195,8 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
+        // Shopifyサイトで日本円価格を取得するためのクッキー
+        'Cookie': 'localization=JP; cart_currency=JPY',
       },
     });
     const html = await response.text();
@@ -208,6 +210,7 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
     const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
     if (jsonLdMatch) {
       for (const match of jsonLdMatch) {
+        if (price) break;
         try {
           // scriptタグを完全に除去（ループで繰り返し置換）
           let jsonContent = match;
@@ -218,19 +221,73 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
             jsonContent = jsonContent.replace(/<\/script>/gi, '');
           }
           const data = JSON.parse(jsonContent);
-          if (data.offers?.price) {
-            price = parseInt(data.offers.price, 10);
-            break;
-          } else if (data['@graph']) {
+          
+          // hasVariant配列をチェック（Shopifyなど）- JPYを優先
+          if (data.hasVariant && Array.isArray(data.hasVariant)) {
+            for (const variant of data.hasVariant) {
+              if (variant.offers?.price && variant.offers?.priceCurrency === 'JPY') {
+                price = parseInt(String(variant.offers.price).replace(/[^0-9]/g, ''), 10);
+                break;
+              }
+            }
+          }
+          
+          // 直接のoffers（JPYを優先）
+          if (!price && data.offers?.price) {
+            if (data.offers.priceCurrency === 'JPY' || !data.offers.priceCurrency) {
+              price = parseInt(String(data.offers.price).replace(/[^0-9]/g, ''), 10);
+            }
+          }
+          
+          // @graphをチェック
+          if (!price && data['@graph']) {
             for (const item of data['@graph']) {
               if (item.offers?.price) {
-                price = parseInt(item.offers.price, 10);
-                break;
+                if (item.offers.priceCurrency === 'JPY' || !item.offers.priceCurrency) {
+                  price = parseInt(String(item.offers.price).replace(/[^0-9]/g, ''), 10);
+                  break;
+                }
               }
             }
           }
         } catch {
           // JSONパース失敗は無視
+        }
+      }
+    }
+
+    // Shopify/EC サイトのJSON価格取得（JPY通貨を優先）
+    if (!price) {
+      // "price":"NNNNN","priceCurrency":"JPY" パターン（引用符付き価格）
+      const jpyQuotedMatch = html.match(/"price"\s*:\s*"(\d+)"\s*,\s*"priceCurrency"\s*:\s*"JPY"/);
+      if (jpyQuotedMatch) {
+        price = parseInt(jpyQuotedMatch[1], 10);
+      }
+    }
+    
+    if (!price) {
+      // "price":NNNNNNN (セント単位) + JPY通貨がページ内にある場合
+      const hasJPY = html.includes('"priceCurrency":"JPY"') || html.includes("'priceCurrency':'JPY'");
+      if (hasJPY) {
+        // Shopifyの場合、"price":NNNNNN (5桁以上、セント単位) があればJPY
+        const shopifyPriceMatch = html.match(/"price":(\d{5,})/);
+        if (shopifyPriceMatch) {
+          // 100で割って円に変換
+          price = Math.round(parseInt(shopifyPriceMatch[1], 10) / 100);
+        }
+      }
+    }
+
+    // og:price:amount メタタグから価格取得（通貨がJPYの場合のみ）
+    if (!price) {
+      const ogCurrencyMatch = html.match(/<meta[^>]*property="og:price:currency"[^>]*content="([^"]+)"/);
+      const currency = ogCurrencyMatch ? ogCurrencyMatch[1] : null;
+      
+      if (currency === 'JPY') {
+        const ogPriceMatch = html.match(/<meta[^>]*property="og:price:amount"[^>]*content="([^"]+)"/) ||
+                             html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:price:amount"/);
+        if (ogPriceMatch) {
+          price = parseInt(ogPriceMatch[1].replace(/,/g, ''), 10);
         }
       }
     }
