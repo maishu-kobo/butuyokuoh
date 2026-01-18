@@ -109,29 +109,27 @@ export default function Home() {
     
     if (oldIndex === -1 || newIndex === -1) return;
 
-    const draggedItem = filteredItems[oldIndex];
-    const targetItem = filteredItems[newIndex];
+    // 新しい順序で配列を作成
+    const newItems = [...filteredItems];
+    const [movedItem] = newItems.splice(oldIndex, 1);
+    newItems.splice(newIndex, 0, movedItem);
     
-    // 同じ優先度内での移動か、異なる優先度への移動か
-    if (draggedItem.priority === targetItem.priority) {
-      // 同じ優先度内: sort_orderを更新
-      // 移動先のsort_orderを使用
-      const newSortOrder = targetItem.sort_order ?? targetItem.id;
-      await fetch(`/api/items/${active.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sort_order: newSortOrder }),
-      });
-    } else {
-      // 異なる優先度への移動: 優先度とsort_orderを更新
-      const newPriority = targetItem.priority;
-      const newSortOrder = targetItem.sort_order ?? targetItem.id;
-      await fetch(`/api/items/${active.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priority: newPriority, sort_order: newSortOrder }),
-      });
-    }
+    // 全アイテムのsort_orderを一括更新
+    const updates = newItems.map((item, index) => ({
+      id: item.id,
+      sort_order: index,
+    }));
+    
+    // APIで一括更新
+    await Promise.all(
+      updates.map(({ id, sort_order }) =>
+        fetch(`/api/items/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sort_order }),
+        })
+      )
+    );
     
     fetchItems();
   };
