@@ -150,6 +150,11 @@ export default function Home() {
     return sum + (price * quantity);
   }, 0);
 
+  // 比較グループフィルター時の最安価格を計算
+  const lowestPriceInGroup = selectedGroup
+    ? Math.min(...filteredItems.filter(i => i.current_price).map(i => i.current_price!))
+    : null;
+
   // 認証チェック
   if (authLoading) {
     return (
@@ -441,6 +446,7 @@ export default function Home() {
                     onDelete={handleDelete}
                     categories={categories}
                     comparisonGroups={groups}
+                    isLowestPrice={selectedGroup !== null && lowestPriceInGroup !== null && item.current_price === lowestPriceInGroup}
                   />
                 ))}
               </div>

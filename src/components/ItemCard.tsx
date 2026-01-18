@@ -11,9 +11,10 @@ interface ItemCardProps {
   onDelete: (id: number) => void;
   categories?: Category[];
   comparisonGroups?: ComparisonGroup[];
+  isLowestPrice?: boolean;
 }
 
-export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [] }: ItemCardProps) {
+export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false }: ItemCardProps) {
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -108,6 +109,12 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     other: 'bg-gray-100 text-gray-800',
   };
 
+  const sourceNames: Record<string, string> = {
+    amazon: 'Amazon',
+    rakuten: '楽天',
+    other: 'その他',
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
       <div className="flex">
@@ -132,7 +139,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <span className={`text-xs px-2 py-0.5 rounded ${sourceColors[item.source] || sourceColors.other}`}>
-                  {item.source_name || item.source}
+                  {item.source_name || sourceNames[item.source] || 'その他'}
                 </span>
                 {item.category_name && item.category_color && (
                   <span
@@ -172,9 +179,14 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           </div>
 
           <div className="mt-2 flex items-baseline gap-2 flex-wrap">
-            <span className="text-xl font-bold text-gray-900">
+            <span className={`text-xl font-bold ${isLowestPrice ? 'text-green-600' : 'text-gray-900'}`}>
               ¥{item.current_price?.toLocaleString() || '---'}
             </span>
+            {isLowestPrice && (
+              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">
+                🏷️ 最安
+              </span>
+            )}
             {(item.quantity || 1) > 1 && (
               <span className="text-sm text-gray-600">
                 × {item.quantity} = ¥{((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}
