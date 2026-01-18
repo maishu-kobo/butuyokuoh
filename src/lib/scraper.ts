@@ -305,6 +305,19 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
 
     // フォールバック: HTMLから価格パターンを検索
     if (!price) {
+      // まず価格用のクラス/ID内の価格を探す
+      const structuredPriceMatch = 
+        html.match(/<[^>]*class="[^"]*price[^"]*"[^>]*>\s*([\d,]+)円/i) ||
+        html.match(/<[^>]*class="[^"]*price[^"]*"[^>]*>\s*¥?\s*([\d,]+)/i) ||
+        html.match(/<[^>]*id="[^"]*price[^"]*"[^>]*>\s*([\d,]+)円/i) ||
+        html.match(/data-price="([\d,]+)"/);
+      if (structuredPriceMatch) {
+        price = parseInt(structuredPriceMatch[1].replace(/,/g, ''), 10);
+      }
+    }
+    
+    if (!price) {
+      // 一般的な価格パターン
       const priceMatch = html.match(/([\d,]+)円/) || html.match(/¥\s*([\d,]+)/) || html.match(/JPY\s*([\d,]+)/i);
       if (priceMatch) {
         price = parseInt(priceMatch[1].replace(/,/g, ''), 10);
