@@ -42,13 +42,10 @@ export default function ImportWishlistModal({ isOpen, onClose, onImported }: Imp
       if (!res.ok) {
         setResult({ success: false, error: data.error });
       } else {
-        setResult({
-          success: true,
-          ...data,
-        });
+        setResult({ success: true, ...data });
         onImported();
       }
-    } catch (err) {
+    } catch {
       setResult({ success: false, error: 'インポートに失敗しました' });
     } finally {
       setLoading(false);
@@ -64,83 +61,74 @@ export default function ImportWishlistModal({ isOpen, onClose, onImported }: Imp
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold">ほしいものリストをインポート</h2>
-          <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
-            <X size={20} />
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="wa-card rounded-lg max-w-md w-full">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--gofun)]">
+          <h2 className="font-medium text-[var(--sumi)]">リストをインポート</h2>
+          <button onClick={handleClose} className="text-[var(--nezumi)] hover:text-[var(--sumi)]">
+            <X size={18} />
           </button>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              ほしいものリストのURL
-            </label>
+            <label className="block text-sm text-[var(--nezumi)] mb-1">URL</label>
             <input
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://www.amazon.co.jp/hz/wishlist/ls/..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="wa-input w-full px-3 py-2 rounded text-sm"
               disabled={loading}
             />
           </div>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-            <p className="text-sm text-blue-800 font-medium mb-2">対応サイト:</p>
-            <ul className="text-sm text-blue-700 space-y-1">
-              <li>• Amazon ほしいものリスト（公開設定が必要）</li>
-              <li>• 楽天 お気に入り（公開設定が必要）</li>
-            </ul>
-          </div>
+          <p className="text-xs text-[var(--nezumi)]">
+            対応: Amazon (co.jp/jp/com) / 楽天お気に入り（公開設定が必要）
+          </p>
 
           {loading && (
-            <div className="flex items-center justify-center py-4 text-gray-600">
-              <Loader2 className="animate-spin mr-2" size={20} />
-              <span>インポート中...（数十秒かかる場合があります）</span>
+            <div className="flex items-center py-3 text-sm text-[var(--nezumi)]">
+              <Loader2 className="animate-spin mr-2" size={16} />
+              インポート中...
             </div>
           )}
 
           {result && !result.success && (
-            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-md p-3">
-              <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={18} />
-              <p className="text-sm text-red-700">{result.error}</p>
+            <div className="flex items-start gap-2 wa-error rounded p-2">
+              <AlertCircle className="flex-shrink-0 mt-0.5" size={16} />
+              <p className="text-sm">{result.error}</p>
             </div>
           )}
 
           {result && result.success && (
-            <div className="bg-green-50 border border-green-200 rounded-md p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <CheckCircle className="text-green-500" size={18} />
-                <span className="font-medium text-green-800">インポート完了！</span>
+            <div className="wa-success rounded p-2">
+              <div className="flex items-center gap-1.5 mb-1">
+                <CheckCircle size={16} />
+                <span className="text-sm font-medium">完了</span>
               </div>
-              <div className="text-sm text-green-700 space-y-1">
-                <p>リスト名: {result.listName}</p>
-                <p>取得件数: {result.total}件</p>
-                <p>インポート: {result.imported}件</p>
-                {result.skipped && result.skipped > 0 && (
-                  <p>スキップ（登録済み）: {result.skipped}件</p>
-                )}
-              </div>
+              <p className="text-xs">
+                {result.listName}: {result.imported}件インポート
+                {result.skipped ? ` / ${result.skipped}件スキップ` : ''}
+              </p>
             </div>
           )}
         </div>
 
-        <div className="flex justify-end gap-2 p-4 border-t bg-gray-50">
+        <div className="flex justify-end gap-2 px-4 py-3 border-t border-[var(--gofun)] bg-[var(--gofun)]">
           <button
             onClick={handleClose}
-            className="px-4 py-2 text-gray-600 hover:text-gray-800"
+            className="px-3 py-1.5 text-sm text-[var(--nezumi)] hover:text-[var(--sumi)]"
           >
             閉じる
           </button>
           <button
             onClick={handleImport}
             disabled={loading || !url.trim()}
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className="px-3 py-1.5 text-sm text-white rounded disabled:opacity-50 flex items-center gap-1"
+            style={{ background: 'var(--ai)' }}
           >
-            <Upload size={18} />
+            <Upload size={14} />
             インポート
           </button>
         </div>

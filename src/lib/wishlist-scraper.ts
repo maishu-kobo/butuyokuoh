@@ -68,11 +68,14 @@ export async function scrapeAmazonWishlist(listUrl: string): Promise<WishlistRes
           if (url && !url.startsWith('http')) {
             url = 'https://www.amazon.co.jp' + url;
           }
-          // パラメータを除去してクリーンなURLに
+          // パラメータを除去してクリーンなURLに（元のドメインを保持）
           if (url) {
             const match = url.match(/\/dp\/([A-Z0-9]+)/) || url.match(/\/gp\/product\/([A-Z0-9]+)/);
             if (match) {
-              url = `https://www.amazon.co.jp/dp/${match[1]}`;
+              // 元のドメインを抽出（amazon.jp, amazon.co.jp, amazon.com）
+              const domainMatch = url.match(/https?:\/\/(www\.)?amazon\.(co\.jp|jp|com)/);
+              const domain = domainMatch ? `https://www.amazon.${domainMatch[2]}` : 'https://www.amazon.co.jp';
+              url = `${domain}/dp/${match[1]}`;
             }
           }
           
