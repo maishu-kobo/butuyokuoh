@@ -258,12 +258,12 @@ export default function SettingsPage() {
             <h3 className="font-semibold text-[var(--color-text)] mb-4">アカウント情報</h3>
             <div className="space-y-2 text-sm">
               <div className="flex">
-                <span className="text-gray-500 dark:text-gray-400 dark:text-gray-500 w-32">メール:</span>
+                <span className="text-[var(--color-muted)] w-32">メール:</span>
                 <span className="text-[var(--color-text)]">{user.email}</span>
               </div>
               {user.name && (
                 <div className="flex">
-                  <span className="text-gray-500 dark:text-gray-400 dark:text-gray-500 w-32">名前:</span>
+                  <span className="text-[var(--color-muted)] w-32">名前:</span>
                   <span className="text-[var(--color-text)]">{user.name}</span>
                 </div>
               )}
@@ -272,11 +272,11 @@ export default function SettingsPage() {
 
           {/* カテゴリ管理 */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('categories')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:bg-slate-700 dark:hover:bg-slate-700 rounded-lg">
+            <button onClick={() => toggleSection('categories')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Tag size={20} className="text-[var(--color-primary)]" />
                 <h3 className="font-semibold text-[var(--color-text)]">カテゴリ管理</h3>
-                <span className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">({categories.length})</span>
+                <span className="text-sm text-[var(--color-muted)]">({categories.length})</span>
               </div>
               {openSections.categories ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </button>
@@ -287,7 +287,7 @@ export default function SettingsPage() {
                   <input type="color" value={newCategoryColor} onChange={(e) => setNewCategoryColor(e.target.value)} className="w-12 h-10 border border-gray-300 dark:border-slate-600 rounded-md cursor-pointer" />
                   <button onClick={handleAddCategory} className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center gap-1"><Plus size={18} /> 追加</button>
                 </div>
-                {categories.length === 0 ? <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm">カテゴリがありません</p> : (
+                {categories.length === 0 ? <p className="text-[var(--color-muted)] text-sm">カテゴリがありません</p> : (
                   <div className="space-y-2">
                     {categories.map((cat) => (
                       <div key={cat.id} className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-slate-700 rounded-md">
@@ -316,11 +316,11 @@ export default function SettingsPage() {
 
           {/* 比較グループ管理 */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('groups')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:bg-slate-700 dark:hover:bg-slate-700 rounded-lg">
+            <button onClick={() => toggleSection('groups')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Layers size={20} className="text-[var(--color-primary)]" />
                 <h3 className="font-semibold text-[var(--color-text)]">比較グループ管理</h3>
-                <span className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">({groups.length})</span>
+                <span className="text-sm text-[var(--color-muted)]">({groups.length})</span>
               </div>
               {openSections.groups ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </button>
@@ -330,7 +330,7 @@ export default function SettingsPage() {
                   <input type="text" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} placeholder="新しいグループ名" className="flex-1 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm" />
                   <button onClick={handleAddGroup} className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center gap-1"><Plus size={18} /> 追加</button>
                 </div>
-                {groups.length === 0 ? <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm">比較グループがありません</p> : (
+                {groups.length === 0 ? <p className="text-[var(--color-muted)] text-sm">比較グループがありません</p> : (
                   <div className="space-y-2">
                     {groups.map((group) => (
                       <div key={group.id} className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-slate-700 rounded-md">
@@ -359,11 +359,11 @@ export default function SettingsPage() {
 
           {/* ゴミ箱 */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('trash')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:bg-slate-700 dark:hover:bg-slate-700 rounded-lg">
+            <button onClick={() => toggleSection('trash')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Trash2 size={20} className="text-[var(--color-primary)]" />
                 <h3 className="font-semibold text-[var(--color-text)]">ゴミ箱</h3>
-                <span className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">({trashItems.length}件)</span>
+                <span className="text-sm text-[var(--color-muted)]">({trashItems.length}件)</span>
               </div>
               {openSections.trash ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </button>
@@ -374,7 +374,7 @@ export default function SettingsPage() {
                     <button onClick={handleEmptyTrash} className="text-sm text-red-500 hover:text-red-600">ゴミ箱を空にする</button>
                   </div>
                 )}
-                {loadingTrash ? <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm py-2">読み込み中...</p> : trashItems.length === 0 ? <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm py-2">ゴミ箱は空です</p> : (
+                {loadingTrash ? <p className="text-[var(--color-muted)] text-sm py-2">読み込み中...</p> : trashItems.length === 0 ? <p className="text-[var(--color-muted)] text-sm py-2">ゴミ箱は空です</p> : (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {trashItems.map((item) => (
                       <div key={item.id} className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-slate-700 rounded-md">
@@ -413,7 +413,7 @@ export default function SettingsPage() {
                       className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                         colorScheme === 'wa-modern'
                           ? 'bg-[var(--color-primary)] text-white'
-                          : 'bg-[var(--color-border)] text-[var(--color-muted)] hover:bg-[var(--color-muted-light)] hover:text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
                       <span className="w-4 h-4 rounded-full bg-[#c53d43]"></span>
@@ -424,7 +424,7 @@ export default function SettingsPage() {
                       className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                         colorScheme === 'default'
                           ? 'bg-[var(--color-primary)] text-white'
-                          : 'bg-[var(--color-border)] text-[var(--color-muted)] hover:bg-[var(--color-muted-light)] hover:text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
                       <span className="w-4 h-4 rounded-full bg-[#f97316]"></span>
@@ -445,7 +445,7 @@ export default function SettingsPage() {
                       className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                         theme === 'light'
                           ? 'bg-[var(--color-primary)] text-white'
-                          : 'bg-[var(--color-border)] text-[var(--color-muted)] hover:bg-[var(--color-muted-light)] hover:text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
                       <Sun size={16} />
@@ -456,7 +456,7 @@ export default function SettingsPage() {
                       className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                         theme === 'dark'
                           ? 'bg-[var(--color-primary)] text-white'
-                          : 'bg-[var(--color-border)] text-[var(--color-muted)] hover:bg-[var(--color-muted-light)] hover:text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
                       <Moon size={16} />
@@ -467,7 +467,7 @@ export default function SettingsPage() {
                       className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                         theme === 'system'
                           ? 'bg-[var(--color-primary)] text-white'
-                          : 'bg-[var(--color-border)] text-[var(--color-muted)] hover:bg-[var(--color-muted-light)] hover:text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
                       <Monitor size={16} />
@@ -481,7 +481,7 @@ export default function SettingsPage() {
 
           {/* 価格通知設定 */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('notify')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:bg-slate-700 dark:hover:bg-slate-700 rounded-lg">
+            <button onClick={() => toggleSection('notify')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Bell size={20} className="text-[var(--color-primary)]" />
                 <h3 className="font-semibold text-[var(--color-text)]">価格通知設定</h3>
@@ -511,7 +511,7 @@ export default function SettingsPage() {
 
           {/* Chrome拡張機能用トークン */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('token')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:bg-slate-700 dark:hover:bg-slate-700 rounded-lg">
+            <button onClick={() => toggleSection('token')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Key size={20} className="text-[var(--color-primary)]" />
                 <h3 className="font-semibold text-[var(--color-text)]">Chrome拡張機能用トークン</h3>
@@ -528,15 +528,15 @@ export default function SettingsPage() {
                       {copied ? <Check size={18} /> : <Copy size={18} />}{copied ? 'コピーした' : 'コピー'}
                     </button>
                   </div>
-                ) : <div className="text-gray-500 dark:text-gray-400 dark:text-gray-500">トークンを取得中...</div>}
-                <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-2">※ このトークンは他人に共有しないでください</p>
+                ) : <div className="text-[var(--color-muted)]">トークンを取得中...</div>}
+                <p className="text-xs text-[var(--color-muted)] mt-2">※ このトークンは他人に共有しないでください</p>
               </div>
             )}
           </div>
 
           {/* データエクスポート */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('export')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:bg-slate-700 dark:hover:bg-slate-700 rounded-lg">
+            <button onClick={() => toggleSection('export')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Download size={20} className="text-[var(--color-primary)]" />
                 <h3 className="font-semibold text-[var(--color-text)]">データエクスポート</h3>
