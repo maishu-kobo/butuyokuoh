@@ -20,6 +20,7 @@ export interface Item {
   target_price: number | null;
   target_currency: 'JPY' | 'USD' | null;
   quantity: number;
+  sort_order?: number;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;

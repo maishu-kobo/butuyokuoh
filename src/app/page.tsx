@@ -109,16 +109,29 @@ export default function Home() {
     
     if (oldIndex === -1 || newIndex === -1) return;
 
-    // 新しい優先度を計算（移動先のアイテムの優先度を使用）
+    const draggedItem = filteredItems[oldIndex];
     const targetItem = filteredItems[newIndex];
-    const newPriority = targetItem.priority;
     
-    // APIで優先度を更新
-    await fetch(`/api/items/${active.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ priority: newPriority }),
-    });
+    // 同じ優先度内での移動か、異なる優先度への移動か
+    if (draggedItem.priority === targetItem.priority) {
+      // 同じ優先度内: sort_orderを更新
+      // 移動先のsort_orderを使用
+      const newSortOrder = targetItem.sort_order ?? targetItem.id;
+      await fetch(`/api/items/${active.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sort_order: newSortOrder }),
+      });
+    } else {
+      // 異なる優先度への移動: 優先度とsort_orderを更新
+      const newPriority = targetItem.priority;
+      const newSortOrder = targetItem.sort_order ?? targetItem.id;
+      await fetch(`/api/items/${active.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority: newPriority, sort_order: newSortOrder }),
+      });
+    }
     
     fetchItems();
   };

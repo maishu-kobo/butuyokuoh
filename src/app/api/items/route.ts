@@ -29,7 +29,7 @@ export async function GET() {
     WHERE i.is_purchased = 0 AND i.user_id = ? AND i.deleted_at IS NULL
     ORDER BY 
       COALESCE(cg.priority, i.priority) ASC,
-      i.planned_purchase_date ASC NULLS LAST,
+      i.sort_order ASC,
       i.created_at DESC
   `).all(user.id);
   
