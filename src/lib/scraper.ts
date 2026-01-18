@@ -277,10 +277,10 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
     }
     
     if (!price) {
-      // "price":NNNNNNN (セント単位) + JPY通貨がページ内にある場合
-      const hasJPY = html.includes('"priceCurrency":"JPY"') || html.includes("'priceCurrency':'JPY'");
-      if (hasJPY) {
-        // Shopifyの場合、"price":NNNNNN (5桁以上、セント単位) があればJPY
+      // Shopifyサイトのセント単位価格（Shopifyかどうかを確認）
+      const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme');
+      if (isShopify) {
+        // Shopifyの場合、"price":NNNNNN (5桁以上、セント単位) をJPYとみなす
         const shopifyPriceMatch = html.match(/"price":(\d{5,})/);
         if (shopifyPriceMatch) {
           // 100で割って円に変換
