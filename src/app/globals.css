@@ -71,7 +71,7 @@
   
   --color-primary: #f97316;
   --color-primary-hover: #ea580c;
-  --color-secondary: #3b82f6;
+  --color-secondary: #f97316;  /* ヘッダーもオレンジ */
   --color-accent: #fbbf24;
   
   --color-border: #e5e7eb;
