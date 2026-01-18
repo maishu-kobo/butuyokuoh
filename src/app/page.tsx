@@ -200,49 +200,49 @@ export default function Home() {
       {/* ナビゲーション（ピル型タブ） */}
       <div className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3">
-          <nav className="flex gap-2">
+          <nav className="flex gap-1.5 overflow-x-auto scrollbar-hide">
             <button
               onClick={() => { changeTab('list'); fetchItems(); }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'list'
                   ? 'bg-orange-500 text-white shadow-md'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              <List size={18} />
+              <List size={16} />
               リスト
             </button>
             <button
               onClick={() => changeTab('budget')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'budget'
                   ? 'bg-orange-500 text-white shadow-md'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              <Wallet size={18} />
+              <Wallet size={16} />
               出費予定
             </button>
             <button
               onClick={() => changeTab('purchased')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'purchased'
                   ? 'bg-orange-500 text-white shadow-md'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              <ShoppingBag size={18} />
+              <ShoppingBag size={16} />
               購入済
             </button>
             <button
               onClick={() => changeTab('stats')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'stats'
                   ? 'bg-orange-500 text-white shadow-md'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              <BarChart3 size={18} />
+              <BarChart3 size={16} />
               統計
             </button>
           </nav>
@@ -255,18 +255,14 @@ export default function Home() {
         {activeTab === 'list' && (
           <div className="space-y-4">
             {/* サマリーカード */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="bg-white rounded-2xl shadow-sm p-4">
-                <p className="text-xs text-slate-500 mb-1">アイテム数</p>
-                <p className="text-2xl font-bold text-slate-800">{items.length}<span className="text-sm font-normal text-slate-500">件</span></p>
+            <div className="flex gap-3">
+              <div className="flex-1 bg-white rounded-xl shadow-sm px-4 py-2.5">
+                <p className="text-xs text-slate-500">アイテム数</p>
+                <p className="text-xl font-bold text-slate-800">{items.length}<span className="text-sm font-normal text-slate-500 ml-0.5">件</span></p>
               </div>
-              <div className="bg-white rounded-2xl shadow-sm p-4">
-                <p className="text-xs text-slate-500 mb-1">合計金額</p>
-                <p className="text-2xl font-bold text-orange-500">¥{totalAmount.toLocaleString()}</p>
-              </div>
-              <div className="hidden sm:block bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl shadow-sm p-4 text-white">
-                <p className="text-xs text-orange-100 mb-1">カテゴリ</p>
-                <p className="text-2xl font-bold">{categories.length}<span className="text-sm font-normal text-orange-100">個</span></p>
+              <div className="flex-1 bg-white rounded-xl shadow-sm px-4 py-2.5">
+                <p className="text-xs text-slate-500">合計金額</p>
+                <p className="text-xl font-bold text-orange-500">¥{totalAmount.toLocaleString()}</p>
               </div>
             </div>
 
