@@ -16,7 +16,13 @@ export async function GET() {
       cg.name as comparison_group_name,
       cg.priority as group_priority,
       cat.name as category_name,
-      cat.color as category_color
+      cat.color as category_color,
+      (
+        SELECT price FROM price_history 
+        WHERE item_id = i.id 
+        ORDER BY recorded_at DESC 
+        LIMIT 1 OFFSET 1
+      ) as previous_price
     FROM items i
     LEFT JOIN comparison_groups cg ON i.comparison_group_id = cg.id
     LEFT JOIN categories cat ON i.category_id = cat.id

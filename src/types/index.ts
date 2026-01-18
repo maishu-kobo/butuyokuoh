@@ -5,6 +5,7 @@ export interface Item {
   image_url: string | null;
   current_price: number | null;
   original_price: number | null;
+  previous_price?: number | null; // 前回価格（価格履歴から取得）
   source: string; // 'amazon', 'rakuten', 'other'
   source_name: string | null; // メーカー名など
   priority: number; // 1-5

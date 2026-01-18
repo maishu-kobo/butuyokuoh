@@ -20,16 +20,16 @@
   - 最安の場合に価格が緑色 + 🏷️最安バッジ
 - [x] 実装
 
-### 3. 価格変動の視覚化
+### 3. 価格変動の視覚化 ✅ 完了
 - **現状**: 価格推移グラフはあるが、リストビューで変動が見えない
 - **改善**: 前回比で↑↓アイコン＋変動額を表示
-- **ファイル**: `src/components/ItemCard.tsx`, API側で前回価格を返す必要があるか確認
+- **ファイル**: `src/app/api/items/route.ts`, `src/types/index.ts`, `src/components/ItemCard.tsx`
 - **難易度**: ★★☆☆☆（普通）
-- **実装方針**:
-  - Item型に previous_price があるか確認
-  - なければAPIでprice_historyから取得するか、テーブルにカラム追加
-  - ItemCardで差分を表示（↑赤, ↓緑）
-- [ ] 実装
+- **実装内容**:
+  - API: price_historyからprevious_priceを取得するSQL追加
+  - Item型: previous_price フィールド追加
+  - ItemCard: previous_priceを優先的に使用して差分表示
+- [x] 実装
 
 ## 優先度中
 

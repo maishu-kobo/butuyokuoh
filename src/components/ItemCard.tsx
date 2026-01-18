@@ -99,8 +99,10 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     onUpdate();
   };
 
-  const priceChange = item.original_price && item.current_price 
-    ? item.current_price - item.original_price 
+  // 前回価格との差分（previous_priceがあればそれを使用、なければoriginal_price）
+  const previousPrice = item.previous_price ?? item.original_price;
+  const priceChange = previousPrice && item.current_price 
+    ? item.current_price - previousPrice 
     : 0;
 
   const sourceColors: Record<string, string> = {
