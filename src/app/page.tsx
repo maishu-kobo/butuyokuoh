@@ -379,7 +379,7 @@ export default function Home() {
       </header>
 
       {/* ナビゲーション（ピル型タブ） */}
-      <div className="bg-white dark:bg-slate-800 shadow-sm sticky top-0 z-10">
+      <div className="bg-white dark:bg-slate-800 shadow-sm sticky top-0 z-20">
         <div className="max-w-4xl mx-auto px-4 py-3">
           <nav className="flex gap-1.5 overflow-x-auto scrollbar-hide">
             <button
@@ -581,14 +581,14 @@ export default function Home() {
             </div>
 
             {/* アクションバー */}
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
               <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200">
                 {selectionMode 
                   ? `${selectedItems.size}件選択中`
                   : `ほしいものリスト (${filteredItems.length}件${selectedCategory ? ` / 全${items.length}件` : ''})`
                 }
               </h2>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {selectionMode ? (
                   <>
                     <button
