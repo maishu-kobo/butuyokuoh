@@ -20,13 +20,30 @@ function extractAsin(url: string): string | null {
   return match ? match[1] : null;
 }
 
+// AmazonのURLかどうかを安全に判定（hostname完全一致）
+function isAmazonUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    return hostname === 'www.amazon.co.jp' ||
+           hostname === 'www.amazon.jp' ||
+           hostname === 'www.amazon.com' ||
+           hostname === 'amazon.co.jp' ||
+           hostname === 'amazon.jp' ||
+           hostname === 'amazon.com';
+  } catch {
+    return false;
+  }
+}
+
 export default function PriceChart({ itemId, url, source }: PriceChartProps) {
   const [history, setHistory] = useState<PriceHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [showKeepa, setShowKeepa] = useState(true);
 
   // Amazonの場合、ASINを抽出
-  const isAmazon = source === 'amazon' || url?.includes('amazon.co.jp') || url?.includes('amazon.com');
+  const isAmazon = source === 'amazon' || isAmazonUrl(url);
   const asin = url ? extractAsin(url) : null;
 
   useEffect(() => {

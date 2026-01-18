@@ -21,6 +21,7 @@ function AddPageContent() {
   const { user, loading: authLoading } = useAuth();
 
   const [url, setUrl] = useState('');
+  const [safeUrl, setSafeUrl] = useState<string | null>(null);
   const [productInfo, setProductInfo] = useState<ProductInfo | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
@@ -33,14 +34,28 @@ function AddPageContent() {
   const [quantity, setQuantity] = useState(1);
   const [plannedDate, setPlannedDate] = useState('');
 
+  // URLを検証してサニタイズ（XSS対策）
+  const sanitizeUrlForLink = (inputUrl: string): string | null => {
+    try {
+      const parsed = new URL(inputUrl);
+      // http/httpsのみ許可（javascript:等を防ぐ）
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        return null;
+      }
+      return parsed.href;
+    } catch {
+      return null;
+    }
+  };
+
   // URLパラメータからURLを取得
   useEffect(() => {
     const urlParam = searchParams.get('url');
     const textParam = searchParams.get('text');
-    
+
     // URLを抽出（textに含まれる場合もある）
     let extractedUrl = urlParam || '';
-    
+
     if (!extractedUrl && textParam) {
       // textからURLを抽出
       const urlMatch = textParam.match(/https?:\/\/[^\s]+/);
@@ -51,6 +66,7 @@ function AddPageContent() {
 
     if (extractedUrl) {
       setUrl(extractedUrl);
+      setSafeUrl(sanitizeUrlForLink(extractedUrl));
     }
   }, [searchParams]);
 
@@ -258,15 +274,17 @@ function AddPageContent() {
                   </p>
                 </div>
               </div>
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 text-xs text-blue-500 flex items-center gap-1 hover:underline"
-              >
-                <ExternalLink size={12} />
-                商品ページを開く
-              </a>
+              {safeUrl && (
+                <a
+                  href={safeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 text-xs text-blue-500 flex items-center gap-1 hover:underline"
+                >
+                  <ExternalLink size={12} />
+                  商品ページを開く
+                </a>
+              )}
             </div>
 
             {/* 設定 */}

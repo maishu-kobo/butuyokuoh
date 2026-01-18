@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getUserIdFromToken } from '@/lib/auth';
+import { validateAndSanitizeUrl } from '@/lib/url-validator';
 
 interface AddItemRequest {
   token: string;
@@ -59,14 +60,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ソースを判定
-    let source = 'other';
+    // ソースを判定（URL検証を使用）
+    const urlValidation = validateAndSanitizeUrl(item.url);
+    let source = urlValidation.source;
     let sourceName = 'その他';
-    if (item.url.includes('amazon.co.jp') || item.url.includes('amazon.com')) {
-      source = 'amazon';
+    if (source === 'amazon') {
       sourceName = 'Amazon';
-    } else if (item.url.includes('rakuten.co.jp')) {
-      source = 'rakuten';
+    } else if (source === 'rakuten') {
       sourceName = '楽天市場';
     }
 

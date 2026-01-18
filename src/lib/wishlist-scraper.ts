@@ -14,7 +14,56 @@ export interface WishlistResult {
   error?: string;
 }
 
-export async function scrapeAmazonWishlist(listUrl: string): Promise<WishlistResult> {
+// 許可されたウィシュリストドメイン（完全一致）
+const ALLOWED_WISHLIST_DOMAINS = new Set([
+  'www.amazon.co.jp',
+  'www.amazon.jp',
+  'www.amazon.com',
+  'amazon.co.jp',
+  'amazon.jp',
+  'amazon.com',
+  'my.bookmark.rakuten.co.jp',
+]);
+
+/**
+ * ウィシュリストURLを検証
+ * hostname.includes() ではなく、完全一致で検証
+ */
+function validateWishlistUrl(listUrl: string): { isValid: boolean; source: 'amazon' | 'rakuten' | null; sanitizedUrl: string } {
+  try {
+    const parsedUrl = new URL(listUrl);
+
+    // HTTPSのみ許可
+    if (parsedUrl.protocol !== 'https:') {
+      return { isValid: false, source: null, sanitizedUrl: '' };
+    }
+
+    const hostname = parsedUrl.hostname.toLowerCase();
+
+    // ドメインの完全一致チェック
+    if (!ALLOWED_WISHLIST_DOMAINS.has(hostname)) {
+      return { isValid: false, source: null, sanitizedUrl: '' };
+    }
+
+    // ソースを判定（完全一致）
+    let source: 'amazon' | 'rakuten' | null = null;
+    if (hostname === 'www.amazon.co.jp' || hostname === 'www.amazon.jp' || hostname === 'www.amazon.com' ||
+        hostname === 'amazon.co.jp' || hostname === 'amazon.jp' || hostname === 'amazon.com') {
+      source = 'amazon';
+    } else if (hostname === 'my.bookmark.rakuten.co.jp') {
+      source = 'rakuten';
+    }
+
+    // URLを再構築
+    const sanitizedUrl = `${parsedUrl.protocol}//${parsedUrl.hostname}${parsedUrl.pathname}${parsedUrl.search}`;
+
+    return { isValid: true, source, sanitizedUrl };
+  } catch {
+    return { isValid: false, source: null, sanitizedUrl: '' };
+  }
+}
+
+export async function scrapeAmazonWishlist(sanitizedUrl: string): Promise<WishlistResult> {
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -29,7 +78,8 @@ export async function scrapeAmazonWishlist(listUrl: string): Promise<WishlistRes
       'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
     });
 
-    await page.goto(listUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    // sanitizedUrlは既に検証済み
+    await page.goto(sanitizedUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
     // リスト名を取得
     const listName = await page.$eval(
@@ -40,64 +90,54 @@ export async function scrapeAmazonWishlist(listUrl: string): Promise<WishlistRes
     // スクロールして全アイテムを読み込む
     let previousHeight = 0;
     for (let i = 0; i < 10; i++) {
-      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.evaluateHandle('window.scrollTo(0, document.body.scrollHeight)');
       await new Promise(resolve => setTimeout(resolve, 1000));
-      const currentHeight = await page.evaluate(() => document.body.scrollHeight);
-      if (currentHeight === previousHeight) break;
-      previousHeight = currentHeight;
+      const currentHeight = await page.evaluateHandle('document.body.scrollHeight');
+      const height = await currentHeight.jsonValue() as number;
+      if (height === previousHeight) break;
+      previousHeight = height;
     }
 
-    // アイテムを抽出
-    const items = await page.evaluate(() => {
-      const results: WishlistItem[] = [];
-      
-      // Amazon wishlist item selectors
-      const itemElements = document.querySelectorAll('[data-itemid], li[data-id], .g-item-sortable');
-      
-      itemElements.forEach((item) => {
+    // アイテムを抽出（ページコンテキスト内で実行）
+    const items = await page.$$eval('[data-itemid], li[data-id], .g-item-sortable', (elements) => {
+      return elements.map((item) => {
         try {
           // 商品名
           const nameEl = item.querySelector('[id*="itemName"], .a-link-normal[title], h2 a, .g-title a');
-          const name = nameEl?.textContent?.trim() || nameEl?.getAttribute('title')?.trim();
-          
+          const name = nameEl?.textContent?.trim() || (nameEl as HTMLElement)?.getAttribute('title')?.trim() || '';
+
           // URL
           const linkEl = item.querySelector('a[href*="/dp/"], a[href*="/gp/product/"]') as HTMLAnchorElement;
           let url = linkEl?.href || '';
-          
-          // URLをクリーンアップ（相対パスの場合）
+
+          // URLをクリーンアップ
           if (url && !url.startsWith('http')) {
             url = 'https://www.amazon.co.jp' + url;
           }
-          // パラメータを除去してクリーンなURLに（元のドメインを保持）
           if (url) {
             const match = url.match(/\/dp\/([A-Z0-9]+)/) || url.match(/\/gp\/product\/([A-Z0-9]+)/);
             if (match) {
-              // 元のドメインを抽出（amazon.jp, amazon.co.jp, amazon.com）
-              const domainMatch = url.match(/https?:\/\/(www\.)?amazon\.(co\.jp|jp|com)/);
-              const domain = domainMatch ? `https://www.amazon.${domainMatch[2]}` : 'https://www.amazon.co.jp';
+              const domainMatch = url.match(/https?:\/\/(www\.amazon\.co\.jp|www\.amazon\.jp|www\.amazon\.com|amazon\.co\.jp|amazon\.jp|amazon\.com)/);
+              const domain = domainMatch ? `https://${domainMatch[1].replace(/^(amazon)/, 'www.$1')}` : 'https://www.amazon.co.jp';
               url = `${domain}/dp/${match[1]}`;
             }
           }
-          
+
           // 価格
           const priceEl = item.querySelector('[id*="itemPrice"], .a-price .a-offscreen, .a-color-price');
           const priceText = priceEl?.textContent || '';
           const priceMatch = priceText.match(/([\d,]+)/);
           const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null;
-          
+
           // 画像
           const imgEl = item.querySelector('img[src*="images-amazon"], img[src*="m.media-amazon"]') as HTMLImageElement;
           const imageUrl = imgEl?.src || null;
-          
-          if (name && url) {
-            results.push({ name, url, price, imageUrl });
-          }
-        } catch (e) {
-          // スキップ
+
+          return { name, url, price, imageUrl };
+        } catch {
+          return null;
         }
-      });
-      
-      return results;
+      }).filter((item): item is WishlistItem => item !== null && !!item.name && !!item.url);
     });
 
     return {
@@ -118,7 +158,7 @@ export async function scrapeAmazonWishlist(listUrl: string): Promise<WishlistRes
   }
 }
 
-export async function scrapeRakutenFavorites(listUrl: string): Promise<WishlistResult> {
+export async function scrapeRakutenFavorites(sanitizedUrl: string): Promise<WishlistResult> {
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -133,54 +173,47 @@ export async function scrapeRakutenFavorites(listUrl: string): Promise<WishlistR
       'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
     });
 
-    await page.goto(listUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    // sanitizedUrlは既に検証済み
+    await page.goto(sanitizedUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
     // スクロールして全アイテムを読み込む
     let previousHeight = 0;
     for (let i = 0; i < 10; i++) {
-      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.evaluateHandle('window.scrollTo(0, document.body.scrollHeight)');
       await new Promise(resolve => setTimeout(resolve, 1000));
-      const currentHeight = await page.evaluate(() => document.body.scrollHeight);
-      if (currentHeight === previousHeight) break;
-      previousHeight = currentHeight;
+      const currentHeight = await page.evaluateHandle('document.body.scrollHeight');
+      const height = await currentHeight.jsonValue() as number;
+      if (height === previousHeight) break;
+      previousHeight = height;
     }
 
     // アイテムを抽出
-    const items = await page.evaluate(() => {
-      const results: WishlistItem[] = [];
-      
-      // 楽天お気に入りのアイテム
-      const itemElements = document.querySelectorAll('.rnkRanking_item, .searchresultitem, [data-item-id], .item');
-      
-      itemElements.forEach((item) => {
+    const items = await page.$$eval('.rnkRanking_item, .searchresultitem, [data-item-id], .item', (elements) => {
+      return elements.map((item) => {
         try {
           // 商品名
           const nameEl = item.querySelector('.title a, h2 a, .itemName a, a.title');
-          const name = nameEl?.textContent?.trim();
-          
+          const name = nameEl?.textContent?.trim() || '';
+
           // URL
           const linkEl = item.querySelector('a[href*="item.rakuten.co.jp"], a[href*="product.rakuten.co.jp"]') as HTMLAnchorElement;
           const url = linkEl?.href || '';
-          
+
           // 価格
           const priceEl = item.querySelector('.price, .important, [class*="price"]');
           const priceText = priceEl?.textContent || '';
           const priceMatch = priceText.match(/([\d,]+)/);
           const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null;
-          
+
           // 画像
           const imgEl = item.querySelector('img[src*="thumbnail"], img[src*="r.r10s.jp"]') as HTMLImageElement;
           const imageUrl = imgEl?.src || null;
-          
-          if (name && url) {
-            results.push({ name, url, price, imageUrl });
-          }
-        } catch (e) {
-          // スキップ
+
+          return { name, url, price, imageUrl };
+        } catch {
+          return null;
         }
-      });
-      
-      return results;
+      }).filter((item): item is WishlistItem => item !== null && !!item.name && !!item.url);
     });
 
     return {
@@ -202,19 +235,20 @@ export async function scrapeRakutenFavorites(listUrl: string): Promise<WishlistR
 }
 
 export async function scrapeWishlist(listUrl: string): Promise<WishlistResult> {
-  const url = new URL(listUrl);
-  const hostname = url.hostname.toLowerCase();
+  const validation = validateWishlistUrl(listUrl);
 
-  if (hostname.includes('amazon.co.jp') || hostname.includes('amazon.jp') || hostname.includes('amazon.com')) {
-    return scrapeAmazonWishlist(listUrl);
-  } else if (hostname.includes('rakuten.co.jp')) {
-    return scrapeRakutenFavorites(listUrl);
-  } else {
+  if (!validation.isValid || !validation.source) {
     return {
       source: 'amazon',
       listName: 'エラー',
       items: [],
       error: '対応していないサイトです。Amazon または 楽天のURLを入力してください。',
     };
+  }
+
+  if (validation.source === 'amazon') {
+    return scrapeAmazonWishlist(validation.sanitizedUrl);
+  } else {
+    return scrapeRakutenFavorites(validation.sanitizedUrl);
   }
 }

@@ -1,3 +1,5 @@
+import { validateAndSanitizeUrl, sanitizeGenericUrl } from './url-validator';
+
 export interface ScrapedItem {
   name: string;
   price: number | null;
@@ -7,21 +9,35 @@ export interface ScrapedItem {
 }
 
 export async function scrapeUrl(url: string): Promise<ScrapedItem> {
-  const parsedUrl = new URL(url);
-  const hostname = parsedUrl.hostname.toLowerCase();
+  const validation = validateAndSanitizeUrl(url);
 
-  if (hostname.includes('amazon.co.jp') || hostname.includes('amazon.com')) {
-    return scrapeAmazon(url);
-  } else if (hostname.includes('rakuten.co.jp')) {
-    return scrapeRakuten(url);
-  } else {
-    return scrapeGeneric(url, hostname);
+  if (validation.isValid) {
+    // 許可されたドメインの場合
+    if (validation.source === 'amazon') {
+      return scrapeAmazon(validation.sanitizedUrl);
+    } else if (validation.source === 'rakuten') {
+      return scrapeRakuten(validation.sanitizedUrl);
+    }
   }
+
+  // 許可リスト外のドメインの場合、一般的なスクレイピング
+  const genericValidation = sanitizeGenericUrl(url);
+  if (!genericValidation.isValid) {
+    return {
+      name: '無効なURL',
+      price: null,
+      imageUrl: null,
+      source: 'other',
+      sourceName: null,
+    };
+  }
+
+  return scrapeGeneric(genericValidation.sanitizedUrl, genericValidation.hostname);
 }
 
-async function scrapeAmazon(url: string): Promise<ScrapedItem> {
+async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
   try {
-    const response = await fetch(url, {
+    const response = await fetch(sanitizedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
@@ -60,9 +76,9 @@ async function scrapeAmazon(url: string): Promise<ScrapedItem> {
   }
 }
 
-async function scrapeRakuten(url: string): Promise<ScrapedItem> {
+async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
   try {
-    const response = await fetch(url, {
+    const response = await fetch(sanitizedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
@@ -102,9 +118,9 @@ async function scrapeRakuten(url: string): Promise<ScrapedItem> {
   }
 }
 
-async function scrapeGeneric(url: string, hostname: string): Promise<ScrapedItem> {
+async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<ScrapedItem> {
   try {
-    const response = await fetch(url, {
+    const response = await fetch(sanitizedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
@@ -122,7 +138,10 @@ async function scrapeGeneric(url: string, hostname: string): Promise<ScrapedItem
     if (jsonLdMatch) {
       for (const match of jsonLdMatch) {
         try {
-          const jsonContent = match.replace(/<script[^>]*>|<\/script>/gi, '');
+          // scriptタグを除去（正規表現で安全に処理）
+          const jsonContent = match
+            .replace(/<script[^>]*>/gi, '')
+            .replace(/<\/script>/gi, '');
           const data = JSON.parse(jsonContent);
           if (data.offers?.price) {
             price = parseInt(data.offers.price, 10);
