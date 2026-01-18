@@ -9,7 +9,7 @@ import PurchasedHistory from '@/components/PurchasedHistory';
 import StatsView from '@/components/StatsView';
 import LoginForm from '@/components/LoginForm';
 import { useAuth } from '@/components/AuthProvider';
-import { Crown, List, Wallet, RefreshCw, Upload, LogOut, User, Settings, ShoppingBag, Search, ArrowUpDown, BarChart3, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
+import { Crown, List, Wallet, RefreshCw, Upload, LogOut, User, Settings, ShoppingBag, Search, ArrowUpDown, BarChart3, ChevronDown, ChevronUp, SlidersHorizontal, Layers } from 'lucide-react';
 import Link from 'next/link';
 import ImportWishlistModal from '@/components/ImportWishlistModal';
 import { useSwipeable } from 'react-swipeable';
@@ -28,6 +28,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'priority' | 'price_asc' | 'price_desc' | 'date_new' | 'date_old' | 'name'>('priority');
@@ -110,11 +111,12 @@ export default function Home() {
     touchEventOptions: { passive: false },
   });
 
-  // フィルター適用（カテゴリ、検索、優先度）
+  // フィルター適用（カテゴリ、検索、優先度、比較グループ）
   const filteredItems = items
     .filter(item => {
       if (selectedCategory && item.category_id !== selectedCategory) return false;
       if (selectedPriority && item.priority !== selectedPriority) return false;
+      if (selectedGroup && item.comparison_group_id !== selectedGroup) return false;
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return item.name.toLowerCase().includes(query) ||
@@ -277,7 +279,7 @@ export default function Home() {
                 <div className="flex items-center gap-2">
                   <SlidersHorizontal size={18} className="text-slate-400" />
                   <span className="text-sm font-medium">検索・フィルター</span>
-                  {(searchQuery || selectedCategory || selectedPriority || sortBy !== 'priority') && (
+                  {(searchQuery || selectedCategory || selectedPriority || selectedGroup || sortBy !== 'priority') && (
                     <span className="px-2 py-0.5 bg-orange-100 text-orange-600 text-xs font-medium rounded-full">
                       適用中
                     </span>
@@ -360,6 +362,39 @@ export default function Home() {
                           }}
                         >
                           {cat.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 比較グループフィルター */}
+                  {groups.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-1.5 text-sm text-slate-500">
+                        <Layers size={16} />
+                        <span>比較:</span>
+                      </div>
+                      <button
+                        onClick={() => setSelectedGroup(null)}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                          selectedGroup === null
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        すべて
+                      </button>
+                      {groups.map((group) => (
+                        <button
+                          key={group.id}
+                          onClick={() => setSelectedGroup(group.id)}
+                          className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                            selectedGroup === group.id
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                          }`}
+                        >
+                          {group.name}
                         </button>
                       ))}
                     </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
-import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2, Download, Tag, Layers, Trash2, Plus, Pencil, X, RotateCcw, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2, Download, Tag, Layers, Trash2, Plus, Pencil, X, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import { Category, ComparisonGroup } from '@/types';
 
@@ -34,7 +34,6 @@ export default function SettingsPage() {
   const [newGroupName, setNewGroupName] = useState('');
   const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
   const [editGroupName, setEditGroupName] = useState('');
-  const [items, setItems] = useState<any[]>([]);
   
   // ゴミ箱
   const [trashItems, setTrashItems] = useState<any[]>([]);
@@ -95,7 +94,6 @@ export default function SettingsPage() {
       fetchCategories();
       fetchGroups();
       fetchTrash();
-      fetchItems();
     }
   }, [user]);
 
@@ -114,23 +112,6 @@ export default function SettingsPage() {
     const res = await fetch('/api/trash');
     if (res.ok) setTrashItems(await res.json());
     setLoadingTrash(false);
-  };
-
-  const fetchItems = async () => {
-    const res = await fetch('/api/items');
-    if (res.ok) setItems(await res.json());
-  };
-
-  // グループ内のアイテムを取得
-  const getGroupItems = (groupId: number) => {
-    return items.filter(item => item.comparison_group_id === groupId);
-  };
-
-  // グループ内の最安価格を取得
-  const getLowestPrice = (groupItems: any[]) => {
-    const withPrice = groupItems.filter(item => item.current_price);
-    if (withPrice.length === 0) return null;
-    return Math.min(...withPrice.map(item => item.current_price));
   };
 
   // カテゴリ操作
@@ -347,64 +328,28 @@ export default function SettingsPage() {
                   <button onClick={handleAddGroup} className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center gap-1"><Plus size={18} /> 追加</button>
                 </div>
                 {groups.length === 0 ? <p className="text-gray-500 text-sm">比較グループがありません</p> : (
-                  <div className="space-y-4">
-                    {groups.map((group) => {
-                      const groupItems = getGroupItems(group.id);
-                      const lowestPrice = getLowestPrice(groupItems);
-                      return (
-                        <div key={group.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                          <div className="flex items-center gap-3 p-3 bg-gray-50">
-                            {editingGroupId === group.id ? (
-                              <>
-                                <input type="text" value={editGroupName} onChange={(e) => setEditGroupName(e.target.value)} className="flex-1 px-2 py-1 border rounded text-sm" autoFocus />
-                                <button onClick={handleUpdateGroup} className="text-green-500 hover:text-green-600"><Check size={18} /></button>
-                                <button onClick={() => setEditingGroupId(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-                              </>
-                            ) : (
-                              <>
-                                <Layers size={16} className="text-orange-500" />
-                                <span className="flex-1 font-medium text-sm">{group.name}</span>
-                                <span className="text-xs text-gray-500">{groupItems.length}件</span>
-                                <button onClick={() => { setEditingGroupId(group.id); setEditGroupName(group.name); }} className="text-gray-400 hover:text-blue-500"><Pencil size={16} /></button>
-                                <button onClick={() => handleDeleteGroup(group.id)} className="text-gray-400 hover:text-red-500"><X size={18} /></button>
-                              </>
-                            )}
-                          </div>
-                          {groupItems.length > 0 ? (
-                            <div className="divide-y divide-gray-100">
-                              {groupItems.map((item) => (
-                                <div key={item.id} className="flex items-center gap-3 p-3 hover:bg-gray-50">
-                                  {item.image_url ? (
-                                    <img src={item.image_url} alt="" className="w-10 h-10 object-contain rounded" />
-                                  ) : (
-                                    <div className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center text-gray-400 text-xs">No img</div>
-                                  )}
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm truncate">{item.name}</p>
-                                    <p className="text-xs text-gray-500">{item.source_name || 'Unknown'}</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className={`text-sm font-medium ${item.current_price === lowestPrice ? 'text-green-600' : ''}`}>
-                                      ¥{item.current_price?.toLocaleString() || '---'}
-                                      {item.current_price === lowestPrice && <span className="ml-1 text-xs">🏷️最安</span>}
-                                    </p>
-                                  </div>
-                                  {item.url && (
-                                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 p-1" title="商品ページを開く">
-                                      <ExternalLink size={16} />
-                                    </a>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="p-3 text-sm text-gray-400">アイテムがありません</p>
-                          )}
-                        </div>
-                      );
-                    })}
+                  <div className="space-y-2">
+                    {groups.map((group) => (
+                      <div key={group.id} className="flex items-center gap-3 p-2 bg-gray-50 rounded-md">
+                        {editingGroupId === group.id ? (
+                          <>
+                            <input type="text" value={editGroupName} onChange={(e) => setEditGroupName(e.target.value)} className="flex-1 px-2 py-1 border rounded text-sm" autoFocus />
+                            <button onClick={handleUpdateGroup} className="text-green-500 hover:text-green-600"><Check size={18} /></button>
+                            <button onClick={() => setEditingGroupId(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+                          </>
+                        ) : (
+                          <>
+                            <Layers size={16} className="text-orange-500" />
+                            <span className="flex-1 text-sm">{group.name}</span>
+                            <button onClick={() => { setEditingGroupId(group.id); setEditGroupName(group.name); }} className="text-gray-400 hover:text-blue-500"><Pencil size={16} /></button>
+                            <button onClick={() => handleDeleteGroup(group.id)} className="text-gray-400 hover:text-red-500"><X size={18} /></button>
+                          </>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
+                <p className="mt-3 text-xs text-gray-400">💡 グループ内のアイテムは「リスト」タブのフィルターで確認できます</p>
               </div>
             )}
           </div>
