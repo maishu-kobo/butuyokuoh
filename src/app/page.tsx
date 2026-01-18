@@ -169,7 +169,7 @@ export default function Home() {
   }
 
   return (
-    <div {...swipeHandlers} className="min-h-screen bg-slate-50">
+    <div {...swipeHandlers} className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* ヘッダー */}
       <header className="bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg">
         <div className="max-w-4xl mx-auto px-4 py-4">
@@ -203,7 +203,7 @@ export default function Home() {
       </header>
 
       {/* ナビゲーション（ピル型タブ） */}
-      <div className="bg-white shadow-sm sticky top-0 z-10">
+      <div className="bg-white dark:bg-slate-800 shadow-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-3">
           <nav className="flex gap-1.5 overflow-x-auto scrollbar-hide">
             <button
@@ -211,7 +211,7 @@ export default function Home() {
               className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'list'
                   ? 'bg-orange-500 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
               <List size={16} />
@@ -222,7 +222,7 @@ export default function Home() {
               className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'budget'
                   ? 'bg-orange-500 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
               <Wallet size={16} />
@@ -233,7 +233,7 @@ export default function Home() {
               className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'purchased'
                   ? 'bg-orange-500 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
               <ShoppingBag size={16} />
@@ -244,7 +244,7 @@ export default function Home() {
               className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'stats'
                   ? 'bg-orange-500 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
               <BarChart3 size={16} />
@@ -261,21 +261,21 @@ export default function Home() {
           <div className="space-y-4">
             {/* サマリーカード */}
             <div className="flex gap-3">
-              <div className="flex-1 bg-white rounded-xl shadow-sm px-4 py-2.5">
-                <p className="text-xs text-slate-500">アイテム数</p>
-                <p className="text-xl font-bold text-slate-800">{items.length}<span className="text-sm font-normal text-slate-500 ml-0.5">件</span></p>
+              <div className="flex-1 bg-white dark:bg-slate-800 rounded-xl shadow-sm px-4 py-2.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400">アイテム数</p>
+                <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{items.length}<span className="text-sm font-normal text-slate-500 dark:text-slate-400 ml-0.5">件</span></p>
               </div>
-              <div className="flex-1 bg-white rounded-xl shadow-sm px-4 py-2.5">
-                <p className="text-xs text-slate-500">合計金額</p>
+              <div className="flex-1 bg-white dark:bg-slate-800 rounded-xl shadow-sm px-4 py-2.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400">合計金額</p>
                 <p className="text-xl font-bold text-orange-500">¥{totalAmount.toLocaleString()}</p>
               </div>
             </div>
 
             {/* 検索・並び替え・フィルター (折りたたみ式) */}
-            <div className="bg-white rounded-2xl shadow-sm">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm">
               <button
                 onClick={() => setIsFilterOpen(!isFilterOpen)}
-                className="w-full px-4 py-3 flex items-center justify-between text-slate-600 hover:bg-slate-50 transition-colors rounded-2xl"
+                className="w-full px-4 py-3 flex items-center justify-between text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors rounded-2xl"
               >
                 <div className="flex items-center gap-2">
                   <SlidersHorizontal size={18} className="text-slate-400" />
@@ -290,7 +290,7 @@ export default function Home() {
               </button>
 
               {isFilterOpen && (
-                <div className="px-4 pb-4 space-y-3 border-t border-slate-100">
+                <div className="px-4 pb-4 space-y-3 border-t border-slate-100 dark:border-slate-700">
                   <div className="relative pt-3">
                     <Search className="absolute left-3 top-1/2 translate-y-0.5 text-slate-400" size={18} />
                     <input
@@ -298,17 +298,17 @@ export default function Home() {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="商品名、メモ、カテゴリで検索..."
-                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                     />
                   </div>
 
                   <div className="flex flex-wrap gap-3">
                     <div className="flex items-center gap-2">
-                      <ArrowUpDown size={16} className="text-slate-500" />
+                      <ArrowUpDown size={16} className="text-slate-500 dark:text-slate-400" />
                       <select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                        className="px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        className="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                       >
                         <option value="priority">優先度順</option>
                         <option value="price_asc">価格が安い順</option>
@@ -320,11 +320,11 @@ export default function Home() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-500">優先度:</span>
+                      <span className="text-sm text-slate-500 dark:text-slate-400">優先度:</span>
                       <select
                         value={selectedPriority || ''}
                         onChange={(e) => setSelectedPriority(e.target.value ? Number(e.target.value) : null)}
-                        className="px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        className="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                       >
                         <option value="">すべて</option>
                         <option value="1">最高</option>
@@ -343,7 +343,7 @@ export default function Home() {
                         className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                           selectedCategory === null
                             ? 'bg-orange-500 text-white'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                         }`}
                       >
                         すべて
@@ -371,7 +371,7 @@ export default function Home() {
                   {/* 比較グループフィルター */}
                   {groups.length > 0 && (
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex items-center gap-1.5 text-sm text-slate-500">
+                      <div className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
                         <Layers size={16} />
                         <span>比較:</span>
                       </div>
@@ -380,7 +380,7 @@ export default function Home() {
                         className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                           selectedGroup === null
                             ? 'bg-blue-500 text-white'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                         }`}
                       >
                         すべて
@@ -406,7 +406,7 @@ export default function Home() {
 
             {/* アクションバー */}
             <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-slate-700">
+              <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200">
                 ほしいものリスト ({filteredItems.length}件{selectedCategory ? ` / 全${items.length}件` : ''})
               </h2>
               <div className="flex items-center gap-2">
@@ -420,7 +420,7 @@ export default function Home() {
                 <button
                   onClick={handleRefreshAll}
                   disabled={refreshing || items.length === 0}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
                 >
                   <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
                   全て更新
@@ -431,9 +431,9 @@ export default function Home() {
             <AddItemForm onAdd={fetchItems} comparisonGroups={groups} categories={categories} />
 
             {loading ? (
-              <div className="text-center py-12 text-slate-500">読み込み中...</div>
+              <div className="text-center py-12 text-slate-500 dark:text-slate-400">読み込み中...</div>
             ) : items.length === 0 ? (
-              <div className="text-center py-12 text-slate-500">
+              <div className="text-center py-12 text-slate-500 dark:text-slate-400">
                 まだアイテムがありません。上のフォームから追加してください。
               </div>
             ) : (

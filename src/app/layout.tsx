@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
 import { SessionProvider } from "next-auth/react";
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 export const metadata: Metadata = {
   title: "物欲王 - すべてのほしいものを一つに",
@@ -31,10 +32,12 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
       </head>
-      <body className="antialiased">
+      <body className="antialiased bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 transition-colors">
         <SessionProvider>
           <AuthProvider>
-            {children}
+            <ThemeProvider>
+              {children}
+            </ThemeProvider>
           </AuthProvider>
         </SessionProvider>
       </body>

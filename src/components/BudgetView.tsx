@@ -64,7 +64,7 @@ export default function BudgetView() {
   };
 
   if (loading) {
-    return <div className="text-gray-500">読み込み中...</div>;
+    return <div className="text-gray-500 dark:text-gray-400">読み込み中...</div>;
   }
 
   const months = Object.keys(budget).sort();
@@ -107,7 +107,7 @@ export default function BudgetView() {
       </div>
 
       {months.length === 0 ? (
-        <div className="text-gray-500 text-center py-8">
+        <div className="text-gray-500 dark:text-gray-400 text-center py-8">
           購入予定日が設定されたアイテムがありません
         </div>
       ) : (
@@ -116,7 +116,7 @@ export default function BudgetView() {
           <div className="flex justify-end">
             <button
               onClick={toggleSelectAll}
-              className="text-sm text-gray-600 hover:text-blue-600 flex items-center gap-1"
+              className="text-sm text-gray-600 dark:text-gray-300 hover:text-blue-600 flex items-center gap-1"
             >
               {selectedIds.size === allItems.length ? (
                 <><CheckSquare size={16} /> 全て解除</>
@@ -135,7 +135,7 @@ export default function BudgetView() {
             const someMonthSelected = monthIds.some(id => selectedIds.has(id));
 
             return (
-              <div key={month} className="bg-white rounded-lg shadow p-4">
+              <div key={month} className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <button
@@ -161,19 +161,19 @@ export default function BudgetView() {
                         key={item.id}
                         onClick={() => toggleSelect(item.id)}
                         className={`flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
-                          isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                          isSelected ? 'bg-blue-50' : 'hover:bg-gray-50 dark:bg-slate-700'
                         }`}
                       >
                         <span className={isSelected ? 'text-blue-600' : 'text-gray-300'}>
                           {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
                         </span>
-                        <span className={`flex-1 truncate ${isSelected ? 'text-blue-700' : 'text-gray-700'}`}>
+                        <span className={`flex-1 truncate ${isSelected ? 'text-blue-700' : 'text-gray-700 dark:text-gray-200'}`}>
                           {item.name}
                           {(item.quantity || 1) > 1 && (
                             <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
                           )}
                         </span>
-                        <span className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600'}`}>
+                        <span className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
                           {(item.quantity || 1) > 1 
                             ? `¥${((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}`
                             : `¥${item.current_price?.toLocaleString() || '---'}`

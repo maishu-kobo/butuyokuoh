@@ -56,17 +56,15 @@
   - 一括操作バーを表示
 - [ ] 実装
 
-### 8. ダークモード対応
+### 8. ダークモード対応 ✅ 完了
 - **現状**: ライトモードのみ
 - **改善**: システム設定に連動、または手動切り替え
-- **ファイル**: 全コンポーネント、`tailwind.config.ts`
-- **難易度**: ★★★★☆（難）
-- **実装方針**:
-  - TailwindのdarkModeを設定
+- **実装内容**:
+  - Tailwind 4: globals.cssに@custom-variantでdarkモード設定
+  - ThemeProvider: テーマ状態管理 (light/dark/system)、localStorage保存
   - 全コンポーネントに dark: クラスを追加
-  - テーマ切り替えボタンを設定ページに追加
-  - localStorageで設定を保存
-- [ ] 実装
+  - 設定ページにテーマ切り替えUI追加
+- [x] 実装
 
 ## 実装順序（提案）
 
