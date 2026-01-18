@@ -3,43 +3,140 @@
 /* ダークモードをclassベースに変更 */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* 和モダン配色 */
+/* ===========================================
+   カラースキーム: 共通変数
+   =========================================== */
 :root {
+  /* デフォルトは和モダン */
   /* 基本色 */
-  --sumi: #2d2d2d;           /* 墨色 - テキスト */
-  --kinari: #f7f4ef;         /* 生成り - 背景 */
-  --shiro: #fdfbf7;          /* 白 - カード背景 */
-
+  --color-text: #2d2d2d;
+  --color-bg: #f7f4ef;
+  --color-card: #fdfbf7;
+  
   /* アクセント色 */
-  --shu: #c53d43;            /* 朱色 - プライマリ */
-  --shu-light: #e85d63;      /* 朱色（明るめ） */
-  --ai: #2b4b6f;             /* 藍色 - セカンダリ */
-  --matcha: #6b7b3c;         /* 抹茶色 */
-  --kitsune: #c18a40;        /* 狐色（金茶） */
-
-  /* 淡い色 */
-  --sakura: #f5e6e8;         /* 桜色 */
-  --wasurenagusa: #e6eff5;   /* 勿忘草色 */
-  --wakakusa: #e8f0e4;       /* 若草色 */
-
-  /* グレー */
-  --nezumi: #7d7d7d;         /* 鼠色 */
-  --hai: #9e9e9e;            /* 灰色 */
-  --gofun: #f0ebe1;          /* 胡粉（薄いベージュ） */
+  --color-primary: #c53d43;
+  --color-primary-hover: #e85d63;
+  --color-secondary: #2b4b6f;
+  --color-accent: #c18a40;
+  
+  /* ボーダー・グレー */
+  --color-border: #f0ebe1;
+  --color-muted: #7d7d7d;
+  --color-muted-light: #9e9e9e;
+  
+  /* ステータス色 */
+  --color-success-bg: #e8f0e4;
+  --color-success-text: #6b7b3c;
+  --color-warning-bg: #fff8e1;
+  --color-warning-text: #c18a40;
+  --color-error-bg: #f5e6e8;
+  --color-error-text: #c53d43;
+  
+  /* 優先度バッジ */
+  --color-priority-high-bg: #f5e6e8;
+  --color-priority-high-text: #c53d43;
+  --color-priority-normal-bg: #e6eff5;
+  --color-priority-normal-text: #2b4b6f;
+  --color-priority-low-bg: #f0ebe1;
+  --color-priority-low-text: #7d7d7d;
 
   /* Tailwind互換 */
   --foreground-rgb: 45, 45, 45;
   --background-rgb: 247, 244, 239;
+  
+  /* 和モダン専用（後方互換） */
+  --sumi: #2d2d2d;
+  --kinari: #f7f4ef;
+  --shiro: #fdfbf7;
+  --shu: #c53d43;
+  --shu-light: #e85d63;
+  --ai: #2b4b6f;
+  --matcha: #6b7b3c;
+  --kitsune: #c18a40;
+  --sakura: #f5e6e8;
+  --wasurenagusa: #e6eff5;
+  --wakakusa: #e8f0e4;
+  --nezumi: #7d7d7d;
+  --hai: #9e9e9e;
+  --gofun: #f0ebe1;
 }
 
+/* ===========================================
+   カラースキーム: デフォルト（オレンジ系）
+   =========================================== */
+.default-scheme {
+  --color-text: #1f2937;
+  --color-bg: #f3f4f6;
+  --color-card: #ffffff;
+  
+  --color-primary: #f97316;
+  --color-primary-hover: #ea580c;
+  --color-secondary: #3b82f6;
+  --color-accent: #fbbf24;
+  
+  --color-border: #e5e7eb;
+  --color-muted: #6b7280;
+  --color-muted-light: #9ca3af;
+  
+  --color-success-bg: #dcfce7;
+  --color-success-text: #166534;
+  --color-warning-bg: #fef3c7;
+  --color-warning-text: #92400e;
+  --color-error-bg: #fee2e2;
+  --color-error-text: #dc2626;
+  
+  --color-priority-high-bg: #fee2e2;
+  --color-priority-high-text: #dc2626;
+  --color-priority-normal-bg: #dbeafe;
+  --color-priority-normal-text: #1d4ed8;
+  --color-priority-low-bg: #f3f4f6;
+  --color-priority-low-text: #6b7280;
+  
+  /* Tailwind互換 */
+  --foreground-rgb: 31, 41, 55;
+  --background-rgb: 243, 244, 246;
+  
+  /* 和モダン変数をデフォルトにマッピング */
+  --sumi: #1f2937;
+  --kinari: #f3f4f6;
+  --shiro: #ffffff;
+  --shu: #f97316;
+  --shu-light: #ea580c;
+  --ai: #3b82f6;
+  --matcha: #166534;
+  --kitsune: #fbbf24;
+  --sakura: #fee2e2;
+  --wasurenagusa: #dbeafe;
+  --wakakusa: #dcfce7;
+  --nezumi: #6b7280;
+  --hai: #9ca3af;
+  --gofun: #e5e7eb;
+}
+
+/* ダークモード */
 .dark {
+  --color-text: #f1f5f9;
+  --color-bg: #0f172a;
+  --color-card: #1e293b;
+  
+  --color-border: #334155;
+  --color-muted: #94a3b8;
+  --color-muted-light: #64748b;
+  
   --foreground-rgb: 241, 245, 249;
   --background-rgb: 15, 23, 42;
+  
+  --kinari: #0f172a;
+  --shiro: #1e293b;
+  --gofun: #334155;
+  --nezumi: #94a3b8;
+  --hai: #64748b;
+  --sumi: #f1f5f9;
 }
 
 body {
-  color: var(--sumi);
-  background: var(--kinari);
+  color: var(--color-text);
+  background: var(--color-bg);
   font-feature-settings: "palt";
 }
 

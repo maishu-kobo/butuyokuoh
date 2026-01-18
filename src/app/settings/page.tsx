@@ -3,14 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
-import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2, Download, Tag, Layers, Trash2, Plus, Pencil, X, RotateCcw, ChevronDown, ChevronUp, Sun, Moon, Monitor } from 'lucide-react';
+import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2, Download, Tag, Layers, Trash2, Plus, Pencil, X, RotateCcw, ChevronDown, ChevronUp, Sun, Moon, Monitor, Palette } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import Link from 'next/link';
 import { Category, ComparisonGroup } from '@/types';
 
 export default function SettingsPage() {
   const { user, token, loading } = useAuth();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, colorScheme, setColorScheme } = useTheme();
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [displayToken, setDisplayToken] = useState<string | null>(null);
@@ -223,20 +223,20 @@ export default function SettingsPage() {
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen bg-gray-100 dark:bg-slate-900 flex items-center justify-center">
-        <div className="text-gray-500 dark:text-gray-400 dark:text-gray-500">読み込み中...</div>
+      <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center">
+        <div className="text-[var(--color-muted)]">読み込み中...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-slate-900">
+    <div className="min-h-screen bg-[var(--color-bg)]">
       {/* ヘッダー */}
-      <header className="bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg">
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          <div className="flex items-center gap-3">
-            <Crown size={32} className="text-yellow-300" />
-            <h1 className="text-2xl font-bold">物欲王</h1>
+      <header className="bg-[var(--color-secondary)] text-white">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <div className="flex items-center gap-2">
+            <Crown size={24} className="text-[var(--color-accent)]" />
+            <h1 className="text-lg font-medium tracking-wide">物欲王</h1>
           </div>
         </div>
       </header>
@@ -244,38 +244,38 @@ export default function SettingsPage() {
       <main className="max-w-4xl mx-auto px-4 py-6">
         <Link 
           href="/" 
-          className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:text-gray-100 mb-6"
+          className="inline-flex items-center gap-2 text-[var(--color-muted)] hover:text-[var(--color-text)] mb-6"
         >
           <ArrowLeft size={18} />
           戻る
         </Link>
 
-        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6">設定</h2>
+        <h2 className="text-xl font-bold text-[var(--color-text)] mb-6">設定</h2>
 
         <div className="space-y-4">
           {/* アカウント情報 (折りたたみなし) */}
-          <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-6">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">アカウント情報</h3>
+          <div className="bg-[var(--color-card)] rounded-lg shadow p-6">
+            <h3 className="font-semibold text-[var(--color-text)] mb-4">アカウント情報</h3>
             <div className="space-y-2 text-sm">
               <div className="flex">
                 <span className="text-gray-500 dark:text-gray-400 dark:text-gray-500 w-32">メール:</span>
-                <span className="text-gray-900 dark:text-gray-100">{user.email}</span>
+                <span className="text-[var(--color-text)]">{user.email}</span>
               </div>
               {user.name && (
                 <div className="flex">
                   <span className="text-gray-500 dark:text-gray-400 dark:text-gray-500 w-32">名前:</span>
-                  <span className="text-gray-900 dark:text-gray-100">{user.name}</span>
+                  <span className="text-[var(--color-text)]">{user.name}</span>
                 </div>
               )}
             </div>
           </div>
 
           {/* カテゴリ管理 */}
-          <div className="bg-white dark:bg-slate-800 rounded-lg shadow">
+          <div className="bg-[var(--color-card)] rounded-lg shadow">
             <button onClick={() => toggleSection('categories')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:bg-slate-700 dark:hover:bg-slate-700 rounded-lg">
               <div className="flex items-center gap-2">
-                <Tag size={20} className="text-orange-500" />
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100">カテゴリ管理</h3>
+                <Tag size={20} className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">カテゴリ管理</h3>
                 <span className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">({categories.length})</span>
               </div>
               {openSections.categories ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
@@ -296,7 +296,7 @@ export default function SettingsPage() {
                             <input type="color" value={editCategoryColor} onChange={(e) => setEditCategoryColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer" />
                             <input type="text" value={editCategoryName} onChange={(e) => setEditCategoryName(e.target.value)} className="flex-1 px-2 py-1 border rounded text-sm" autoFocus />
                             <button onClick={handleUpdateCategory} className="text-green-500 hover:text-green-600"><Check size={18} /></button>
-                            <button onClick={() => setEditingCategoryId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-300"><X size={18} /></button>
+                            <button onClick={() => setEditingCategoryId(null)} className="text-gray-400 dark:text-gray-500 hover:text-[var(--color-muted)]"><X size={18} /></button>
                           </>
                         ) : (
                           <>
@@ -315,11 +315,11 @@ export default function SettingsPage() {
           </div>
 
           {/* 比較グループ管理 */}
-          <div className="bg-white dark:bg-slate-800 rounded-lg shadow">
+          <div className="bg-[var(--color-card)] rounded-lg shadow">
             <button onClick={() => toggleSection('groups')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:bg-slate-700 dark:hover:bg-slate-700 rounded-lg">
               <div className="flex items-center gap-2">
-                <Layers size={20} className="text-orange-500" />
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100">比較グループ管理</h3>
+                <Layers size={20} className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">比較グループ管理</h3>
                 <span className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">({groups.length})</span>
               </div>
               {openSections.groups ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
@@ -338,11 +338,11 @@ export default function SettingsPage() {
                           <>
                             <input type="text" value={editGroupName} onChange={(e) => setEditGroupName(e.target.value)} className="flex-1 px-2 py-1 border rounded text-sm" autoFocus />
                             <button onClick={handleUpdateGroup} className="text-green-500 hover:text-green-600"><Check size={18} /></button>
-                            <button onClick={() => setEditingGroupId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-300"><X size={18} /></button>
+                            <button onClick={() => setEditingGroupId(null)} className="text-gray-400 dark:text-gray-500 hover:text-[var(--color-muted)]"><X size={18} /></button>
                           </>
                         ) : (
                           <>
-                            <Layers size={16} className="text-orange-500" />
+                            <Layers size={16} className="text-[var(--color-primary)]" />
                             <span className="flex-1 text-sm">{group.name}</span>
                             <button onClick={() => { setEditingGroupId(group.id); setEditGroupName(group.name); }} className="text-gray-400 dark:text-gray-500 hover:text-blue-500"><Pencil size={16} /></button>
                             <button onClick={() => handleDeleteGroup(group.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-500"><X size={18} /></button>
@@ -358,11 +358,11 @@ export default function SettingsPage() {
           </div>
 
           {/* ゴミ箱 */}
-          <div className="bg-white dark:bg-slate-800 rounded-lg shadow">
+          <div className="bg-[var(--color-card)] rounded-lg shadow">
             <button onClick={() => toggleSection('trash')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:bg-slate-700 dark:hover:bg-slate-700 rounded-lg">
               <div className="flex items-center gap-2">
-                <Trash2 size={20} className="text-orange-500" />
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100">ゴミ箱</h3>
+                <Trash2 size={20} className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">ゴミ箱</h3>
                 <span className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">({trashItems.length}件)</span>
               </div>
               {openSections.trash ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
@@ -391,61 +391,100 @@ export default function SettingsPage() {
           </div>
 
           {/* テーマ設定 */}
-          <div className="bg-white dark:bg-slate-800 rounded-lg shadow">
-            <button onClick={() => toggleSection('theme')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-slate-700 rounded-lg">
+          <div className="bg-[var(--color-card)] rounded-lg shadow">
+            <button onClick={() => toggleSection('theme')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
-                <Sun size={20} className="text-orange-500" />
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100">テーマ</h3>
+                <Sun size={20} className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">テーマ</h3>
               </div>
-              {openSections.theme ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              {openSections.theme ? <ChevronUp size={20} className="text-[var(--color-muted)]" /> : <ChevronDown size={20} className="text-[var(--color-muted)]" />}
             </button>
             {openSections.theme && (
-              <div className="px-4 pb-4 border-t dark:border-slate-700">
-                <div className="flex gap-2 pt-4">
-                  <button
-                    onClick={() => setTheme('light')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                      theme === 'light'
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
-                    }`}
-                  >
-                    <Sun size={16} />
-                    ライト
-                  </button>
-                  <button
-                    onClick={() => setTheme('dark')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                      theme === 'dark'
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
-                    }`}
-                  >
-                    <Moon size={16} />
-                    ダーク
-                  </button>
-                  <button
-                    onClick={() => setTheme('system')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                      theme === 'system'
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600'
-                    }`}
-                  >
-                    <Monitor size={16} />
-                    自動
-                  </button>
+              <div className="px-4 pb-4 border-t border-[var(--color-border)]">
+                {/* カラースキーム */}
+                <div className="pt-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Palette size={16} className="text-[var(--color-muted)]" />
+                    <span className="text-sm font-medium text-[var(--color-text)]">カラースキーム</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setColorScheme('wa-modern')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        colorScheme === 'wa-modern'
+                          ? 'bg-[var(--color-primary)] text-white'
+                          : 'bg-[var(--color-border)] text-[var(--color-muted)] hover:bg-[var(--color-muted-light)] hover:text-white'
+                      }`}
+                    >
+                      <span className="w-4 h-4 rounded-full bg-[#c53d43]"></span>
+                      和モダン
+                    </button>
+                    <button
+                      onClick={() => setColorScheme('default')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        colorScheme === 'default'
+                          ? 'bg-[var(--color-primary)] text-white'
+                          : 'bg-[var(--color-border)] text-[var(--color-muted)] hover:bg-[var(--color-muted-light)] hover:text-white'
+                      }`}
+                    >
+                      <span className="w-4 h-4 rounded-full bg-[#f97316]"></span>
+                      デフォルト
+                    </button>
+                  </div>
+                </div>
+                
+                {/* 明るさ */}
+                <div className="pt-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sun size={16} className="text-[var(--color-muted)]" />
+                    <span className="text-sm font-medium text-[var(--color-text)]">明るさ</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setTheme('light')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        theme === 'light'
+                          ? 'bg-[var(--color-primary)] text-white'
+                          : 'bg-[var(--color-border)] text-[var(--color-muted)] hover:bg-[var(--color-muted-light)] hover:text-white'
+                      }`}
+                    >
+                      <Sun size={16} />
+                      ライト
+                    </button>
+                    <button
+                      onClick={() => setTheme('dark')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        theme === 'dark'
+                          ? 'bg-[var(--color-primary)] text-white'
+                          : 'bg-[var(--color-border)] text-[var(--color-muted)] hover:bg-[var(--color-muted-light)] hover:text-white'
+                      }`}
+                    >
+                      <Moon size={16} />
+                      ダーク
+                    </button>
+                    <button
+                      onClick={() => setTheme('system')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        theme === 'system'
+                          ? 'bg-[var(--color-primary)] text-white'
+                          : 'bg-[var(--color-border)] text-[var(--color-muted)] hover:bg-[var(--color-muted-light)] hover:text-white'
+                      }`}
+                    >
+                      <Monitor size={16} />
+                      自動
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
           </div>
 
           {/* 価格通知設定 */}
-          <div className="bg-white dark:bg-slate-800 rounded-lg shadow">
+          <div className="bg-[var(--color-card)] rounded-lg shadow">
             <button onClick={() => toggleSection('notify')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:bg-slate-700 dark:hover:bg-slate-700 rounded-lg">
               <div className="flex items-center gap-2">
-                <Bell size={20} className="text-orange-500" />
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100">価格通知設定</h3>
+                <Bell size={20} className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">価格通知設定</h3>
               </div>
               {openSections.notify ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </button>
@@ -460,10 +499,10 @@ export default function SettingsPage() {
                   <input type="url" value={notifySettings.discord_webhook} onChange={(e) => setNotifySettings({ ...notifySettings, discord_webhook: e.target.value })} placeholder="https://discord.com/api/webhooks/..." className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm" />
                 </div>
                 <div className="space-y-2">
-                  <label className="flex items-center gap-2"><input type="checkbox" checked={notifySettings.notify_on_price_drop} onChange={(e) => setNotifySettings({ ...notifySettings, notify_on_price_drop: e.target.checked })} className="rounded border-gray-300 dark:border-slate-600 text-orange-500" /><span className="text-sm text-gray-700">価格が下がったら通知</span></label>
-                  <label className="flex items-center gap-2"><input type="checkbox" checked={notifySettings.notify_on_target_price} onChange={(e) => setNotifySettings({ ...notifySettings, notify_on_target_price: e.target.checked })} className="rounded border-gray-300 dark:border-slate-600 text-orange-500" /><span className="text-sm text-gray-700">目標価格に達したら通知</span></label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={notifySettings.notify_on_price_drop} onChange={(e) => setNotifySettings({ ...notifySettings, notify_on_price_drop: e.target.checked })} className="rounded border-gray-300 dark:border-slate-600 text-[var(--color-primary)]" /><span className="text-sm text-gray-700">価格が下がったら通知</span></label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={notifySettings.notify_on_target_price} onChange={(e) => setNotifySettings({ ...notifySettings, notify_on_target_price: e.target.checked })} className="rounded border-gray-300 dark:border-slate-600 text-[var(--color-primary)]" /><span className="text-sm text-gray-700">目標価格に達したら通知</span></label>
                 </div>
-                <button onClick={saveNotifySettings} disabled={savingNotify} className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 disabled:opacity-50 flex items-center gap-2">
+                <button onClick={saveNotifySettings} disabled={savingNotify} className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-hover)] disabled:opacity-50 flex items-center gap-2">
                   {savingNotify ? <><Loader2 size={18} className="animate-spin" /> 保存中...</> : notifySaved ? <><Check size={18} /> 保存しました</> : '保存'}
                 </button>
               </div>
@@ -471,17 +510,17 @@ export default function SettingsPage() {
           </div>
 
           {/* Chrome拡張機能用トークン */}
-          <div className="bg-white dark:bg-slate-800 rounded-lg shadow">
+          <div className="bg-[var(--color-card)] rounded-lg shadow">
             <button onClick={() => toggleSection('token')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:bg-slate-700 dark:hover:bg-slate-700 rounded-lg">
               <div className="flex items-center gap-2">
-                <Key size={20} className="text-orange-500" />
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100">Chrome拡張機能用トークン</h3>
+                <Key size={20} className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">Chrome拡張機能用トークン</h3>
               </div>
               {openSections.token ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </button>
             {openSections.token && (
               <div className="px-4 pb-4 border-t pt-4">
-                <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">Chrome拡張機能でほしいものリストをインポートする際に必要です。</p>
+                <p className="text-sm text-[var(--color-muted)] mb-4">Chrome拡張機能でほしいものリストをインポートする際に必要です。</p>
                 {displayToken ? (
                   <div className="flex gap-2">
                     <input type="text" value={displayToken} readOnly className="flex-1 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-gray-50 dark:bg-slate-700 text-sm font-mono" />
@@ -496,17 +535,17 @@ export default function SettingsPage() {
           </div>
 
           {/* データエクスポート */}
-          <div className="bg-white dark:bg-slate-800 rounded-lg shadow">
+          <div className="bg-[var(--color-card)] rounded-lg shadow">
             <button onClick={() => toggleSection('export')} className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:bg-slate-700 dark:hover:bg-slate-700 rounded-lg">
               <div className="flex items-center gap-2">
-                <Download size={20} className="text-orange-500" />
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100">データエクスポート</h3>
+                <Download size={20} className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">データエクスポート</h3>
               </div>
               {openSections.export ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </button>
             {openSections.export && (
               <div className="px-4 pb-4 border-t pt-4">
-                <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">データをCSV形式でダウンロードできます。</p>
+                <p className="text-sm text-[var(--color-muted)] mb-4">データをCSV形式でダウンロードできます。</p>
                 <div className="flex flex-wrap gap-3">
                   <a href="/api/export?filter=wishlist" className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center gap-2"><Download size={18} />ほしいものリスト</a>
                   <a href="/api/export?filter=purchased" className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 flex items-center gap-2"><Download size={18} />購入済み</a>
