@@ -101,7 +101,7 @@ export default function LoginForm() {
               onClick={() => setIsLogin(true)}
               className={`flex-1 py-2 text-center font-medium border-b-2 transition-colors ${
                 isLogin
-                  ? 'border-orange-500 text-orange-600'
+                  ? 'border-[var(--shu)] text-orange-600'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700'
               }`}
             >
@@ -112,7 +112,7 @@ export default function LoginForm() {
               onClick={() => setIsLogin(false)}
               className={`flex-1 py-2 text-center font-medium border-b-2 transition-colors ${
                 !isLogin
-                  ? 'border-orange-500 text-orange-600'
+                  ? 'border-[var(--shu)] text-orange-600'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700'
               }`}
             >
@@ -133,7 +133,7 @@ export default function LoginForm() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="お名前"
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--shu)]"
                   />
                 </div>
               </div>
@@ -151,7 +151,7 @@ export default function LoginForm() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="email@example.com"
                   required
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--shu)]"
                 />
               </div>
             </div>
@@ -169,7 +169,7 @@ export default function LoginForm() {
                   placeholder="6文字以上"
                   required
                   minLength={6}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--shu)]"
                 />
               </div>
             </div>

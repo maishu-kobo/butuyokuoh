@@ -202,7 +202,7 @@ export async function scrapeWishlist(listUrl: string): Promise<WishlistResult> {
   const url = new URL(listUrl);
   const hostname = url.hostname.toLowerCase();
 
-  if (hostname.includes('amazon.co.jp') || hostname.includes('amazon.com')) {
+  if (hostname.includes('amazon.co.jp') || hostname.includes('amazon.jp') || hostname.includes('amazon.com')) {
     return scrapeAmazonWishlist(listUrl);
   } else if (hostname.includes('rakuten.co.jp')) {
     return scrapeRakutenFavorites(listUrl);
