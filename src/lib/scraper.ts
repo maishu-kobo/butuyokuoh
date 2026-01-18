@@ -203,7 +203,18 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
 
     // タイトルから商品名
     const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
-    const name = titleMatch ? titleMatch[1].trim() : '不明な商品';
+    let name = titleMatch ? titleMatch[1].trim() : '不明な商品';
+    // タイトルのクリーンアップ: 改行、HTMLエンティティ、サイト名の区切り文字などを除去
+    name = name
+      .replace(/\n/g, ' ')                    // 改行をスペースに
+      .replace(/&ndash;/g, '-')               // &ndash; を - に
+      .replace(/&mdash;/g, '-')               // &mdash; を - に
+      .replace(/&amp;/g, '&')                 // &amp; を & に
+      .replace(/&quot;/g, '"')                // &quot; を " に
+      .replace(/&#39;/g, "'")                 // &#39; を ' に
+      .replace(/\s*[-|–—]\s*[^-|–—]+$/g, '')  // 末尾のサイト名部分を除去 ("- SITE_NAME" など)
+      .replace(/\s+/g, ' ')                   // 連続スペースを単一に
+      .trim();
 
     // JSON-LDから価格取得を試行
     let price: number | null = null;
