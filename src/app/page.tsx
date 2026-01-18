@@ -334,7 +334,7 @@ export default function Home() {
   // 認証チェック
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--kinari)] flex items-center justify-center">
         <div className="text-gray-500">読み込み中...</div>
       </div>
     );
@@ -345,13 +345,13 @@ export default function Home() {
   }
 
   return (
-    <div {...swipeHandlers} className="min-h-screen bg-slate-50 dark:bg-slate-900">
+    <div {...swipeHandlers} className="min-h-screen bg-[var(--kinari)] dark:bg-slate-900">
       {/* ヘッダー */}
-      <header className="bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg">
+      <header className="bg-[var(--ai)] text-white shadow-lg">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Crown size={28} className="text-yellow-300" />
+              <Crown size={28} className="text-[var(--kitsune)]" />
               <h1 className="text-xl font-bold">物欲王</h1>
             </div>
             <div className="flex items-center gap-3">
@@ -386,7 +386,7 @@ export default function Home() {
               onClick={() => { changeTab('list'); fetchItems(); }}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'list'
-                  ? 'bg-orange-500 text-white shadow-md'
+                  ? 'bg-[var(--shu)] text-white shadow-md'
                   : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
@@ -397,7 +397,7 @@ export default function Home() {
               onClick={() => changeTab('budget')}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'budget'
-                  ? 'bg-orange-500 text-white shadow-md'
+                  ? 'bg-[var(--shu)] text-white shadow-md'
                   : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
@@ -408,7 +408,7 @@ export default function Home() {
               onClick={() => changeTab('purchased')}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'purchased'
-                  ? 'bg-orange-500 text-white shadow-md'
+                  ? 'bg-[var(--shu)] text-white shadow-md'
                   : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
@@ -419,7 +419,7 @@ export default function Home() {
               onClick={() => changeTab('stats')}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === 'stats'
-                  ? 'bg-orange-500 text-white shadow-md'
+                  ? 'bg-[var(--shu)] text-white shadow-md'
                   : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
@@ -451,7 +451,7 @@ export default function Home() {
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm">
               <button
                 onClick={() => setIsFilterOpen(!isFilterOpen)}
-                className="w-full px-4 py-3 flex items-center justify-between text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors rounded-2xl"
+                className="w-full px-4 py-3 flex items-center justify-between text-slate-600 dark:text-slate-300 hover:bg-[var(--kinari)] dark:hover:bg-slate-700 transition-colors rounded-2xl"
               >
                 <div className="flex items-center gap-2">
                   <SlidersHorizontal size={18} className="text-slate-400" />
@@ -518,7 +518,7 @@ export default function Home() {
                         onClick={() => setSelectedCategory(null)}
                         className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                           selectedCategory === null
-                            ? 'bg-orange-500 text-white'
+                            ? 'bg-[var(--shu)] text-white'
                             : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                         }`}
                       >

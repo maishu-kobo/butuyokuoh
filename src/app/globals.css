@@ -3,9 +3,33 @@
 /* ダークモードをclassベースに変更 */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* 和モダン配色 */
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-rgb: 243, 244, 246;
+  /* 基本色 */
+  --sumi: #2d2d2d;           /* 墨色 - テキスト */
+  --kinari: #f7f4ef;         /* 生成り - 背景 */
+  --shiro: #fdfbf7;          /* 白 - カード背景 */
+
+  /* アクセント色 */
+  --shu: #c53d43;            /* 朱色 - プライマリ */
+  --shu-light: #e85d63;      /* 朱色（明るめ） */
+  --ai: #2b4b6f;             /* 藍色 - セカンダリ */
+  --matcha: #6b7b3c;         /* 抹茶色 */
+  --kitsune: #c18a40;        /* 狐色（金茶） */
+
+  /* 淡い色 */
+  --sakura: #f5e6e8;         /* 桜色 */
+  --wasurenagusa: #e6eff5;   /* 勿忘草色 */
+  --wakakusa: #e8f0e4;       /* 若草色 */
+
+  /* グレー */
+  --nezumi: #7d7d7d;         /* 鼠色 */
+  --hai: #9e9e9e;            /* 灰色 */
+  --gofun: #f0ebe1;          /* 胡粉（薄いベージュ） */
+
+  /* Tailwind互換 */
+  --foreground-rgb: 45, 45, 45;
+  --background-rgb: 247, 244, 239;
 }
 
 .dark {
@@ -14,10 +38,102 @@
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-rgb));
+  color: var(--sumi);
+  background: var(--kinari);
+  font-feature-settings: "palt";
 }
 
+/* 和紙風テクスチャ（薄い） */
+.washi-texture {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4'%3E%3Cpath fill='%23d4c9b8' fill-opacity='0.15' d='M1 3h1v1H1V3zm2-2h1v1H3V1z'%3E%3C/path%3E%3C/svg%3E");
+}
+
+/* カード共通スタイル */
+.wa-card {
+  background: var(--shiro);
+  border: 1px solid var(--gofun);
+  box-shadow: 0 2px 8px rgba(45, 45, 45, 0.06);
+}
+
+/* ボタン共通 */
+.wa-btn-primary {
+  background: var(--shu);
+  color: white;
+  transition: all 0.2s ease;
+}
+
+.wa-btn-primary:hover {
+  background: var(--shu-light);
+}
+
+.wa-btn-secondary {
+  background: var(--ai);
+  color: white;
+}
+
+/* 入力フィールド */
+.wa-input {
+  border: 1px solid var(--gofun);
+  background: var(--shiro);
+  transition: border-color 0.2s ease;
+}
+
+.wa-input:focus {
+  border-color: var(--shu);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(197, 61, 67, 0.1);
+}
+
+/* タブのアクティブ状態 */
+.wa-tab-active {
+  border-bottom-color: var(--shu);
+  color: var(--shu);
+}
+
+/* 優先度バッジ */
+.priority-high {
+  background: var(--sakura);
+  color: var(--shu);
+}
+
+.priority-normal {
+  background: var(--wasurenagusa);
+  color: var(--ai);
+}
+
+.priority-low {
+  background: var(--gofun);
+  color: var(--nezumi);
+}
+
+/* ソースバッジ */
+.source-amazon {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.source-rakuten {
+  background: #ffebee;
+  color: #c62828;
+}
+
+/* 成功・警告・エラー */
+.wa-success {
+  background: var(--wakakusa);
+  color: var(--matcha);
+}
+
+.wa-warning {
+  background: #fff8e1;
+  color: var(--kitsune);
+}
+
+.wa-error {
+  background: var(--sakura);
+  color: var(--shu);
+}
+
+/* line-clamp utilities */
 .line-clamp-1 {
   display: -webkit-box;
   -webkit-line-clamp: 1;
@@ -61,4 +177,29 @@ body {
 
 .slide-in-left {
   animation: slideInFromLeft 0.2s ease-out;
+}
+
+/* スクロールバー（和モダン） */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--gofun);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--hai);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--nezumi);
+}
+
+/* セレクション */
+::selection {
+  background: rgba(197, 61, 67, 0.2);
+  color: var(--sumi);
 }

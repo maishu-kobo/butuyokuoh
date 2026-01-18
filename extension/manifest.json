@@ -9,6 +9,7 @@
   ],
   "host_permissions": [
     "https://www.amazon.co.jp/*",
+    "https://www.amazon.jp/*",
     "https://www.amazon.com/*",
     "https://my.bookmark.rakuten.co.jp/*",
     "https://item.rakuten.co.jp/*",
@@ -27,6 +28,7 @@
       "matches": [
         "https://www.amazon.co.jp/hz/wishlist/*",
         "https://www.amazon.co.jp/gp/registry/wishlist/*",
+        "https://www.amazon.jp/hz/wishlist/*",
         "https://www.amazon.com/hz/wishlist/*"
       ],
       "js": ["content-amazon.js"]
@@ -42,6 +44,9 @@
         "https://www.amazon.co.jp/dp/*",
         "https://www.amazon.co.jp/*/dp/*",
         "https://www.amazon.co.jp/gp/product/*",
+        "https://www.amazon.jp/dp/*",
+        "https://www.amazon.jp/*/dp/*",
+        "https://www.amazon.jp/gp/product/*",
         "https://www.amazon.com/dp/*",
         "https://www.amazon.com/*/dp/*",
         "https://www.amazon.com/gp/product/*"
