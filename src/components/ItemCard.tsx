@@ -134,9 +134,9 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     : 0;
 
   const sourceColors: Record<string, string> = {
-    amazon: 'bg-orange-100 text-orange-800',
-    rakuten: 'bg-red-100 text-red-800',
-    other: 'bg-gray-100 dark:bg-slate-700 text-gray-800',
+    amazon: 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200',
+    rakuten: 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200',
+    other: 'bg-gray-100 text-gray-800 dark:bg-slate-600 dark:text-gray-100',
   };
 
   const sourceNames: Record<string, string> = {
