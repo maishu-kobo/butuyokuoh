@@ -227,8 +227,10 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
   try {
     const response = await fetch(sanitizedUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'ja-JP,ja;q=0.9',
+        'Cookie': 'i18n-prefs=JPY; lc-acbjp=ja_JP',
       },
     });
     const html = await response.text();
@@ -237,9 +239,22 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
     const nameMatch = html.match(/<span[^>]*id="productTitle"[^>]*>([^<]+)<\/span>/);
     const name = nameMatch ? nameMatch[1].trim() : '不明な商品';
 
-    // 価格
-    const priceMatch = html.match(/¥([\d,]+)/) || html.match(/\\([\d,]+)/);
-    const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null;
+    // 価格（複数のパターンに対応）
+    let price: number | null = null;
+    
+    // パターン1: a-price-wholeクラス（新形式）
+    const priceWholeMatch = html.match(/a-price-whole">([\d,]+)/);
+    if (priceWholeMatch) {
+      price = parseInt(priceWholeMatch[1].replace(/,/g, ''), 10);
+    }
+    
+    // パターン2: 円記号付き
+    if (!price) {
+      const yenMatch = html.match(/[¥￥]([\d,]+)/);
+      if (yenMatch) {
+        price = parseInt(yenMatch[1].replace(/,/g, ''), 10);
+      }
+    }
 
     // 画像
     const imageMatch = html.match(/"hiRes":"([^"]+)"/) || html.match(/id="landingImage"[^>]*src="([^"]+)"/);
