@@ -14,10 +14,12 @@ export async function GET(request: NextRequest) {
 
   const db = getDb();
   
+  // 購入予定日が設定されているアイテム（ゴミ箱に入っていないもの）
   let query = `
     SELECT * FROM items 
     WHERE is_purchased = 0 
     AND user_id = ?
+    AND deleted_at IS NULL
     AND planned_purchase_date IS NOT NULL
   `;
   const params: (string | number)[] = [user.id];
@@ -31,6 +33,17 @@ export async function GET(request: NextRequest) {
 
   const items = db.prepare(query).all(...params) as Item[];
   
+  // 購入予定日が未設定のアイテム（購入時期未定）
+  const undatedQuery = `
+    SELECT * FROM items 
+    WHERE is_purchased = 0 
+    AND user_id = ?
+    AND deleted_at IS NULL
+    AND (planned_purchase_date IS NULL OR planned_purchase_date = '')
+    ORDER BY priority ASC, created_at DESC
+  `;
+  const undatedItems = db.prepare(undatedQuery).all(user.id) as Item[];
+  
   // 月ごとにグループ化
   const byMonth: Record<string, { items: Item[], total: number }> = {};
   
@@ -43,6 +56,15 @@ export async function GET(request: NextRequest) {
       byMonth[monthKey].items.push(item);
       byMonth[monthKey].total += (item.current_price || 0) * (item.quantity || 1);
     }
+  }
+
+  // 購入時期未定のアイテムを追加
+  if (undatedItems.length > 0) {
+    const undatedTotal = undatedItems.reduce(
+      (sum, item) => sum + (item.current_price || 0) * (item.quantity || 1),
+      0
+    );
+    byMonth['undated'] = { items: undatedItems, total: undatedTotal };
   }
 
   return NextResponse.json(byMonth);
