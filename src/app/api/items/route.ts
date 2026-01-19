@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
     db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(result.lastInsertRowid, scraped.price);
   }
 
-  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(result.lastInsertRowid);
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(result.lastInsertRowid) as Record<string, unknown>;
   
   // スクレイピング結果に注意メッセージがあれば含める
   const response = { ...item, scrapeNote: scraped.note || null };
