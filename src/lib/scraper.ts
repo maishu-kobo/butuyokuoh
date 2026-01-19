@@ -424,9 +424,20 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
           }
           
           // 直接のoffers（JPYを優先）
-          if (!price && data.offers?.price) {
-            if (data.offers.priceCurrency === 'JPY' || !data.offers.priceCurrency) {
-              price = parseInt(String(data.offers.price).replace(/[^0-9]/g, ''), 10);
+          if (!price && data.offers) {
+            // offersが配列の場合
+            if (Array.isArray(data.offers)) {
+              for (const offer of data.offers) {
+                if (offer.price && (offer.priceCurrency === 'JPY' || !offer.priceCurrency)) {
+                  price = parseInt(String(offer.price).replace(/[^0-9]/g, ''), 10);
+                  break;
+                }
+              }
+            } else if (data.offers.price) {
+              // offersがオブジェクトの場合
+              if (data.offers.priceCurrency === 'JPY' || !data.offers.priceCurrency) {
+                price = parseInt(String(data.offers.price).replace(/[^0-9]/g, ''), 10);
+              }
             }
           }
           
