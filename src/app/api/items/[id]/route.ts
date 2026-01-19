@@ -35,15 +35,20 @@ export async function PATCH(
   const body = await request.json();
   const db = getDb();
 
-  const item = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id);
+  const item = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id) as { current_price?: number } | undefined;
   if (!item) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
 
+  // 価格が変更された場合、価格履歴に記録
+  const oldPrice = item.current_price;
+  const newPrice = body.current_price;
+  const priceChanged = newPrice !== undefined && newPrice !== null && newPrice !== oldPrice;
+
   const updates: string[] = [];
   const values: unknown[] = [];
 
-  const allowedFields = ['name', 'priority', 'planned_purchase_date', 'comparison_group_id', 'category_id', 'notes', 'is_purchased', 'purchased_at', 'target_price', 'target_currency', 'quantity', 'image_url', 'current_price', 'sort_order'];
+  const allowedFields = ['name', 'url', 'priority', 'planned_purchase_date', 'comparison_group_id', 'category_id', 'notes', 'is_purchased', 'purchased_at', 'target_price', 'target_currency', 'quantity', 'image_url', 'current_price', 'sort_order'];
   
   for (const field of allowedFields) {
     if (body[field] !== undefined) {
@@ -65,6 +70,11 @@ export async function PATCH(
   values.push(id);
 
   db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+
+  // 価格が変更された場合、価格履歴に記録
+  if (priceChanged) {
+    db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(id, newPrice);
+  }
 
   const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
   return NextResponse.json(updated);

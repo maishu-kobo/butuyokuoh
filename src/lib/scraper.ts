@@ -235,6 +235,23 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
     });
     const html = await response.text();
 
+    // Amazonのボット対策ページやエラーページを検出
+    if (html.includes('api-services-support@amazon.com') || 
+        html.includes('Service Unavailable') ||
+        html.includes('ロボットではない') ||
+        html.includes('automated access') ||
+        !html.includes('productTitle')) {
+      console.log('Amazon bot detection or error page detected');
+      return {
+        name: 'Amazonのボット対策により価格を取得できませんでした',
+        price: null,
+        imageUrl: null,
+        source: 'amazon',
+        sourceName: 'Amazon',
+        note: 'Amazonのボット対策により自動取得が制限されています。価格は手動で編集してください。',
+      };
+    }
+
     // 商品名
     const nameMatch = html.match(/<span[^>]*id="productTitle"[^>]*>([^<]+)<\/span>/);
     const name = nameMatch ? nameMatch[1].trim() : '不明な商品';
@@ -248,13 +265,14 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
       price = parseInt(priceWholeMatch[1].replace(/,/g, ''), 10);
     }
     
-    // パターン2: 円記号付き
-    if (!price) {
-      const yenMatch = html.match(/[¥￥]([\d,]+)/);
-      if (yenMatch) {
-        price = parseInt(yenMatch[1].replace(/,/g, ''), 10);
-      }
-    }
+    // パターン2: 円記号付き（フォールバック、ただしproductTitleがある場合のみ）
+    // ※このパターンは誤検出が多いので無効化
+    // if (!price) {
+    //   const yenMatch = html.match(/[¥￥]([\d,]+)/);
+    //   if (yenMatch) {
+    //     price = parseInt(yenMatch[1].replace(/,/g, ''), 10);
+    //   }
+    // }
 
     // 画像
     const imageMatch = html.match(/"hiRes":"([^"]+)"/) || html.match(/id="landingImage"[^>]*src="([^"]+)"/);
