@@ -91,7 +91,7 @@ export default function BudgetView() {
         <div className={`rounded-lg p-4 transition-all ${
           selectedIds.size > 0 
             ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white' 
-            : 'bg-gray-100 text-gray-400'
+            : 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400'
         }`}>
           <div className="flex items-center gap-2 mb-1">
             <Calculator size={20} />

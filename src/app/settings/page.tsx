@@ -485,7 +485,7 @@ export default function SettingsPage() {
                 <div className="flex flex-wrap gap-3">
                   <a href="/api/export?filter=wishlist" className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center gap-2"><Download size={18} />ほしいものリスト</a>
                   <a href="/api/export?filter=purchased" className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 flex items-center gap-2"><Download size={18} />購入済み</a>
-                  <a href="/api/export?filter=all" className="px-4 py-2 bg-gray-50 dark:bg-slate-7000 text-white rounded-md hover:bg-gray-600 flex items-center gap-2"><Download size={18} />すべて</a>
+                  <a href="/api/export?filter=all" className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 flex items-center gap-2"><Download size={18} />すべて</a>
                 </div>
               </div>
             )}

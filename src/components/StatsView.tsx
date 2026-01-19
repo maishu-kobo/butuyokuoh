@@ -142,7 +142,7 @@ export default function StatsView() {
                   <span className={`px-2 py-1 rounded text-sm ${
                     p.priority <= 2 ? 'bg-red-100 text-red-700' :
                     p.priority === 3 ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-gray-100 text-gray-600 dark:text-gray-300'
+                    'bg-slate-200 text-slate-700 dark:bg-slate-600 dark:text-slate-200'
                   }`}>
                     {priorityLabels[p.priority]}
                   </span>
@@ -166,7 +166,7 @@ export default function StatsView() {
                   <span className={`px-2 py-1 rounded text-sm ${
                     s.source === 'amazon' ? 'bg-orange-100 text-orange-700' :
                     s.source === 'rakuten' ? 'bg-red-100 text-red-700' :
-                    'bg-gray-100 text-gray-600 dark:text-gray-300'
+                    'bg-slate-200 text-slate-700 dark:bg-slate-600 dark:text-slate-200'
                   }`}>
                     {sourceLabels[s.source] || s.source}
                   </span>
