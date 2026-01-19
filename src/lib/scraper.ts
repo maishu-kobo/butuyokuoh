@@ -561,9 +561,43 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
     }
 
     // OG画像
-    const imageMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/) ||
-                       html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:image"/);
-    const imageUrl = imageMatch ? imageMatch[1] : null;
+    let imageUrl: string | null = null;
+    const ogImageMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/) ||
+                         html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:image"/);
+    if (ogImageMatch) {
+      imageUrl = ogImageMatch[1];
+    }
+
+    // OG画像がない場合のフォールバック
+    if (!imageUrl) {
+      // EC-CUBE系: class="picture" の画像
+      const pictureMatch = html.match(/<img[^>]*class="[^"]*picture[^"]*"[^>]*src="([^"]+)"/) ||
+                           html.match(/<img[^>]*src="([^"]+)"[^>]*class="[^"]*picture[^"]*"/);
+      if (pictureMatch) {
+        imageUrl = pictureMatch[1];
+      }
+    }
+
+    if (!imageUrl) {
+      // 商品画像っぽいパターン: product, main, item などを含むクラス/IDの画像
+      const productImageMatch = html.match(/<img[^>]*(?:class|id)="[^"]*(?:product|main|item)[^"]*"[^>]*src="([^"]+)"/) ||
+                                html.match(/<img[^>]*src="([^"]+)"[^>]*(?:class|id)="[^"]*(?:product|main|item)[^"]*"/);
+      if (productImageMatch) {
+        imageUrl = productImageMatch[1];
+      }
+    }
+
+    // 相対パスを絶対パスに変換
+    if (imageUrl && !imageUrl.startsWith('http')) {
+      try {
+        const urlObj = new URL(sanitizedUrl);
+        imageUrl = imageUrl.startsWith('/') 
+          ? `${urlObj.protocol}//${urlObj.host}${imageUrl}`
+          : `${urlObj.protocol}//${urlObj.host}/${imageUrl}`;
+      } catch {
+        // URL変換失敗時はそのまま
+      }
+    }
 
     // ホスト名からソース名を生成
     const sourceName = hostname.replace(/^www\./, '').split('.')[0];
