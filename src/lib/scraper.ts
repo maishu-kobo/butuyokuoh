@@ -52,18 +52,123 @@ function isAmazonShortUrl(url: string): boolean {
   return hostname !== null && AMAZON_SHORT_DOMAINS.has(hostname);
 }
 
+/**
+ * Amazonの正規ドメインかどうかを判定
+ */
+function isAmazonUrl(url: string): boolean {
+  const hostname = getHostname(url);
+  return hostname !== null && AMAZON_DOMAINS.has(hostname);
+}
 
+/**
+ * Amazonの商品ページかどうかを判定（トップページや検索ページを除外）
+ */
+function isAmazonProductUrl(url: string): boolean {
+  if (!isAmazonUrl(url)) return false;
+  
+  try {
+    const urlObj = new URL(url);
+    const path = urlObj.pathname;
+    // 商品ページのパターン: /dp/, /gp/product/, /gp/aw/d/
+    return path.includes('/dp/') || 
+           path.includes('/gp/product/') || 
+           path.includes('/gp/aw/d/');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 短縮リンクを展開してリダイレクト先のURLを取得
+ * @param url 短縮リンクURL
+ * @param maxRedirects 最大リダイレクト回数
+ * @returns 展開後のURL（失敗した場合はnull）
+ */
+async function expandShortUrl(url: string, maxRedirects: number = 10): Promise<string | null> {
+  let currentUrl = url;
+  
+  for (let i = 0; i < maxRedirects; i++) {
+    try {
+      const response = await fetch(currentUrl, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'ja-JP,ja;q=0.9',
+        },
+      });
+      
+      // リダイレクトでなければ現在のURLを返す
+      if (response.status < 300 || response.status >= 400) {
+        // Amazonドメインに到達したかチェック
+        if (isAmazonUrl(currentUrl)) {
+          return currentUrl;
+        }
+        // 最終URLがAmazonでない場合はnull
+        return null;
+      }
+      
+      const location = response.headers.get('location');
+      if (!location) {
+        break;
+      }
+      
+      // 相対URLの場合は絶対URLに変換
+      try {
+        currentUrl = new URL(location, currentUrl).href;
+      } catch {
+        break;
+      }
+      
+      // Amazonドメインに到達したら成功
+      if (isAmazonUrl(currentUrl)) {
+        return currentUrl;
+      }
+    } catch (error) {
+      console.error('Short URL expansion error:', error);
+      break;
+    }
+  }
+  
+  return null;
+}
 
 export async function scrapeUrl(url: string): Promise<ScrapedItem> {
-  // Amazonの短縮リンクの場合、エラーを返す（ボット対策で展開できない）
+  // Amazonの短縮リンクの場合、展開を試みる
   if (isAmazonShortUrl(url)) {
-    return {
-      name: 'Amazonの短縮リンクは使用できません',
-      price: null,
-      imageUrl: null,
-      source: 'amazon',
-      sourceName: 'Amazon',
-    };
+    console.log('Detected Amazon short URL, attempting to expand:', url);
+    const expandedUrl = await expandShortUrl(url);
+    
+    if (expandedUrl) {
+      console.log('Expanded to:', expandedUrl);
+      
+      // 展開後のURLが商品ページかチェック
+      if (isAmazonProductUrl(expandedUrl)) {
+        // 展開成功 - 通常のAmazonスクレイピングを実行
+        return scrapeAmazon(expandedUrl);
+      } else {
+        // 商品ページではない（トップページや検索ページにリダイレクトされた）
+        console.log('Expanded URL is not a product page:', expandedUrl);
+        return {
+          name: '短縮リンクの展開に失敗しました。リンクが期限切れか無効な可能性があります。',
+          price: null,
+          imageUrl: null,
+          source: 'amazon',
+          sourceName: 'Amazon',
+        };
+      }
+    } else {
+      // 展開失敗
+      console.log('Failed to expand short URL');
+      return {
+        name: 'Amazonの短縮リンクを展開できませんでした。通常のURLをお試しください。',
+        price: null,
+        imageUrl: null,
+        source: 'amazon',
+        sourceName: 'Amazon',
+      };
+    }
   }
 
   const validation = validateAndSanitizeUrl(url);
