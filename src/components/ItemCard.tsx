@@ -19,6 +19,8 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState({
+    name: item.name || '',
+    url: item.url || '',
     priority: item.priority,
     planned_purchase_date: item.planned_purchase_date || '',
     notes: item.notes || '',
@@ -30,6 +32,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     image_url: item.image_url || '',
     current_price: item.current_price || '',
   });
+  const [refreshingUrl, setRefreshingUrl] = useState(false);
   const [showImageEdit, setShowImageEdit] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -72,7 +75,11 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ...editData,
+        name: editData.name || item.name,
+        url: editData.url || item.url,
+        priority: editData.priority,
+        planned_purchase_date: editData.planned_purchase_date || null,
+        notes: editData.notes || null,
         target_price: editData.target_price || null,
         target_currency: editData.target_currency,
         category_id: editData.category_id ? Number(editData.category_id) : null,
@@ -85,6 +92,27 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     setEditing(false);
     setShowImageEdit(false);
     onUpdate();
+  };
+
+  // URLを変更して再取得
+  const handleRefreshWithNewUrl = async () => {
+    if (!editData.url || editData.url === item.url) return;
+    
+    setRefreshingUrl(true);
+    try {
+      // まずURLを更新
+      await fetch(`/api/items/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: editData.url }),
+      });
+      // その後再取得
+      await fetch(`/api/items/${item.id}/refresh`, { method: 'POST' });
+      onUpdate();
+      setEditing(false);
+    } finally {
+      setRefreshingUrl(false);
+    }
   };
 
   const handlePurchased = async () => {
@@ -272,12 +300,48 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
       {editing && (
         <div className="p-4 border-t bg-gray-50 dark:bg-slate-700">
           <div className="grid gap-3">
+            {/* 商品名 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">商品名</label>
+              <input
+                type="text"
+                value={editData.name}
+                onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                className="mt-1 block w-full rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* URL */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">商品URL</label>
+              <div className="mt-1 flex gap-2">
+                <input
+                  type="text"
+                  value={editData.url}
+                  onChange={(e) => setEditData({ ...editData, url: e.target.value })}
+                  placeholder="https://www.amazon.co.jp/dp/..."
+                  className="flex-1 rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                />
+                {editData.url !== item.url && editData.url && !editData.url.startsWith('manual://') && (
+                  <button
+                    type="button"
+                    onClick={handleRefreshWithNewUrl}
+                    disabled={refreshingUrl}
+                    className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {refreshingUrl ? 'URLで再取得中...' : 'URLで再取得'}
+                  </button>
+                )}
+              </div>
+
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">優先度</label>
               <select
                 value={editData.priority}
                 onChange={(e) => setEditData({ ...editData, priority: Number(e.target.value) })}
-                className="mt-1 block w-full rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className="mt-1 block w-full rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
               >
                 {[1, 2, 3, 4, 5].map((n) => (
                   <option key={n} value={n}>{n} - {['', '最高', '高', '普通', '低', '最低'][n]}</option>
@@ -304,7 +368,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                       value={editData.current_price}
                       onChange={(e) => setEditData({ ...editData, current_price: e.target.value })}
                       placeholder="例: 3990"
-                      className="block w-full text-sm rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      className="block w-full text-sm rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                   <div>
@@ -315,7 +379,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                         value={editData.image_url}
                         onChange={(e) => setEditData({ ...editData, image_url: e.target.value })}
                         placeholder="画像URLを入力"
-                        className="flex-1 text-sm rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="flex-1 text-sm rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                       />
                       <input
                         type="file"
@@ -347,7 +411,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   type="date"
                   value={editData.planned_purchase_date}
                   onChange={(e) => setEditData({ ...editData, planned_purchase_date: e.target.value })}
-                  className="mt-1 block w-full rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -357,7 +421,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   min="1"
                   value={editData.quantity}
                   onChange={(e) => setEditData({ ...editData, quantity: Math.max(1, Number(e.target.value) || 1) })}
-                  className="mt-1 block w-full rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -367,7 +431,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                 <select
                   value={editData.target_currency}
                   onChange={(e) => setEditData({ ...editData, target_currency: e.target.value as 'JPY' | 'USD' })}
-                  className="rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 >
                   <option value="JPY">¥ (円)</option>
                   <option value="USD">$ (USD)</option>
@@ -377,7 +441,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   value={editData.target_price}
                   onChange={(e) => setEditData({ ...editData, target_price: e.target.value ? Number(e.target.value) : '' })}
                   placeholder="この価格以下になったら通知"
-                  className="flex-1 rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="flex-1 rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -387,7 +451,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                 <select
                   value={editData.category_id}
                   onChange={(e) => setEditData({ ...editData, category_id: e.target.value })}
-                  className="mt-1 block w-full rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 >
                   <option value="">なし</option>
                   {categories.map((c) => (
@@ -400,7 +464,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                 <select
                   value={editData.comparison_group_id}
                   onChange={(e) => setEditData({ ...editData, comparison_group_id: e.target.value })}
-                  className="mt-1 block w-full rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 >
                   <option value="">なし</option>
                   {comparisonGroups.map((g) => (
@@ -414,7 +478,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
               <textarea
                 value={editData.notes}
                 onChange={(e) => setEditData({ ...editData, notes: e.target.value })}
-                className="mt-1 block w-full rounded border-gray-300 dark:border-slate-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className="mt-1 block w-full rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 rows={2}
               />
             </div>

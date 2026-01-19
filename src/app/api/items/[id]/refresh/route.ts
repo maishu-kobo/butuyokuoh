@@ -29,18 +29,40 @@ export async function POST(
   // 再スクレイピング
   const scraped = await scrapeUrl(item.url);
   
-  // 価格が変わった場合のみ更新
-  if (scraped.price && scraped.price !== item.current_price) {
-    db.prepare(`
-      UPDATE items 
-      SET current_price = ?, image_url = COALESCE(?, image_url), updated_at = datetime('now')
-      WHERE id = ?
-    `).run(scraped.price, scraped.imageUrl, id);
-    
-    // 価格履歴に追加
-    db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(id, scraped.price);
+  // スクレイピング結果を更新（商品名、価格、画像）
+  const updates: string[] = [];
+  const values: unknown[] = [];
+
+  // 商品名が取得できた場合のみ更新（エラーメッセージでない場合）
+  if (scraped.name && !scraped.name.includes('取得できません') && !scraped.name.includes('不明な商品')) {
+    updates.push('name = ?');
+    values.push(scraped.name);
   }
 
-  const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
-  return NextResponse.json(updated);
+  // 価格が取得できた場合
+  if (scraped.price) {
+    updates.push('current_price = ?');
+    values.push(scraped.price);
+    
+    // 価格が変わった場合のみ履歴に追加
+    if (scraped.price !== item.current_price) {
+      db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(id, scraped.price);
+    }
+  }
+
+  // 画像が取得できた場合
+  if (scraped.imageUrl) {
+    updates.push('image_url = ?');
+    values.push(scraped.imageUrl);
+  }
+
+  // 更新がある場合のみ実行
+  if (updates.length > 0) {
+    updates.push("updated_at = datetime('now')");
+    values.push(id);
+    db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  }
+
+  const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as Record<string, unknown>;
+  return NextResponse.json({ ...updated, note: scraped.note });
 }
