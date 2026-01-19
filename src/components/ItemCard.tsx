@@ -298,200 +298,196 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
 
       {/* 編集フォーム */}
       {editing && (
-        <div className="p-4 border-t bg-gray-50 dark:bg-slate-700">
-          <div className="grid gap-3">
-            {/* 商品名 */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">商品名</label>
-              <input
-                type="text"
-                value={editData.name}
-                onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-                className="mt-1 block w-full rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              />
-            </div>
-
-            {/* URL */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">商品URL</label>
-              <div className="mt-1 flex gap-2">
-                <input
-                  type="text"
-                  value={editData.url}
-                  onChange={(e) => setEditData({ ...editData, url: e.target.value })}
-                  placeholder="https://www.amazon.co.jp/dp/..."
-                  className="flex-1 rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                />
-                {editData.url !== item.url && editData.url && !editData.url.startsWith('manual://') && (
-                  <button
-                    type="button"
-                    onClick={handleRefreshWithNewUrl}
-                    disabled={refreshingUrl}
-                    className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 whitespace-nowrap"
-                  >
-                    {refreshingUrl ? 'URLで再取得中...' : 'URLで再取得'}
-                  </button>
-                )}
+        <div className="p-4 border-t bg-gradient-to-b from-gray-50/50 to-white dark:from-slate-700/30 dark:to-slate-800">
+          <div className="space-y-4">
+            {/* 基本情報 */}
+            <div className="border-l-2 border-orange-500 pl-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <svg className="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">基本情報</span>
               </div>
-
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">優先度</label>
-              <select
-                value={editData.priority}
-                onChange={(e) => setEditData({ ...editData, priority: Number(e.target.value) })}
-                className="mt-1 block w-full rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              >
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <option key={n} value={n}>{n} - {['', '最高', '高', '普通', '低', '最低'][n]}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* 画像・価格の手動編集（折りたたみ） */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowImageEdit(!showImageEdit)}
-                className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-300 flex items-center gap-1"
-              >
-                <ImageIcon size={12} />
-                {showImageEdit ? '画像・価格の編集を閉じる' : '画像・価格を手動で編集'}
-              </button>
-              {showImageEdit && (
-                <div className="mt-2 space-y-2 p-2 bg-gray-100 dark:bg-slate-700 rounded">
-                  <div>
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-1">価格</label>
+              <div className="space-y-2">
+                <div className="grid grid-cols-12 gap-2">
+                  <div className="col-span-8">
                     <input
-                      type="number"
-                      value={editData.current_price}
-                      onChange={(e) => setEditData({ ...editData, current_price: e.target.value })}
-                      placeholder="例: 3990"
-                      className="block w-full text-sm rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      type="text"
+                      value={editData.name}
+                      onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                      placeholder="商品名"
+                      className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/20"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-1">画像URL</label>
-                    <div className="flex gap-1">
-                      <input
-                        type="text"
-                        value={editData.image_url}
-                        onChange={(e) => setEditData({ ...editData, image_url: e.target.value })}
-                        placeholder="画像URLを入力"
-                        className="flex-1 text-sm rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                      />
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleImageUpload}
-                        accept="image/*"
-                        className="hidden"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploading}
-                        className="px-2 py-1 text-xs border border-gray-300 dark:border-slate-600 rounded hover:bg-white disabled:opacity-50"
-                      >
-                        <Upload size={12} />
-                      </button>
-                    </div>
-                    {editData.image_url && (
-                      <img src={editData.image_url} alt="プレビュー" className="mt-1 h-12 w-12 object-cover rounded" />
-                    )}
+                  <div className="col-span-4">
+                    <select
+                      value={editData.priority}
+                      onChange={(e) => setEditData({ ...editData, priority: Number(e.target.value) })}
+                      className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:border-orange-500"
+                    >
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <option key={n} value={n}>{n}-{['', '最高', '高', '普通', '低', '最低'][n]}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">購入予定日</label>
-                <input
-                  type="date"
-                  value={editData.planned_purchase_date}
-                  onChange={(e) => setEditData({ ...editData, planned_purchase_date: e.target.value })}
-                  className="mt-1 block w-full rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">個数</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={editData.quantity}
-                  onChange={(e) => setEditData({ ...editData, quantity: Math.max(1, Number(e.target.value) || 1) })}
-                  className="mt-1 block w-full rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">目標価格（通知用）</label>
-              <div className="mt-1 flex gap-2">
-                <select
-                  value={editData.target_currency}
-                  onChange={(e) => setEditData({ ...editData, target_currency: e.target.value as 'JPY' | 'USD' })}
-                  className="rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                >
-                  <option value="JPY">¥ (円)</option>
-                  <option value="USD">$ (USD)</option>
-                </select>
-                <input
-                  type="number"
-                  value={editData.target_price}
-                  onChange={(e) => setEditData({ ...editData, target_price: e.target.value ? Number(e.target.value) : '' })}
-                  placeholder="この価格以下になったら通知"
-                  className="flex-1 rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
+                <div className="grid grid-cols-12 gap-2">
+                  <div className="col-span-8">
+                    <input
+                      type="text"
+                      value={editData.url}
+                      onChange={(e) => setEditData({ ...editData, url: e.target.value })}
+                      placeholder="商品URL"
+                      className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-500 dark:text-gray-400 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/20"
+                    />
+                  </div>
+                  <div className="col-span-4">
+                    <div className="flex gap-1">
+                      <span className="flex items-center px-2 text-sm text-gray-400 dark:text-gray-500">¥</span>
+                      <input
+                        type="number"
+                        value={editData.current_price}
+                        onChange={(e) => setEditData({ ...editData, current_price: e.target.value })}
+                        placeholder="価格"
+                        className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/20"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">カテゴリ</label>
+
+            {/* 購入計画 */}
+            <div className="border-l-2 border-orange-500 pl-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <svg className="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">購入計画</span>
+              </div>
+              <div className="grid grid-cols-12 gap-2">
+                <div className="col-span-4">
+                  <input
+                    type="date"
+                    value={editData.planned_purchase_date}
+                    onChange={(e) => setEditData({ ...editData, planned_purchase_date: e.target.value })}
+                    className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <input
+                    type="number"
+                    min="1"
+                    value={editData.quantity}
+                    onChange={(e) => setEditData({ ...editData, quantity: Math.max(1, Number(e.target.value) || 1) })}
+                    placeholder="個数"
+                    className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:border-orange-500 text-center"
+                  />
+                </div>
+                <div className="col-span-6">
+                  <div className="flex">
+                    <select
+                      value={editData.target_currency}
+                      onChange={(e) => setEditData({ ...editData, target_currency: e.target.value as 'JPY' | 'USD' })}
+                      className="px-2 py-1.5 text-sm rounded-l-lg border border-r-0 border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-600 text-gray-900 dark:text-white focus:outline-none"
+                    >
+                      <option value="JPY">¥</option>
+                      <option value="USD">$</option>
+                    </select>
+                    <input
+                      type="number"
+                      value={editData.target_price}
+                      onChange={(e) => setEditData({ ...editData, target_price: e.target.value ? Number(e.target.value) : '' })}
+                      placeholder="目標価格"
+                      className="flex-1 px-2.5 py-1.5 text-sm rounded-r-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 分類 */}
+            <div className="border-l-2 border-orange-500 pl-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <svg className="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+                <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">分類</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
                 <select
                   value={editData.category_id}
                   onChange={(e) => setEditData({ ...editData, category_id: e.target.value })}
-                  className="mt-1 block w-full rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:border-orange-500"
                 >
-                  <option value="">なし</option>
+                  <option value="">カテゴリなし</option>
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">比較グループ</label>
                 <select
                   value={editData.comparison_group_id}
                   onChange={(e) => setEditData({ ...editData, comparison_group_id: e.target.value })}
-                  className="mt-1 block w-full rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:border-orange-500"
                 >
-                  <option value="">なし</option>
+                  <option value="">比較Gなし</option>
                   {comparisonGroups.map((g) => (
                     <option key={g.id} value={g.id}>{g.name}</option>
                   ))}
                 </select>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">メモ</label>
-              <textarea
-                value={editData.notes}
-                onChange={(e) => setEditData({ ...editData, notes: e.target.value })}
-                className="mt-1 block w-full rounded border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-800 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                rows={2}
-              />
-            </div>
-            <div className="flex gap-2 justify-end">
+
+            {/* メモ・画像（折りたたみ） */}
+            <details className="border-l-2 border-orange-500 pl-3 group">
+              <summary className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                メモ・画像
+              </summary>
+              <div className="mt-2 space-y-2">
+                <textarea
+                  value={editData.notes}
+                  onChange={(e) => setEditData({ ...editData, notes: e.target.value })}
+                  placeholder="メモを入力..."
+                  rows={2}
+                  className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:border-orange-500 resize-none"
+                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={editData.image_url}
+                    onChange={(e) => setEditData({ ...editData, image_url: e.target.value })}
+                    placeholder="画像URL"
+                    className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:border-orange-500"
+                  />
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImageUpload}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-600 disabled:opacity-50"
+                    title="画像アップロード"
+                  >
+                    <Upload size={16} className="text-gray-400" />
+                  </button>
+                </div>
+                {editData.image_url && (
+                  <img src={editData.image_url} alt="プレビュー" className="h-12 w-12 object-cover rounded" />
+                )}
+              </div>
+            </details>
+
+            {/* ボタン */}
+            <div className="flex items-center justify-end gap-2 pt-1">
               <button
                 onClick={() => setEditing(false)}
-                className="px-3 py-1 text-gray-600 dark:text-gray-300 hover:text-gray-800"
+                className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 キャンセル
               </button>
               <button
                 onClick={handleSave}
-                className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                className="px-4 py-1.5 text-sm bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 font-medium shadow-sm"
               >
                 保存
               </button>
