@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Item } from '@/types';
-import { Trash2, RotateCcw, X, ExternalLink } from 'lucide-react';
+import { Trash2, Undo2, X, ExternalLink } from 'lucide-react';
 
 interface TrashItem extends Item {
   days_left: number;
@@ -130,7 +130,7 @@ export default function TrashView() {
                   className="text-green-500 hover:text-green-600 p-2"
                   title="元に戻す"
                 >
-                  <RotateCcw size={18} />
+                  <Undo2 size={18} />
                 </button>
                 <button
                   onClick={() => handleDelete(item.id)}
