@@ -504,12 +504,12 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
     }
 
     if (!price) {
-      // 「販売価格」や「税込」の近くにある価格を探す
-      const salePriceMatch = html.match(/販売価格[^\d]*([\d,]+)/) ||
-                             html.match(/税込[^\d]*([\d,]+)/);
+      // 「販売価格」の近くにある価格を探す（より厳密なパターン）
+      // 「販売価格: 1,234円」や「販売価格：¥1,234」のような形式
+      const salePriceMatch = html.match(/販売価格[\s：:]*¥?\s*([\d,]+)/);
       if (salePriceMatch) {
         const extracted = parseInt(salePriceMatch[1].replace(/,/g, ''), 10);
-        if (extracted > 0) {
+        if (extracted >= 100) { // 100円未満は除外
           price = extracted;
         }
       }
