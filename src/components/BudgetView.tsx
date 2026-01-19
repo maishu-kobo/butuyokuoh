@@ -67,8 +67,12 @@ export default function BudgetView() {
     return <div className="text-gray-500 dark:text-gray-400">読み込み中...</div>;
   }
 
-  const months = Object.keys(budget).sort();
-  const totalBudget = months.reduce((sum, m) => sum + budget[m].total, 0);
+  // undatedを除いた月をソート
+  const months = Object.keys(budget).filter(m => m !== 'undated').sort();
+  const undatedData = budget['undated'];
+  
+  // 全体の合計（未定も含む）
+  const totalBudget = months.reduce((sum, m) => sum + budget[m].total, 0) + (undatedData?.total || 0);
   
   // 選択したアイテムの合計（個数を考慮）
   const selectedTotal = allItems
@@ -106,9 +110,9 @@ export default function BudgetView() {
         </div>
       </div>
 
-      {months.length === 0 ? (
+      {months.length === 0 && !undatedData ? (
         <div className="text-gray-500 dark:text-gray-400 text-center py-8">
-          購入予定日が設定されたアイテムがありません
+          アイテムがありません
         </div>
       ) : (
         <>
@@ -186,6 +190,60 @@ export default function BudgetView() {
               </div>
             );
           })}
+
+          {/* 購入時期未定 */}
+          {undatedData && undatedData.items.length > 0 && (
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4 border-l-4 border-gray-400">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleSelectMonth(undatedData.items)}
+                    className={`p-1 rounded hover:bg-gray-100 ${
+                      undatedData.items.every(i => selectedIds.has(i.id)) ? 'text-blue-600' : 
+                      undatedData.items.some(i => selectedIds.has(i.id)) ? 'text-blue-400' : 'text-gray-300'
+                    }`}
+                  >
+                    {undatedData.items.every(i => selectedIds.has(i.id)) ? <CheckSquare size={18} /> : <Square size={18} />}
+                  </button>
+                  <Calendar size={18} className="text-gray-400" />
+                  <span className="font-semibold text-gray-500">購入時期未定</span>
+                </div>
+                <span className="text-lg font-bold text-gray-500">
+                  ¥{undatedData.total.toLocaleString()}
+                </span>
+              </div>
+              <div className="space-y-1">
+                {undatedData.items.map((item) => {
+                  const isSelected = selectedIds.has(item.id);
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => toggleSelect(item.id)}
+                      className={`flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
+                        isSelected ? 'bg-blue-50' : 'hover:bg-gray-50 dark:bg-slate-700'
+                      }`}
+                    >
+                      <span className={isSelected ? 'text-blue-600' : 'text-gray-300'}>
+                        {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                      </span>
+                      <span className={`flex-1 truncate ${isSelected ? 'text-blue-700' : 'text-gray-700 dark:text-gray-200'}`}>
+                        {item.name}
+                        {(item.quantity || 1) > 1 && (
+                          <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
+                        )}
+                      </span>
+                      <span className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
+                        {(item.quantity || 1) > 1 
+                          ? `¥${((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}`
+                          : `¥${item.current_price?.toLocaleString() || '---'}`
+                        }
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
