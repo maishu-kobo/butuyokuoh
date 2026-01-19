@@ -115,9 +115,15 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
         body: JSON.stringify(payload),
       });
 
+      const data = await res.json();
+      
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || '追加に失敗しました');
+      }
+
+      // スクレイピング結果に注意メッセージがあれば表示
+      if (data.scrapeNote) {
+        alert(data.scrapeNote);
       }
 
       resetForm();

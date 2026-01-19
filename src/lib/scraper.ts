@@ -6,6 +6,7 @@ export interface ScrapedItem {
   imageUrl: string | null;
   source: string;
   sourceName: string | null;
+  note?: string; // ユーザーへのメッセージ（短縮リンクの制限など）
 }
 
 // 許可されたAmazonドメイン
@@ -80,10 +81,16 @@ function isAmazonProductUrl(url: string): boolean {
 
 /**
  * 短縮リンクを展開してリダイレクト先のURLを取得
- * @param url 短縮リンクURL
+ * @param url 短縮リンクURL（事前にisAmazonShortUrlで検証済み）
  * @returns 展開後のURL（失敗した場合はnull）
  */
 async function expandShortUrl(url: string): Promise<string | null> {
+  // SSRF対策: 短縮リンクドメインのみ許可（二重チェック）
+  if (!isAmazonShortUrl(url)) {
+    console.error('SSRF protection: URL is not an Amazon short URL:', url);
+    return null;
+  }
+  
   try {
     // redirect: 'follow'で自動的にリダイレクトを追跡し、最終URLを取得
     const response = await fetch(url, {
@@ -100,11 +107,12 @@ async function expandShortUrl(url: string): Promise<string | null> {
     const finalUrl = response.url;
     console.log('Final URL after redirect:', finalUrl);
     
-    // Amazonドメインかチェック
+    // SSRF対策: リダイレクト先がAmazonドメインのみ許可
     if (isAmazonUrl(finalUrl)) {
       return finalUrl;
     }
     
+    console.error('SSRF protection: Redirect destination is not Amazon:', finalUrl);
     return null;
   } catch (error) {
     console.error('Short URL expansion error:', error);
@@ -124,7 +132,12 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
       // 展開後のURLが商品ページかチェック
       if (isAmazonProductUrl(expandedUrl)) {
         // 展開成功 - 通常のAmazonスクレイピングを実行
-        return scrapeAmazon(expandedUrl);
+        const result = await scrapeAmazon(expandedUrl);
+        // 短縮リンクからの登録の場合、価格が取得できない可能性があることを伝える
+        if (!result.price) {
+          result.note = '短縮リンクからの登録のため価格を取得できませんでした。商品ページのフルURLで登録し直すと価格を取得できる場合があります。';
+        }
+        return result;
       } else {
         // 商品ページではない（トップページや検索ページにリダイレクトされた）
         console.log('Expanded URL is not a product page:', expandedUrl);
