@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
-import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2, Download, Tag, Layers, Trash2, Plus, Pencil, X, RotateCcw, ChevronDown, ChevronUp, Sun, Moon, Monitor, Palette } from 'lucide-react';
+import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2, Download, Tag, Layers, Plus, Pencil, X, ChevronDown, ChevronUp, Sun, Moon, Monitor, Palette } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import Link from 'next/link';
 import { Category, ComparisonGroup } from '@/types';
@@ -37,15 +37,10 @@ export default function SettingsPage() {
   const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
   const [editGroupName, setEditGroupName] = useState('');
   
-  // ゴミ箱
-  const [trashItems, setTrashItems] = useState<any[]>([]);
-  const [loadingTrash, setLoadingTrash] = useState(false);
-  
   // 折りたたみ状態
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     categories: false,
     groups: false,
-    trash: false,
     theme: false,
     notify: false,
     token: false,
@@ -96,7 +91,6 @@ export default function SettingsPage() {
       fetchNotifySettings();
       fetchCategories();
       fetchGroups();
-      fetchTrash();
     }
   }, [user]);
 
@@ -108,13 +102,6 @@ export default function SettingsPage() {
   const fetchGroups = async () => {
     const res = await fetch('/api/comparison-groups');
     if (res.ok) setGroups(await res.json());
-  };
-
-  const fetchTrash = async () => {
-    setLoadingTrash(true);
-    const res = await fetch('/api/trash');
-    if (res.ok) setTrashItems(await res.json());
-    setLoadingTrash(false);
   };
 
   // カテゴリ操作
@@ -174,24 +161,6 @@ export default function SettingsPage() {
     if (!confirm('この比較グループを削除しますか？')) return;
     await fetch(`/api/comparison-groups/${id}`, { method: 'DELETE' });
     fetchGroups();
-  };
-
-  // ゴミ箱操作
-  const handleRestoreItem = async (id: number) => {
-    await fetch(`/api/trash/${id}`, { method: 'POST' });
-    fetchTrash();
-  };
-
-  const handlePermanentDelete = async (id: number) => {
-    if (!confirm('完全に削除しますか？元に戻せません。')) return;
-    await fetch(`/api/trash/${id}`, { method: 'DELETE' });
-    fetchTrash();
-  };
-
-  const handleEmptyTrash = async () => {
-    if (!confirm('ゴミ箱を空にしますか？全てのアイテムが完全に削除されます。')) return;
-    await fetch('/api/trash', { method: 'DELETE' });
-    fetchTrash();
   };
 
   const saveNotifySettings = async () => {
@@ -353,39 +322,6 @@ export default function SettingsPage() {
                   </div>
                 )}
                 <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">💡 グループ内のアイテムは「リスト」タブのフィルターで確認できます</p>
-              </div>
-            )}
-          </div>
-
-          {/* ゴミ箱 */}
-          <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('trash')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
-              <div className="flex items-center gap-2">
-                <Trash2 size={20} className="text-[var(--color-primary)]" />
-                <h3 className="font-semibold text-[var(--color-text)]">ゴミ箱</h3>
-                <span className="text-sm text-[var(--color-muted)]">({trashItems.length}件)</span>
-              </div>
-              {openSections.trash ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-            </button>
-            {openSections.trash && (
-              <div className="px-4 pb-4 border-t">
-                {trashItems.length > 0 && (
-                  <div className="flex justify-end my-2">
-                    <button onClick={handleEmptyTrash} className="text-sm text-red-500 hover:text-red-600">ゴミ箱を空にする</button>
-                  </div>
-                )}
-                {loadingTrash ? <p className="text-[var(--color-muted)] text-sm py-2">読み込み中...</p> : trashItems.length === 0 ? <p className="text-[var(--color-muted)] text-sm py-2">ゴミ箱は空です</p> : (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {trashItems.map((item) => (
-                      <div key={item.id} className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-slate-700 rounded-md">
-                        <span className="flex-1 text-sm truncate">{item.name}</span>
-                        <span className="text-xs text-gray-400 dark:text-gray-500">¥{item.current_price?.toLocaleString() || '---'}</span>
-                        <button onClick={() => handleRestoreItem(item.id)} className="text-blue-500 hover:text-blue-600 text-xs flex items-center gap-1"><RotateCcw size={14} /> 復元</button>
-                        <button onClick={() => handlePermanentDelete(item.id)} className="text-red-500 hover:text-red-600 text-xs">削除</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
           </div>
