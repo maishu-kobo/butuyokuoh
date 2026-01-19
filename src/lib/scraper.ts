@@ -52,77 +52,21 @@ function isAmazonShortUrl(url: string): boolean {
   return hostname !== null && AMAZON_SHORT_DOMAINS.has(hostname);
 }
 
-/**
- * 短縮リンクを展開して実際のURLを取得（最大5回リダイレクトを追跡）
- */
-async function expandShortUrl(shortUrl: string): Promise<string | null> {
-  let currentUrl = shortUrl;
-  const maxRedirects = 5;
-  
-  for (let i = 0; i < maxRedirects; i++) {
-    try {
-      const response = await fetch(currentUrl, {
-        method: 'HEAD',
-        redirect: 'manual',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
-      });
-      
-      // リダイレクトでなければ終了
-      if (response.status < 300 || response.status >= 400) {
-        break;
-      }
-      
-      const location = response.headers.get('location');
-      if (!location) {
-        break;
-      }
-      
-      // 相対 URL の場合は絶対 URL に変換
-      if (location.startsWith('/')) {
-        const parsed = new URL(currentUrl);
-        currentUrl = `${parsed.protocol}//${parsed.hostname}${location}`;
-      } else if (location.startsWith('http')) {
-        currentUrl = location;
-      } else {
-        break;
-      }
-      
-      // Amazonの商品ページに到達したら終了
-      const hostname = getHostname(currentUrl);
-      if (hostname && AMAZON_DOMAINS.has(hostname) && currentUrl.includes('/dp/')) {
-        return currentUrl;
-      }
-    } catch {
-      break;
-    }
-  }
-  
-  // 最終的なURLを返す（Amazonドメインの場合のみ）
-  const finalHostname = getHostname(currentUrl);
-  if (finalHostname && AMAZON_DOMAINS.has(finalHostname)) {
-    return currentUrl;
-  }
-  
-  return null;
-}
+
 
 export async function scrapeUrl(url: string): Promise<ScrapedItem> {
-  // Amazonの短縮リンクの場合、展開して実際のURLを取得
-  let targetUrl = url;
+  // Amazonの短縮リンクの場合、エラーを返す（ボット対策で展開できない）
   if (isAmazonShortUrl(url)) {
-    const expandedUrl = await expandShortUrl(url);
-    if (expandedUrl) {
-      // リダイレクト先がAmazonの場合のみ使用
-      const expandedHostname = getHostname(expandedUrl);
-      if (expandedHostname && AMAZON_DOMAINS.has(expandedHostname)) {
-        targetUrl = expandedUrl;
-      }
-    }
+    return {
+      name: 'Amazonの短縮リンクは使用できません',
+      price: null,
+      imageUrl: null,
+      source: 'amazon',
+      sourceName: 'Amazon',
+    };
   }
 
-  const validation = validateAndSanitizeUrl(targetUrl);
+  const validation = validateAndSanitizeUrl(url);
 
   if (validation.isValid) {
     // 許可されたドメインの場合
@@ -134,7 +78,7 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
   }
 
   // 許可リスト外のドメインの場合、一般的なスクレイピング
-  const genericValidation = sanitizeGenericUrl(targetUrl);
+  const genericValidation = sanitizeGenericUrl(url);
   if (!genericValidation.isValid) {
     return {
       name: '無効なURL',
