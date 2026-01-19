@@ -15,6 +15,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
   const [isManualMode, setIsManualMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successNote, setSuccessNote] = useState(''); // 追加成功時の注意メッセージ
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -123,7 +124,9 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
 
       // スクレイピング結果に注意メッセージがあれば表示
       if (data.scrapeNote) {
-        alert(data.scrapeNote);
+        setSuccessNote(data.scrapeNote);
+        // 10秒後に自動で消す
+        setTimeout(() => setSuccessNote(''), 10000);
       }
 
       resetForm();
@@ -138,13 +141,33 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
 
   if (!isOpen) {
     return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="w-full py-4 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-lg text-gray- dark:text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors flex items-center justify-center gap-2"
-      >
-        <Plus size={20} />
-        新しいアイテムを追加
-      </button>
+      <>
+        {/* 追加成功時の注意メッセージ */}
+        {successNote && (
+          <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg">
+            <div className="flex justify-between items-start">
+              <div className="flex-1">
+                <p className="text-amber-800 dark:text-amber-200 text-sm">
+                  ⚠️ {successNote}
+                </p>
+              </div>
+              <button
+                onClick={() => setSuccessNote('')}
+                className="ml-2 text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+        <button
+          onClick={() => setIsOpen(true)}
+          className="w-full py-4 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-lg text-gray- dark:text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors flex items-center justify-center gap-2"
+        >
+          <Plus size={20} />
+          新しいアイテムを追加
+        </button>
+      </>
     );
   }
 
