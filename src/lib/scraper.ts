@@ -6,6 +6,7 @@ export interface ScrapedItem {
   imageUrl: string | null;
   source: string;
   sourceName: string | null;
+  note?: string; // ユーザーへのメッセージ（短縮リンクの制限など）
 }
 
 // 許可されたAmazonドメイン
@@ -16,6 +17,13 @@ const AMAZON_DOMAINS = new Set([
   'amazon.co.jp',
   'amazon.jp',
   'amazon.com',
+]);
+
+// Amazonの短縮リンクドメイン
+const AMAZON_SHORT_DOMAINS = new Set([
+  'amzn.to',
+  'amzn.asia',
+  'a.co',
 ]);
 
 // 許可された楽天ドメイン
@@ -37,7 +45,146 @@ function getHostname(url: string): string | null {
   }
 }
 
+/**
+ * Amazonの短縮リンクかどうかを判定
+ */
+function isAmazonShortUrl(url: string): boolean {
+  const hostname = getHostname(url);
+  return hostname !== null && AMAZON_SHORT_DOMAINS.has(hostname);
+}
+
+/**
+ * Amazonの正規ドメインかどうかを判定
+ */
+function isAmazonUrl(url: string): boolean {
+  const hostname = getHostname(url);
+  return hostname !== null && AMAZON_DOMAINS.has(hostname);
+}
+
+/**
+ * Amazonの商品ページかどうかを判定（トップページや検索ページを除外）
+ */
+function isAmazonProductUrl(url: string): boolean {
+  if (!isAmazonUrl(url)) return false;
+  
+  try {
+    const urlObj = new URL(url);
+    const path = urlObj.pathname;
+    // 商品ページのパターン: /dp/, /gp/product/, /gp/aw/d/
+    return path.includes('/dp/') || 
+           path.includes('/gp/product/') || 
+           path.includes('/gp/aw/d/');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 短縮リンクURLを安全に構築する（SSRF対策）
+ * ホワイトリストのドメインのみ許可し、安全なURLを再構築
+ */
+function buildSafeShortUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    
+    // ホワイトリストのドメインのみ許可
+    if (!AMAZON_SHORT_DOMAINS.has(hostname)) {
+      return null;
+    }
+    
+    // 安全なURLを構築（httpsのみ許可）
+    return `https://${hostname}${parsed.pathname}${parsed.search}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 短縮リンクを展開してリダイレクト先のURLを取得
+ * @param url 短縮リンクURL（事前にisAmazonShortUrlで検証済み）
+ * @returns 展開後のURL（失敗した場合はnull）
+ */
+async function expandShortUrl(url: string): Promise<string | null> {
+  // SSRF対策: ホワイトリストのドメインから安全なURLを構築
+  const safeUrl = buildSafeShortUrl(url);
+  if (!safeUrl) {
+    console.error('SSRF protection: URL is not an Amazon short URL:', url);
+    return null;
+  }
+  
+  try {
+    // redirect: 'follow'で自動的にリダイレクトを追跡し、最終URLを取得
+    // safeUrlはホワイトリストから構築された安全なURL
+    const response = await fetch(safeUrl, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ja-JP,ja;q=0.9',
+      },
+    });
+    
+    // 最終的なリダイレクト先URLを取得
+    const finalUrl = response.url;
+    console.log('Final URL after redirect:', finalUrl);
+    
+    // SSRF対策: リダイレクト先がAmazonドメインのみ許可
+    if (isAmazonUrl(finalUrl)) {
+      return finalUrl;
+    }
+    
+    console.error('SSRF protection: Redirect destination is not Amazon:', finalUrl);
+    return null;
+  } catch (error) {
+    console.error('Short URL expansion error:', error);
+    return null;
+  }
+}
+
 export async function scrapeUrl(url: string): Promise<ScrapedItem> {
+  // Amazonの短縮リンクの場合、展開を試みる
+  if (isAmazonShortUrl(url)) {
+    console.log('Detected Amazon short URL, attempting to expand:', url);
+    const expandedUrl = await expandShortUrl(url);
+    
+    if (expandedUrl) {
+      console.log('Expanded to:', expandedUrl);
+      
+      // 展開後のURLが商品ページかチェック
+      if (isAmazonProductUrl(expandedUrl)) {
+        // 展開成功 - 通常のAmazonスクレイピングを実行
+        const result = await scrapeAmazon(expandedUrl);
+        // 短縮リンクからの登録の場合、価格が取得できない可能性があることを伝える
+        if (!result.price) {
+          result.note = '短縮リンクからの登録のため価格を取得できませんでした。商品ページのフルURLで登録し直すと価格を取得できる場合があります。';
+        }
+        return result;
+      } else {
+        // 商品ページではない（トップページや検索ページにリダイレクトされた）
+        console.log('Expanded URL is not a product page:', expandedUrl);
+        return {
+          name: '短縮リンクの展開に失敗しました。リンクが期限切れか無効な可能性があります。',
+          price: null,
+          imageUrl: null,
+          source: 'amazon',
+          sourceName: 'Amazon',
+        };
+      }
+    } else {
+      // 展開失敗
+      console.log('Failed to expand short URL');
+      return {
+        name: 'Amazonの短縮リンクを展開できませんでした。通常のURLをお試しください。',
+        price: null,
+        imageUrl: null,
+        source: 'amazon',
+        sourceName: 'Amazon',
+      };
+    }
+  }
+
   const validation = validateAndSanitizeUrl(url);
 
   if (validation.isValid) {
@@ -80,8 +227,10 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
   try {
     const response = await fetch(sanitizedUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'ja-JP,ja;q=0.9',
+        'Cookie': 'i18n-prefs=JPY; lc-acbjp=ja_JP',
       },
     });
     const html = await response.text();
@@ -90,9 +239,22 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
     const nameMatch = html.match(/<span[^>]*id="productTitle"[^>]*>([^<]+)<\/span>/);
     const name = nameMatch ? nameMatch[1].trim() : '不明な商品';
 
-    // 価格
-    const priceMatch = html.match(/¥([\d,]+)/) || html.match(/\\([\d,]+)/);
-    const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null;
+    // 価格（複数のパターンに対応）
+    let price: number | null = null;
+    
+    // パターン1: a-price-wholeクラス（新形式）
+    const priceWholeMatch = html.match(/a-price-whole">([\d,]+)/);
+    if (priceWholeMatch) {
+      price = parseInt(priceWholeMatch[1].replace(/,/g, ''), 10);
+    }
+    
+    // パターン2: 円記号付き
+    if (!price) {
+      const yenMatch = html.match(/[¥￥]([\d,]+)/);
+      if (yenMatch) {
+        price = parseInt(yenMatch[1].replace(/,/g, ''), 10);
+      }
+    }
 
     // 画像
     const imageMatch = html.match(/"hiRes":"([^"]+)"/) || html.match(/id="landingImage"[^>]*src="([^"]+)"/);

@@ -138,5 +138,8 @@ export async function POST(request: NextRequest) {
   }
 
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(result.lastInsertRowid);
-  return NextResponse.json(item, { status: 201 });
+  
+  // スクレイピング結果に注意メッセージがあれば含める
+  const response = { ...item, scrapeNote: scraped.note || null };
+  return NextResponse.json(response, { status: 201 });
 }
