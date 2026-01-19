@@ -496,22 +496,67 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
 
     // フォールバック: HTMLから価格パターンを検索
     if (!price) {
-      // まず価格用のクラス/ID内の価格を探す
-      const structuredPriceMatch = 
-        html.match(/<[^>]*class="[^"]*price[^"]*"[^>]*>\s*([\d,]+)円/i) ||
-        html.match(/<[^>]*class="[^"]*price[^"]*"[^>]*>\s*¥?\s*([\d,]+)/i) ||
-        html.match(/<[^>]*id="[^"]*price[^"]*"[^>]*>\s*([\d,]+)円/i) ||
-        html.match(/data-price="([\d,]+)"/);
-      if (structuredPriceMatch) {
-        price = parseInt(structuredPriceMatch[1].replace(/,/g, ''), 10);
+      // EC-CUBE系サイトの販売価格（price02_default）を優先
+      const eccubePriceMatch = html.match(/id="price02_default">([\d,]+)/);
+      if (eccubePriceMatch) {
+        price = parseInt(eccubePriceMatch[1].replace(/,/g, ''), 10);
+      }
+    }
+
+    if (!price) {
+      // 「販売価格」や「税込」の近くにある価格を探す
+      const salePriceMatch = html.match(/販売価格[^\d]*([\d,]+)/) ||
+                             html.match(/税込[^\d]*([\d,]+)/);
+      if (salePriceMatch) {
+        const extracted = parseInt(salePriceMatch[1].replace(/,/g, ''), 10);
+        if (extracted > 0) {
+          price = extracted;
+        }
+      }
+    }
+
+    if (!price) {
+      // まず価格用のクラス/ID内の価格を探す（0円を除外）
+      const structuredPriceMatches = html.matchAll(/<[^>]*(?:class|id)="[^"]*price[^"]*"[^>]*>\s*¥?\s*([\d,]+)/gi);
+      for (const match of structuredPriceMatches) {
+        const extracted = parseInt(match[1].replace(/,/g, ''), 10);
+        if (extracted > 0) {
+          price = extracted;
+          break;
+        }
+      }
+    }
+
+    if (!price) {
+      // data-price属性
+      const dataPriceMatch = html.match(/data-price="([\d,]+)"/);
+      if (dataPriceMatch) {
+        const extracted = parseInt(dataPriceMatch[1].replace(/,/g, ''), 10);
+        if (extracted > 0) {
+          price = extracted;
+        }
       }
     }
     
     if (!price) {
-      // 一般的な価格パターン
-      const priceMatch = html.match(/([\d,]+)円/) || html.match(/¥\s*([\d,]+)/) || html.match(/JPY\s*([\d,]+)/i);
-      if (priceMatch) {
-        price = parseInt(priceMatch[1].replace(/,/g, ''), 10);
+      // 一般的な価格パターン（0円を除外）
+      const priceMatches = html.matchAll(/([\d,]+)円/g);
+      for (const match of priceMatches) {
+        const extracted = parseInt(match[1].replace(/,/g, ''), 10);
+        if (extracted > 0) {
+          price = extracted;
+          break;
+        }
+      }
+    }
+
+    if (!price) {
+      const yenMatch = html.match(/¥\s*([\d,]+)/) || html.match(/JPY\s*([\d,]+)/i);
+      if (yenMatch) {
+        const extracted = parseInt(yenMatch[1].replace(/,/g, ''), 10);
+        if (extracted > 0) {
+          price = extracted;
+        }
       }
     }
 
