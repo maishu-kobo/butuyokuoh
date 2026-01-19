@@ -81,57 +81,35 @@ function isAmazonProductUrl(url: string): boolean {
 /**
  * 短縮リンクを展開してリダイレクト先のURLを取得
  * @param url 短縮リンクURL
- * @param maxRedirects 最大リダイレクト回数
  * @returns 展開後のURL（失敗した場合はnull）
  */
-async function expandShortUrl(url: string, maxRedirects: number = 10): Promise<string | null> {
-  let currentUrl = url;
-  
-  for (let i = 0; i < maxRedirects; i++) {
-    try {
-      const response = await fetch(currentUrl, {
-        method: 'GET',
-        redirect: 'manual',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'ja-JP,ja;q=0.9',
-        },
-      });
-      
-      // リダイレクトでなければ現在のURLを返す
-      if (response.status < 300 || response.status >= 400) {
-        // Amazonドメインに到達したかチェック
-        if (isAmazonUrl(currentUrl)) {
-          return currentUrl;
-        }
-        // 最終URLがAmazonでない場合はnull
-        return null;
-      }
-      
-      const location = response.headers.get('location');
-      if (!location) {
-        break;
-      }
-      
-      // 相対URLの場合は絶対URLに変換
-      try {
-        currentUrl = new URL(location, currentUrl).href;
-      } catch {
-        break;
-      }
-      
-      // Amazonドメインに到達したら成功
-      if (isAmazonUrl(currentUrl)) {
-        return currentUrl;
-      }
-    } catch (error) {
-      console.error('Short URL expansion error:', error);
-      break;
+async function expandShortUrl(url: string): Promise<string | null> {
+  try {
+    // redirect: 'follow'で自動的にリダイレクトを追跡し、最終URLを取得
+    const response = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ja-JP,ja;q=0.9',
+      },
+    });
+    
+    // 最終的なリダイレクト先URLを取得
+    const finalUrl = response.url;
+    console.log('Final URL after redirect:', finalUrl);
+    
+    // Amazonドメインかチェック
+    if (isAmazonUrl(finalUrl)) {
+      return finalUrl;
     }
+    
+    return null;
+  } catch (error) {
+    console.error('Short URL expansion error:', error);
+    return null;
   }
-  
-  return null;
 }
 
 export async function scrapeUrl(url: string): Promise<ScrapedItem> {
