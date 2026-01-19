@@ -80,20 +80,43 @@ function isAmazonProductUrl(url: string): boolean {
 }
 
 /**
+ * 短縮リンクURLを安全に構築する（SSRF対策）
+ * ホワイトリストのドメインのみ許可し、安全なURLを再構築
+ */
+function buildSafeShortUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    
+    // ホワイトリストのドメインのみ許可
+    if (!AMAZON_SHORT_DOMAINS.has(hostname)) {
+      return null;
+    }
+    
+    // 安全なURLを構築（httpsのみ許可）
+    return `https://${hostname}${parsed.pathname}${parsed.search}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 短縮リンクを展開してリダイレクト先のURLを取得
  * @param url 短縮リンクURL（事前にisAmazonShortUrlで検証済み）
  * @returns 展開後のURL（失敗した場合はnull）
  */
 async function expandShortUrl(url: string): Promise<string | null> {
-  // SSRF対策: 短縮リンクドメインのみ許可（二重チェック）
-  if (!isAmazonShortUrl(url)) {
+  // SSRF対策: ホワイトリストのドメインから安全なURLを構築
+  const safeUrl = buildSafeShortUrl(url);
+  if (!safeUrl) {
     console.error('SSRF protection: URL is not an Amazon short URL:', url);
     return null;
   }
   
   try {
     // redirect: 'follow'で自動的にリダイレクトを追跡し、最終URLを取得
-    const response = await fetch(url, {
+    // safeUrlはホワイトリストから構築された安全なURL
+    const response = await fetch(safeUrl, {
       method: 'GET',
       redirect: 'follow',
       headers: {
