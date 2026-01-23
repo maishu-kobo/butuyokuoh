@@ -21,6 +21,7 @@ export interface Item {
   target_currency: 'JPY' | 'USD' | null;
   quantity: number;
   sort_order?: number;
+  stock_status: 'in_stock' | 'out_of_stock' | 'unknown';
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -65,9 +66,12 @@ export interface UserNotificationSettings {
   discord_webhook: string | null;
   notify_on_price_drop: boolean;
   notify_on_target_price: boolean;
+  notify_on_stock_back: boolean;
   created_at: string;
   updated_at: string;
 }
+
+export type StockStatus = 'in_stock' | 'out_of_stock' | 'unknown';
 
 export interface BudgetCalculation {
   items: Item[];

@@ -1,4 +1,5 @@
 import { validateAndSanitizeUrl, sanitizeGenericUrl } from './url-validator';
+import { StockStatus } from '@/types';
 
 export interface ScrapedItem {
   name: string;
@@ -6,6 +7,7 @@ export interface ScrapedItem {
   imageUrl: string | null;
   source: string;
   sourceName: string | null;
+  stockStatus: StockStatus;
   note?: string; // ユーザーへのメッセージ（短縮リンクの制限など）
 }
 
@@ -70,7 +72,6 @@ function isAmazonProductUrl(url: string): boolean {
   try {
     const urlObj = new URL(url);
     const path = urlObj.pathname;
-    // 商品ページのパターン: /dp/, /gp/product/, /gp/aw/d/
     return path.includes('/dp/') || 
            path.includes('/gp/product/') || 
            path.includes('/gp/aw/d/');
@@ -81,19 +82,16 @@ function isAmazonProductUrl(url: string): boolean {
 
 /**
  * 短縮リンクURLを安全に構築する（SSRF対策）
- * ホワイトリストのドメインのみ許可し、安全なURLを再構築
  */
 function buildSafeShortUrl(url: string): string | null {
   try {
     const parsed = new URL(url);
     const hostname = parsed.hostname.toLowerCase();
     
-    // ホワイトリストのドメインのみ許可
     if (!AMAZON_SHORT_DOMAINS.has(hostname)) {
       return null;
     }
     
-    // 安全なURLを構築（httpsのみ許可）
     return `https://${hostname}${parsed.pathname}${parsed.search}`;
   } catch {
     return null;
@@ -102,11 +100,8 @@ function buildSafeShortUrl(url: string): string | null {
 
 /**
  * 短縮リンクを展開してリダイレクト先のURLを取得
- * @param url 短縮リンクURL（事前にisAmazonShortUrlで検証済み）
- * @returns 展開後のURL（失敗した場合はnull）
  */
 async function expandShortUrl(url: string): Promise<string | null> {
-  // SSRF対策: ホワイトリストのドメインから安全なURLを構築
   const safeUrl = buildSafeShortUrl(url);
   if (!safeUrl) {
     console.error('SSRF protection: URL is not an Amazon short URL:', url);
@@ -114,8 +109,6 @@ async function expandShortUrl(url: string): Promise<string | null> {
   }
   
   try {
-    // redirect: 'follow'で自動的にリダイレクトを追跡し、最終URLを取得
-    // safeUrlはホワイトリストから構築された安全なURL
     const response = await fetch(safeUrl, {
       method: 'GET',
       redirect: 'follow',
@@ -126,11 +119,9 @@ async function expandShortUrl(url: string): Promise<string | null> {
       },
     });
     
-    // 最終的なリダイレクト先URLを取得
     const finalUrl = response.url;
     console.log('Final URL after redirect:', finalUrl);
     
-    // SSRF対策: リダイレクト先がAmazonドメインのみ許可
     if (isAmazonUrl(finalUrl)) {
       return finalUrl;
     }
@@ -143,6 +134,100 @@ async function expandShortUrl(url: string): Promise<string | null> {
   }
 }
 
+/**
+ * Amazonの在庫状態を判定
+ */
+function detectAmazonStockStatus(html: string): StockStatus {
+  // id="availability" 内のテキストをチェック
+  const availabilityMatch = html.match(/<div[^>]*id="availability"[^>]*>([\s\S]*?)<\/div>/i);
+  if (availabilityMatch) {
+    const availabilityText = availabilityMatch[1].toLowerCase();
+    
+    // 在庫あり
+    if (availabilityText.includes('在庫あり') || 
+        availabilityText.includes('in stock') ||
+        availabilityText.includes('残り') ||
+        availabilityText.includes('お届け')) {
+      return 'in_stock';
+    }
+    
+    // 在庫切れ
+    if (availabilityText.includes('在庫切れ') || 
+        availabilityText.includes('out of stock') ||
+        availabilityText.includes('お取り扱いできません') ||
+        availabilityText.includes('currently unavailable')) {
+      return 'out_of_stock';
+    }
+  }
+  
+  // カートに入れるボタンの有無でも判定
+  if (html.includes('add-to-cart-button') || html.includes('buy-now-button')) {
+    return 'in_stock';
+  }
+  
+  // 「現在在庫切れです」のメッセージ
+  if (html.includes('現在在庫切れです') || html.includes('Currently unavailable')) {
+    return 'out_of_stock';
+  }
+  
+  return 'unknown';
+}
+
+/**
+ * 楽天の在庫状態を判定
+ */
+function detectRakutenStockStatus(html: string): StockStatus {
+  const lowerHtml = html.toLowerCase();
+  
+  // 在庫切れパターン
+  if (lowerHtml.includes('sold out') ||
+      lowerHtml.includes('品切れ') ||
+      lowerHtml.includes('売り切れ') ||
+      lowerHtml.includes('入荷待ち') ||
+      lowerHtml.includes('在庫切れ') ||
+      lowerHtml.includes('予約受付終了')) {
+    return 'out_of_stock';
+  }
+  
+  // カートボタンや購入ボタンがあれば在庫あり
+  if (html.includes('買い物かごに入れる') || 
+      html.includes('カートに入れる') ||
+      html.includes('購入手続きへ')) {
+    return 'in_stock';
+  }
+  
+  return 'unknown';
+}
+
+/**
+ * 一般サイトの在庫状態を判定
+ */
+function detectGenericStockStatus(html: string): StockStatus {
+  const lowerHtml = html.toLowerCase();
+  
+  // 在庫切れパターン
+  if (lowerHtml.includes('sold out') ||
+      lowerHtml.includes('out of stock') ||
+      lowerHtml.includes('品切れ') ||
+      lowerHtml.includes('売り切れ') ||
+      lowerHtml.includes('在庫切れ') ||
+      lowerHtml.includes('入荷待ち') ||
+      lowerHtml.includes('完売')) {
+    return 'out_of_stock';
+  }
+  
+  // 在庫ありパターン
+  if (lowerHtml.includes('in stock') ||
+      lowerHtml.includes('在庫あり') ||
+      lowerHtml.includes('カートに入れる') ||
+      lowerHtml.includes('add to cart') ||
+      lowerHtml.includes('buy now')) {
+    return 'in_stock';
+  }
+  
+  return 'unknown';
+}
+
 export async function scrapeUrl(url: string): Promise<ScrapedItem> {
   // Amazonの短縮リンクの場合、展開を試みる
   if (isAmazonShortUrl(url)) {
@@ -152,17 +237,13 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
     if (expandedUrl) {
       console.log('Expanded to:', expandedUrl);
       
-      // 展開後のURLが商品ページかチェック
       if (isAmazonProductUrl(expandedUrl)) {
-        // 展開成功 - 通常のAmazonスクレイピングを実行
         const result = await scrapeAmazon(expandedUrl);
-        // 短縮リンクからの登録の場合、価格が取得できない可能性があることを伝える
         if (!result.price) {
           result.note = '短縮リンクからの登録のため価格を取得できませんでした。商品ページのフルURLで登録し直すと価格を取得できる場合があります。';
         }
         return result;
       } else {
-        // 商品ページではない（トップページや検索ページにリダイレクトされた）
         console.log('Expanded URL is not a product page:', expandedUrl);
         return {
           name: '短縮リンクの展開に失敗しました。リンクが期限切れか無効な可能性があります。',
@@ -170,10 +251,10 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
           imageUrl: null,
           source: 'amazon',
           sourceName: 'Amazon',
+          stockStatus: 'unknown',
         };
       }
     } else {
-      // 展開失敗
       console.log('Failed to expand short URL');
       return {
         name: 'Amazonの短縮リンクを展開できませんでした。通常のURLをお試しください。',
@@ -181,6 +262,7 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
         imageUrl: null,
         source: 'amazon',
         sourceName: 'Amazon',
+        stockStatus: 'unknown',
       };
     }
   }
@@ -188,7 +270,6 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
   const validation = validateAndSanitizeUrl(url);
 
   if (validation.isValid) {
-    // 許可されたドメインの場合
     if (validation.source === 'amazon') {
       return scrapeAmazon(validation.sanitizedUrl);
     } else if (validation.source === 'rakuten') {
@@ -196,7 +277,6 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
     }
   }
 
-  // 許可リスト外のドメインの場合、一般的なスクレイピング
   const genericValidation = sanitizeGenericUrl(url);
   if (!genericValidation.isValid) {
     return {
@@ -205,6 +285,7 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
       imageUrl: null,
       source: 'other',
       sourceName: null,
+      stockStatus: 'unknown',
     };
   }
 
@@ -212,7 +293,6 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
 }
 
 async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
-  // SSRF対策: fetch直前にホスト名を再検証
   const hostname = getHostname(sanitizedUrl);
   if (!hostname || !AMAZON_DOMAINS.has(hostname)) {
     return {
@@ -221,6 +301,7 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
       imageUrl: null,
       source: 'amazon',
       sourceName: 'Amazon',
+      stockStatus: 'unknown',
     };
   }
 
@@ -235,7 +316,6 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
     });
     const html = await response.text();
 
-    // Amazonのボット対策ページやエラーページを検出
     if (html.includes('api-services-support@amazon.com') || 
         html.includes('Service Unavailable') ||
         html.includes('ロボットではない') ||
@@ -248,35 +328,24 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
         imageUrl: null,
         source: 'amazon',
         sourceName: 'Amazon',
+        stockStatus: 'unknown',
         note: 'Amazonのボット対策により自動取得が制限されています。価格は手動で編集してください。',
       };
     }
 
-    // 商品名
     const nameMatch = html.match(/<span[^>]*id="productTitle"[^>]*>([^<]+)<\/span>/);
     const name = nameMatch ? nameMatch[1].trim() : '不明な商品';
 
-    // 価格（複数のパターンに対応）
     let price: number | null = null;
-    
-    // パターン1: a-price-wholeクラス（新形式）
     const priceWholeMatch = html.match(/a-price-whole">([\d,]+)/);
     if (priceWholeMatch) {
       price = parseInt(priceWholeMatch[1].replace(/,/g, ''), 10);
     }
-    
-    // パターン2: 円記号付き（フォールバック、ただしproductTitleがある場合のみ）
-    // ※このパターンは誤検出が多いので無効化
-    // if (!price) {
-    //   const yenMatch = html.match(/[¥￥]([\d,]+)/);
-    //   if (yenMatch) {
-    //     price = parseInt(yenMatch[1].replace(/,/g, ''), 10);
-    //   }
-    // }
 
-    // 画像
     const imageMatch = html.match(/"hiRes":"([^"]+)"/) || html.match(/id="landingImage"[^>]*src="([^"]+)"/);
     const imageUrl = imageMatch ? imageMatch[1] : null;
+
+    const stockStatus = detectAmazonStockStatus(html);
 
     return {
       name,
@@ -284,6 +353,7 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
       imageUrl,
       source: 'amazon',
       sourceName: 'Amazon',
+      stockStatus,
     };
   } catch (error) {
     console.error('Amazon scraping error:', error);
@@ -293,12 +363,12 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
       imageUrl: null,
       source: 'amazon',
       sourceName: 'Amazon',
+      stockStatus: 'unknown',
     };
   }
 }
 
 async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
-  // SSRF対策: fetch直前にホスト名を再検証
   const hostname = getHostname(sanitizedUrl);
   if (!hostname || !RAKUTEN_DOMAINS.has(hostname)) {
     return {
@@ -307,6 +377,7 @@ async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
       imageUrl: null,
       source: 'rakuten',
       sourceName: '楽天市場',
+      stockStatus: 'unknown',
     };
   }
 
@@ -319,18 +390,17 @@ async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
     });
     const html = await response.text();
 
-    // 商品名
     const nameMatch = html.match(/<span[^>]*class="[^"]*item_name[^"]*"[^>]*>([^<]+)</) ||
                       html.match(/<h1[^>]*>([^<]+)</);
     const name = nameMatch ? nameMatch[1].trim() : '不明な商品';
 
-    // 価格
     const priceMatch = html.match(/([\d,]+)円/) || html.match(/¥([\d,]+)/);
     const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null;
 
-    // 画像
     const imageMatch = html.match(/"image":\s*"([^"]+)"/) || html.match(/<img[^>]*class="[^"]*main[^"]*"[^>]*src="([^"]+)"/);
     const imageUrl = imageMatch ? imageMatch[1] : null;
+
+    const stockStatus = detectRakutenStockStatus(html);
 
     return {
       name,
@@ -338,6 +408,7 @@ async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
       imageUrl,
       source: 'rakuten',
       sourceName: '楽天市場',
+      stockStatus,
     };
   } catch (error) {
     console.error('Rakuten scraping error:', error);
@@ -347,12 +418,12 @@ async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
       imageUrl: null,
       source: 'rakuten',
       sourceName: '楽天市場',
+      stockStatus: 'unknown',
     };
   }
 }
 
 async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<ScrapedItem> {
-  // SSRF対策: fetch直前にホスト名を再検証（ローカルIPをブロック）
   const actualHostname = getHostname(sanitizedUrl);
   if (!actualHostname ||
       actualHostname === 'localhost' ||
@@ -367,6 +438,7 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
       imageUrl: null,
       source: 'other',
       sourceName: null,
+      stockStatus: 'unknown',
     };
   }
 
@@ -375,35 +447,30 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
-        // Shopifyサイトで日本円価格を取得するためのクッキー
         'Cookie': 'localization=JP; cart_currency=JPY',
       },
     });
     const html = await response.text();
 
-    // タイトルから商品名
     const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
     let name = titleMatch ? titleMatch[1].trim() : '不明な商品';
-    // タイトルのクリーンアップ: 改行、HTMLエンティティ、サイト名の区切り文字などを除去
     name = name
-      .replace(/\n/g, ' ')                    // 改行をスペースに
-      .replace(/&ndash;/g, '-')               // &ndash; を - に
-      .replace(/&mdash;/g, '-')               // &mdash; を - に
-      .replace(/&amp;/g, '&')                 // &amp; を & に
-      .replace(/&quot;/g, '"')                // &quot; を " に
-      .replace(/&#39;/g, "'")                 // &#39; を ' に
-      .replace(/\s*[-|–—]\s*[^-|–—]+$/g, '')  // 末尾のサイト名部分を除去 ("- SITE_NAME" など)
-      .replace(/\s+/g, ' ')                   // 連続スペースを単一に
+      .replace(/\n/g, ' ')
+      .replace(/&ndash;/g, '-')
+      .replace(/&mdash;/g, '-')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\s*[-|–—]\s*[^-|–—]+$/g, '')
+      .replace(/\s+/g, ' ')
       .trim();
 
-    // JSON-LDから価格取得を試行
     let price: number | null = null;
     const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
     if (jsonLdMatch) {
       for (const match of jsonLdMatch) {
         if (price) break;
         try {
-          // scriptタグを完全に除去（ループで繰り返し置換）
           let jsonContent = match;
           let prevLength = 0;
           while (jsonContent.length !== prevLength) {
@@ -413,7 +480,6 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
           }
           const data = JSON.parse(jsonContent);
           
-          // hasVariant配列をチェック（Shopifyなど）- JPYを優先
           if (data.hasVariant && Array.isArray(data.hasVariant)) {
             for (const variant of data.hasVariant) {
               if (variant.offers?.price && variant.offers?.priceCurrency === 'JPY') {
@@ -423,9 +489,7 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
             }
           }
           
-          // 直接のoffers（JPYを優先）
           if (!price && data.offers) {
-            // offersが配列の場合
             if (Array.isArray(data.offers)) {
               for (const offer of data.offers) {
                 if (offer.price && (offer.priceCurrency === 'JPY' || !offer.priceCurrency)) {
@@ -434,14 +498,12 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
                 }
               }
             } else if (data.offers.price) {
-              // offersがオブジェクトの場合
               if (data.offers.priceCurrency === 'JPY' || !data.offers.priceCurrency) {
                 price = parseInt(String(data.offers.price).replace(/[^0-9]/g, ''), 10);
               }
             }
           }
           
-          // @graphをチェック
           if (!price && data['@graph']) {
             for (const item of data['@graph']) {
               if (item.offers?.price) {
@@ -458,9 +520,7 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
       }
     }
 
-    // Shopify/EC サイトのJSON価格取得（JPY通貨を優先）
     if (!price) {
-      // "price":"NNNNN","priceCurrency":"JPY" パターン（引用符付き価格）
       const jpyQuotedMatch = html.match(/"price"\s*:\s*"(\d+)"\s*,\s*"priceCurrency"\s*:\s*"JPY"/);
       if (jpyQuotedMatch) {
         price = parseInt(jpyQuotedMatch[1], 10);
@@ -468,19 +528,15 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
     }
     
     if (!price) {
-      // Shopifyサイトのセント単位価格（Shopifyかどうかを確認）
       const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme');
       if (isShopify) {
-        // Shopifyの場合、"price":NNNNNN (5桁以上、セント単位) をJPYとみなす
         const shopifyPriceMatch = html.match(/"price":(\d{5,})/);
         if (shopifyPriceMatch) {
-          // 100で割って円に変換
           price = Math.round(parseInt(shopifyPriceMatch[1], 10) / 100);
         }
       }
     }
 
-    // og:price:amount メタタグから価格取得（通貨がJPYの場合のみ）
     if (!price) {
       const ogCurrencyMatch = html.match(/<meta[^>]*property="og:price:currency"[^>]*content="([^"]+)"/);
       const currency = ogCurrencyMatch ? ogCurrencyMatch[1] : null;
@@ -494,9 +550,7 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
       }
     }
 
-    // フォールバック: HTMLから価格パターンを検索
     if (!price) {
-      // EC-CUBE系サイトの販売価格（price02_default）を優先
       const eccubePriceMatch = html.match(/id="price02_default">([\d,]+)/);
       if (eccubePriceMatch) {
         price = parseInt(eccubePriceMatch[1].replace(/,/g, ''), 10);
@@ -504,19 +558,16 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
     }
 
     if (!price) {
-      // 「販売価格」の近くにある価格を探す（より厳密なパターン）
-      // 「販売価格: 1,234円」や「販売価格：¥1,234」のような形式
       const salePriceMatch = html.match(/販売価格[\s：:]*¥?\s*([\d,]+)/);
       if (salePriceMatch) {
         const extracted = parseInt(salePriceMatch[1].replace(/,/g, ''), 10);
-        if (extracted >= 100) { // 100円未満は除外
+        if (extracted >= 100) {
           price = extracted;
         }
       }
     }
 
     if (!price) {
-      // まず価格用のクラス/ID内の価格を探す（0円を除外）
       const structuredPriceMatches = html.matchAll(/<[^>]*(?:class|id)="[^"]*price[^"]*"[^>]*>\s*¥?\s*([\d,]+)/gi);
       for (const match of structuredPriceMatches) {
         const extracted = parseInt(match[1].replace(/,/g, ''), 10);
@@ -528,7 +579,6 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
     }
 
     if (!price) {
-      // data-price属性
       const dataPriceMatch = html.match(/data-price="([\d,]+)"/);
       if (dataPriceMatch) {
         const extracted = parseInt(dataPriceMatch[1].replace(/,/g, ''), 10);
@@ -539,7 +589,6 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
     }
     
     if (!price) {
-      // 一般的な価格パターン（0円を除外）
       const priceMatches = html.matchAll(/([\d,]+)円/g);
       for (const match of priceMatches) {
         const extracted = parseInt(match[1].replace(/,/g, ''), 10);
@@ -560,7 +609,6 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
       }
     }
 
-    // OG画像
     let imageUrl: string | null = null;
     const ogImageMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/) ||
                          html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:image"/);
@@ -568,9 +616,7 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
       imageUrl = ogImageMatch[1];
     }
 
-    // OG画像がない場合のフォールバック
     if (!imageUrl) {
-      // EC-CUBE系: class="picture" の画像
       const pictureMatch = html.match(/<img[^>]*class="[^"]*picture[^"]*"[^>]*src="([^"]+)"/) ||
                            html.match(/<img[^>]*src="([^"]+)"[^>]*class="[^"]*picture[^"]*"/);
       if (pictureMatch) {
@@ -579,7 +625,6 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
     }
 
     if (!imageUrl) {
-      // 商品画像っぽいパターン: product, main, item などを含むクラス/IDの画像
       const productImageMatch = html.match(/<img[^>]*(?:class|id)="[^"]*(?:product|main|item)[^"]*"[^>]*src="([^"]+)"/) ||
                                 html.match(/<img[^>]*src="([^"]+)"[^>]*(?:class|id)="[^"]*(?:product|main|item)[^"]*"/);
       if (productImageMatch) {
@@ -587,7 +632,6 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
       }
     }
 
-    // 相対パスを絶対パスに変換
     if (imageUrl && !imageUrl.startsWith('http')) {
       try {
         const urlObj = new URL(sanitizedUrl);
@@ -599,8 +643,8 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
       }
     }
 
-    // ホスト名からソース名を生成
     const sourceName = hostname.replace(/^www\./, '').split('.')[0];
+    const stockStatus = detectGenericStockStatus(html);
 
     return {
       name,
@@ -608,6 +652,7 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
       imageUrl,
       source: 'other',
       sourceName: sourceName.charAt(0).toUpperCase() + sourceName.slice(1),
+      stockStatus,
     };
   } catch (error) {
     console.error('Generic scraping error:', error);
@@ -617,6 +662,7 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
       imageUrl: null,
       source: 'other',
       sourceName: null,
+      stockStatus: 'unknown',
     };
   }
 }

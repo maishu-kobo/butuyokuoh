@@ -19,6 +19,7 @@ export default function SettingsPage() {
     discord_webhook: '',
     notify_on_price_drop: true,
     notify_on_target_price: true,
+    notify_on_stock_back: true,
   });
   const [savingNotify, setSavingNotify] = useState(false);
   const [notifySaved, setNotifySaved] = useState(false);
@@ -79,6 +80,7 @@ export default function SettingsPage() {
             discord_webhook: data.discord_webhook || '',
             notify_on_price_drop: !!data.notify_on_price_drop,
             notify_on_target_price: !!data.notify_on_target_price,
+            notify_on_stock_back: data.notify_on_stock_back !== 0,
           });
         }
       } catch (e) {
@@ -437,6 +439,7 @@ export default function SettingsPage() {
                 <div className="space-y-2">
                   <label className="flex items-center gap-2"><input type="checkbox" checked={notifySettings.notify_on_price_drop} onChange={(e) => setNotifySettings({ ...notifySettings, notify_on_price_drop: e.target.checked })} className="rounded border-gray-300 dark:border-slate-600 text-[var(--color-primary)]" /><span className="text-sm text-gray-700">価格が下がったら通知</span></label>
                   <label className="flex items-center gap-2"><input type="checkbox" checked={notifySettings.notify_on_target_price} onChange={(e) => setNotifySettings({ ...notifySettings, notify_on_target_price: e.target.checked })} className="rounded border-gray-300 dark:border-slate-600 text-[var(--color-primary)]" /><span className="text-sm text-gray-700">目標価格に達したら通知</span></label>
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={notifySettings.notify_on_stock_back} onChange={(e) => setNotifySettings({ ...notifySettings, notify_on_stock_back: e.target.checked })} className="rounded border-gray-300 dark:border-slate-600 text-[var(--color-primary)]" /><span className="text-sm text-gray-700">在庫が復活したら通知</span></label>
                 </div>
                 <button onClick={saveNotifySettings} disabled={savingNotify} className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-hover)] disabled:opacity-50 flex items-center gap-2">
                   {savingNotify ? <><Loader2 size={18} className="animate-spin" /> 保存中...</> : notifySaved ? <><Check size={18} /> 保存しました</> : '保存'}

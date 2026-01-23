@@ -8,6 +8,11 @@ export interface NotificationPayload {
   type: 'price_drop' | 'target_reached';
 }
 
+export interface StockNotificationPayload {
+  item: Item;
+  type: 'stock_back';
+}
+
 export async function sendSlackNotification(
   webhookUrl: string,
   payload: NotificationPayload
@@ -126,6 +131,93 @@ export async function sendDiscordNotification(
     return res.ok;
   } catch (error) {
     console.error('Discord notification failed:', error);
+    return false;
+  }
+}
+
+
+export async function sendSlackStockNotification(
+  webhookUrl: string,
+  payload: StockNotificationPayload
+): Promise<boolean> {
+  const { item } = payload;
+
+  const message = {
+    blocks: [
+      {
+        type: 'header',
+        text: { type: 'plain_text', text: '🎉 在庫が復活しました！', emoji: true }
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*${item.name}*\n\n` +
+            (item.current_price ? `現在価格: ¥${item.current_price.toLocaleString()}` : '価格情報なし')
+        },
+        accessory: item.image_url ? {
+          type: 'image',
+          image_url: item.image_url,
+          alt_text: item.name
+        } : undefined
+      },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: '商品ページを開く' },
+            url: item.url
+          }
+        ]
+      }
+    ]
+  };
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(message),
+    });
+    return res.ok;
+  } catch (error) {
+    console.error('Slack stock notification failed:', error);
+    return false;
+  }
+}
+
+export async function sendDiscordStockNotification(
+  webhookUrl: string,
+  payload: StockNotificationPayload
+): Promise<boolean> {
+  const { item } = payload;
+
+  const embed = {
+    title: '🎉 在庫が復活しました！',
+    description: item.name,
+    url: item.url,
+    color: 0x00ff00,
+    fields: [
+      {
+        name: '現在価格',
+        value: item.current_price ? `¥${item.current_price.toLocaleString()}` : '価格情報なし',
+        inline: true,
+      },
+    ],
+    thumbnail: item.image_url ? { url: item.image_url } : undefined,
+    timestamp: new Date().toISOString(),
+  };
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds: [embed] }),
+    });
+    return res.ok;
+  } catch (error) {
+    console.error('Discord stock notification failed:', error);
     return false;
   }
 }

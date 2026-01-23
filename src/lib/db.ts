@@ -111,4 +111,16 @@ function initDb(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_comparison_groups_user ON comparison_groups(user_id);
     CREATE INDEX IF NOT EXISTS idx_categories_user ON categories(user_id);
   `);
+
+  // マイグレーション: stock_status カラムを items テーブルに追加
+  const itemColumns = db.prepare("PRAGMA table_info(items)").all() as { name: string }[];
+  if (!itemColumns.some(col => col.name === 'stock_status')) {
+    db.exec(`ALTER TABLE items ADD COLUMN stock_status TEXT DEFAULT 'unknown'`);
+  }
+
+  // マイグレーション: notify_on_stock_back カラムを user_notification_settings テーブルに追加
+  const notifColumns = db.prepare("PRAGMA table_info(user_notification_settings)").all() as { name: string }[];
+  if (!notifColumns.some(col => col.name === 'notify_on_stock_back')) {
+    db.exec(`ALTER TABLE user_notification_settings ADD COLUMN notify_on_stock_back INTEGER NOT NULL DEFAULT 1`);
+  }
 }

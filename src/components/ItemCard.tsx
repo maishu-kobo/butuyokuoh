@@ -171,6 +171,16 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                 <span className={`text-xs px-2 py-0.5 rounded ${sourceColors[item.source] || sourceColors.other}`}>
                   {item.source_name || sourceNames[item.source] || 'その他'}
                 </span>
+                {item.stock_status === 'out_of_stock' && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200">
+                    在庫切れ
+                  </span>
+                )}
+                {item.stock_status === 'in_stock' && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200">
+                    在庫あり
+                  </span>
+                )}
                 {item.category_name && item.category_color && (
                   <span
                     className="text-xs px-2 py-0.5 rounded"

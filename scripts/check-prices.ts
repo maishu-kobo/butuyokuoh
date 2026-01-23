@@ -1,7 +1,14 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { scrapeUrl } from '../src/lib/scraper';
-import { sendSlackNotification, sendDiscordNotification, NotificationPayload } from '../src/lib/notifier';
+import { 
+  sendSlackNotification, 
+  sendDiscordNotification, 
+  sendSlackStockNotification,
+  sendDiscordStockNotification,
+  NotificationPayload,
+  StockNotificationPayload 
+} from '../src/lib/notifier';
 
 const dbPath = path.join(process.cwd(), 'data', 'butuyokuoh.db');
 const db = new Database(dbPath);
@@ -14,6 +21,7 @@ interface Item {
   image_url: string | null;
   current_price: number | null;
   target_price: number | null;
+  stock_status: string | null;
 }
 
 interface UserSettings {
@@ -22,6 +30,7 @@ interface UserSettings {
   discord_webhook: string | null;
   notify_on_price_drop: number;
   notify_on_target_price: number;
+  notify_on_stock_back: number;
 }
 
 async function checkPrices() {
@@ -29,9 +38,9 @@ async function checkPrices() {
 
   // 未購入のアイテムを全て取得
   const items = db.prepare(`
-    SELECT id, user_id, name, url, image_url, current_price, target_price
+    SELECT id, user_id, name, url, image_url, current_price, target_price, stock_status
     FROM items
-    WHERE is_purchased = 0
+    WHERE is_purchased = 0 AND deleted_at IS NULL
   `).all() as Item[];
 
   console.log(`Found ${items.length} items to check`);
@@ -42,36 +51,58 @@ async function checkPrices() {
       
       const scraped = await scrapeUrl(item.url);
       
-      if (!scraped.price) {
-        console.log(`  - No price found, skipping`);
-        continue;
-      }
-
       const oldPrice = item.current_price;
       const newPrice = scraped.price;
+      const oldStockStatus = item.stock_status;
+      const newStockStatus = scraped.stockStatus;
 
-      // 価格を更新
+      // 価格と在庫状態を更新
       db.prepare(`
         UPDATE items 
-        SET current_price = ?, updated_at = datetime('now')
+        SET current_price = COALESCE(?, current_price), 
+            stock_status = ?,
+            updated_at = datetime('now')
         WHERE id = ?
-      `).run(newPrice, item.id);
+      `).run(newPrice, newStockStatus, item.id);
 
-      // 価格履歴に追加
-      db.prepare(`
-        INSERT INTO price_history (item_id, price)
-        VALUES (?, ?)
-      `).run(item.id, newPrice);
+      // 価格が取得できた場合のみ履歴に追加
+      if (newPrice) {
+        db.prepare(`
+          INSERT INTO price_history (item_id, price)
+          VALUES (?, ?)
+        `).run(item.id, newPrice);
+      }
 
-      console.log(`  - Price: ¥${oldPrice?.toLocaleString() || '---'} -> ¥${newPrice.toLocaleString()}`);
+      console.log(`  - Price: ¥${oldPrice?.toLocaleString() || '---'} -> ¥${newPrice?.toLocaleString() || '---'}`);
+      console.log(`  - Stock: ${oldStockStatus || 'unknown'} -> ${newStockStatus}`);
 
-      // 価格が下がった場合のみ通知チェック
-      if (oldPrice && newPrice < oldPrice) {
-        const userSettings = db.prepare(`
-          SELECT * FROM user_notification_settings WHERE user_id = ?
-        `).get(item.user_id) as UserSettings | undefined;
+      // ユーザーの通知設定を取得
+      const userSettings = db.prepare(`
+        SELECT * FROM user_notification_settings WHERE user_id = ?
+      `).get(item.user_id) as UserSettings | undefined;
 
-        if (userSettings) {
+      if (userSettings) {
+        // 在庫復帰通知（out_of_stock -> in_stock）
+        if (oldStockStatus === 'out_of_stock' && newStockStatus === 'in_stock' && userSettings.notify_on_stock_back) {
+          console.log(`  - Stock is back! Sending notifications...`);
+          
+          const stockPayload: StockNotificationPayload = {
+            item: { ...item, current_price: newPrice } as any,
+            type: 'stock_back',
+          };
+          
+          if (userSettings.slack_webhook) {
+            await sendSlackStockNotification(userSettings.slack_webhook, stockPayload);
+            console.log(`    - Slack: sent`);
+          }
+          if (userSettings.discord_webhook) {
+            await sendDiscordStockNotification(userSettings.discord_webhook, stockPayload);
+            console.log(`    - Discord: sent`);
+          }
+        }
+
+        // 価格が下がった場合の通知チェック
+        if (oldPrice && newPrice && newPrice < oldPrice) {
           const payload: NotificationPayload = {
             item: item as any,
             oldPrice,

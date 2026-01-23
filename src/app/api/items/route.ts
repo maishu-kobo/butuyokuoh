@@ -67,8 +67,8 @@ export async function POST(request: NextRequest) {
     }
 
     const stmt = db.prepare(`
-      INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, priority, planned_purchase_date, comparison_group_id, category_id, notes, quantity)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, priority, planned_purchase_date, comparison_group_id, category_id, notes, quantity, stock_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const manualUrl = url || `manual://${Date.now()}`; // URLなしの場合はダミーURL
@@ -85,7 +85,8 @@ export async function POST(request: NextRequest) {
       comparison_group_id || null,
       category_id || null,
       notes || null,
-      quantity
+      quantity,
+      'unknown'
     );
 
     if (manualPrice) {
@@ -111,8 +112,8 @@ export async function POST(request: NextRequest) {
   const scraped = await scrapeUrl(url);
 
   const stmt = db.prepare(`
-    INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority, planned_purchase_date, comparison_group_id, category_id, notes, quantity)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority, planned_purchase_date, comparison_group_id, category_id, notes, quantity, stock_status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const result = stmt.run(
@@ -129,7 +130,8 @@ export async function POST(request: NextRequest) {
     comparison_group_id || null,
     category_id || null,
     notes || null,
-    quantity
+    quantity,
+    scraped.stockStatus
   );
 
   // 価格履歴に追加
