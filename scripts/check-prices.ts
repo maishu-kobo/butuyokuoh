@@ -13,13 +13,12 @@ import {
 const dbPath = path.join(process.cwd(), 'data', 'butuyokuoh.db');
 const db = new Database(dbPath);
 
-// コマンドライン引数で優先度を指定可能
-// 例: npx ts-node scripts/check-prices.ts --priority=1,2
+// コマンドライン引数
+// --mode=stock-watch : 在庫監視対象（watch_stock=1 かつ out_of_stock）のみチェック
+// --mode=all : 全商品チェック（従来の6時間ごと）
 const args = process.argv.slice(2);
-const priorityArg = args.find(arg => arg.startsWith('--priority='));
-const targetPriorities: number[] | null = priorityArg 
-  ? priorityArg.split('=')[1].split(',').map(p => parseInt(p, 10))
-  : null;
+const modeArg = args.find(arg => arg.startsWith('--mode='));
+const mode = modeArg ? modeArg.split('=')[1] : 'all';
 
 interface Item {
   id: number;
@@ -30,6 +29,7 @@ interface Item {
   current_price: number | null;
   target_price: number | null;
   stock_status: string | null;
+  watch_stock: number;
   priority: number;
 }
 
@@ -43,30 +43,39 @@ interface UserSettings {
 }
 
 async function checkPrices() {
-  console.log(`[${new Date().toISOString()}] Starting price check...`);
+  console.log(`[${new Date().toISOString()}] Starting price check (mode: ${mode})...`);
 
-  // 未購入のアイテムを取得（優先度フィルター付き）
   let query = `
-    SELECT id, user_id, name, url, image_url, current_price, target_price, stock_status, priority
+    SELECT id, user_id, name, url, image_url, current_price, target_price, stock_status, watch_stock, priority
     FROM items
     WHERE is_purchased = 0 AND deleted_at IS NULL
   `;
-  
-  if (targetPriorities && targetPriorities.length > 0) {
-    const placeholders = targetPriorities.map(() => '?').join(',');
-    query += ` AND priority IN (${placeholders})`;
-    console.log(`Filtering by priorities: ${targetPriorities.join(', ')}`);
-  }
-  
-  const items = (targetPriorities && targetPriorities.length > 0)
-    ? db.prepare(query).all(...targetPriorities) as Item[]
-    : db.prepare(query).all() as Item[];
 
+  // モードに応じてフィルタリング
+  if (mode === 'stock-watch') {
+    // 在庫監視対象: watch_stock=1 かつ 在庫切れの商品のみ
+    query += ` AND watch_stock = 1 AND stock_status = 'out_of_stock'`;
+    console.log('Filtering: watch_stock=1 AND stock_status=out_of_stock');
+  }
+
+  // 優先度順にソート（高優先度から処理）
+  query += ` ORDER BY priority ASC`;
+
+  const items = db.prepare(query).all() as Item[];
   console.log(`Found ${items.length} items to check`);
+
+  let checked = 0;
+  let skipped = 0;
 
   for (const item of items) {
     try {
-      console.log(`Checking: ${item.name.substring(0, 50)}...`);
+      // manual:// URLはスキップ
+      if (item.url.startsWith('manual://')) {
+        skipped++;
+        continue;
+      }
+
+      console.log(`[${checked + 1}/${items.length}] Checking: ${item.name.substring(0, 40)}...`);
       
       const scraped = await scrapeUrl(item.url);
       
@@ -92,8 +101,8 @@ async function checkPrices() {
         `).run(item.id, newPrice);
       }
 
-      console.log(`  - Price: ¥${oldPrice?.toLocaleString() || '---'} -> ¥${newPrice?.toLocaleString() || '---'}`);
-      console.log(`  - Stock: ${oldStockStatus || 'unknown'} -> ${newStockStatus}`);
+      console.log(`  Price: ¥${oldPrice?.toLocaleString() || '---'} -> ¥${newPrice?.toLocaleString() || '---'}`);
+      console.log(`  Stock: ${oldStockStatus || 'unknown'} -> ${newStockStatus}`);
 
       // ユーザーの通知設定を取得
       const userSettings = db.prepare(`
@@ -103,7 +112,7 @@ async function checkPrices() {
       if (userSettings) {
         // 在庫復帰通知（out_of_stock -> in_stock）
         if (oldStockStatus === 'out_of_stock' && newStockStatus === 'in_stock' && userSettings.notify_on_stock_back) {
-          console.log(`  - Stock is back! Sending notifications...`);
+          console.log(`  -> Stock is back! Sending notifications...`);
           
           const stockPayload: StockNotificationPayload = {
             item: { ...item, current_price: newPrice } as any,
@@ -112,11 +121,11 @@ async function checkPrices() {
           
           if (userSettings.slack_webhook) {
             await sendSlackStockNotification(userSettings.slack_webhook, stockPayload);
-            console.log(`    - Slack: sent`);
+            console.log(`     Slack: sent`);
           }
           if (userSettings.discord_webhook) {
             await sendDiscordStockNotification(userSettings.discord_webhook, stockPayload);
-            console.log(`    - Discord: sent`);
+            console.log(`     Discord: sent`);
           }
         }
 
@@ -132,42 +141,44 @@ async function checkPrices() {
 
           // 目標価格到達通知
           if (item.target_price && newPrice <= item.target_price && userSettings.notify_on_target_price) {
-            console.log(`  - Target price reached! Sending notifications...`);
+            console.log(`  -> Target price reached! Sending notifications...`);
             
             if (userSettings.slack_webhook) {
               await sendSlackNotification(userSettings.slack_webhook, payload);
-              console.log(`    - Slack: sent`);
+              console.log(`     Slack: sent`);
             }
             if (userSettings.discord_webhook) {
               await sendDiscordNotification(userSettings.discord_webhook, payload);
-              console.log(`    - Discord: sent`);
+              console.log(`     Discord: sent`);
             }
           }
           // 価格下落通知
           else if (userSettings.notify_on_price_drop) {
-            console.log(`  - Price dropped! Sending notifications...`);
+            console.log(`  -> Price dropped! Sending notifications...`);
             
             if (userSettings.slack_webhook) {
               await sendSlackNotification(userSettings.slack_webhook, payload);
-              console.log(`    - Slack: sent`);
+              console.log(`     Slack: sent`);
             }
             if (userSettings.discord_webhook) {
               await sendDiscordNotification(userSettings.discord_webhook, payload);
-              console.log(`    - Discord: sent`);
+              console.log(`     Discord: sent`);
             }
           }
         }
       }
 
-      // レートリミット対策で20.5秒待機
+      checked++;
+
+      // レートリミット対策で待機
       await new Promise(resolve => setTimeout(resolve, 500));
 
     } catch (error) {
-      console.error(`  - Error: ${error}`);
+      console.error(`  Error: ${error}`);
     }
   }
 
-  console.log(`[${new Date().toISOString()}] Price check completed`);
+  console.log(`[${new Date().toISOString()}] Price check completed: ${checked} checked, ${skipped} skipped`);
 }
 
 checkPrices().then(() => {

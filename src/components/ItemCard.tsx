@@ -31,6 +31,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     quantity: item.quantity || 1,
     image_url: item.image_url || '',
     current_price: item.current_price || '',
+    watch_stock: item.watch_stock || false,
   });
   const [refreshingUrl, setRefreshingUrl] = useState(false);
   const [showImageEdit, setShowImageEdit] = useState(false);
@@ -87,6 +88,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
         quantity: Number(editData.quantity) || 1,
         image_url: editData.image_url || null,
         current_price: editData.current_price ? Number(editData.current_price) : null,
+        watch_stock: editData.watch_stock,
       }),
     });
     setEditing(false);
@@ -179,6 +181,11 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                 {item.stock_status === 'in_stock' && (
                   <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200">
                     在庫あり
+                  </span>
+                )}
+                {item.watch_stock && item.stock_status === 'out_of_stock' && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200 flex items-center gap-1">
+                    🔔 監視中
                   </span>
                 )}
                 {item.category_name && item.category_color && (
@@ -408,6 +415,21 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                       className="flex-1 px-2.5 py-1.5 text-sm rounded-r-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:border-orange-500"
                     />
                   </div>
+                </div>
+
+                {/* 在庫監視 */}
+                <div>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">在庫監視</label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editData.watch_stock}
+                      onChange={(e) => setEditData({ ...editData, watch_stock: e.target.checked })}
+                      className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">在庫切れ時に頻繁にチェック</span>
+                  </label>
+                  <p className="text-xs text-gray-400 mt-1">ONにすると在庫切れ中は30分ごとにチェック</p>
                 </div>
               </div>
             </div>

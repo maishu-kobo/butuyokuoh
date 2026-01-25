@@ -22,6 +22,7 @@ export interface Item {
   quantity: number;
   sort_order?: number;
   stock_status: 'in_stock' | 'out_of_stock' | 'unknown';
+  watch_stock: boolean;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;

@@ -118,6 +118,12 @@ function initDb(db: Database.Database) {
     db.exec(`ALTER TABLE items ADD COLUMN stock_status TEXT DEFAULT 'unknown'`);
   }
 
+  // マイグレーション: watch_stock カラムを items テーブルに追加（在庫監視ON/OFF、デフォルトOFF）
+  const itemColumns2 = db.prepare("PRAGMA table_info(items)").all() as { name: string }[];
+  if (!itemColumns2.some(col => col.name === 'watch_stock')) {
+    db.exec(`ALTER TABLE items ADD COLUMN watch_stock INTEGER NOT NULL DEFAULT 0`);
+  }
+
   // マイグレーション: notify_on_stock_back カラムを user_notification_settings テーブルに追加
   const notifColumns = db.prepare("PRAGMA table_info(user_notification_settings)").all() as { name: string }[];
   if (!notifColumns.some(col => col.name === 'notify_on_stock_back')) {
