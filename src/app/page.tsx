@@ -72,12 +72,23 @@ export default function Home() {
     fetchItems();
   };
 
+  const [refreshResult, setRefreshResult] = useState<{ updated: number; priceChanges: number; stockChanges: number } | null>(null);
+
   const handleRefreshAll = async () => {
     setRefreshing(true);
+    setRefreshResult(null);
     try {
-      await Promise.all(items.map((item) => 
-        fetch(`/api/items/${item.id}/refresh`, { method: 'POST' })
-      ));
+      const res = await fetch('/api/items/refresh-all', { method: 'POST' });
+      if (res.ok) {
+        const result = await res.json();
+        setRefreshResult({
+          updated: result.updated,
+          priceChanges: result.priceChanges.length,
+          stockChanges: result.stockChanges.length,
+        });
+        // 3秒後に結果を消す
+        setTimeout(() => setRefreshResult(null), 5000);
+      }
       fetchItems();
     } finally {
       setRefreshing(false);
@@ -646,8 +657,15 @@ export default function Home() {
                       className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
                     >
                       <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-                      全て更新
+                      {refreshing ? '更新中...' : '全て更新'}
                     </button>
+                    {refreshResult && (
+                      <span className="text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded">
+                        ✓ {refreshResult.updated}件更新
+                        {refreshResult.priceChanges > 0 && ` (価格変動${refreshResult.priceChanges}件)`}
+                        {refreshResult.stockChanges > 0 && ` (在庫変動${refreshResult.stockChanges}件)`}
+                      </span>
+                    )}
                   </>
                 )}
               </div>

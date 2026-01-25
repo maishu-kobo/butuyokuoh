@@ -13,6 +13,14 @@ import {
 const dbPath = path.join(process.cwd(), 'data', 'butuyokuoh.db');
 const db = new Database(dbPath);
 
+// コマンドライン引数で優先度を指定可能
+// 例: npx ts-node scripts/check-prices.ts --priority=1,2
+const args = process.argv.slice(2);
+const priorityArg = args.find(arg => arg.startsWith('--priority='));
+const targetPriorities: number[] | null = priorityArg 
+  ? priorityArg.split('=')[1].split(',').map(p => parseInt(p, 10))
+  : null;
+
 interface Item {
   id: number;
   user_id: number;
@@ -22,6 +30,7 @@ interface Item {
   current_price: number | null;
   target_price: number | null;
   stock_status: string | null;
+  priority: number;
 }
 
 interface UserSettings {
@@ -36,12 +45,22 @@ interface UserSettings {
 async function checkPrices() {
   console.log(`[${new Date().toISOString()}] Starting price check...`);
 
-  // 未購入のアイテムを全て取得
-  const items = db.prepare(`
-    SELECT id, user_id, name, url, image_url, current_price, target_price, stock_status
+  // 未購入のアイテムを取得（優先度フィルター付き）
+  let query = `
+    SELECT id, user_id, name, url, image_url, current_price, target_price, stock_status, priority
     FROM items
     WHERE is_purchased = 0 AND deleted_at IS NULL
-  `).all() as Item[];
+  `;
+  
+  if (targetPriorities && targetPriorities.length > 0) {
+    const placeholders = targetPriorities.map(() => '?').join(',');
+    query += ` AND priority IN (${placeholders})`;
+    console.log(`Filtering by priorities: ${targetPriorities.join(', ')}`);
+  }
+  
+  const items = (targetPriorities && targetPriorities.length > 0)
+    ? db.prepare(query).all(...targetPriorities) as Item[]
+    : db.prepare(query).all() as Item[];
 
   console.log(`Found ${items.length} items to check`);
 
