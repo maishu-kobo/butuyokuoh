@@ -1,12 +1,11 @@
 # Loop State
 
-- 周回: 12
+- 周回: 13
 - discovery 連続空振り: 0（最終discovery: 周回11、採用5件）
 
 ## backlog
 <!-- 書式: - [ ] タイトル | 受け入れ条件: 検証可能な条件 | origin: human|auto | fix: 0 -->
 - [ ] ItemCard に価格更新ステータス表示 (#33) | 受け入れ条件: 最終更新からの経過時間が表示され、scrape_status が failed のアイテムに警告表示が出る | origin: human | fix: 0 | 待機: PR #47 マージ後（scrape_status/last_scraped_at カラムとGET応答に依存。ItemCard.tsxスタック回避のためマージ待ち）
-- [ ] 価格ソートで current_price が null のアイテムを末尾に表示 | 受け入れ条件: price_asc / price_desc いずれでも価格未取得アイテムが末尾に並び、価格ありアイテム同士の順序は従来どおり | origin: auto | fix: 0
 - [ ] ItemCard 編集保存失敗時にフォームを閉じずエラー表示する | 受け入れ条件: PATCH 失敗時に編集フォームが開いたまま入力値が保持されエラーメッセージが表示される。成功時は従来どおり閉じる | origin: auto | fix: 0
 - [ ] check-prices の例外catchパスでも scrape_status='failed' を記録する (#33 follow-up) | 受け入れ条件: scrapeUrl が例外を投げたアイテムでも last_scraped_at と scrape_status='failed' が記録される | origin: auto | fix: 0
 <!-- 周回11 discovery 採用5件 -->
@@ -49,6 +48,7 @@
 - [x] getDb() で data/ ディレクトリを自動作成する | PR: #49 | 周回: 10
 - [x] /api/upload の拡張子・MIME検証強化（SVG/HTML偽装XSS対策、四段構え検証） | PR: #50 | 周回: 11
 - [x] バグ: 比較グループ編集/削除API (comparison-groups/[id]) 不在による404を修正（PUT/DELETE実装） | PR: #51 | 周回: 12
+- [x] 価格ソートで current_price が null のアイテムを末尾に表示 | PR: #52 | 周回: 13
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
