@@ -1,3 +1,4 @@
+import puppeteer from 'puppeteer';
 import { validateAndSanitizeUrl, sanitizeGenericUrl } from './url-validator';
 
 export interface ScrapedItem {
@@ -272,6 +273,101 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
   return scrapeGeneric(genericValidation.sanitizedUrl, genericValidation.hostname);
 }
 
+/**
+ * Amazonのボット対策ページやエラーページを検出
+ */
+function isAmazonBlockedHtml(html: string): boolean {
+  return (
+    html.includes('api-services-support@amazon.com') ||
+    html.includes('Service Unavailable') ||
+    html.includes('ロボットではない') ||
+    html.includes('automated access') ||
+    !html.includes('productTitle')
+  );
+}
+
+/**
+ * Amazon商品ページのHTMLから商品名・価格・画像を抽出
+ */
+function extractAmazonProduct(html: string): {
+  name: string;
+  price: number | null;
+  imageUrl: string | null;
+} {
+  // 商品名
+  const nameMatch = html.match(/<span[^>]*id="productTitle"[^>]*>([^<]+)<\/span>/);
+  const name = nameMatch ? nameMatch[1].trim() : '不明な商品';
+
+  // 価格（複数のパターンに対応）
+  let price: number | null = null;
+
+  // パターン1: a-price-wholeクラス（新形式）
+  const priceWholeMatch = html.match(/a-price-whole">([\d,]+)/);
+  if (priceWholeMatch) {
+    price = parseInt(priceWholeMatch[1].replace(/,/g, ''), 10);
+  }
+
+  // パターン2: 円記号付き（フォールバック、ただしproductTitleがある場合のみ）
+  // ※このパターンは誤検出が多いので無効化
+  // if (!price) {
+  //   const yenMatch = html.match(/[¥￥]([\d,]+)/);
+  //   if (yenMatch) {
+  //     price = parseInt(yenMatch[1].replace(/,/g, ''), 10);
+  //   }
+  // }
+
+  // 画像
+  const imageMatch = html.match(/"hiRes":"([^"]+)"/) || html.match(/id="landingImage"[^>]*src="([^"]+)"/);
+  const imageUrl = imageMatch ? imageMatch[1] : null;
+
+  return { name, price, imageUrl };
+}
+
+/**
+ * Puppeteer（ヘッドレスブラウザ）でAmazon商品ページを取得するフォールバック
+ * 素のfetchがAmazonのボット対策に弾かれた場合に使用する
+ * @returns 取得したScrapedItem（ボット検知された場合はnull）
+ */
+async function scrapeAmazonWithPuppeteer(sanitizedUrl: string): Promise<ScrapedItem | null> {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+    );
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'ja-JP,ja;q=0.9',
+    });
+
+    await page.goto(sanitizedUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+
+    // レンダリング後のHTMLを取得し、fetch経路と同じ抽出ロジックを通す
+    const html = await page.content();
+
+    if (isAmazonBlockedHtml(html)) {
+      console.log('Amazon bot detection persists even with Puppeteer');
+      return null;
+    }
+
+    const { name, price, imageUrl } = extractAmazonProduct(html);
+
+    return {
+      name,
+      price,
+      imageUrl,
+      source: 'amazon',
+      sourceName: 'Amazon',
+    };
+  } finally {
+    // ブラウザプロセスのリーク防止のため必ずクローズする
+    await browser.close();
+  }
+}
+
 async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
   // SSRF対策: fetch直前にホスト名を再検証
   const hostname = getHostname(sanitizedUrl);
@@ -285,6 +381,9 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
     };
   }
 
+  // Puppeteerフォールバックも失敗した場合に返す結果（従来の挙動を維持）
+  let fallbackResult: ScrapedItem;
+
   try {
     const response = await fetchWithRetry(sanitizedUrl, {
       headers: {
@@ -297,13 +396,9 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
     const html = await response.text();
 
     // Amazonのボット対策ページやエラーページを検出
-    if (html.includes('api-services-support@amazon.com') || 
-        html.includes('Service Unavailable') ||
-        html.includes('ロボットではない') ||
-        html.includes('automated access') ||
-        !html.includes('productTitle')) {
+    if (isAmazonBlockedHtml(html)) {
       console.log('Amazon bot detection or error page detected');
-      return {
+      fallbackResult = {
         name: 'Amazonのボット対策により価格を取得できませんでした',
         price: null,
         imageUrl: null,
@@ -311,44 +406,29 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
         sourceName: 'Amazon',
         note: 'Amazonのボット対策により自動取得が制限されています。価格は手動で編集してください。',
       };
+    } else {
+      const { name, price, imageUrl } = extractAmazonProduct(html);
+
+      const result: ScrapedItem = {
+        name,
+        price,
+        imageUrl,
+        source: 'amazon',
+        sourceName: 'Amazon',
+      };
+
+      // 価格が取得できた場合はそのまま返す
+      if (price !== null) {
+        return result;
+      }
+
+      // 価格が抽出できなかった場合はPuppeteerフォールバックを試す
+      fallbackResult = result;
     }
-
-    // 商品名
-    const nameMatch = html.match(/<span[^>]*id="productTitle"[^>]*>([^<]+)<\/span>/);
-    const name = nameMatch ? nameMatch[1].trim() : '不明な商品';
-
-    // 価格（複数のパターンに対応）
-    let price: number | null = null;
-    
-    // パターン1: a-price-wholeクラス（新形式）
-    const priceWholeMatch = html.match(/a-price-whole">([\d,]+)/);
-    if (priceWholeMatch) {
-      price = parseInt(priceWholeMatch[1].replace(/,/g, ''), 10);
-    }
-    
-    // パターン2: 円記号付き（フォールバック、ただしproductTitleがある場合のみ）
-    // ※このパターンは誤検出が多いので無効化
-    // if (!price) {
-    //   const yenMatch = html.match(/[¥￥]([\d,]+)/);
-    //   if (yenMatch) {
-    //     price = parseInt(yenMatch[1].replace(/,/g, ''), 10);
-    //   }
-    // }
-
-    // 画像
-    const imageMatch = html.match(/"hiRes":"([^"]+)"/) || html.match(/id="landingImage"[^>]*src="([^"]+)"/);
-    const imageUrl = imageMatch ? imageMatch[1] : null;
-
-    return {
-      name,
-      price,
-      imageUrl,
-      source: 'amazon',
-      sourceName: 'Amazon',
-    };
   } catch (error) {
+    // fetchWithRetryのリトライが尽きた場合もPuppeteerフォールバックを試す
     console.error('Amazon scraping error:', error);
-    return {
+    fallbackResult = {
       name: '取得失敗',
       price: null,
       imageUrl: null,
@@ -356,6 +436,20 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
       sourceName: 'Amazon',
     };
   }
+
+  // Puppeteerフォールバック: ボット検知・fetch失敗・価格抽出失敗のいずれかで発動
+  console.log('Falling back to Puppeteer for Amazon scraping:', sanitizedUrl);
+  try {
+    const puppeteerResult = await scrapeAmazonWithPuppeteer(sanitizedUrl);
+    if (puppeteerResult && puppeteerResult.price !== null) {
+      return puppeteerResult;
+    }
+  } catch (error) {
+    console.error('Amazon Puppeteer fallback error:', error);
+  }
+
+  // Puppeteerでも取得できなかった場合は従来どおりの結果（price: null）を返す
+  return fallbackResult;
 }
 
 async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
