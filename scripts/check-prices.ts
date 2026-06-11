@@ -109,11 +109,11 @@ async function checkPrices() {
         }
       }
 
-      // レートリミット対策で20.5秒待機
-      await new Promise(resolve => setTimeout(resolve, 500));
-
     } catch (error) {
       console.error(`  - Error: ${error}`);
+    } finally {
+      // レートリミット対策で5秒待機（スキップ・エラー時も含め全アイテム間に適用）
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
   }
 

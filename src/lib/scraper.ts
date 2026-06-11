@@ -34,6 +34,67 @@ const RAKUTEN_DOMAINS = new Set([
   'product.rakuten.co.jp',
 ]);
 
+export interface FetchWithRetryOptions {
+  maxRetries?: number; // 最大リトライ回数（デフォルト: 3）
+  baseDelayMs?: number; // リトライ間隔の基準ミリ秒（デフォルト: 1000）
+}
+
+// リトライ間隔の倍率（baseDelayMs=1000の場合: 1秒 → 5秒 → 15秒）
+const RETRY_DELAY_MULTIPLIERS = [1, 5, 15];
+
+/**
+ * HTTPステータス確認と指数バックオフリトライ付きのfetch
+ * - 429 / 5xx 応答とネットワークエラー時に最大maxRetries回リトライする
+ * - 404等の4xx（429除く）はリトライせず即座にエラーを投げる
+ * - リトライが尽きた場合は最後のエラーを投げる
+ */
+export async function fetchWithRetry(
+  url: string,
+  init?: RequestInit,
+  options?: FetchWithRetryOptions
+): Promise<Response> {
+  const maxRetries = options?.maxRetries ?? 3;
+  const baseDelayMs = options?.baseDelayMs ?? 1000;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let response: Response | null = null;
+    try {
+      response = await fetch(url, init);
+    } catch (error) {
+      // ネットワークエラーはリトライ対象
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+
+    if (response) {
+      if (response.ok) {
+        return response;
+      }
+
+      // 429（レート制限）と5xx（サーバーエラー）のみリトライ対象
+      const isRetryable = response.status === 429 || response.status >= 500;
+      if (!isRetryable) {
+        // 404等の4xx（429除く）はリトライせず即座に失敗
+        throw new Error(`HTTP error ${response.status}: ${url}`);
+      }
+      lastError = new Error(`HTTP error ${response.status}: ${url}`);
+    }
+
+    // リトライ回数が残っていれば指数バックオフで待機
+    if (attempt < maxRetries) {
+      const multiplier =
+        RETRY_DELAY_MULTIPLIERS[Math.min(attempt, RETRY_DELAY_MULTIPLIERS.length - 1)];
+      const delayMs = baseDelayMs * multiplier;
+      console.log(
+        `Fetch failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delayMs}ms: ${url}`
+      );
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw lastError ?? new Error(`Fetch failed after ${maxRetries + 1} attempts: ${url}`);
+}
+
 /**
  * URLのホスト名を取得（SSRF対策のガード）
  */
@@ -116,7 +177,7 @@ async function expandShortUrl(url: string): Promise<string | null> {
   try {
     // redirect: 'follow'で自動的にリダイレクトを追跡し、最終URLを取得
     // safeUrlはホワイトリストから構築された安全なURL
-    const response = await fetch(safeUrl, {
+    const response = await fetchWithRetry(safeUrl, {
       method: 'GET',
       redirect: 'follow',
       headers: {
@@ -225,7 +286,7 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
   }
 
   try {
-    const response = await fetch(sanitizedUrl, {
+    const response = await fetchWithRetry(sanitizedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -311,7 +372,7 @@ async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
   }
 
   try {
-    const response = await fetch(sanitizedUrl, {
+    const response = await fetchWithRetry(sanitizedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
@@ -371,7 +432,7 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
   }
 
   try {
-    const response = await fetch(sanitizedUrl, {
+    const response = await fetchWithRetry(sanitizedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
