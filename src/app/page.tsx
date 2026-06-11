@@ -61,9 +61,8 @@ export default function Home() {
 
   useEffect(() => {
     if (user) {
-      fetchItems();
-      fetchGroups();
-      fetchCategories();
+      // 初期データを並列で取得する（1つが失敗しても他の結果は反映される）
+      Promise.allSettled([fetchItems(), fetchGroups(), fetchCategories()]);
     }
   }, [user]);
 
