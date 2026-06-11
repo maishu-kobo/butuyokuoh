@@ -1,12 +1,11 @@
 # Loop State
 
-- 周回: 9
+- 周回: 10
 - discovery 連続空振り: 0（最終discovery: 周回6、採用5件）
 
 ## backlog
 <!-- 書式: - [ ] タイトル | 受け入れ条件: 検証可能な条件 | origin: human|auto | fix: 0 -->
 - [ ] ItemCard に価格更新ステータス表示 (#33) | 受け入れ条件: 最終更新からの経過時間が表示され、scrape_status が failed のアイテムに警告表示が出る | origin: human | fix: 0 | 待機: PR #47 マージ後（scrape_status/last_scraped_at カラムとGET応答に依存。ItemCard.tsxスタック回避のためマージ待ち）
-- [ ] getDb() で data/ ディレクトリを自動作成する | 受け入れ条件: data/ が存在しない新規クローン環境で getDb() が例外を出さずDBを初期化できる | origin: auto | fix: 0
 - [ ] /api/upload の拡張子・MIME検証強化（SVG/HTML偽装XSS対策） | 受け入れ条件: .svg/.html/許可外拡張子が400になる。ファイル名に / や .. を含むケースで uploads/ 直下以外に書き込まれない。正常な jpg/png は従来どおり成功 | origin: auto | fix: 0
 - [ ] 価格ソートで current_price が null のアイテムを末尾に表示 | 受け入れ条件: price_asc / price_desc いずれでも価格未取得アイテムが末尾に並び、価格ありアイテム同士の順序は従来どおり | origin: auto | fix: 0
 - [ ] ItemCard 編集保存失敗時にフォームを閉じずエラー表示する | 受け入れ条件: PATCH 失敗時に編集フォームが開いたまま入力値が保持されエラーメッセージが表示される。成功時は従来どおり閉じる | origin: auto | fix: 0
@@ -34,6 +33,7 @@
 - [x] Amazon 価格取得の Puppeteer フォールバック (#13) | PR: #41 (#40の上にスタック) | 周回: 3
 - [x] スクレイプ結果の記録: items に last_scraped_at / scrape_status / scrape_error を追加し check-prices と refresh で更新 (#33) | PR: #47 | 周回: 8
 - [x] ItemCard 画像に loading="lazy" decoding="async" を付与 (#36) | PR: #48 | 周回: 9
+- [x] getDb() で data/ ディレクトリを自動作成する | PR: #49 | 周回: 10
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
