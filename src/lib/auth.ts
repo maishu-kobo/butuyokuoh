@@ -4,8 +4,25 @@ import { cookies } from 'next/headers';
 import { getDb } from './db';
 import { auth } from '@/auth';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'butuyokuoh-secret-key-change-in-production';
 const TOKEN_COOKIE_NAME = 'butuyokuoh_token';
+
+// 開発モード専用のフォールバック鍵。リポジトリに公開されている値のため、
+// 本番でこの鍵を使うとトークンを偽造される。本番では JWT_SECRET の設定を必須とする。
+const DEV_FALLBACK_SECRET = 'butuyokuoh-secret-key-change-in-production';
+
+// 署名・検証鍵は呼び出し時に評価する（フェイルファスト）。
+// モジュールトップレベルで throw すると Next.js のビルド（NODE_ENV=production）が
+// 落ちる恐れがあるため、トークン発行/検証のタイミングで検証する。
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'JWT_SECRET environment variable must be set in production. Generate one with: openssl rand -base64 32'
+    );
+  }
+  return DEV_FALLBACK_SECRET;
+}
 
 export interface User {
   id: number;
@@ -30,14 +47,17 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 export function generateToken(user: User): string {
   return jwt.sign(
     { userId: user.id, email: user.email } as JWTPayload,
-    JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: '7d' }
   );
 }
 
 export function verifyToken(token: string): JWTPayload | null {
+  // 鍵の取得は try の外で行う。本番で JWT_SECRET 未設定の場合に
+  // 設定エラーを null（検証失敗）として握りつぶさず、明確に throw させる。
+  const secret = getJwtSecret();
   try {
-    return jwt.verify(token, JWT_SECRET) as JWTPayload;
+    return jwt.verify(token, secret) as JWTPayload;
   } catch {
     return null;
   }
