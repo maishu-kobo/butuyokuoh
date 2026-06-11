@@ -10,24 +10,29 @@ export async function GET() {
   }
 
   const db = getDb();
+  // previous_price は行ごとの相関サブクエリではなく、ウィンドウ関数で
+  // 各アイテムの「2番目に新しい価格履歴」を一括導出して LEFT JOIN する。
+  // ORDER BY の id DESC は recorded_at 同値時の結果を決定的にするため。
   const items = db.prepare(`
-    SELECT 
+    SELECT
       i.*,
       cg.name as comparison_group_name,
       cg.priority as group_priority,
       cat.name as category_name,
       cat.color as category_color,
-      (
-        SELECT price FROM price_history 
-        WHERE item_id = i.id 
-        ORDER BY recorded_at DESC 
-        LIMIT 1 OFFSET 1
-      ) as previous_price
+      prev.price as previous_price
     FROM items i
     LEFT JOIN comparison_groups cg ON i.comparison_group_id = cg.id
     LEFT JOIN categories cat ON i.category_id = cat.id
+    LEFT JOIN (
+      SELECT item_id, price FROM (
+        SELECT item_id, price,
+               ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY recorded_at DESC, id DESC) AS rn
+        FROM price_history
+      ) WHERE rn = 2
+    ) prev ON prev.item_id = i.id
     WHERE i.is_purchased = 0 AND i.user_id = ? AND i.deleted_at IS NULL
-    ORDER BY 
+    ORDER BY
       COALESCE(cg.priority, i.priority) ASC,
       i.sort_order ASC,
       i.created_at DESC
