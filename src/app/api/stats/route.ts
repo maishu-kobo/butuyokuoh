@@ -12,8 +12,8 @@ export async function GET() {
 
   // 全体統計
   const overview = db.prepare(`
-    SELECT 
-      COUNT(*) as total_items,
+    SELECT
+      SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) as total_items,
       SUM(CASE WHEN is_purchased = 0 AND deleted_at IS NULL THEN 1 ELSE 0 END) as wishlist_count,
       SUM(CASE WHEN is_purchased = 1 THEN 1 ELSE 0 END) as purchased_count,
       SUM(CASE WHEN is_purchased = 0 AND deleted_at IS NULL THEN current_price ELSE 0 END) as wishlist_total,
@@ -61,7 +61,7 @@ export async function GET() {
       COUNT(*) as count,
       SUM(current_price) as total
     FROM items
-    WHERE user_id = ? AND is_purchased = 1 AND purchased_at IS NOT NULL
+    WHERE user_id = ? AND is_purchased = 1 AND purchased_at IS NOT NULL AND deleted_at IS NULL
     GROUP BY strftime('%Y-%m', purchased_at)
     ORDER BY month DESC
     LIMIT 12
