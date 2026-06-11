@@ -1,6 +1,6 @@
 # Loop State
 
-- 周回: 14
+- 周回: 15
 - discovery 連続空振り: 0（最終discovery: 周回11、採用5件）
 
 ## backlog
@@ -9,7 +9,6 @@
 - [ ] ItemCard 編集保存失敗時にフォームを閉じずエラー表示する | 受け入れ条件: PATCH 失敗時に編集フォームが開いたまま入力値が保持されエラーメッセージが表示される。成功時は従来どおり閉じる | origin: auto | fix: 0
 - [ ] check-prices の例外catchパスでも scrape_status='failed' を記録する (#33 follow-up) | 受け入れ条件: scrapeUrl が例外を投げたアイテムでも last_scraped_at と scrape_status='failed' が記録される | origin: auto | fix: 0
 <!-- 周回11 discovery 採用5件 -->
-- [ ] stats の total_items / monthlyPurchased が論理削除アイテムを除外していない | 受け入れ条件: stats/route.ts の total_items COUNT に deleted_at IS NULL を追加、monthlyPurchased にも AND deleted_at IS NULL を追加。ゴミ箱投入後に /api/stats の該当数が減る | origin: auto | fix: 0
 - [ ] comparison-groups の item_count が論理削除/購入済みアイテムを含む | 受け入れ条件: comparison-groups/route.ts の JOIN に AND i.deleted_at IS NULL AND i.is_purchased = 0 を追加（categories の集計方針に合わせる）。ゴミ箱投入/購入済み化で item_count が減る | origin: auto | fix: 0
 - [ ] BudgetView で価格未取得アイテムが合計に黙って除外される点を明示 | 受け入れ条件: 月カード/全体合計に価格未取得アイテムが含まれる場合「うちN件は価格未取得のため合計に含まれません」等の注記を表示。該当0件なら非表示。既存の合計表示・選択合計の挙動は維持 | origin: auto | fix: 0
 
@@ -31,6 +30,7 @@
 - TrashView 残り日数が少ないアイテムの緊急度マーカー（色依存でなく。※#48がTrashView.tsx変更中のためマージ後）
 - upload route で file.name に /・\・.. を含む場合 path.basename で正規化 or 早期400（PR #50 tester指摘[low]、実害なしの防御強化）
 - PriceChart USD目標の1件表示で判定不可なのに橙(未達色)になる軽微な不整合（PR #53 tester指摘[low]。注記追加 or 中立色に）
+- stats: total_items が算出されるがレスポンスJSONに未含有（未公開フィールド。公開 or 削除して整理）。purchased_count/purchased_total が deleted_at 除外なし（論理削除済み購入を含む。整合性要検討）（PR #54 tester指摘）
 
 ## in_progress
 
@@ -50,6 +50,7 @@
 - [x] バグ: 比較グループ編集/削除API (comparison-groups/[id]) 不在による404を修正（PUT/DELETE実装） | PR: #51 | 周回: 12
 - [x] 価格ソートで current_price が null のアイテムを末尾に表示 | PR: #52 | 周回: 13
 - [x] PriceChart に目標価格(target_price)の基準線を表示 | PR: #53 | 周回: 14
+- [x] stats の total_items / monthlyPurchased が論理削除アイテムを除外していない | PR: #54 | 周回: 15
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
