@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import path from 'path';
-import { scrapeUrl } from '../src/lib/scraper';
+import { scrapeUrl, deriveScrapeOutcome } from '../src/lib/scraper';
 import { sendSlackNotification, sendDiscordNotification, NotificationPayload } from '../src/lib/notifier';
 
 const dbPath = path.join(process.cwd(), 'data', 'butuyokuoh.db');
@@ -41,21 +41,36 @@ async function checkPrices() {
       console.log(`Checking: ${item.name.substring(0, 50)}...`);
       
       const scraped = await scrapeUrl(item.url);
-      
+
+      // スクレイプ結果（成功/失敗）を導出
+      const outcome = deriveScrapeOutcome(scraped);
+
       if (!scraped.price) {
-        console.log(`  - No price found, skipping`);
+        // 価格が取れなかった場合も last_scraped_at と失敗ステータスを記録する
+        db.prepare(`
+          UPDATE items
+          SET last_scraped_at = datetime('now'),
+              scrape_status = ?,
+              scrape_error = ?
+          WHERE id = ?
+        `).run(outcome.status, outcome.error, item.id);
+        console.log(`  - No price found (${outcome.error}), recorded as failed`);
         continue;
       }
 
       const oldPrice = item.current_price;
       const newPrice = scraped.price;
 
-      // 価格を更新
+      // 価格を更新（合わせてスクレイプ成功を記録）
       db.prepare(`
-        UPDATE items 
-        SET current_price = ?, updated_at = datetime('now')
+        UPDATE items
+        SET current_price = ?,
+            last_scraped_at = datetime('now'),
+            scrape_status = ?,
+            scrape_error = ?,
+            updated_at = datetime('now')
         WHERE id = ?
-      `).run(newPrice, item.id);
+      `).run(newPrice, outcome.status, outcome.error, item.id);
 
       // 価格履歴に追加
       db.prepare(`
