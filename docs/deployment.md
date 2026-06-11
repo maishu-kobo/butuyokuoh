@@ -43,6 +43,11 @@ GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 ```
 
+**JWT_SECRETは本番（NODE_ENV=production）で必須。** 未設定の場合、トークンの発行・検証が
+`JWT_SECRET environment variable must be set in production` というエラーで失敗し、
+ログイン・拡張機能連携が動作しない（公開フォールバック鍵によるトークン偽造を防ぐためのフェイルファスト）。
+`openssl rand -base64 32` で生成した値を`.env.local`または systemd unit の`Environment=`で設定すること。
+
 ### 4. ビルド
 
 ```bash
