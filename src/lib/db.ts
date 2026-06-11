@@ -110,5 +110,8 @@ function initDb(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_price_history_item ON price_history(item_id, recorded_at);
     CREATE INDEX IF NOT EXISTS idx_comparison_groups_user ON comparison_groups(user_id);
     CREATE INDEX IF NOT EXISTS idx_categories_user ON categories(user_id);
+    CREATE INDEX IF NOT EXISTS idx_items_user_status ON items(user_id, is_purchased, deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_items_user_category ON items(user_id, category_id);
+    CREATE INDEX IF NOT EXISTS idx_items_user_group ON items(user_id, comparison_group_id);
   `);
 }
