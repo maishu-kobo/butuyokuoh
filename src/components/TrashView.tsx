@@ -81,6 +81,8 @@ export default function TrashView() {
                   <img
                     src={item.image_url}
                     alt={item.name}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-contain rounded opacity-60"
                   />
                 ) : (

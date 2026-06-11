@@ -151,9 +151,11 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
         {/* 画像 */}
         <div className="w-32 h-32 flex-shrink-0 bg-gray-100 dark:bg-slate-700">
           {item.image_url ? (
-            <img 
-              src={item.image_url} 
+            <img
+              src={item.image_url}
               alt={item.name}
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-contain"
             />
           ) : (
