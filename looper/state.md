@@ -1,12 +1,11 @@
 # Loop State
 
-- 周回: 8
+- 周回: 9
 - discovery 連続空振り: 0（最終discovery: 周回6、採用5件）
 
 ## backlog
 <!-- 書式: - [ ] タイトル | 受け入れ条件: 検証可能な条件 | origin: human|auto | fix: 0 -->
-- [ ] ItemCard に価格更新ステータス表示 (#33) | 受け入れ条件: 最終更新からの経過時間が表示され、scrape_status が failed のアイテムに警告表示が出る | origin: human | fix: 0 | 待機解除: 記録タスク(PR #47)完了済み
-- [ ] ItemCard 画像に loading="lazy" decoding="async" を付与 (#36) | 受け入れ条件: 一覧の img 要素に属性が付与され、画像表示が変更前と同一 | origin: human | fix: 0
+- [ ] ItemCard に価格更新ステータス表示 (#33) | 受け入れ条件: 最終更新からの経過時間が表示され、scrape_status が failed のアイテムに警告表示が出る | origin: human | fix: 0 | 待機: PR #47 マージ後（scrape_status/last_scraped_at カラムとGET応答に依存。ItemCard.tsxスタック回避のためマージ待ち）
 - [ ] getDb() で data/ ディレクトリを自動作成する | 受け入れ条件: data/ が存在しない新規クローン環境で getDb() が例外を出さずDBを初期化できる | origin: auto | fix: 0
 - [ ] /api/upload の拡張子・MIME検証強化（SVG/HTML偽装XSS対策） | 受け入れ条件: .svg/.html/許可外拡張子が400になる。ファイル名に / や .. を含むケースで uploads/ 直下以外に書き込まれない。正常な jpg/png は従来どおり成功 | origin: auto | fix: 0
 - [ ] 価格ソートで current_price が null のアイテムを末尾に表示 | 受け入れ条件: price_asc / price_desc いずれでも価格未取得アイテムが末尾に並び、価格ありアイテム同士の順序は従来どおり | origin: auto | fix: 0
@@ -34,6 +33,7 @@
 - [x] scraper に HTTPステータス確認と指数バックオフリトライを追加、check-prices のアイテム間隔を5秒以上に延長 (#13) | PR: #40 | 周回: 2
 - [x] Amazon 価格取得の Puppeteer フォールバック (#13) | PR: #41 (#40の上にスタック) | 周回: 3
 - [x] スクレイプ結果の記録: items に last_scraped_at / scrape_status / scrape_error を追加し check-prices と refresh で更新 (#33) | PR: #47 | 周回: 8
+- [x] ItemCard 画像に loading="lazy" decoding="async" を付与 (#36) | PR: #48 | 周回: 9
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
