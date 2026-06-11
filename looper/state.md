@@ -1,7 +1,7 @@
 # Loop State
 
-- 周回: 11
-- discovery 連続空振り: 0（最終discovery: 周回11、採用予定）
+- 周回: 12
+- discovery 連続空振り: 0（最終discovery: 周回11、採用5件）
 
 ## backlog
 <!-- 書式: - [ ] タイトル | 受け入れ条件: 検証可能な条件 | origin: human|auto | fix: 0 -->
@@ -10,7 +10,6 @@
 - [ ] ItemCard 編集保存失敗時にフォームを閉じずエラー表示する | 受け入れ条件: PATCH 失敗時に編集フォームが開いたまま入力値が保持されエラーメッセージが表示される。成功時は従来どおり閉じる | origin: auto | fix: 0
 - [ ] check-prices の例外catchパスでも scrape_status='failed' を記録する (#33 follow-up) | 受け入れ条件: scrapeUrl が例外を投げたアイテムでも last_scraped_at と scrape_status='failed' が記録される | origin: auto | fix: 0
 <!-- 周回11 discovery 採用5件 -->
-- [ ] バグ: 比較グループ削除API (/api/comparison-groups/[id]) が存在せず設定画面の削除が404になる | 受け入れ条件: comparison-groups/[id]/route.ts に DELETE を実装。認証+所有権(user_id)確認、未所有は404。削除時に紐づく items.comparison_group_id を NULL 化。設定画面から削除すると200で一覧から消え所属アイテムは未分類として残る | origin: auto | fix: 0
 - [ ] PriceChart に目標価格(target_price)の基準線を表示 | 受け入れ条件: target_price がある場合 recharts ReferenceLine で水平線+「目標 ¥XXX」ラベルを描画、達成/未達が色だけでなくラベルでも判別可能。未設定時は従来通り線なし。履歴1件表示でも目標価格があればテキスト併記 | origin: auto | fix: 0
 - [ ] stats の total_items / monthlyPurchased が論理削除アイテムを除外していない | 受け入れ条件: stats/route.ts の total_items COUNT に deleted_at IS NULL を追加、monthlyPurchased にも AND deleted_at IS NULL を追加。ゴミ箱投入後に /api/stats の該当数が減る | origin: auto | fix: 0
 - [ ] comparison-groups の item_count が論理削除/購入済みアイテムを含む | 受け入れ条件: comparison-groups/route.ts の JOIN に AND i.deleted_at IS NULL AND i.is_purchased = 0 を追加（categories の集計方針に合わせる）。ゴミ箱投入/購入済み化で item_count が減る | origin: auto | fix: 0
@@ -49,6 +48,7 @@
 - [x] ItemCard 画像に loading="lazy" decoding="async" を付与 (#36) | PR: #48 | 周回: 9
 - [x] getDb() で data/ ディレクトリを自動作成する | PR: #49 | 周回: 10
 - [x] /api/upload の拡張子・MIME検証強化（SVG/HTML偽装XSS対策、四段構え検証） | PR: #50 | 周回: 11
+- [x] バグ: 比較グループ編集/削除API (comparison-groups/[id]) 不在による404を修正（PUT/DELETE実装） | PR: #51 | 周回: 12
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
