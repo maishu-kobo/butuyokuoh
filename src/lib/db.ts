@@ -45,6 +45,8 @@ function initDb(db: Database.Database) {
       purchased_at TEXT,
       target_price INTEGER,
       target_currency TEXT DEFAULT 'JPY',
+      quantity INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
       deleted_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -111,4 +113,28 @@ function initDb(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_comparison_groups_user ON comparison_groups(user_id);
     CREATE INDEX IF NOT EXISTS idx_categories_user ON categories(user_id);
   `);
+
+  migrateDb(db);
+}
+
+// 既存DBへのスキーマ変更を反映する簡易マイグレーション
+// CREATE TABLE IF NOT EXISTS は既存テーブルを変更しないため、
+// 後から追加されたカラムはここで ALTER TABLE により追従させる
+function migrateDb(db: Database.Database) {
+  addColumnIfNotExists(db, 'items', 'quantity', 'INTEGER NOT NULL DEFAULT 1');
+  addColumnIfNotExists(db, 'items', 'sort_order', 'INTEGER NOT NULL DEFAULT 0');
+}
+
+// テーブルに指定カラムが存在しない場合のみ ALTER TABLE で追加する
+// table / column / definition はコード内で定義した定数のみを渡すこと（ユーザー入力は不可）
+function addColumnIfNotExists(
+  db: Database.Database,
+  table: string,
+  column: string,
+  definition: string
+) {
+  const columns = db.pragma(`table_info(${table})`) as { name: string }[];
+  if (!columns.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
