@@ -5,7 +5,7 @@
 
 ## backlog
 <!-- 書式: - [ ] タイトル | 受け入れ条件: 検証可能な条件 | origin: human|auto | fix: 0 -->
-- [ ] スクレイプ結果の記録: items に last_scraped_at / scrape_status / scrape_error を追加し check-prices と refresh で更新 (#33) | 受け入れ条件: check-prices 実行後、成功/失敗それぞれのアイテムに last_scraped_at と scrape_status が記録される | origin: human | fix: 0 | 待機: PR #39/#40 マージ後（db.ts と check-prices.ts に依存、三重スタック回避）
+- [ ] スクレイプ結果の記録: items に last_scraped_at / scrape_status / scrape_error を追加し check-prices と refresh で更新 (#33) | 受け入れ条件: check-prices 実行後、成功/失敗それぞれのアイテムに last_scraped_at と scrape_status が記録される | origin: human | fix: 0 | 待機解除: PR #39/#40 マージ済み（着手可能）
 - [ ] ItemCard に価格更新ステータス表示 (#33) | 受け入れ条件: 最終更新からの経過時間が表示され、scrape_status が failed のアイテムに警告表示が出る | origin: human | fix: 0 | 待機: 上記タスク完了後
 - [ ] ItemCard 画像に loading="lazy" decoding="async" を付与 (#36) | 受け入れ条件: 一覧の img 要素に属性が付与され、画像表示が変更前と同一 | origin: human | fix: 0
 - [ ] getDb() で data/ ディレクトリを自動作成する | 受け入れ条件: data/ が存在しない新規クローン環境で getDb() が例外を出さずDBを初期化できる | origin: auto | fix: 0
@@ -36,6 +36,15 @@
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
+
+## マージログ
+- 2026-06-11 (周回7後): 人間の指示で溜まったマージ候補6本を Codex CLI でレビュー → 対応 → develop へマージ。
+  - Codex レビュー結果: BLOCKER ゼロ。#44/#45/#39 は完全LGTM、#43は最適化SHOULD2件、#40/#41はスクレイパーSHOULD計5件
+  - 対応: コア機能(#13)の信頼性に直結する3件（fetchWithRetryのper-attemptタイムアウト、body破棄、恒久4xxでPuppeteerスキップ）を #41 ブランチに追加実装し tester 検証 pass
+  - マージ済み: #39, #44, #45, #43, #40, #41（全て squash、develop）。スタックの#41はsquash後コンフリクトしたため develop をマージして解決（#41側=#40内包の優越で欠落なし）
+  - 統合ビルド: tsc/next build とも pass（6PR統合後の develop で確認）
+  - 残った非ブロッカー指摘（#43 CTE化/履歴インデックス、#41 価格なし商品のPuppeteer抑制、engines明示 等）は follow-up Issue #46 に集約
+  - 結果: develop は origin にマージ反映済み（main への昇格は未実施＝人間判断）。looper/state.md は引き続きローカルのみ
 
 ## 終了ログ
 - 2026-06-11 周回0: push 権限不足のためループ終了（人間の介入待ち）。develop ブランチはローカルに作成済み・未push。
