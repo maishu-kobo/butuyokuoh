@@ -38,15 +38,35 @@ const RAKUTEN_DOMAINS = new Set([
 export interface FetchWithRetryOptions {
   maxRetries?: number; // 最大リトライ回数（デフォルト: 3）
   baseDelayMs?: number; // リトライ間隔の基準ミリ秒（デフォルト: 1000）
+  timeoutMs?: number; // 各fetch attemptのタイムアウト（デフォルト: 15000）
 }
 
 // リトライ間隔の倍率（baseDelayMs=1000の場合: 1秒 → 5秒 → 15秒）
 const RETRY_DELAY_MULTIPLIERS = [1, 5, 15];
 
+// 各fetch attemptのデフォルトタイムアウト（TCP/HTTPのハングで定期ジョブが無限に止まるのを防ぐ）
+const DEFAULT_TIMEOUT_MS = 15000;
+
+/**
+ * HTTPステータスコードを持つエラー
+ * fetchWithRetryがHTTPエラー応答でthrowする際に使用し、
+ * 呼び出し元がステータスに応じてフォールバック要否を判断できるようにする
+ */
+export class HttpError extends Error {
+  status: number;
+
+  constructor(status: number, url: string) {
+    super(`HTTP error ${status}: ${url}`);
+    this.name = 'HttpError';
+    this.status = status;
+  }
+}
+
 /**
  * HTTPステータス確認と指数バックオフリトライ付きのfetch
- * - 429 / 5xx 応答とネットワークエラー時に最大maxRetries回リトライする
- * - 404等の4xx（429除く）はリトライせず即座にエラーを投げる
+ * - 各attemptにtimeoutMsのタイムアウトを設定し、TCP/HTTPのハングを中断してリトライする
+ * - 429 / 5xx 応答とネットワークエラー（タイムアウト含む）時に最大maxRetries回リトライする
+ * - 404等の4xx（429除く）はリトライせず即座にHttpErrorを投げる
  * - リトライが尽きた場合は最後のエラーを投げる
  */
 export async function fetchWithRetry(
@@ -56,14 +76,21 @@ export async function fetchWithRetry(
 ): Promise<Response> {
   const maxRetries = options?.maxRetries ?? 3;
   const baseDelayMs = options?.baseDelayMs ?? 1000;
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     let response: Response | null = null;
     try {
-      response = await fetch(url, init);
+      // per-attemptタイムアウトのシグナルを構築
+      // 呼び出し元がinit.signalを渡している場合は合成し、既存のキャンセル機能を壊さない
+      const timeoutSignal = AbortSignal.timeout(timeoutMs);
+      const signal = init?.signal
+        ? AbortSignal.any([init.signal, timeoutSignal])
+        : timeoutSignal;
+      response = await fetch(url, { ...init, signal });
     } catch (error) {
-      // ネットワークエラーはリトライ対象
+      // ネットワークエラー・タイムアウトはリトライ対象
       lastError = error instanceof Error ? error : new Error(String(error));
     }
 
@@ -76,9 +103,13 @@ export async function fetchWithRetry(
       const isRetryable = response.status === 429 || response.status >= 500;
       if (!isRetryable) {
         // 404等の4xx（429除く）はリトライせず即座に失敗
-        throw new Error(`HTTP error ${response.status}: ${url}`);
+        // 未消費のbodyを破棄してソケットリークを防ぐ
+        await response.body?.cancel();
+        throw new HttpError(response.status, url);
       }
-      lastError = new Error(`HTTP error ${response.status}: ${url}`);
+      // リトライ前に未消費のbodyを破棄してソケットリークを防ぐ
+      await response.body?.cancel();
+      lastError = new HttpError(response.status, url);
     }
 
     // リトライ回数が残っていれば指数バックオフで待機
@@ -428,6 +459,23 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
   } catch (error) {
     // fetchWithRetryのリトライが尽きた場合もPuppeteerフォールバックを試す
     console.error('Amazon scraping error:', error);
+
+    // 404/410等の恒久的な非リトライ4xx（429は除く）はPuppeteerを起動しても無駄なので即座に返す
+    if (
+      error instanceof HttpError &&
+      error.status >= 400 &&
+      error.status < 500 &&
+      error.status !== 429
+    ) {
+      return {
+        name: '取得失敗',
+        price: null,
+        imageUrl: null,
+        source: 'amazon',
+        sourceName: 'Amazon',
+      };
+    }
+
     fallbackResult = {
       name: '取得失敗',
       price: null,
