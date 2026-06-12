@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { PriceHistory } from '@/types';
@@ -10,6 +10,8 @@ interface PriceChartProps {
   itemId: number;
   url?: string;
   source?: string;
+  targetPrice?: number | null;
+  targetCurrency?: 'JPY' | 'USD' | null;
 }
 
 // AmazonのURLからASINを抽出
@@ -49,10 +51,17 @@ function isRakutenUrl(url: string | undefined): boolean {
   }
 }
 
-export default function PriceChart({ itemId, url, source }: PriceChartProps) {
+export default function PriceChart({ itemId, url, source, targetPrice, targetCurrency }: PriceChartProps) {
   const [history, setHistory] = useState<PriceHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [showKeepa, setShowKeepa] = useState(true);
+
+  // 目標価格の通貨記号（USDのみ$、それ以外は¥）
+  // 価格履歴・current_priceはJPY前提のため、目標達成判定はtarget_priceが
+  // JPYのときのみ意味を持つ。USD設定時はラベル表示のみ行い、達成判定は行わない。
+  const targetIsJpy = targetCurrency !== 'USD';
+  const hasTarget = typeof targetPrice === 'number' && targetPrice > 0;
+  const targetSymbol = targetCurrency === 'USD' ? '$' : '¥';
 
   // Amazonの場合、ASINを抽出
   const isAmazon = source === 'amazon' || isAmazonUrl(url);
@@ -161,6 +170,22 @@ export default function PriceChart({ itemId, url, source }: PriceChartProps) {
           <div className="text-center">
             <p className="text-2xl font-bold text-blue-600">¥{history[0].price.toLocaleString()}</p>
             <p className="text-xs text-gray-500 mt-1">{chartData[0].fullDate} 時点（登録時）</p>
+            {hasTarget && (
+              <p className={`text-xs mt-2 font-medium ${
+                targetIsJpy
+                  ? history[0].price <= targetPrice!
+                    ? 'text-green-600'
+                    : 'text-orange-600'
+                  : 'text-orange-600'
+              }`}>
+                🎯 目標 {targetSymbol}{targetPrice!.toLocaleString()}
+                {targetIsJpy && (
+                  history[0].price <= targetPrice!
+                    ? '（達成）'
+                    : `（あと¥${(history[0].price - targetPrice!).toLocaleString()}）`
+                )}
+              </p>
+            )}
           </div>
           {cannotAutoCollect ? (
             <p className="text-xs text-gray-400 mt-3 text-center">
@@ -176,6 +201,29 @@ export default function PriceChart({ itemId, url, source }: PriceChartProps) {
       </div>
     );
   }
+
+  // 目標価格の達成判定（最新の価格と比較）。
+  // current_price相当として履歴の最新値を使用する。
+  const latestPrice = history[history.length - 1].price;
+  const targetReached = hasTarget && targetIsJpy && latestPrice <= targetPrice!;
+  // 達成/未達をラベル文言でも判別できるようにする（色だけに依存しない）
+  const targetLabel = hasTarget
+    ? targetIsJpy
+      ? targetReached
+        ? `目標 ¥${targetPrice!.toLocaleString()}（達成）`
+        : `目標 ¥${targetPrice!.toLocaleString()}（あと¥${(latestPrice - targetPrice!).toLocaleString()}）`
+      : `目標 ${targetSymbol}${targetPrice!.toLocaleString()}`
+    : '';
+  const targetLineColor = targetReached ? '#16a34a' : '#f97316';
+
+  // 目標線がJPYかつグラフ範囲外にあるとき、見切れないようY軸domainを拡張する
+  const showTargetLine = hasTarget && targetIsJpy;
+  const yDomain: [number | string, number | string] = showTargetLine
+    ? [
+        targetPrice! < minPrice ? Math.max(0, targetPrice! - 100) : 'dataMin - 100',
+        targetPrice! > maxPrice ? targetPrice! + 100 : 'dataMax + 100',
+      ]
+    : ['dataMin - 100', 'dataMax + 100'];
 
   return (
     <div>
@@ -198,6 +246,16 @@ export default function PriceChart({ itemId, url, source }: PriceChartProps) {
           最高値: <span className="text-red-600 font-semibold">¥{maxPrice.toLocaleString()}</span>
         </span>
       </div>
+      {hasTarget && (
+        <div className="mb-2 text-sm">
+          <span className={`font-medium ${targetReached ? 'text-green-600' : 'text-orange-600'}`}>
+            🎯 {targetLabel}
+          </span>
+          {!targetIsJpy && (
+            <span className="text-xs text-gray-400 ml-1">（USD目標のためグラフ線は非表示）</span>
+          )}
+        </div>
+      )}
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" />
@@ -205,11 +263,24 @@ export default function PriceChart({ itemId, url, source }: PriceChartProps) {
           <YAxis
             tick={{ fontSize: 12 }}
             tickFormatter={(value) => `¥${value.toLocaleString()}`}
-            domain={['dataMin - 100', 'dataMax + 100']}
+            domain={yDomain}
           />
           <Tooltip
             formatter={(value) => [`¥${Number(value).toLocaleString()}`, '価格']}
           />
+          {showTargetLine && (
+            <ReferenceLine
+              y={targetPrice!}
+              stroke={targetLineColor}
+              strokeDasharray="4 4"
+              label={{
+                value: targetLabel,
+                position: 'insideTopLeft',
+                fill: targetLineColor,
+                fontSize: 11,
+              }}
+            />
+          )}
           <Line
             type="monotone"
             dataKey="price"
