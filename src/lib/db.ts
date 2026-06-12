@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import fs from 'fs';
 import path from 'path';
 
 const dbPath = path.join(process.cwd(), 'data', 'butuyokuoh.db');
@@ -7,6 +8,8 @@ let db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (!db) {
+    // data/ ディレクトリが存在しない新規環境でも DB を初期化できるように自動作成する
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
     initDb(db);
