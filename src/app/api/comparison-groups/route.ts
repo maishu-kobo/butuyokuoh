@@ -14,7 +14,7 @@ export async function GET() {
       cg.*,
       COUNT(i.id) as item_count
     FROM comparison_groups cg
-    LEFT JOIN items i ON i.comparison_group_id = cg.id
+    LEFT JOIN items i ON i.comparison_group_id = cg.id AND i.deleted_at IS NULL AND i.is_purchased = 0
     WHERE cg.user_id = ?
     GROUP BY cg.id
     ORDER BY cg.priority ASC, cg.created_at DESC
