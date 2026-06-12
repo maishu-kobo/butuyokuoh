@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { scrapeUrl, deriveScrapeOutcome } from '@/lib/scraper';
+import { scrapeUrl, deriveScrapeOutcome, ScrapedItem } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 
 interface DbItem {
@@ -26,8 +26,26 @@ export async function POST(
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
 
-  // 再スクレイピング
-  const scraped = await scrapeUrl(item.url);
+  // 再スクレイピング（例外時も last_scraped_at と失敗ステータスを記録する）
+  let scraped: ScrapedItem;
+  try {
+    scraped = await scrapeUrl(item.url);
+  } catch (error) {
+    const message = (error instanceof Error ? error.message : String(error)).slice(0, 500);
+    try {
+      db.prepare(`
+        UPDATE items
+        SET last_scraped_at = datetime('now'),
+            scrape_status = 'failed',
+            scrape_error = ?
+        WHERE id = ?
+      `).run(message, item.id);
+    } catch (updateError) {
+      // 記録用UPDATEの失敗ではレスポンス自体は変えない
+      console.error('Failed to record scrape failure:', updateError);
+    }
+    return NextResponse.json({ error: '価格の再取得に失敗しました' }, { status: 500 });
+  }
 
   // スクレイプ結果（成功/失敗）を導出（check-prices と共通ロジック）
   const outcome = deriveScrapeOutcome(scraped);

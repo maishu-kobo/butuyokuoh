@@ -127,6 +127,20 @@ async function checkPrices() {
 
     } catch (error) {
       console.error(`  - Error: ${error}`);
+      // 例外発生時も last_scraped_at と失敗ステータスを記録する。
+      // この記録用UPDATE自体が失敗してもループ全体は止めない。
+      try {
+        const message = (error instanceof Error ? error.message : String(error)).slice(0, 500);
+        db.prepare(`
+          UPDATE items
+          SET last_scraped_at = datetime('now'),
+              scrape_status = 'failed',
+              scrape_error = ?
+          WHERE id = ?
+        `).run(message, item.id);
+      } catch (updateError) {
+        console.error(`  - Failed to record scrape failure: ${updateError}`);
+      }
     } finally {
       // レートリミット対策で5秒待機（スキップ・エラー時も含め全アイテム間に適用）
       await new Promise(resolve => setTimeout(resolve, 5000));
