@@ -1,6 +1,6 @@
 # Loop State
 
-- 周回: 22
+- 周回: 23
 - 周回上限: 40（2026-06-12 人間が /loop 再実行でループ再開。再開時20 + デフォルト20周回分）
 - discovery 連続空振り: 0（最終discovery: 周回22、採用5件）
 - 常設指示（2026-06-12 人間より）: 溜まったマージ候補PRは Codex レビュー → 指摘対応 → マージまでループが実施してよい
@@ -9,7 +9,6 @@
 <!-- 書式: - [ ] タイトル | 受け入れ条件: 検証可能な条件 | origin: human|auto | fix: 0 -->
 <!-- 周回11 discovery 採用5件 -->
 <!-- 周回16 discovery 採用5件 -->
-- [ ] notifier の webhook fetch にタイムアウト追加 | 受け入れ条件: Slack/Discord 通知 fetch に AbortSignal.timeout(約10秒) が付与され、応答しないエンドポイント宛が約10秒で false 返却となり check-prices のループが継続する | origin: auto | fix: 0
 - [ ] register/login のメール正規化と形式検証 | 受け入れ条件: 両APIで trim+小文字化を適用。Foo@Example.com 登録後に foo@example.com の重複登録が400。どちらの表記でもログイン成功。不正形式は400。email/password の型チェックあり | origin: auto | fix: 0
 - [ ] 検索/フィルタ0件時の空状態メッセージと条件クリア | 受け入れ条件: アイテムは存在するがフィルタ/検索0件のとき「条件に一致するアイテムがありません」を表示。「条件をクリア」ボタンで検索語・カテゴリ・優先度・グループ・並び順が初期化され全件再表示 | origin: auto | fix: 0
 <!-- 周回22 discovery 採用5件 -->
@@ -87,6 +86,7 @@
 - [x] check-prices の例外catchパスでも scrape_status='failed' を記録する (#33 follow-up) | PR: #59（refresh route の同種漏れも修正。tester がモック差し替えで動的検証、全項目 pass） | 周回: 20
 - [x] comparison-groups の item_count が論理削除/購入済みアイテムを含む | PR: #60（1行変更、tester がテストDBで 3→2→1 の減少と LEFT JOIN 維持を動的検証、全項目 pass） | 周回: 21
 - [x] BudgetView で価格未取得アイテムが合計に黙って除外される点を明示 | PR: #61（フロントのみ20行追加、全体/月/時期未定の3箇所に注記、tester が実データ突き合わせで全項目 pass） | 周回: 22
+- [x] notifier の webhook fetch にタイムアウト追加 | PR: #62（AbortSignal.timeout(10s)+TimeoutError/AbortError判定。tester がDNS差し替え+無応答サーバで実測10.0秒false返却を確認、全項目 pass） | 周回: 23
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
