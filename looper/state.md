@@ -1,18 +1,23 @@
 # Loop State
 
-- 周回: 21
+- 周回: 22
 - 周回上限: 40（2026-06-12 人間が /loop 再実行でループ再開。再開時20 + デフォルト20周回分）
-- discovery 連続空振り: 0（最終discovery: 周回16、採用5件）
+- discovery 連続空振り: 0（最終discovery: 周回22、採用5件）
 - 常設指示（2026-06-12 人間より）: 溜まったマージ候補PRは Codex レビュー → 指摘対応 → マージまでループが実施してよい
 
 ## backlog
 <!-- 書式: - [ ] タイトル | 受け入れ条件: 検証可能な条件 | origin: human|auto | fix: 0 -->
 <!-- 周回11 discovery 採用5件 -->
-- [ ] BudgetView で価格未取得アイテムが合計に黙って除外される点を明示 | 受け入れ条件: 月カード/全体合計に価格未取得アイテムが含まれる場合「うちN件は価格未取得のため合計に含まれません」等の注記を表示。該当0件なら非表示。既存の合計表示・選択合計の挙動は維持 | origin: auto | fix: 0
 <!-- 周回16 discovery 採用5件 -->
 - [ ] notifier の webhook fetch にタイムアウト追加 | 受け入れ条件: Slack/Discord 通知 fetch に AbortSignal.timeout(約10秒) が付与され、応答しないエンドポイント宛が約10秒で false 返却となり check-prices のループが継続する | origin: auto | fix: 0
 - [ ] register/login のメール正規化と形式検証 | 受け入れ条件: 両APIで trim+小文字化を適用。Foo@Example.com 登録後に foo@example.com の重複登録が400。どちらの表記でもログイン成功。不正形式は400。email/password の型チェックあり | origin: auto | fix: 0
 - [ ] 検索/フィルタ0件時の空状態メッセージと条件クリア | 受け入れ条件: アイテムは存在するがフィルタ/検索0件のとき「条件に一致するアイテムがありません」を表示。「条件をクリア」ボタンで検索語・カテゴリ・優先度・グループ・並び順が初期化され全件再表示 | origin: auto | fix: 0
+<!-- 周回22 discovery 採用5件 -->
+- [ ] ゴミ箱を空にする機能の DELETE /api/trash 実装 | 受け入れ条件: DELETE /api/trash が認証ユーザーの deleted_at IS NOT NULL アイテムを全件ハード削除し件数を返す。未認証は401。他ユーザーのアイテムは削除されない。TrashView のボタン押下で一覧が空になる（現状はハンドラ不在で405） | origin: auto | fix: 0
+- [ ] check-prices の価格不変時は price_history に INSERT しない | 受け入れ条件: 同一価格で2回実行しても price_history が増えない（直近履歴と同値ならスキップ）。価格変動時は従来どおり1行追加。current_price / scrape_status / last_scraped_at の更新は価格不変でも従来どおり | origin: auto | fix: 0
+- [ ] 論理削除除外漏れの一掃（purchased / export / categories item_count） | 受け入れ条件: 購入済みアイテムの論理削除後 GET /api/purchased の items/monthlySummary/totalStats に含まれない。GET /api/export の CSV にゴミ箱アイテムが含まれない。GET /api/categories の item_count がゴミ箱除外（復元で +1 に戻る） | origin: auto | fix: 0
+- [ ] 一覧/予算/ゴミ箱の取得失敗時エラー表示と再試行（無限読み込み解消） | 受け入れ条件: /api/items・/api/budget・/api/trash の取得が !res.ok または例外のとき「読み込みに失敗しました」+「再試行」ボタンを表示し、再試行で復帰。非配列レスポンスで .map/.filter クラッシュしない。tsc pass | origin: auto | fix: 0
+- [ ] items POST/PATCH/extension-add の category_id/comparison_group_id 所有権検証 | 受け入れ条件: 他ユーザー所有IDまたは存在しないIDを指定した POST/PATCH/extension-add が 400 または 404。自分所有IDは従来どおり成功。null 指定（解除）は引き続き許可 | origin: auto | fix: 0
 
 ## discovery メモ（非採用候補、次回の参考）
 <!-- 周回6 discovery で採用枠5件から漏れた候補 -->
@@ -45,7 +50,16 @@
 - ItemCard 保存中にキャンセル/編集トグルすると飛行中PATCHの結果が閉じたフォームのstateに反映される（AbortController or in-flightフラグで防御。PR #58 Codex SHOULD見送り、表示実害なし）
 - scrape_error にPuppeteer/Node内部文言（URL・パス等）がそのまま入りItemCardツールチップに表示される（オーナー本人のみ閲覧のため見送り。共有機能実装時に要サニタイズ。PR #59 Codex SHOULD見送り）
 - refresh API がゴミ箱内アイテムに実行可能（SELECT に AND deleted_at IS NULL 追加。既存問題、PR #59 Codex NIT）
-- categories の item_count に deleted_at IS NULL 除外が漏れている（categories/route.ts:15 は is_purchased=0 のみ。ゴミ箱内未購入アイテムが計上される。PR #60 の coder/tester が独立に発見。comparison-groups と同じ1行修正）
+- categories の item_count に deleted_at IS NULL 除外が漏れている（categories/route.ts:15 は is_purchased=0 のみ。ゴミ箱内未購入アイテムが計上される。PR #60 の coder/tester が独立に発見。comparison-groups と同じ1行修正）→ 周回22 discovery で「論理削除除外漏れの一掃」として backlog 採用済み
+<!-- 周回22 discovery で採用枠から漏れた候補 -->
+- PRAGMA foreign_keys 無効のためハード削除で price_history / notification_settings が孤児化（個別削除・7日自動パージ・全削除の各経路で明示 DELETE + トランザクション推奨。グローバル foreign_keys=ON は既存不整合データのリスクあり。既存孤児行のクリーンアップも）
+- sanitizeGenericUrl の SSRF ブロックリスト強化 + vitest テスト基盤導入（169.254.169.254、172.17-31.x、0.0.0.0、IPv6、100.64/10 が素通し。url-validator.test.ts 最低10ケース付き）
+- ゴミ箱内URL重複の衝突処理を items POST / extension-add で統一（POST は不正確なメッセージ、extension-add は UNIQUE 違反で500。判別可能な409+案内文言 or 自動復元）
+- 削除直後/購入済み直後の Undo トースト（復元API・PATCH は既存。キーボード操作対応含む）
+- 「全て更新」の進捗表示（i/n件カウンタ + 完了サマリ + 並列数上限）
+- 選択モード中にタブ切り替えると一括操作バーが他タブに残留（page.tsx:714-774 が activeTab 非参照。誤一括削除リスク）
+- ImportWishlistModal の楽天URL判定が緩く商品ページでも「有効」表示（ImportWishlistModal.tsx:46-49。import-wishlist 側の対応パターンと整合させる）
+- ItemCard handleRefreshWithNewUrl は定義のみで JSX から未配線（URL変更しても価格再取得されない。配線 or 削除。失敗ハンドリング欠如も同時に解消）
 
 ## in_progress
 
@@ -72,6 +86,7 @@
 - [x] ItemCard 編集保存失敗時にフォームを閉じずエラー表示する | PR: #58（tester 全6項目 pass、tsc/build pass） | 周回: 19
 - [x] check-prices の例外catchパスでも scrape_status='failed' を記録する (#33 follow-up) | PR: #59（refresh route の同種漏れも修正。tester がモック差し替えで動的検証、全項目 pass） | 周回: 20
 - [x] comparison-groups の item_count が論理削除/購入済みアイテムを含む | PR: #60（1行変更、tester がテストDBで 3→2→1 の減少と LEFT JOIN 維持を動的検証、全項目 pass） | 周回: 21
+- [x] BudgetView で価格未取得アイテムが合計に黙って除外される点を明示 | PR: #61（フロントのみ20行追加、全体/月/時期未定の3箇所に注記、tester が実データ突き合わせで全項目 pass） | 周回: 22
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
