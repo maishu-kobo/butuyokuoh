@@ -45,6 +45,8 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     current_price: item.current_price || '',
   });
   const [refreshingUrl, setRefreshingUrl] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [showImageEdit, setShowImageEdit] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,27 +85,43 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   };
 
   const handleSave = async () => {
-    await fetch(`/api/items/${item.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: editData.name || item.name,
-        url: editData.url || item.url,
-        priority: editData.priority,
-        planned_purchase_date: editData.planned_purchase_date || null,
-        notes: editData.notes || null,
-        target_price: editData.target_price || null,
-        target_currency: editData.target_currency,
-        category_id: editData.category_id ? Number(editData.category_id) : null,
-        comparison_group_id: editData.comparison_group_id ? Number(editData.comparison_group_id) : null,
-        quantity: Number(editData.quantity) || 1,
-        image_url: editData.image_url || null,
-        current_price: editData.current_price ? Number(editData.current_price) : null,
-      }),
-    });
-    setEditing(false);
-    setShowImageEdit(false);
-    onUpdate();
+    setSaving(true);
+    setSaveError('');
+    try {
+      const res = await fetch(`/api/items/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editData.name || item.name,
+          url: editData.url || item.url,
+          priority: editData.priority,
+          planned_purchase_date: editData.planned_purchase_date || null,
+          notes: editData.notes || null,
+          target_price: editData.target_price || null,
+          target_currency: editData.target_currency,
+          category_id: editData.category_id ? Number(editData.category_id) : null,
+          comparison_group_id: editData.comparison_group_id ? Number(editData.comparison_group_id) : null,
+          quantity: Number(editData.quantity) || 1,
+          image_url: editData.image_url || null,
+          current_price: editData.current_price ? Number(editData.current_price) : null,
+        }),
+      });
+      if (!res.ok) {
+        // 失敗時はフォームを閉じず、APIのエラーメッセージがあればそれを優先表示する
+        const data = await res.json().catch(() => null);
+        setSaveError(data?.error || '保存に失敗しました。もう一度お試しください');
+        return;
+      }
+      // 成功時のみフォームを閉じる
+      setEditing(false);
+      setShowImageEdit(false);
+      onUpdate();
+    } catch {
+      // ネットワーク例外時もフォームを開いたまま入力値を保持する
+      setSaveError('保存に失敗しました。もう一度お試しください');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // URLを変更して再取得
@@ -306,7 +324,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             価格推移
           </button>
           <button
-            onClick={() => setEditing(!editing)}
+            onClick={() => { setSaveError(''); setEditing(!editing); }}
             className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500"
           >
             編集
@@ -522,19 +540,25 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
               </div>
             </details>
 
+            {/* 保存エラー */}
+            {saveError && (
+              <div className="text-red-500 text-sm">{saveError}</div>
+            )}
+
             {/* ボタン */}
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
-                onClick={() => setEditing(false)}
+                onClick={() => { setSaveError(''); setEditing(false); }}
                 className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 キャンセル
               </button>
               <button
                 onClick={handleSave}
-                className="px-4 py-1.5 text-sm bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 font-medium shadow-sm"
+                disabled={saving}
+                className="px-4 py-1.5 text-sm bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 font-medium shadow-sm disabled:opacity-50"
               >
-                保存
+                {saving ? '保存中...' : '保存'}
               </button>
             </div>
           </div>
