@@ -79,6 +79,10 @@ export default function BudgetView() {
     .filter(item => selectedIds.has(item.id))
     .reduce((sum, item) => sum + (item.current_price || 0) * (item.quantity || 1), 0);
 
+  // 価格未取得（null/0）のアイテム件数。合計計算では 0 扱いになるため注記用にカウントする
+  const countNoPriceItems = (items: Item[]) => items.filter(item => !item.current_price).length;
+  const totalNoPriceCount = countNoPriceItems(allItems);
+
   return (
     <div className="space-y-4">
       {/* 合計カード */}
@@ -90,6 +94,11 @@ export default function BudgetView() {
           </div>
           <div className="text-3xl font-bold">¥{totalBudget.toLocaleString()}</div>
           <div className="text-sm opacity-75 mt-1">{allItems.length}件</div>
+          {totalNoPriceCount > 0 && (
+            <div className="text-xs opacity-75 mt-1">
+              うち{totalNoPriceCount}件は価格未取得のため合計に含まれません
+            </div>
+          )}
         </div>
         
         <div className={`rounded-lg p-4 transition-all ${
@@ -137,6 +146,7 @@ export default function BudgetView() {
             const monthIds = data.items.map(i => i.id);
             const allMonthSelected = monthIds.every(id => selectedIds.has(id));
             const someMonthSelected = monthIds.some(id => selectedIds.has(id));
+            const monthNoPriceCount = countNoPriceItems(data.items);
 
             return (
               <div key={month} className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
@@ -157,6 +167,11 @@ export default function BudgetView() {
                     ¥{data.total.toLocaleString()}
                   </span>
                 </div>
+                {monthNoPriceCount > 0 && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400 text-right -mt-2 mb-2">
+                    うち{monthNoPriceCount}件は価格未取得のため合計に含まれません
+                  </div>
+                )}
                 <div className="space-y-1">
                   {data.items.map((item) => {
                     const isSelected = selectedIds.has(item.id);
@@ -212,6 +227,11 @@ export default function BudgetView() {
                   ¥{undatedData.total.toLocaleString()}
                 </span>
               </div>
+              {countNoPriceItems(undatedData.items) > 0 && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 text-right -mt-2 mb-2">
+                  うち{countNoPriceItems(undatedData.items)}件は価格未取得のため合計に含まれません
+                </div>
+              )}
               <div className="space-y-1">
                 {undatedData.items.map((item) => {
                   const isSelected = selectedIds.has(item.id);
