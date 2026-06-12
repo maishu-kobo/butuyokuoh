@@ -41,6 +41,10 @@
 - PWAなのにService Worker未登録（オフライン起動でブラウザエラー画面。オフライン案内ページ）
 - migrateDb に deleted_at の addColumnIfNotExists を防御的に追加（PR #56 Codex指摘SHOULD。CREATE TABLEに当初から有り全ルートが依存済みのため実環境では非問題）/ check-prices実行中にゴミ箱移動されたアイテムのUPDATE側除外（NIT）
 - ItemCard handleRefreshWithNewUrl（URL変更+再取得フロー）に失敗ハンドリングなし、失敗時も setEditing(false) でフォームが閉じる（PR #58 tester指摘。保存フローと同様の res.ok 確認+エラー表示を適用）
+<!-- 2026-06-12 #58/#59 Codexレビューで見送ったSHOULD/NIT -->
+- ItemCard 保存中にキャンセル/編集トグルすると飛行中PATCHの結果が閉じたフォームのstateに反映される（AbortController or in-flightフラグで防御。PR #58 Codex SHOULD見送り、表示実害なし）
+- scrape_error にPuppeteer/Node内部文言（URL・パス等）がそのまま入りItemCardツールチップに表示される（オーナー本人のみ閲覧のため見送り。共有機能実装時に要サニタイズ。PR #59 Codex SHOULD見送り）
+- refresh API がゴミ箱内アイテムに実行可能（SELECT に AND deleted_at IS NULL 追加。既存問題、PR #59 Codex NIT）
 
 ## in_progress
 
@@ -71,6 +75,12 @@
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
 
 ## マージログ
+- 2026-06-12 (周回20後、人間指示): マージ候補2本（#58, #59）を Codex CLI でレビュー → 対応 → develop へマージ。
+  - Codex指摘: BLOCKER 0件。#58 SHOULD2件+NIT1件、#59 SHOULD2件+NIT1件
+  - 対応: #58 に handleSave 先頭の同期多重送信ガード + role="alert"（8ee4142）、#59 に statusRecorded フラグで catch 内 failed 記録が成功記録を上書きしない防御（4f97db4）。tester 検証 pass（フラグのライフサイクル・no-priceパス不変・throwパス維持を確認）
+  - 見送り3件（#58 飛行中PATCHのstate反映 / #59 scrape_error内部文言 / refreshのゴミ箱アイテム可）は discovery メモに記録
+  - マージ順: #58 → #59（squash、コンフリクトなし）。統合ビルド: origin/develop (919d849) で npm install → tsc → next build すべて pass
+  - 残オープンPR: Dependabot #31（base=main、引き続き人間判断推奨）
 - 2026-06-12 (周回15後、人間指示): 溜まった8本（#47〜#54）を Codex CLI でレビュー → 対応 → develop へ全てマージ。
   - Codex指摘: BLOCKER 2件（#47 check-pricesがgetDb()未経由でマイグレーション未実行DBにてUPDATE失敗 / #54 purchased_count・totalの論理削除除外漏れ）、SHOULD 2件（#51 削除のトランザクション化 / #53 Y軸下限が負）→ 4件とも各ブランチに追加コミットで修正、tester実行検証pass（#47は失敗の実在を対比実証、#51はロールバック確認）
   - LGTM: #48, #49, #50, #52。#47のprice:0失敗扱いSHOULDは既存仕様と整合のためfollow-up（discoveryメモ）
