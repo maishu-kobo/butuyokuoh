@@ -1,13 +1,13 @@
 # Loop State
 
-- 周回: 20
+- 周回: 21
+- 周回上限: 40（2026-06-12 人間が /loop 再実行でループ再開。再開時20 + デフォルト20周回分）
 - discovery 連続空振り: 0（最終discovery: 周回16、採用5件）
 - 常設指示（2026-06-12 人間より）: 溜まったマージ候補PRは Codex レビュー → 指摘対応 → マージまでループが実施してよい
 
 ## backlog
 <!-- 書式: - [ ] タイトル | 受け入れ条件: 検証可能な条件 | origin: human|auto | fix: 0 -->
 <!-- 周回11 discovery 採用5件 -->
-- [ ] comparison-groups の item_count が論理削除/購入済みアイテムを含む | 受け入れ条件: comparison-groups/route.ts の JOIN に AND i.deleted_at IS NULL AND i.is_purchased = 0 を追加（categories の集計方針に合わせる）。ゴミ箱投入/購入済み化で item_count が減る | origin: auto | fix: 0
 - [ ] BudgetView で価格未取得アイテムが合計に黙って除外される点を明示 | 受け入れ条件: 月カード/全体合計に価格未取得アイテムが含まれる場合「うちN件は価格未取得のため合計に含まれません」等の注記を表示。該当0件なら非表示。既存の合計表示・選択合計の挙動は維持 | origin: auto | fix: 0
 <!-- 周回16 discovery 採用5件 -->
 - [ ] notifier の webhook fetch にタイムアウト追加 | 受け入れ条件: Slack/Discord 通知 fetch に AbortSignal.timeout(約10秒) が付与され、応答しないエンドポイント宛が約10秒で false 返却となり check-prices のループが継続する | origin: auto | fix: 0
@@ -45,6 +45,7 @@
 - ItemCard 保存中にキャンセル/編集トグルすると飛行中PATCHの結果が閉じたフォームのstateに反映される（AbortController or in-flightフラグで防御。PR #58 Codex SHOULD見送り、表示実害なし）
 - scrape_error にPuppeteer/Node内部文言（URL・パス等）がそのまま入りItemCardツールチップに表示される（オーナー本人のみ閲覧のため見送り。共有機能実装時に要サニタイズ。PR #59 Codex SHOULD見送り）
 - refresh API がゴミ箱内アイテムに実行可能（SELECT に AND deleted_at IS NULL 追加。既存問題、PR #59 Codex NIT）
+- categories の item_count に deleted_at IS NULL 除外が漏れている（categories/route.ts:15 は is_purchased=0 のみ。ゴミ箱内未購入アイテムが計上される。PR #60 の coder/tester が独立に発見。comparison-groups と同じ1行修正）
 
 ## in_progress
 
@@ -70,6 +71,7 @@
 - [x] 通知 webhook URL の検証（SSRF対策） | PR: #57（tester バイパス18パターン許可漏れ0件、Codex LGTM、マージ済み） | 周回: 18
 - [x] ItemCard 編集保存失敗時にフォームを閉じずエラー表示する | PR: #58（tester 全6項目 pass、tsc/build pass） | 周回: 19
 - [x] check-prices の例外catchパスでも scrape_status='failed' を記録する (#33 follow-up) | PR: #59（refresh route の同種漏れも修正。tester がモック差し替えで動的検証、全項目 pass） | 周回: 20
+- [x] comparison-groups の item_count が論理削除/購入済みアイテムを含む | PR: #60（1行変更、tester がテストDBで 3→2→1 の減少と LEFT JOIN 維持を動的検証、全項目 pass） | 周回: 21
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
