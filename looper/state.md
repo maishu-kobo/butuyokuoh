@@ -1,12 +1,11 @@
 # Loop State
 
-- 周回: 18
+- 周回: 19
 - discovery 連続空振り: 0（最終discovery: 周回16、採用5件）
 - 常設指示（2026-06-12 人間より）: 溜まったマージ候補PRは Codex レビュー → 指摘対応 → マージまでループが実施してよい
 
 ## backlog
 <!-- 書式: - [ ] タイトル | 受け入れ条件: 検証可能な条件 | origin: human|auto | fix: 0 -->
-- [ ] ItemCard 編集保存失敗時にフォームを閉じずエラー表示する | 受け入れ条件: PATCH 失敗時に編集フォームが開いたまま入力値が保持されエラーメッセージが表示される。成功時は従来どおり閉じる | origin: auto | fix: 0
 - [ ] check-prices の例外catchパスでも scrape_status='failed' を記録する (#33 follow-up) | 受け入れ条件: scrapeUrl が例外を投げたアイテムでも last_scraped_at と scrape_status='failed' が記録される | origin: auto | fix: 0
 <!-- 周回11 discovery 採用5件 -->
 - [ ] comparison-groups の item_count が論理削除/購入済みアイテムを含む | 受け入れ条件: comparison-groups/route.ts の JOIN に AND i.deleted_at IS NULL AND i.is_purchased = 0 を追加（categories の集計方針に合わせる）。ゴミ箱投入/購入済み化で item_count が減る | origin: auto | fix: 0
@@ -42,6 +41,7 @@
 - 購入済みにする際の購入日が当日固定（後日記録で月別集計ずれ。日付指定UI + 単品/一括のconfirm不一致）
 - PWAなのにService Worker未登録（オフライン起動でブラウザエラー画面。オフライン案内ページ）
 - migrateDb に deleted_at の addColumnIfNotExists を防御的に追加（PR #56 Codex指摘SHOULD。CREATE TABLEに当初から有り全ルートが依存済みのため実環境では非問題）/ check-prices実行中にゴミ箱移動されたアイテムのUPDATE側除外（NIT）
+- ItemCard handleRefreshWithNewUrl（URL変更+再取得フロー）に失敗ハンドリングなし、失敗時も setEditing(false) でフォームが閉じる（PR #58 tester指摘。保存フローと同様の res.ok 確認+エラー表示を適用）
 
 ## in_progress
 
@@ -65,6 +65,7 @@
 - [x] ItemCard に価格更新ステータス表示 (#33完結) | PR: #55（Codexレビュー LGTM、即マージ済み） | 周回: 16
 - [x] バグ: check-prices がゴミ箱アイテムをスクレイプ・通知 | PR: #56（Codex BLOCKERなし、マージ済み） | 周回: 17
 - [x] 通知 webhook URL の検証（SSRF対策） | PR: #57（tester バイパス18パターン許可漏れ0件、Codex LGTM、マージ済み） | 周回: 18
+- [x] ItemCard 編集保存失敗時にフォームを閉じずエラー表示する | PR: #58（tester 全6項目 pass、tsc/build pass） | 周回: 19
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
