@@ -1,10 +1,11 @@
-import Database from 'better-sqlite3';
-import path from 'path';
+import { getDb } from '../src/lib/db';
 import { scrapeUrl, deriveScrapeOutcome } from '../src/lib/scraper';
 import { sendSlackNotification, sendDiscordNotification, NotificationPayload } from '../src/lib/notifier';
 
-const dbPath = path.join(process.cwd(), 'data', 'butuyokuoh.db');
-const db = new Database(dbPath);
+// getDb() 経由で取得することで initDb/migrateDb が実行され、
+// 新カラム（last_scraped_at/scrape_status/scrape_error）への UPDATE が
+// マイグレーション未実行の既存DBでも失敗しないようにする
+const db = getDb();
 
 interface Item {
   id: number;
