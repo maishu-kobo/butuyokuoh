@@ -301,9 +301,15 @@ export default function Home() {
     .sort((a, b) => {
       switch (sortBy) {
         case 'price_asc':
-          return (a.current_price || 0) - (b.current_price || 0);
-        case 'price_desc':
-          return (b.current_price || 0) - (a.current_price || 0);
+        case 'price_desc': {
+          // 価格未取得(null/undefined)はasc/descいずれでも末尾に並べる
+          const av = a.current_price;
+          const bv = b.current_price;
+          if (av == null && bv == null) return 0;
+          if (av == null) return 1;
+          if (bv == null) return -1;
+          return sortBy === 'price_asc' ? av - bv : bv - av;
+        }
         case 'date_new':
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         case 'date_old':
