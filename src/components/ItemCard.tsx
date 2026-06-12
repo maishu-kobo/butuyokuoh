@@ -2,8 +2,20 @@
 
 import { useState, useRef } from 'react';
 import { Item, Category, ComparisonGroup } from '@/types';
-import { Trash2, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Calendar, Flag, Upload, ImageIcon } from 'lucide-react';
+import { Trash2, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Calendar, Flag, Upload, ImageIcon, Clock, AlertTriangle } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import { ja } from 'date-fns/locale';
 import PriceChart from './PriceChart';
+
+// SQLite の datetime('now') 形式（UTC、'YYYY-MM-DD HH:MM:SS'）を UTC として Date にパースする。
+// タイムゾーン指定なしのまま new Date() に渡すとローカル時刻と解釈され経過時間がずれるため、
+// オフセットが無い場合は末尾に 'Z' を付与して UTC として扱う。
+function parseUtcDateTime(value: string): Date | null {
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+  const withZone = /Z$|[+-]\d{2}:?\d{2}$/.test(normalized) ? normalized : `${normalized}Z`;
+  const date = new Date(withZone);
+  return isNaN(date.getTime()) ? null : date;
+}
 
 interface ItemCardProps {
   item: Item;
@@ -129,9 +141,13 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
 
   // 前回価格との差分（previous_priceがあればそれを使用、なければoriginal_price）
   const previousPrice = item.previous_price ?? item.original_price;
-  const priceChange = previousPrice && item.current_price 
-    ? item.current_price - previousPrice 
+  const priceChange = previousPrice && item.current_price
+    ? item.current_price - previousPrice
     : 0;
+
+  // 価格更新ステータス（last_scraped_at が無い手動アイテム等は表示しない）
+  const lastScrapedDate = item.last_scraped_at ? parseUtcDateTime(item.last_scraped_at) : null;
+  const scrapeFailed = item.scrape_status === 'failed';
 
   const sourceColors: Record<string, string> = {
     amazon: 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200',
@@ -231,6 +247,27 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
               </span>
             )}
           </div>
+
+          {/* 価格更新ステータス（経過時間・失敗警告） */}
+          {(lastScrapedDate || scrapeFailed) && (
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+              {lastScrapedDate && (
+                <span className="flex items-center gap-1" title={lastScrapedDate.toLocaleString('ja-JP')}>
+                  <Clock size={12} />
+                  価格更新: {formatDistanceToNow(lastScrapedDate, { addSuffix: true, locale: ja })}
+                </span>
+              )}
+              {scrapeFailed && (
+                <span
+                  className="flex items-center gap-1 text-amber-600 dark:text-amber-400"
+                  title={item.scrape_error || '価格の取得に失敗しました'}
+                >
+                  <AlertTriangle size={12} />
+                  価格を更新できていません
+                </span>
+              )}
+            </div>
+          )}
 
           <div className="mt-1 flex flex-wrap gap-3 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
             {item.planned_purchase_date && (
