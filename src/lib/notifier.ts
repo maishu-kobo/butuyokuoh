@@ -1,6 +1,17 @@
 import { Item } from '@/types';
 import { isAllowedWebhookUrl } from '@/lib/url-validator';
 
+// Webhook送信のタイムアウト（ミリ秒）。
+// 応答しないエンドポイントでcheck-pricesのループが停止しないようにする。
+const WEBHOOK_TIMEOUT_MS = 10_000;
+
+// タイムアウト起因の例外かどうかを判定する。
+// AbortSignal.timeout()はTimeoutError、abort()経由はAbortErrorを投げる。
+function isTimeoutError(error: unknown): boolean {
+  return error instanceof Error &&
+    (error.name === 'TimeoutError' || error.name === 'AbortError');
+}
+
 export interface NotificationPayload {
   item: Item;
   oldPrice: number;
@@ -69,10 +80,16 @@ export async function sendSlackNotification(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(message),
+      // 応答しないエンドポイントで処理が止まらないようタイムアウトを設定
+      signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
     });
     return res.ok;
   } catch (error) {
-    console.error('Slack notification failed:', error);
+    if (isTimeoutError(error)) {
+      console.error(`Slack notification timed out after ${WEBHOOK_TIMEOUT_MS}ms`);
+    } else {
+      console.error('Slack notification failed:', error);
+    }
     return false;
   }
 }
@@ -137,10 +154,16 @@ export async function sendDiscordNotification(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ embeds: [embed] }),
+      // 応答しないエンドポイントで処理が止まらないようタイムアウトを設定
+      signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
     });
     return res.ok;
   } catch (error) {
-    console.error('Discord notification failed:', error);
+    if (isTimeoutError(error)) {
+      console.error(`Discord notification timed out after ${WEBHOOK_TIMEOUT_MS}ms`);
+    } else {
+      console.error('Discord notification failed:', error);
+    }
     return false;
   }
 }
