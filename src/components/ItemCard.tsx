@@ -85,6 +85,8 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   };
 
   const handleSave = async () => {
+    // 多重送信ガード: disabled 属性だけに依存せず、保存中は早期 return する
+    if (saving) return;
     setSaving(true);
     setSaveError('');
     try {
@@ -542,7 +544,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
 
             {/* 保存エラー */}
             {saveError && (
-              <div className="text-red-500 text-sm">{saveError}</div>
+              <div role="alert" className="text-red-500 text-sm">{saveError}</div>
             )}
 
             {/* ボタン */}
