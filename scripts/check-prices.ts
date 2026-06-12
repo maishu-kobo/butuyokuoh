@@ -28,11 +28,11 @@ interface UserSettings {
 async function checkPrices() {
   console.log(`[${new Date().toISOString()}] Starting price check...`);
 
-  // 未購入のアイテムを全て取得
+  // 未購入かつゴミ箱（論理削除）に入っていないアイテムを全て取得
   const items = db.prepare(`
     SELECT id, user_id, name, url, image_url, current_price, target_price
     FROM items
-    WHERE is_purchased = 0
+    WHERE is_purchased = 0 AND deleted_at IS NULL
   `).all() as Item[];
 
   console.log(`Found ${items.length} items to check`);
