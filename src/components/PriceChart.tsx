@@ -220,7 +220,7 @@ export default function PriceChart({ itemId, url, source, targetPrice, targetCur
   const showTargetLine = hasTarget && targetIsJpy;
   const yDomain: [number | string, number | string] = showTargetLine
     ? [
-        targetPrice! < minPrice ? targetPrice! - 100 : 'dataMin - 100',
+        targetPrice! < minPrice ? Math.max(0, targetPrice! - 100) : 'dataMin - 100',
         targetPrice! > maxPrice ? targetPrice! + 100 : 'dataMax + 100',
       ]
     : ['dataMin - 100', 'dataMax + 100'];
