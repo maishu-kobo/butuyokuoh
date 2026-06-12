@@ -45,7 +45,6 @@
 - PWAなのにService Worker未登録（オフライン起動でブラウザエラー画面。オフライン案内ページ）
 
 ## in_progress
-- [ ] ItemCard に価格更新ステータス表示 (#33) | 受け入れ条件: 最終更新からの経過時間が表示され、scrape_status が failed のアイテムに警告表示が出る | origin: human | fix: 0
 
 ## done
 <!-- 書式: - [x] タイトル | PR: #N | 周回: N -->
@@ -64,6 +63,7 @@
 - [x] 価格ソートで current_price が null のアイテムを末尾に表示 | PR: #52 | 周回: 13
 - [x] PriceChart に目標価格(target_price)の基準線を表示 | PR: #53 | 周回: 14
 - [x] stats の total_items / monthlyPurchased が論理削除アイテムを除外していない | PR: #54 | 周回: 15
+- [x] ItemCard に価格更新ステータス表示 (#33完結) | PR: #55（Codexレビュー LGTM、即マージ済み） | 周回: 16
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
