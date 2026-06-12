@@ -284,6 +284,15 @@ export default function Home() {
     touchEventOptions: { passive: false },
   });
 
+  // フィルター・検索・並び順をすべて初期値に戻す
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory(null);
+    setSelectedPriority(null);
+    setSelectedGroup(null);
+    setSortBy('priority');
+  };
+
   // フィルター適用（カテゴリ、検索、優先度、比較グループ）
   const filteredItems = items
     .filter(item => {
@@ -666,6 +675,18 @@ export default function Home() {
             ) : items.length === 0 ? (
               <div className="text-center py-12 text-slate-500 dark:text-slate-400">
                 まだアイテムがありません。上のフォームから追加してください。
+              </div>
+            ) : filteredItems.length === 0 ? (
+              /* アイテムはあるがフィルター/検索の結果が0件の場合 */
+              <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                <p>条件に一致するアイテムがありません</p>
+                <button
+                  onClick={clearFilters}
+                  className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
+                >
+                  <X size={16} />
+                  条件をクリア
+                </button>
               </div>
             ) : (
               <DndContext
