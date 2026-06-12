@@ -10,6 +10,22 @@ export interface ScrapedItem {
   note?: string; // ユーザーへのメッセージ（短縮リンクの制限など）
 }
 
+// スクレイプ結果から items テーブルに記録する状態を導出する。
+// check-prices と refresh API の双方で共有し、記録ロジックを統一する。
+export interface ScrapeOutcome {
+  status: 'success' | 'failed';
+  error: string | null;
+}
+
+export function deriveScrapeOutcome(scraped: ScrapedItem): ScrapeOutcome {
+  if (scraped.price) {
+    return { status: 'success', error: null };
+  }
+  // 価格が取れなかった場合は失敗扱い。理由は scraper の note を優先し、
+  // なければ汎用メッセージにフォールバックする。
+  return { status: 'failed', error: scraped.note ?? 'price not found' };
+}
+
 // 許可されたAmazonドメイン
 const AMAZON_DOMAINS = new Set([
   'www.amazon.co.jp',

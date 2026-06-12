@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { scrapeUrl } from '@/lib/scraper';
+import { scrapeUrl, deriveScrapeOutcome } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 
 interface DbItem {
@@ -28,7 +28,10 @@ export async function POST(
 
   // 再スクレイピング
   const scraped = await scrapeUrl(item.url);
-  
+
+  // スクレイプ結果（成功/失敗）を導出（check-prices と共通ロジック）
+  const outcome = deriveScrapeOutcome(scraped);
+
   // スクレイピング結果を更新（商品名、価格、画像）
   const updates: string[] = [];
   const values: unknown[] = [];
@@ -43,7 +46,7 @@ export async function POST(
   if (scraped.price) {
     updates.push('current_price = ?');
     values.push(scraped.price);
-    
+
     // 価格が変わった場合のみ履歴に追加
     if (scraped.price !== item.current_price) {
       db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(id, scraped.price);
@@ -56,12 +59,17 @@ export async function POST(
     values.push(scraped.imageUrl);
   }
 
-  // 更新がある場合のみ実行
-  if (updates.length > 0) {
-    updates.push("updated_at = datetime('now')");
-    values.push(id);
-    db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-  }
+  // スクレイプ結果は成功/失敗にかかわらず常に記録する
+  updates.push('last_scraped_at = datetime(\'now\')');
+  updates.push('scrape_status = ?');
+  values.push(outcome.status);
+  updates.push('scrape_error = ?');
+  values.push(outcome.error);
+
+  // updated_at を更新して実行
+  updates.push("updated_at = datetime('now')");
+  values.push(id);
+  db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...values);
 
   const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as Record<string, unknown>;
   return NextResponse.json({ ...updated, note: scraped.note });

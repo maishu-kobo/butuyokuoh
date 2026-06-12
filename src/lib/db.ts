@@ -50,6 +50,9 @@ function initDb(db: Database.Database) {
       target_currency TEXT DEFAULT 'JPY',
       quantity INTEGER NOT NULL DEFAULT 1,
       sort_order INTEGER NOT NULL DEFAULT 0,
+      last_scraped_at TEXT,
+      scrape_status TEXT,
+      scrape_error TEXT,
       deleted_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -129,6 +132,10 @@ function initDb(db: Database.Database) {
 function migrateDb(db: Database.Database) {
   addColumnIfNotExists(db, 'items', 'quantity', 'INTEGER NOT NULL DEFAULT 1');
   addColumnIfNotExists(db, 'items', 'sort_order', 'INTEGER NOT NULL DEFAULT 0');
+  // スクレイプ結果の記録用カラム
+  addColumnIfNotExists(db, 'items', 'last_scraped_at', 'TEXT');
+  addColumnIfNotExists(db, 'items', 'scrape_status', 'TEXT');
+  addColumnIfNotExists(db, 'items', 'scrape_error', 'TEXT');
 }
 
 // テーブルに指定カラムが存在しない場合のみ ALTER TABLE で追加する
