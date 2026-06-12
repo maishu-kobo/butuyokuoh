@@ -15,9 +15,9 @@ export async function GET() {
     SELECT
       SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) as total_items,
       SUM(CASE WHEN is_purchased = 0 AND deleted_at IS NULL THEN 1 ELSE 0 END) as wishlist_count,
-      SUM(CASE WHEN is_purchased = 1 THEN 1 ELSE 0 END) as purchased_count,
+      SUM(CASE WHEN is_purchased = 1 AND deleted_at IS NULL THEN 1 ELSE 0 END) as purchased_count,
       SUM(CASE WHEN is_purchased = 0 AND deleted_at IS NULL THEN current_price ELSE 0 END) as wishlist_total,
-      SUM(CASE WHEN is_purchased = 1 THEN current_price ELSE 0 END) as purchased_total
+      SUM(CASE WHEN is_purchased = 1 AND deleted_at IS NULL THEN current_price ELSE 0 END) as purchased_total
     FROM items
     WHERE user_id = ?
   `).get(user.id) as {
