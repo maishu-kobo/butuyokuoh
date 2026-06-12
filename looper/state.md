@@ -1,6 +1,6 @@
 # Loop State
 
-- 周回: 24
+- 周回: 25
 - 周回上限: 40（2026-06-12 人間が /loop 再実行でループ再開。再開時20 + デフォルト20周回分）
 - discovery 連続空振り: 0（最終discovery: 周回22、採用5件）
 - 常設指示（2026-06-12 人間より）: 溜まったマージ候補PRは Codex レビュー → 指摘対応 → マージまでループが実施してよい
@@ -9,7 +9,6 @@
 <!-- 書式: - [ ] タイトル | 受け入れ条件: 検証可能な条件 | origin: human|auto | fix: 0 -->
 <!-- 周回11 discovery 採用5件 -->
 <!-- 周回16 discovery 採用5件 -->
-- [ ] 検索/フィルタ0件時の空状態メッセージと条件クリア | 受け入れ条件: アイテムは存在するがフィルタ/検索0件のとき「条件に一致するアイテムがありません」を表示。「条件をクリア」ボタンで検索語・カテゴリ・優先度・グループ・並び順が初期化され全件再表示 | origin: auto | fix: 0
 <!-- 周回22 discovery 採用5件 -->
 - [ ] ゴミ箱を空にする機能の DELETE /api/trash 実装 | 受け入れ条件: DELETE /api/trash が認証ユーザーの deleted_at IS NOT NULL アイテムを全件ハード削除し件数を返す。未認証は401。他ユーザーのアイテムは削除されない。TrashView のボタン押下で一覧が空になる（現状はハンドラ不在で405） | origin: auto | fix: 0
 - [ ] check-prices の価格不変時は price_history に INSERT しない | 受け入れ条件: 同一価格で2回実行しても price_history が増えない（直近履歴と同値ならスキップ）。価格変動時は従来どおり1行追加。current_price / scrape_status / last_scraped_at の更新は価格不変でも従来どおり | origin: auto | fix: 0
@@ -87,6 +86,7 @@
 - [x] BudgetView で価格未取得アイテムが合計に黙って除外される点を明示 | PR: #61（フロントのみ20行追加、全体/月/時期未定の3箇所に注記、tester が実データ突き合わせで全項目 pass） | 周回: 22
 - [x] notifier の webhook fetch にタイムアウト追加 | PR: #62（AbortSignal.timeout(10s)+TimeoutError/AbortError判定。tester がDNS差し替え+無応答サーバで実測10.0秒false返却を確認、全項目 pass） | 周回: 23
 - [x] register/login のメール正規化と形式検証 | PR: #63（lib/email.ts新規+LOWER(email)比較で既存大文字行も互換。tester がcurlで20パターン超実機確認、全項目 pass） | 周回: 24
+- [x] 検索/フィルタ0件時の空状態メッセージと条件クリア | PR: #64（page.tsx 21行追加、5フィルタ全リセット確認。tester がロジック写経ミニテスト18件で全項目 pass） | 周回: 25
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
