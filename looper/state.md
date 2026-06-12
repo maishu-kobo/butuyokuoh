@@ -1,12 +1,11 @@
 # Loop State
 
-- 周回: 19
+- 周回: 20
 - discovery 連続空振り: 0（最終discovery: 周回16、採用5件）
 - 常設指示（2026-06-12 人間より）: 溜まったマージ候補PRは Codex レビュー → 指摘対応 → マージまでループが実施してよい
 
 ## backlog
 <!-- 書式: - [ ] タイトル | 受け入れ条件: 検証可能な条件 | origin: human|auto | fix: 0 -->
-- [ ] check-prices の例外catchパスでも scrape_status='failed' を記録する (#33 follow-up) | 受け入れ条件: scrapeUrl が例外を投げたアイテムでも last_scraped_at と scrape_status='failed' が記録される | origin: auto | fix: 0
 <!-- 周回11 discovery 採用5件 -->
 - [ ] comparison-groups の item_count が論理削除/購入済みアイテムを含む | 受け入れ条件: comparison-groups/route.ts の JOIN に AND i.deleted_at IS NULL AND i.is_purchased = 0 を追加（categories の集計方針に合わせる）。ゴミ箱投入/購入済み化で item_count が減る | origin: auto | fix: 0
 - [ ] BudgetView で価格未取得アイテムが合計に黙って除外される点を明示 | 受け入れ条件: 月カード/全体合計に価格未取得アイテムが含まれる場合「うちN件は価格未取得のため合計に含まれません」等の注記を表示。該当0件なら非表示。既存の合計表示・選択合計の挙動は維持 | origin: auto | fix: 0
@@ -66,6 +65,7 @@
 - [x] バグ: check-prices がゴミ箱アイテムをスクレイプ・通知 | PR: #56（Codex BLOCKERなし、マージ済み） | 周回: 17
 - [x] 通知 webhook URL の検証（SSRF対策） | PR: #57（tester バイパス18パターン許可漏れ0件、Codex LGTM、マージ済み） | 周回: 18
 - [x] ItemCard 編集保存失敗時にフォームを閉じずエラー表示する | PR: #58（tester 全6項目 pass、tsc/build pass） | 周回: 19
+- [x] check-prices の例外catchパスでも scrape_status='failed' を記録する (#33 follow-up) | PR: #59（refresh route の同種漏れも修正。tester がモック差し替えで動的検証、全項目 pass） | 周回: 20
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
@@ -86,5 +86,6 @@
   - 結果: develop は origin にマージ反映済み（main への昇格は未実施＝人間判断）。looper/state.md は引き続きローカルのみ
 
 ## 終了ログ
+- 2026-06-12 周回20: 周回上限（20）到達のためループ終了。backlog 残5件、blocked 0件。レビュー待ちオープンPR: #58, #59（マージは人間判断、常設指示によりCodexレビュー→マージをループに依頼可）。
 - 2026-06-11 周回0: push 権限不足のためループ終了（人間の介入待ち）。develop ブランチはローカルに作成済み・未push。
 - 2026-06-11 周回1: push 権限解消を確認、blocked を解除。リモート develop を main (31986a7) から初期化。
