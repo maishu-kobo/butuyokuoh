@@ -1,7 +1,7 @@
 # Loop State
 
-- 周回: 16
-- discovery 連続空振り: 0（最終discovery: 周回16、実行中）
+- 周回: 17
+- discovery 連続空振り: 0（最終discovery: 周回16、採用5件）
 - 常設指示（2026-06-12 人間より）: 溜まったマージ候補PRは Codex レビュー → 指摘対応 → マージまでループが実施してよい
 
 ## backlog
@@ -12,7 +12,6 @@
 - [ ] comparison-groups の item_count が論理削除/購入済みアイテムを含む | 受け入れ条件: comparison-groups/route.ts の JOIN に AND i.deleted_at IS NULL AND i.is_purchased = 0 を追加（categories の集計方針に合わせる）。ゴミ箱投入/購入済み化で item_count が減る | origin: auto | fix: 0
 - [ ] BudgetView で価格未取得アイテムが合計に黙って除外される点を明示 | 受け入れ条件: 月カード/全体合計に価格未取得アイテムが含まれる場合「うちN件は価格未取得のため合計に含まれません」等の注記を表示。該当0件なら非表示。既存の合計表示・選択合計の挙動は維持 | origin: auto | fix: 0
 <!-- 周回16 discovery 採用5件 -->
-- [ ] バグ: check-prices がゴミ箱アイテムをスクレイプ・通知している | 受け入れ条件: check-prices.ts の SELECT に AND deleted_at IS NULL を追加。deleted_at が NOT NULL のアイテムが処理対象に含まれず、実行後に last_scraped_at / price_history が更新されない | origin: auto | fix: 0
 - [ ] 通知 webhook URL の検証（SSRF対策） | 受け入れ条件: notification-settings PUT で https 必須 + ホスト許可リスト（hooks.slack.com / discord.com / discordapp.com）検証、許可外は400。notifier 側でも送信前に同検証し許可外には fetch しない。正規URLは従来どおり保存・通知可能 | origin: auto | fix: 0
 - [ ] notifier の webhook fetch にタイムアウト追加 | 受け入れ条件: Slack/Discord 通知 fetch に AbortSignal.timeout(約10秒) が付与され、応答しないエンドポイント宛が約10秒で false 返却となり check-prices のループが継続する | origin: auto | fix: 0
 - [ ] register/login のメール正規化と形式検証 | 受け入れ条件: 両APIで trim+小文字化を適用。Foo@Example.com 登録後に foo@example.com の重複登録が400。どちらの表記でもログイン成功。不正形式は400。email/password の型チェックあり | origin: auto | fix: 0
@@ -43,6 +42,7 @@
 - Chrome拡張ポップアップ: 設定保存フィードバックが商品ページ以外で不可視 + 保存直後にカテゴリ未読込（popup.js:50,120）
 - 購入済みにする際の購入日が当日固定（後日記録で月別集計ずれ。日付指定UI + 単品/一括のconfirm不一致）
 - PWAなのにService Worker未登録（オフライン起動でブラウザエラー画面。オフライン案内ページ）
+- migrateDb に deleted_at の addColumnIfNotExists を防御的に追加（PR #56 Codex指摘SHOULD。CREATE TABLEに当初から有り全ルートが依存済みのため実環境では非問題）/ check-prices実行中にゴミ箱移動されたアイテムのUPDATE側除外（NIT）
 
 ## in_progress
 
@@ -64,6 +64,7 @@
 - [x] PriceChart に目標価格(target_price)の基準線を表示 | PR: #53 | 周回: 14
 - [x] stats の total_items / monthlyPurchased が論理削除アイテムを除外していない | PR: #54 | 周回: 15
 - [x] ItemCard に価格更新ステータス表示 (#33完結) | PR: #55（Codexレビュー LGTM、即マージ済み） | 周回: 16
+- [x] バグ: check-prices がゴミ箱アイテムをスクレイプ・通知 | PR: #56（Codex BLOCKERなし、マージ済み） | 周回: 17
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
