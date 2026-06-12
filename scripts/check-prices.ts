@@ -38,6 +38,10 @@ async function checkPrices() {
   console.log(`Found ${items.length} items to check`);
 
   for (const item of items) {
+    // スクレイプ結果の記録（成功側UPDATE）が完了したかどうか。
+    // 完了後に後続処理（price_history INSERTや通知）が throw しても、
+    // catch 側で scrape_status='failed' に上書きしないようにする。
+    let statusRecorded = false;
     try {
       console.log(`Checking: ${item.name.substring(0, 50)}...`);
       
@@ -72,6 +76,7 @@ async function checkPrices() {
             updated_at = datetime('now')
         WHERE id = ?
       `).run(newPrice, outcome.status, outcome.error, item.id);
+      statusRecorded = true;
 
       // 価格履歴に追加
       db.prepare(`
@@ -127,6 +132,24 @@ async function checkPrices() {
 
     } catch (error) {
       console.error(`  - Error: ${error}`);
+      // 例外発生時も last_scraped_at と失敗ステータスを記録する。
+      // ただし成功記録済み（statusRecorded=true）の場合は、後続処理の例外で
+      // scrape_status='failed' に上書きしない。
+      // この記録用UPDATE自体が失敗してもループ全体は止めない。
+      if (!statusRecorded) {
+        try {
+          const message = (error instanceof Error ? error.message : String(error)).slice(0, 500);
+          db.prepare(`
+            UPDATE items
+            SET last_scraped_at = datetime('now'),
+                scrape_status = 'failed',
+                scrape_error = ?
+            WHERE id = ?
+          `).run(message, item.id);
+        } catch (updateError) {
+          console.error(`  - Failed to record scrape failure: ${updateError}`);
+        }
+      }
     } finally {
       // レートリミット対策で5秒待機（スキップ・エラー時も含め全アイテム間に適用）
       await new Promise(resolve => setTimeout(resolve, 5000));
