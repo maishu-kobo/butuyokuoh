@@ -1,4 +1,5 @@
 import { Item } from '@/types';
+import { isAllowedWebhookUrl } from '@/lib/url-validator';
 
 export interface NotificationPayload {
   item: Item;
@@ -12,13 +13,20 @@ export async function sendSlackNotification(
   webhookUrl: string,
   payload: NotificationPayload
 ): Promise<boolean> {
+  // 送信前検証（多重防御 / SSRF対策）
+  // PUT検証前に保存された不正URLや別経路で混入した不正URLにもfetchしない。
+  if (!isAllowedWebhookUrl(webhookUrl, 'slack')) {
+    console.warn('Slack notification skipped: disallowed webhook host');
+    return false;
+  }
+
   const { item, oldPrice, newPrice, targetPrice, type } = payload;
-  
+
   const emoji = type === 'target_reached' ? '🎉' : '📉';
-  const title = type === 'target_reached' 
+  const title = type === 'target_reached'
     ? `${emoji} 目標価格に到達！`
     : `${emoji} 価格が下がりました！`;
-  
+
   const priceChange = oldPrice - newPrice;
   const changePercent = Math.round((priceChange / oldPrice) * 100);
 
@@ -73,13 +81,20 @@ export async function sendDiscordNotification(
   webhookUrl: string,
   payload: NotificationPayload
 ): Promise<boolean> {
+  // 送信前検証（多重防御 / SSRF対策）
+  // PUT検証前に保存された不正URLや別経路で混入した不正URLにもfetchしない。
+  if (!isAllowedWebhookUrl(webhookUrl, 'discord')) {
+    console.warn('Discord notification skipped: disallowed webhook host');
+    return false;
+  }
+
   const { item, oldPrice, newPrice, targetPrice, type } = payload;
-  
+
   const emoji = type === 'target_reached' ? '🎉' : '📉';
-  const title = type === 'target_reached' 
+  const title = type === 'target_reached'
     ? `${emoji} 目標価格に到達！`
     : `${emoji} 価格が下がりました！`;
-  
+
   const priceChange = oldPrice - newPrice;
   const changePercent = Math.round((priceChange / oldPrice) * 100);
 
