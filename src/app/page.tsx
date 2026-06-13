@@ -291,6 +291,9 @@ export default function Home() {
     setSelectedPriority(null);
     setSelectedGroup(null);
     setSortBy('priority');
+    // 選択モードを解除（クリア後に見えないアイテムへの一括操作を防ぐ）
+    setSelectionMode(false);
+    setSelectedItems(new Set());
   };
 
   // フィルター適用（カテゴリ、検索、優先度、比較グループ）
