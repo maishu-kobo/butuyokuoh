@@ -78,11 +78,23 @@ async function checkPrices() {
       `).run(newPrice, outcome.status, outcome.error, item.id);
       statusRecorded = true;
 
-      // 価格履歴に追加
-      db.prepare(`
-        INSERT INTO price_history (item_id, price)
-        VALUES (?, ?)
-      `).run(item.id, newPrice);
+      // 価格履歴に追加（直近履歴と同値ならスキップ）。
+      // 同一価格で毎回 INSERT すると /api/items の previous_price（2番目に新しい履歴）が
+      // 常に現在価格と同値になり、値下がり表示が機能しなくなるため。
+      // 履歴が無い初回、または直近履歴と価格が異なる場合のみ追加する。
+      const lastHistory = db.prepare(`
+        SELECT price FROM price_history
+        WHERE item_id = ?
+        ORDER BY recorded_at DESC, id DESC
+        LIMIT 1
+      `).get(item.id) as { price: number } | undefined;
+
+      if (!lastHistory || lastHistory.price !== newPrice) {
+        db.prepare(`
+          INSERT INTO price_history (item_id, price)
+          VALUES (?, ?)
+        `).run(item.id, newPrice);
+      }
 
       console.log(`  - Price: ¥${oldPrice?.toLocaleString() || '---'} -> ¥${newPrice.toLocaleString()}`);
 
