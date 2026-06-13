@@ -28,7 +28,8 @@ export async function GET(request: NextRequest) {
 
   const db = getDb();
 
-  let whereClause = 'WHERE i.user_id = ?';
+  // ゴミ箱（論理削除済み）のアイテムはエクスポート対象から除外する
+  let whereClause = 'WHERE i.user_id = ? AND i.deleted_at IS NULL';
   if (filter === 'wishlist') {
     whereClause += ' AND i.is_purchased = 0';
   } else if (filter === 'purchased') {
