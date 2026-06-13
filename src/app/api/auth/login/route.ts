@@ -38,8 +38,9 @@ export async function POST(request: NextRequest) {
 
     const db = getDb();
     // 既存DBには大文字混じりで保存された行が残っている可能性があるため LOWER 比較で照合する
+    // 万一正規化マイグレーションで衝突回避のため残った重複行があっても、ORDER BY id で挙動を決定的にする
     const dbUser = db.prepare(
-      'SELECT id, email, name, password_hash, created_at FROM users WHERE LOWER(email) = ?'
+      'SELECT id, email, name, password_hash, created_at FROM users WHERE LOWER(email) = ? ORDER BY id LIMIT 1'
     ).get(normalizedEmail) as DbUser | undefined;
 
     if (!dbUser) {

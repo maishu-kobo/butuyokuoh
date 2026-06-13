@@ -43,7 +43,8 @@ export async function POST(request: NextRequest) {
 
     // メールアドレスの重複チェック
     // 既存DBには大文字混じりで保存された行が残っている可能性があるため LOWER 比較で照合する
-    const existing = db.prepare('SELECT id FROM users WHERE LOWER(email) = ?').get(normalizedEmail);
+    // 万一正規化マイグレーションで衝突回避のため残った重複行があっても、ORDER BY id で挙動を決定的にする
+    const existing = db.prepare('SELECT id FROM users WHERE LOWER(email) = ? ORDER BY id LIMIT 1').get(normalizedEmail);
     if (existing) {
       return NextResponse.json(
         { error: 'このメールアドレスは既に登録されています' },
