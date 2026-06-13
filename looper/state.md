@@ -1,6 +1,6 @@
 # Loop State
 
-- 周回: 27
+- 周回: 28
 - 周回上限: 40（2026-06-12 人間が /loop 再実行でループ再開。再開時20 + デフォルト20周回分）
 - discovery 連続空振り: 0（最終discovery: 周回27、採用5件）
 - 常設指示（2026-06-12 人間より）: 溜まったマージ候補PRは Codex レビュー → 指摘対応 → マージまでループが実施してよい
@@ -10,7 +10,6 @@
 <!-- 周回11 discovery 採用5件 -->
 <!-- 周回16 discovery 採用5件 -->
 <!-- 周回22 discovery 採用5件 -->
-- [ ] 論理削除除外漏れの一掃（purchased / export / categories item_count） | 受け入れ条件: 購入済みアイテムの論理削除後 GET /api/purchased の items/monthlySummary/totalStats に含まれない。GET /api/export の CSV にゴミ箱アイテムが含まれない。GET /api/categories の item_count がゴミ箱除外（復元で +1 に戻る） | origin: auto | fix: 0
 - [ ] 一覧/予算/ゴミ箱の取得失敗時エラー表示と再試行（無限読み込み解消） | 受け入れ条件: /api/items・/api/budget・/api/trash の取得が !res.ok または例外のとき「読み込みに失敗しました」+「再試行」ボタンを表示し、再試行で復帰。非配列レスポンスで .map/.filter クラッシュしない。tsc pass | origin: auto | fix: 0
 - [ ] items POST/PATCH/extension-add の category_id/comparison_group_id 所有権検証 | 受け入れ条件: 他ユーザー所有IDまたは存在しないIDを指定した POST/PATCH/extension-add が 400 または 404。自分所有IDは従来どおり成功。null 指定（解除）は引き続き許可 | origin: auto | fix: 0
 <!-- 周回27 discovery 採用5件 -->
@@ -66,6 +65,7 @@
 - refresh に加え PATCH もゴミ箱内アイテムに実行可能（items/[id]/route.ts:38 も deleted_at 条件なし。両方まとめて404に）
 - 購入済み化の際に購入日を選択できる UI（後日まとめて記録のユースケース。UTCずれ修正は採用済み、こちらは任意日付入力）
 - upload の file.name パストラバーサルは解消済みと判断（拡張子のみ使用・サーバ生成ファイル名。周回27 reviewer 確認）
+- 重複URLチェックの deleted_at 不整合が import-wishlist/route.ts:98 と extension-import/route.ts:62 にも残存（ゴミ箱内同一URLの再登録が黙って弾かれる。backlog の「URL重複409一掃」は items POST/PATCH/extension-add が対象、この2経路は未カバー。PR #67 coder 発見）
 
 ## in_progress
 
@@ -98,6 +98,7 @@
 - [x] 検索/フィルタ0件時の空状態メッセージと条件クリア | PR: #64（page.tsx 21行追加、5フィルタ全リセット確認。tester がロジック写経ミニテスト18件で全項目 pass） | 周回: 25
 - [x] ゴミ箱を空にする機能の DELETE /api/trash 実装 | PR: #65（+19行。tester がcurl+sqlite3で件数返却/401/他ユーザー非削除を実機確認、全項目 pass。初回tester はセッション上限で中断→再検証） | 周回: 26
 - [x] check-prices の価格不変時は price_history に INSERT しない | PR: #66（直近履歴比較+id DESCタイブレーク。tester がモック5回実行×3アイテムで同値スキップ/変動INSERT/記録系維持/独立性を動的検証、全項目 pass） | 周回: 27
+- [x] 論理削除除外漏れの一掃（purchased / export / categories item_count） | PR: #67（3ファイル+6/-5。tester がcurl+sqlite3で3集計除外/CSV全フィルタ除外/復元対称性まで動的検証、全項目 pass） | 周回: 28
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
