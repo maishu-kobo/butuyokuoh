@@ -1,8 +1,8 @@
 # Loop State
 
-- 周回: 26
+- 周回: 27
 - 周回上限: 40（2026-06-12 人間が /loop 再実行でループ再開。再開時20 + デフォルト20周回分）
-- discovery 連続空振り: 0（最終discovery: 周回22、採用5件）
+- discovery 連続空振り: 0（最終discovery: 周回27、採用5件）
 - 常設指示（2026-06-12 人間より）: 溜まったマージ候補PRは Codex レビュー → 指摘対応 → マージまでループが実施してよい
 
 ## backlog
@@ -10,10 +10,15 @@
 <!-- 周回11 discovery 採用5件 -->
 <!-- 周回16 discovery 採用5件 -->
 <!-- 周回22 discovery 採用5件 -->
-- [ ] check-prices の価格不変時は price_history に INSERT しない | 受け入れ条件: 同一価格で2回実行しても price_history が増えない（直近履歴と同値ならスキップ）。価格変動時は従来どおり1行追加。current_price / scrape_status / last_scraped_at の更新は価格不変でも従来どおり | origin: auto | fix: 0
 - [ ] 論理削除除外漏れの一掃（purchased / export / categories item_count） | 受け入れ条件: 購入済みアイテムの論理削除後 GET /api/purchased の items/monthlySummary/totalStats に含まれない。GET /api/export の CSV にゴミ箱アイテムが含まれない。GET /api/categories の item_count がゴミ箱除外（復元で +1 に戻る） | origin: auto | fix: 0
 - [ ] 一覧/予算/ゴミ箱の取得失敗時エラー表示と再試行（無限読み込み解消） | 受け入れ条件: /api/items・/api/budget・/api/trash の取得が !res.ok または例外のとき「読み込みに失敗しました」+「再試行」ボタンを表示し、再試行で復帰。非配列レスポンスで .map/.filter クラッシュしない。tsc pass | origin: auto | fix: 0
 - [ ] items POST/PATCH/extension-add の category_id/comparison_group_id 所有権検証 | 受け入れ条件: 他ユーザー所有IDまたは存在しないIDを指定した POST/PATCH/extension-add が 400 または 404。自分所有IDは従来どおり成功。null 指定（解除）は引き続き許可 | origin: auto | fix: 0
+<!-- 周回27 discovery 採用5件 -->
+- [ ] SSRF ブロックリスト強化 + vitest テスト基盤導入 | 受け入れ条件: 共通ヘルパーを url-validator に追加し sanitizeGenericUrl と scrapeGeneric の両ガードが使用。169.254.0.0/16・127.0.0.0/8 全域・0.0.0.0・172.16.0.0/12 全域・[::1]・fe80::/fc00:: 系がすべて拒否され、通常の公開 https URL は許可。vitest が devDependencies に入り npm test で url-validator テスト（許可/拒否 各5ケース以上）が通る | origin: auto | fix: 0
+- [ ] ハード削除経路の price_history/notification_settings 孤児化解消 | 受け入れ条件: trash/[id] DELETE・trash DELETE（全削除）・7日自動パージの全経路をトランザクション化し子レコードも削除。migrateDb に既存孤児クリーンアップ追加。完全削除後に該当 item_id の子レコード0件、起動後に既存孤児0件 | origin: auto | fix: 0
+- [ ] 購入日が UTC 基準で前日にずれる問題の修正 | 受け入れ条件: 単品（ItemCard）・一括（page.tsx）の購入済み化で、端末ローカルTZの「今日」が記録される（JST 0:00〜8:59 でも当日日付）。購入済みタブの月別集計に正しく反映 | origin: auto | fix: 0
+- [ ] URL 重複時の未捕捉 UNIQUE 500 の一掃（items POST 手動/URL・PATCH・extension-add） | 受け入れ条件: 4経路すべてで重複 URL が 409+明確なメッセージ（ゴミ箱内重複は復元/完全削除を案内する文言）。手動モード重複でも500にならない。新規URL登録・URL以外のPATCHは挙動不変 | origin: auto | fix: 0
+- [ ] items POST（URL追加）で scrape_status/last_scraped_at を記録 (#33完結) | 受け入れ条件: URLモードの INSERT に deriveScrapeOutcome 由来の last_scraped_at/scrape_status/scrape_error を含める。価格取得失敗URLで登録直後に scrape_status='failed' が GET /api/items に現れる。手動追加モードは NULL のまま | origin: auto | fix: 0
 
 ## discovery メモ（非採用候補、次回の参考）
 <!-- 周回6 discovery で採用枠5件から漏れた候補 -->
@@ -56,6 +61,11 @@
 - 選択モード中にタブ切り替えると一括操作バーが他タブに残留（page.tsx:714-774 が activeTab 非参照。誤一括削除リスク）
 - ImportWishlistModal の楽天URL判定が緩く商品ページでも「有効」表示（ImportWishlistModal.tsx:46-49。import-wishlist 側の対応パターンと整合させる）
 - ItemCard handleRefreshWithNewUrl は定義のみで JSX から未配線（URL変更しても価格再取得されない。配線 or 削除。失敗ハンドリング欠如も同時に解消）
+<!-- 周回27 discovery で採用枠から漏れた候補 -->
+- 購入済み/統計タブの取得失敗で無限読み込み・StatsView は非okレスポンスで TypeError クラッシュの恐れ（PurchasedHistory.tsx:26-31、StatsView.tsx:38-46。backlog の一覧/予算/ゴミ箱版と同方針で展開）
+- refresh に加え PATCH もゴミ箱内アイテムに実行可能（items/[id]/route.ts:38 も deleted_at 条件なし。両方まとめて404に）
+- 購入済み化の際に購入日を選択できる UI（後日まとめて記録のユースケース。UTCずれ修正は採用済み、こちらは任意日付入力）
+- upload の file.name パストラバーサルは解消済みと判断（拡張子のみ使用・サーバ生成ファイル名。周回27 reviewer 確認）
 
 ## in_progress
 
@@ -87,6 +97,7 @@
 - [x] register/login のメール正規化と形式検証 | PR: #63（lib/email.ts新規+LOWER(email)比較で既存大文字行も互換。tester がcurlで20パターン超実機確認、全項目 pass） | 周回: 24
 - [x] 検索/フィルタ0件時の空状態メッセージと条件クリア | PR: #64（page.tsx 21行追加、5フィルタ全リセット確認。tester がロジック写経ミニテスト18件で全項目 pass） | 周回: 25
 - [x] ゴミ箱を空にする機能の DELETE /api/trash 実装 | PR: #65（+19行。tester がcurl+sqlite3で件数返却/401/他ユーザー非削除を実機確認、全項目 pass。初回tester はセッション上限で中断→再検証） | 周回: 26
+- [x] check-prices の価格不変時は price_history に INSERT しない | PR: #66（直近履歴比較+id DESCタイブレーク。tester がモック5回実行×3アイテムで同値スキップ/変動INSERT/記録系維持/独立性を動的検証、全項目 pass） | 周回: 27
 
 ## blocked
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
