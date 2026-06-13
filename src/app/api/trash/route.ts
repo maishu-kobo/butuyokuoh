@@ -33,3 +33,22 @@ export async function GET() {
 
   return NextResponse.json(items);
 }
+
+// ゴミ箱を空にする（自ユーザーのゴミ箱内アイテムを全件ハード削除）
+export async function DELETE() {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+  }
+
+  const db = getDb();
+
+  // user_id を必ず条件に含め、他ユーザーのアイテムには触れない
+  // 削除パターンは trash/[id] の個別完全削除（items のみ DELETE）と整合
+  const result = db.prepare(`
+    DELETE FROM items
+    WHERE user_id = ? AND deleted_at IS NOT NULL
+  `).run(user.id);
+
+  return NextResponse.json({ success: true, deleted: result.changes });
+}
