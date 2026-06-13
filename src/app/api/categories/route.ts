@@ -12,7 +12,7 @@ export async function GET() {
   const categories = db.prepare(`
     SELECT c.*, COUNT(i.id) as item_count
     FROM categories c
-    LEFT JOIN items i ON c.id = i.category_id AND i.is_purchased = 0 AND i.deleted_at IS NULL
+    LEFT JOIN items i ON c.id = i.category_id AND i.user_id = c.user_id AND i.is_purchased = 0 AND i.deleted_at IS NULL
     WHERE c.user_id = ?
     GROUP BY c.id
     ORDER BY c.sort_order ASC, c.name ASC
