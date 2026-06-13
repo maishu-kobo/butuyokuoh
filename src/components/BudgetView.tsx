@@ -15,22 +15,48 @@ export default function BudgetView() {
   const [budget, setBudget] = useState<BudgetData>({});
   const [allItems, setAllItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
-  useEffect(() => {
-    fetch('/api/budget')
-      .then((res) => res.json())
-      .then((data) => {
-        setBudget(data);
-        // 全アイテムをフラットに
-        const items: Item[] = [];
-        Object.values(data).forEach((monthData: any) => {
+  const fetchBudget = async () => {
+    try {
+      const res = await fetch('/api/budget');
+      if (!res.ok) throw new Error(`Failed to fetch budget: ${res.status}`);
+      const data = await res.json();
+      // 月キーのオブジェクト以外（エラーJSON等）を弾く
+      if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+        throw new Error('Unexpected response format');
+      }
+      // 各エントリを検証し、不正な形のエントリは除外してクラッシュを防ぐ
+      const safeBudget: BudgetData = {};
+      const items: Item[] = [];
+      Object.entries(data as Record<string, any>).forEach(([month, monthData]) => {
+        if (monthData && Array.isArray(monthData.items) && typeof monthData.total === 'number') {
+          safeBudget[month] = monthData;
           items.push(...monthData.items);
-        });
-        setAllItems(items);
-        setLoading(false);
+        }
       });
+      setBudget(safeBudget);
+      setAllItems(items);
+      setLoadError(false);
+    } catch (error) {
+      console.error('Failed to fetch budget:', error);
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBudget();
   }, []);
+
+  // 読み込み失敗時の再試行
+  const handleRetry = () => {
+    setLoadError(false);
+    setLoading(true);
+    fetchBudget();
+  };
 
   const toggleSelect = (id: number) => {
     const newSet = new Set(selectedIds);
@@ -65,6 +91,20 @@ export default function BudgetView() {
 
   if (loading) {
     return <div className="text-gray-500 dark:text-gray-400">読み込み中...</div>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="text-gray-500 dark:text-gray-400 text-center py-8">
+        <p>読み込みに失敗しました</p>
+        <button
+          onClick={handleRetry}
+          className="mt-3 px-4 py-2 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
+        >
+          再試行
+        </button>
+      </div>
+    );
   }
 
   // undatedを除いた月をソート

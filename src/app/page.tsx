@@ -29,6 +29,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('list');
   const [animationClass, setAnimationClass] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
@@ -41,22 +42,52 @@ export default function Home() {
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
 
   const fetchItems = async () => {
-    const res = await fetch('/api/items');
-    const data = await res.json();
-    setItems(data);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/items');
+      if (!res.ok) throw new Error(`Failed to fetch items: ${res.status}`);
+      const data = await res.json();
+      // 非配列レスポンス（エラーJSON等）を配列stateに入れない
+      if (!Array.isArray(data)) throw new Error('Unexpected response format');
+      setItems(data);
+      setLoadError(false);
+    } catch (error) {
+      console.error('Failed to fetch items:', error);
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  // 補助データ: 失敗しても空配列のままにしてクラッシュを防ぐ（エラーUIは出さない）
   const fetchGroups = async () => {
-    const res = await fetch('/api/comparison-groups');
-    const data = await res.json();
-    setGroups(data);
+    try {
+      const res = await fetch('/api/comparison-groups');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data)) setGroups(data);
+    } catch (error) {
+      console.error('Failed to fetch comparison groups:', error);
+    }
   };
 
   const fetchCategories = async () => {
-    const res = await fetch('/api/categories');
-    const data = await res.json();
-    setCategories(data);
+    try {
+      const res = await fetch('/api/categories');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data)) setCategories(data);
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+    }
+  };
+
+  // 読み込み失敗時の再試行（補助データも併せて再取得）
+  const handleRetry = () => {
+    setLoadError(false);
+    setLoading(true);
+    fetchItems();
+    fetchGroups();
+    fetchCategories();
   };
 
   useEffect(() => {
@@ -663,6 +694,16 @@ export default function Home() {
 
             {loading ? (
               <div className="text-center py-12 text-slate-500 dark:text-slate-400">読み込み中...</div>
+            ) : loadError ? (
+              <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                <p>読み込みに失敗しました</p>
+                <button
+                  onClick={handleRetry}
+                  className="mt-3 px-4 py-2 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
+                >
+                  再試行
+                </button>
+              </div>
             ) : items.length === 0 ? (
               <div className="text-center py-12 text-slate-500 dark:text-slate-400">
                 まだアイテムがありません。上のフォームから追加してください。

@@ -11,17 +11,35 @@ interface TrashItem extends Item {
 export default function TrashView() {
   const [items, setItems] = useState<TrashItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const fetchItems = async () => {
-    const res = await fetch('/api/trash');
-    const data = await res.json();
-    setItems(data);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/trash');
+      if (!res.ok) throw new Error(`Failed to fetch trash: ${res.status}`);
+      const data = await res.json();
+      // 非配列レスポンス（エラーJSON等）を配列stateに入れない
+      if (!Array.isArray(data)) throw new Error('Unexpected response format');
+      setItems(data);
+      setLoadError(false);
+    } catch (error) {
+      console.error('Failed to fetch trash:', error);
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     fetchItems();
   }, []);
+
+  // 読み込み失敗時の再試行
+  const handleRetry = () => {
+    setLoadError(false);
+    setLoading(true);
+    fetchItems();
+  };
 
   const handleRestore = async (id: number) => {
     await fetch(`/api/trash/${id}`, { method: 'POST' });
@@ -42,6 +60,20 @@ export default function TrashView() {
 
   if (loading) {
     return <div className="text-center py-8 text-slate-500 dark:text-slate-400">読み込み中...</div>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+        <p>読み込みに失敗しました</p>
+        <button
+          onClick={handleRetry}
+          className="mt-3 px-4 py-2 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
+        >
+          再試行
+        </button>
+      </div>
+    );
   }
 
   return (
