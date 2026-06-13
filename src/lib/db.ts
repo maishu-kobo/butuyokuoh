@@ -136,6 +136,39 @@ function migrateDb(db: Database.Database) {
   addColumnIfNotExists(db, 'items', 'last_scraped_at', 'TEXT');
   addColumnIfNotExists(db, 'items', 'scrape_status', 'TEXT');
   addColumnIfNotExists(db, 'items', 'scrape_error', 'TEXT');
+  // メールアドレスを LOWER(TRIM()) で正規化（LOWER(email) 照合が決定的になるよう既存データを揃える）
+  normalizeUserEmails(db);
+  // LOWER(email) 照合の全表走査を解消する関数インデックス
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email))').run();
+}
+
+// 既存ユーザーのメールアドレスを LOWER(TRIM()) に正規化する
+// 正規化後の値が他の行と衝突する場合はそのままにして警告のみ出す（既存アカウントを壊さない）
+// 正規化済みの行は WHERE 条件にかからないため、何度実行しても安全（冪等）
+function normalizeUserEmails(db: Database.Database) {
+  const rows = db.prepare(
+    'SELECT id, email FROM users WHERE email != LOWER(TRIM(email))'
+  ).all() as { id: number; email: string }[];
+  if (rows.length === 0) return;
+
+  const findCollision = db.prepare(
+    'SELECT id FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM(?)) AND id != ? ORDER BY id LIMIT 1'
+  );
+  const update = db.prepare('UPDATE users SET email = LOWER(TRIM(email)) WHERE id = ?');
+
+  const migrate = db.transaction(() => {
+    for (const row of rows) {
+      const collision = findCollision.get(row.email, row.id) as { id: number } | undefined;
+      if (collision) {
+        console.warn(
+          `[db migrate] users.id=${row.id} のメール正規化をスキップ: 正規化後の値が users.id=${collision.id} と衝突するため変更しません`
+        );
+        continue;
+      }
+      update.run(row.id);
+    }
+  });
+  migrate();
 }
 
 // テーブルに指定カラムが存在しない場合のみ ALTER TABLE で追加する
