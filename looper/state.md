@@ -65,6 +65,11 @@
 - 購入済み化の際に購入日を選択できる UI（後日まとめて記録のユースケース。UTCずれ修正は採用済み、こちらは任意日付入力）
 - upload の file.name パストラバーサルは解消済みと判断（拡張子のみ使用・サーバ生成ファイル名。周回27 reviewer 確認）
 - 重複URLチェックの deleted_at 不整合が import-wishlist/route.ts:98 と extension-import/route.ts:62 にも残存（ゴミ箱内同一URLの再登録が黙って弾かれる。backlog の「URL重複409一掃」は items POST/PATCH/extension-add が対象、この2経路は未カバー。PR #67 coder 発見）
+<!-- 2026-06-13 #60〜#68 Codexレビューで見送った指摘 -->
+- notifier の Slack/Discord 逐次送信で両方タイムアウト時に1アイテム最大20秒+5秒待機（Promise.all 並列化を検討。#62 Codex SHOULD見送り）
+- check-prices の履歴INSERT スキップ時にログなし（運用調査用に1行ログ追加。#66 Codex NIT見送り）
+- page.tsx の fetchGroups/fetchCategories 失敗が loadError に反映されずフィルタUIなしの半壊状態になり得る（設計判断として見送り。#68 Codex SHOULD）
+- users.email のスキーマレベル一意性が BINARY 照合のまま（COLLATE NOCASE UNIQUE への移行はテーブル再作成が必要なため見送り。アプリ層+migrateDb正規化+関数インデックスで実用上カバー済み。#63 Codex SHOULD）
 
 ## in_progress
 
@@ -104,6 +109,13 @@
 <!-- 書式: - タイトル | 理由 | fix試行: N -->
 
 ## マージログ
+- 2026-06-13 (周回29後、人間指示): マージ候補9本（#60〜#68）を Codex CLI で3グループ並列レビュー → 対応 → develop へ全てマージ。
+  - Codex指摘: BLOCKER 1件（#63 既存DBの大文字混じり重複行で LOWER(email) 照合が非決定的）、SHOULD 6件、NIT 多数。誤検知1件（#68 console.error）は codex-bridge が検出
+  - 対応4件: #63 に migrateDb の衝突ガード付きメール正規化+LOWER関数インデックス+ORDER BY id 決定論化（4b6254e）、#60/#67 に JOIN の user_id 防御条件（64b8b05/24f3f4b）、#64 に clearFilters の選択状態リセット（ea26b07）。tester が旧形式DB手作りでマイグレーション衝突ガード・冪等性・インデックス使用を動的検証、4件全て pass
+  - 見送り: #62 Slack/Discord逐次送信の累積遅延（並列化は中期課題）、#66 スキップログ、#68 補助データの半壊状態（設計判断）→ discovery メモへ
+  - マージ順: #60→#62→#63→#65→#66→#67（独立）→ #68→#64→#61（Codex推奨順、page.tsx/BudgetView の自動マージ成功）。マージ後に分岐順（loading→loadError→items空→filteredItems空）を目視確認
+  - 統合ビルド: origin/develop (535fa82) で npm install → tsc → next build すべて pass
+  - 残オープンPR: Dependabot #31（base=main、人間判断推奨）
 - 2026-06-12 (周回20後、人間指示): マージ候補2本（#58, #59）を Codex CLI でレビュー → 対応 → develop へマージ。
   - Codex指摘: BLOCKER 0件。#58 SHOULD2件+NIT1件、#59 SHOULD2件+NIT1件
   - 対応: #58 に handleSave 先頭の同期多重送信ガード + role="alert"（8ee4142）、#59 に statusRecorded フラグで catch 内 failed 記録が成功記録を上書きしない防御（4f97db4）。tester 検証 pass（フラグのライフサイクル・no-priceパス不変・throwパス維持を確認）
