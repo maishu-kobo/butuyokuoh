@@ -9,7 +9,7 @@
     "lint": "eslint",
     "check-prices": "npx tsx scripts/check-prices.ts",
     "cleanup-guests": "node --import tsx scripts/cleanup-guests.ts",
-    "test": "node --import tsx --test tests/guest.test.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -20,6 +20,7 @@
     "better-sqlite3": "^12.6.0",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.26.2",
+    "ipaddr.js": "2.5.0",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.562.0",
     "next": "16.1.2",

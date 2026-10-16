@@ -92,7 +92,7 @@ export function deleteGuestUser(id: number, db = getDb()): boolean {
     for (const table of ['items', 'user_notification_settings', 'categories', 'comparison_groups', 'guest_sessions']) {
       db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(id);
     }
-    db.prepare('DELETE FROM guest_rate_limits WHERE bucket = ?').run(`write:${id}`);
+    db.prepare('DELETE FROM guest_rate_limits WHERE bucket IN (?, ?)').run(`write:${id}`, `scrape:${id}`);
     db.prepare("DELETE FROM users WHERE id = ? AND account_type = 'guest'").run(id);
     return true;
   }).immediate();
@@ -132,5 +132,14 @@ export function assertGuestCapacity(user: { id: number; account_type?: string },
   const [name, fallback] = settings[resource];
   if (count >= guestLimit(name, fallback)) {
     throw new GuestError(409, 'GUEST_LIMIT_REACHED', 'ゲスト体験の保存件数の上限です。不要なデータを削除してください。');
+  }
+}
+
+// A network request may outlive a session or race with ending the demo.
+export function assertGuestSessionActive(user: { id: number; account_type?: string }, db = getDb()) {
+  if (user.account_type === 'guest' && (!guestEnabled() || !db.prepare(
+    'SELECT user_id FROM guest_sessions WHERE user_id = ? AND expires_at > ?'
+  ).get(user.id, Date.now()))) {
+    throw new GuestError(401, 'SESSION_REQUIRED', 'セッションが終了しました。ログイン画面から入り直してください');
   }
 }
