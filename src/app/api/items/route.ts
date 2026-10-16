@@ -1,5 +1,6 @@
+import { scrapeGuestUrl } from '@/lib/guest-scraper';
 import { randomUUID } from 'node:crypto';
-import { assertGuestCapacity } from '@/lib/guest';
+import { assertGuestCapacity, assertGuestSessionActive } from '@/lib/guest';
 import { assertOwnedRelations } from '@/lib/api-access';
 import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
@@ -41,7 +42,7 @@ async function handleGET() {
       i.sort_order ASC,
       i.created_at DESC
   `).all(user.id);
-  
+
   return NextResponse.json(items);
 }
 
@@ -52,13 +53,13 @@ async function handlePOST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { 
-    url, 
-    priority = 3, 
-    planned_purchase_date, 
-    notes, 
-    comparison_group_id, 
-    category_id, 
+  const {
+    url,
+    priority = 3,
+    planned_purchase_date,
+    notes,
+    comparison_group_id,
+    category_id,
     quantity = 1,
     // 手動追加用フィールド
     manual = false,
@@ -123,40 +124,48 @@ async function handlePOST(request: NextRequest) {
   }
 
   // スクレイピング
-  const scraped = await scrapeUrl(url);
+  assertGuestCapacity(user, 'items', db);
+  const scraped = user.account_type === 'guest' ? await scrapeGuestUrl(url, user.id) : await scrapeUrl(url);
 
-  const stmt = db.prepare(`
-    INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority, planned_purchase_date, comparison_group_id, category_id, notes, quantity)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+  return db.transaction(() => {
+    assertGuestSessionActive(user, db);
+    assertGuestCapacity(user, 'items', db);
+    if (scraped.price) assertGuestCapacity(user, 'price_history', db);
+    assertOwnedRelations(db, user.id, body);
 
-  const result = stmt.run(
-    user.id,
-    scraped.name,
-    url,
-    scraped.imageUrl,
-    scraped.price,
-    scraped.price,
-    scraped.source,
-    scraped.sourceName,
-    priority,
-    planned_purchase_date || null,
-    comparison_group_id || null,
-    category_id || null,
-    notes || null,
-    quantity
-  );
+    const stmt = db.prepare(`
+      INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority, planned_purchase_date, comparison_group_id, category_id, notes, quantity)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-  // 価格履歴に追加
-  if (scraped.price) {
-    db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(result.lastInsertRowid, scraped.price);
-  }
+    const result = stmt.run(
+      user.id,
+      scraped.name,
+      url,
+      scraped.imageUrl,
+      scraped.price,
+      scraped.price,
+      scraped.source,
+      scraped.sourceName,
+      priority,
+      planned_purchase_date || null,
+      comparison_group_id || null,
+      category_id || null,
+      notes || null,
+      quantity
+    );
 
-  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(result.lastInsertRowid) as Record<string, unknown>;
-  
-  // スクレイピング結果に注意メッセージがあれば含める
-  const response = { ...item, scrapeNote: scraped.note || null };
-  return NextResponse.json(response, { status: 201 });
+    // 価格履歴に追加
+    if (scraped.price) {
+      db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(result.lastInsertRowid, scraped.price);
+    }
+
+    const item = db.prepare('SELECT * FROM items WHERE id = ?').get(result.lastInsertRowid) as Record<string, unknown>;
+
+    // スクレイピング結果に注意メッセージがあれば含める
+    const response = { ...item, scrapeNote: scraped.note || null };
+    return NextResponse.json(response, { status: 201 });
+  }).immediate();
 }
 
 export const GET = withAccess(handleGET, true);

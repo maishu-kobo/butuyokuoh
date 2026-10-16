@@ -109,9 +109,6 @@ export function withAccess<Args extends unknown[]>(handler: (request: NextReques
           consumeGuestRate(`write:${user.id}`, guestLimit('WRITES_PER_MINUTE', 60));
           const body = await readGuestBody(request);
           validateGuestInput(body, request.method);
-          if (request.nextUrl.pathname === '/api/items' && request.method === 'POST' && body.manual !== true) {
-            throw new GuestError(403, 'MEMBER_REQUIRED', 'URLからの商品取得はログイン後に利用できます。手動で追加してください');
-          }
         }
       }
       const response = await handler(request, ...args);

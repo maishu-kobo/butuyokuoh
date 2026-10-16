@@ -16,7 +16,7 @@ interface AddItemFormProps {
 export default function AddItemForm({ onAdd, comparisonGroups, categories }: AddItemFormProps) {
   const { isGuest } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const [isManualMode, setIsManualMode] = useState(isGuest);
+  const [isManualMode, setIsManualMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successNote, setSuccessNote] = useState(''); // 追加成功時の注意メッセージ
@@ -50,7 +50,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
       price: '',
       image_url: '',
     });
-    setIsManualMode(isGuest);
+    setIsManualMode(false);
     setError('');
   };
 
@@ -188,8 +188,6 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
       <div className="mb-4 flex items-center justify-end">
         <button
           type="button"
-          disabled={isGuest}
-          title={isGuest ? "URLからの取得はログイン後に利用できます" : undefined}
           onClick={() => setIsManualMode(!isManualMode)}
           className="text-xs text-gray- dark:text-gray-400 hover:text-gray- dark:text-gray-600 flex items-center gap-1"
         >
@@ -276,7 +274,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
                 </div>
               )}
             </div>}
-            {isGuest && <p className="text-sm text-gray-500">画像の追加・URLからの取得はログイン後に利用できます。</p>}
+            {isGuest && <p className="text-sm text-gray-500">画像の手動追加はログイン後に利用できます。</p>}
           </>
         ) : (
           /* URLモード（通常） */

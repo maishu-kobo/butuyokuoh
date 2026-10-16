@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { openDatabase } from '../src/lib/db';
-import { startGuest, findGuest, endGuest, cleanupGuests, consumeGuestRate, assertGuestCapacity, GuestError, deleteGuestUser } from '../src/lib/guest';
+import { startGuest, findGuest, endGuest, cleanupGuests, consumeGuestRate, assertGuestCapacity, GuestError, deleteGuestUser, assertGuestSessionActive } from '../src/lib/guest';
 import { priceCheckItems } from '../src/lib/price-check-items';
 
 process.env.GUEST_MODE_ENABLED = 'true';
@@ -133,4 +133,18 @@ test('migration preserves existing members and is repeatable', () => {
     assert.equal((db.prepare('SELECT account_type FROM users').get() as {account_type:string}).account_type, 'member');
     assert.equal(count(db, 'users'), 1);
   } finally { db.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+
+test('a completed fetch cannot write after the guest ends or expires', () => {
+  const db = openDatabase(':memory:');
+  try {
+    const a = startGuest(undefined, db);
+    assertGuestSessionActive(a.user, db);
+    db.prepare('UPDATE guest_sessions SET expires_at = ? WHERE user_id = ?').run(Date.now()-1,a.user.id);
+    assert.throws(() => assertGuestSessionActive(a.user, db), (e:unknown) => e instanceof GuestError && e.status === 401);
+    endGuest(a.token, db);
+    assert.throws(() => assertGuestSessionActive(a.user, db), (e:unknown) => e instanceof GuestError && e.status === 401);
+    assertGuestSessionActive({id:999,account_type:'member'}, db);
+  } finally { db.close(); }
 });

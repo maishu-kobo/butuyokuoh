@@ -34,7 +34,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [editData, setEditData] = useState({
+  const initialEditData = () => ({
     name: item.name || '',
     url: item.url || '',
     priority: item.priority,
@@ -48,6 +48,8 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     image_url: item.image_url || '',
     current_price: item.current_price || '',
   });
+  const [editData, setEditData] = useState(initialEditData);
+  const [refreshMessage, setRefreshMessage] = useState('');
   const [refreshingUrl, setRefreshingUrl] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -57,9 +59,16 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    setRefreshMessage('');
     try {
-      await apiFetch(`/api/items/${item.id}/refresh`, { method: 'POST' });
+      const response = await apiFetch(`/api/items/${item.id}/refresh`, { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || '商品情報を取得できませんでした');
+      setRefreshMessage(data.note || '商品情報を更新しました');
+      setEditing(false);
       onUpdate();
+    } catch (error) {
+      setRefreshMessage(error instanceof Error ? error.message : '商品情報を取得できませんでした');
     } finally {
       setRefreshing(false);
     }
@@ -108,7 +117,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           category_id: editData.category_id ? Number(editData.category_id) : null,
           comparison_group_id: editData.comparison_group_id ? Number(editData.comparison_group_id) : null,
           quantity: Number(editData.quantity) || 1,
-          image_url: editData.image_url || null,
+          ...(!isGuest ? { image_url: editData.image_url || null } : {}),
           current_price: editData.current_price ? Number(editData.current_price) : null,
         }),
       });
@@ -319,9 +328,9 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
         <div className="flex gap-2">
           <button
             onClick={handleRefresh}
-            disabled={refreshing || isGuest}
+            disabled={refreshing || !/^https?:\/\//i.test(item.url)}
             aria-label="価格を更新"
-            title={isGuest ? "価格更新はログイン後に利用できます" : "価格を更新"}
+            title={/^https?:\/\//i.test(item.url) ? "商品名・価格・画像をURLから更新" : "商品URLを登録すると更新できます"}
             className="text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500 disabled:opacity-50"
           >
             <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
@@ -333,7 +342,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             価格推移
           </button>
           <button
-            onClick={() => { setSaveError(''); setEditing(!editing); }}
+            onClick={() => { setSaveError(''); if (!editing) setEditData(initialEditData()); setEditing(!editing); }}
             className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500"
           >
             編集
@@ -367,6 +376,8 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           />
         </div>
       )}
+
+      {refreshMessage && <p role="status" className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300">{refreshMessage}</p>}
 
       {/* 編集フォーム */}
       {editing && (

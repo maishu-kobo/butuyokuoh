@@ -5,7 +5,6 @@ import { apiFetch } from '@/lib/api-fetch';
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
-import AddItemForm from '@/components/AddItemForm';
 import { Category } from '@/types';
 import { Crown, ArrowLeft, Loader2, Check, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
@@ -21,9 +20,10 @@ interface ProductInfo {
 function AddPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user, isGuest, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const [url, setUrl] = useState('');
+  const [draftUrl, setDraftUrl] = useState('');
   const [safeUrl, setSafeUrl] = useState<string | null>(null);
   const [productInfo, setProductInfo] = useState<ProductInfo | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -69,6 +69,7 @@ function AddPageContent() {
 
     if (extractedUrl) {
       setUrl(extractedUrl);
+      setDraftUrl(extractedUrl);
       setSafeUrl(sanitizeUrlForLink(extractedUrl));
     }
   }, [searchParams]);
@@ -85,7 +86,7 @@ function AddPageContent() {
 
   // URLがあれば商品情報を取得
   useEffect(() => {
-    if (url && user && !isGuest && !productInfo) {
+    if (url && user && !productInfo) {
       fetchProductInfo();
     }
   }, [url, user]);
@@ -180,12 +181,6 @@ function AddPageContent() {
     );
   }
 
-  if (isGuest) return <main className="p-4 max-w-lg mx-auto space-y-4">
-    <Link href="/">← リストへ戻る</Link>
-    <p>ゲスト体験では商品を手動で追加できます。URLからの取得はログイン後に利用できます。</p>
-    <AddItemForm categories={categories} comparisonGroups={[]} onAdd={() => router.push('/')} />
-  </main>;
-
   // 成功画面
   if (success) {
     return (
@@ -214,7 +209,7 @@ function AddPageContent() {
 
       <main className="p-4 max-w-lg mx-auto">
         {/* URL入力（パラメータがない場合） */}
-        {!url && (
+        {!productInfo && !loading && (
           <div className="bg-white rounded-lg shadow p-4 mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               商品URL
@@ -223,11 +218,16 @@ function AddPageContent() {
               type="url"
               placeholder="https://www.amazon.co.jp/..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-              onChange={(e) => setUrl(e.target.value)}
+              value={draftUrl}
+              onChange={(e) => setDraftUrl(e.target.value)}
             />
             <button
-              onClick={fetchProductInfo}
-              disabled={!url || loading}
+              onClick={() => {
+                setSafeUrl(sanitizeUrlForLink(draftUrl));
+                if (draftUrl === url) void fetchProductInfo();
+                else setUrl(draftUrl);
+              }}
+              disabled={!draftUrl || loading}
               className="mt-3 w-full py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
             >
               商品情報を取得
