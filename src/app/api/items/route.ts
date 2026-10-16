@@ -1,9 +1,13 @@
+import { randomUUID } from 'node:crypto';
+import { assertGuestCapacity } from '@/lib/guest';
+import { assertOwnedRelations } from '@/lib/api-access';
+import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 
-export async function GET() {
+async function handleGET() {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -41,7 +45,7 @@ export async function GET() {
   return NextResponse.json(items);
 }
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -65,40 +69,46 @@ export async function POST(request: NextRequest) {
 
   const db = getDb();
 
+  assertOwnedRelations(db, user.id, body);
+
   // 手動追加モード
   if (manual) {
     if (!manualName) {
       return NextResponse.json({ error: '商品名は必須です' }, { status: 400 });
     }
 
-    const stmt = db.prepare(`
-      INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, priority, planned_purchase_date, comparison_group_id, category_id, notes, quantity)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    return db.transaction(() => {
+      assertGuestCapacity(user, 'items', db);
+      if (manualPrice) assertGuestCapacity(user, 'price_history', db);
+      const stmt = db.prepare(`
+        INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, priority, planned_purchase_date, comparison_group_id, category_id, notes, quantity)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
 
-    const manualUrl = url || `manual://${Date.now()}`; // URLなしの場合はダミーURL
-    const result = stmt.run(
-      user.id,
-      manualName,
-      manualUrl,
-      manualImageUrl || null,
-      manualPrice || null,
-      manualPrice || null,
-      'other',
-      priority,
-      planned_purchase_date || null,
-      comparison_group_id || null,
-      category_id || null,
-      notes || null,
-      quantity
-    );
+      const manualUrl = url || `manual://${randomUUID()}`; // URLなしの場合はダミーURL
+      const result = stmt.run(
+        user.id,
+        manualName,
+        manualUrl,
+        manualImageUrl || null,
+        manualPrice || null,
+        manualPrice || null,
+        'other',
+        priority,
+        planned_purchase_date || null,
+        comparison_group_id || null,
+        category_id || null,
+        notes || null,
+        quantity
+      );
 
-    if (manualPrice) {
-      db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(result.lastInsertRowid, manualPrice);
-    }
+      if (manualPrice) {
+        db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(result.lastInsertRowid, manualPrice);
+      }
 
-    const item = db.prepare('SELECT * FROM items WHERE id = ?').get(result.lastInsertRowid);
-    return NextResponse.json(item, { status: 201 });
+      const item = db.prepare('SELECT * FROM items WHERE id = ?').get(result.lastInsertRowid);
+      return NextResponse.json(item, { status: 201 });
+    }).immediate();
   }
 
   // URLベースの追加（通常モード）
@@ -148,3 +158,6 @@ export async function POST(request: NextRequest) {
   const response = { ...item, scrapeNote: scraped.note || null };
   return NextResponse.json(response, { status: 201 });
 }
+
+export const GET = withAccess(handleGET, true);
+export const POST = withAccess(handlePOST, true);

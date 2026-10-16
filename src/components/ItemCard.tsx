@@ -1,10 +1,13 @@
 'use client';
 
+import { apiFetch } from '@/lib/api-fetch';
+
 import { useState, useRef } from 'react';
 import { Item, Category, ComparisonGroup } from '@/types';
 import { Trash2, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Calendar, Flag, Upload, ImageIcon, Clock, AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { useAuth } from './AuthProvider';
 import PriceChart from './PriceChart';
 
 // SQLite の datetime('now') 形式（UTC、'YYYY-MM-DD HH:MM:SS'）を UTC として Date にパースする。
@@ -27,6 +30,7 @@ interface ItemCardProps {
 }
 
 export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false }: ItemCardProps) {
+  const { isGuest } = useAuth();
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -54,7 +58,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await fetch(`/api/items/${item.id}/refresh`, { method: 'POST' });
+      await apiFetch(`/api/items/${item.id}/refresh`, { method: 'POST' });
       onUpdate();
     } finally {
       setRefreshing(false);
@@ -70,7 +74,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch('/api/upload', {
+      const res = await apiFetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
@@ -90,7 +94,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     setSaving(true);
     setSaveError('');
     try {
-      const res = await fetch(`/api/items/${item.id}`, {
+      const res = await apiFetch(`/api/items/${item.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -99,7 +103,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           priority: editData.priority,
           planned_purchase_date: editData.planned_purchase_date || null,
           notes: editData.notes || null,
-          target_price: editData.target_price || null,
+          target_price: editData.target_price ? Number(editData.target_price) : null,
           target_currency: editData.target_currency,
           category_id: editData.category_id ? Number(editData.category_id) : null,
           comparison_group_id: editData.comparison_group_id ? Number(editData.comparison_group_id) : null,
@@ -133,13 +137,13 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     setRefreshingUrl(true);
     try {
       // まずURLを更新
-      await fetch(`/api/items/${item.id}`, {
+      await apiFetch(`/api/items/${item.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: editData.url }),
       });
       // その後再取得
-      await fetch(`/api/items/${item.id}/refresh`, { method: 'POST' });
+      await apiFetch(`/api/items/${item.id}/refresh`, { method: 'POST' });
       onUpdate();
       setEditing(false);
     } finally {
@@ -148,7 +152,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   };
 
   const handlePurchased = async () => {
-    await fetch(`/api/items/${item.id}`, {
+    await apiFetch(`/api/items/${item.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -234,16 +238,17 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   {['', '最高', '高', '普通', '低', '最低'][item.priority]}
                 </div>
               </div>
+              {Boolean(item.is_demo_sample) && <span className="text-xs text-amber-700 dark:text-amber-300">デモ商品・参考価格</span>}
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">{item.name}</h3>
             </div>
-            <a
+            {/^https?:\/\//i.test(item.url) && <a
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-400 dark:text-gray-500 hover:text-blue-500 ml-2"
             >
               <ExternalLink size={18} />
-            </a>
+            </a>}
           </div>
 
           <div className="mt-2 flex items-baseline gap-2 flex-wrap">
@@ -314,7 +319,9 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
         <div className="flex gap-2">
           <button
             onClick={handleRefresh}
-            disabled={refreshing}
+            disabled={refreshing || isGuest}
+            aria-label="価格を更新"
+            title={isGuest ? "価格更新はログイン後に利用できます" : "価格を更新"}
             className="text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500 disabled:opacity-50"
           >
             <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
@@ -501,7 +508,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             <details className="border-l-2 border-orange-500 pl-3 group">
               <summary className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                メモ・画像
+                {isGuest ? 'メモ（画像追加はログイン後）' : 'メモ・画像'}
               </summary>
               <div className="mt-2 space-y-2">
                 <textarea
@@ -514,6 +521,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                 <div className="flex gap-2">
                   <input
                     type="text"
+                    disabled={isGuest}
                     value={editData.image_url}
                     onChange={(e) => setEditData({ ...editData, image_url: e.target.value })}
                     placeholder="画像URL"
@@ -521,6 +529,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   />
                   <input
                     type="file"
+                    disabled={isGuest}
                     ref={fileInputRef}
                     onChange={handleImageUpload}
                     accept="image/*"
@@ -529,7 +538,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
+                    disabled={uploading || isGuest}
                     className="px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-600 disabled:opacity-50"
                     title="画像アップロード"
                   >

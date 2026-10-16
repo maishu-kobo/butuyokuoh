@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch } from '@/lib/api-fetch';
+
 import { useEffect, useState } from 'react';
 import { Item } from '@/types';
 import { Trash2, Undo2, X, ExternalLink } from 'lucide-react';
@@ -15,7 +17,7 @@ export default function TrashView() {
 
   const fetchItems = async () => {
     try {
-      const res = await fetch('/api/trash');
+      const res = await apiFetch('/api/trash');
       if (!res.ok) throw new Error(`Failed to fetch trash: ${res.status}`);
       const data = await res.json();
       // 非配列レスポンス（エラーJSON等）を配列stateに入れない
@@ -42,19 +44,19 @@ export default function TrashView() {
   };
 
   const handleRestore = async (id: number) => {
-    await fetch(`/api/trash/${id}`, { method: 'POST' });
+    await apiFetch(`/api/trash/${id}`, { method: 'POST' });
     fetchItems();
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm('完全に削除しますか？元に戻せません。')) return;
-    await fetch(`/api/trash/${id}`, { method: 'DELETE' });
+    await apiFetch(`/api/trash/${id}`, { method: 'DELETE' });
     fetchItems();
   };
 
   const handleEmptyTrash = async () => {
     if (!confirm('ゴミ箱を空にしますか？全てのアイテムが完全に削除されます。')) return;
-    await fetch('/api/trash', { method: 'DELETE' });
+    await apiFetch('/api/trash', { method: 'DELETE' });
     fetchItems();
   };
 

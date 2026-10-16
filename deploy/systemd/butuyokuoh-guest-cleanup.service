@@ -1,0 +1,12 @@
+[Unit]
+Description=Delete expired Butuyokuoh guest sessions and data
+
+[Service]
+Type=oneshot
+User=exedev
+WorkingDirectory=/home/exedev/butuyokuoh
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run cleanup-guests
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=300

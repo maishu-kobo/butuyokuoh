@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch } from '@/lib/api-fetch';
+
 import { useState, useEffect } from 'react';
 import { X, Upload, AlertCircle, CheckCircle, Loader2, Info, ExternalLink } from 'lucide-react';
 
@@ -56,7 +58,7 @@ export default function ImportWishlistModal({ isOpen, onClose, onImported }: Imp
     setResult(null);
 
     try {
-      const res = await fetch('/api/import-wishlist', {
+      const res = await apiFetch('/api/import-wishlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
