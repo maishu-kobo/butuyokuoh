@@ -1,8 +1,9 @@
+import { withAccess } from '@/lib/api-access';
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 
-export async function GET() {
+async function handleGET() {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -53,3 +54,5 @@ export async function GET() {
     },
   });
 }
+
+export const GET = withAccess(handleGET, true);

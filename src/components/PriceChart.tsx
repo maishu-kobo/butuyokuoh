@@ -1,5 +1,8 @@
 'use client';
 
+import { useAuth } from './AuthProvider';
+import { apiFetch } from '@/lib/api-fetch';
+
 import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { format } from 'date-fns';
@@ -52,6 +55,7 @@ function isRakutenUrl(url: string | undefined): boolean {
 }
 
 export default function PriceChart({ itemId, url, source, targetPrice, targetCurrency }: PriceChartProps) {
+  const { isGuest } = useAuth();
   const [history, setHistory] = useState<PriceHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [showKeepa, setShowKeepa] = useState(true);
@@ -64,15 +68,15 @@ export default function PriceChart({ itemId, url, source, targetPrice, targetCur
   const targetSymbol = targetCurrency === 'USD' ? '$' : '¥';
 
   // Amazonの場合、ASINを抽出
-  const isAmazon = source === 'amazon' || isAmazonUrl(url);
-  const isRakuten = source === 'rakuten' || isRakutenUrl(url);
+  const isAmazon = !isGuest && (source === 'amazon' || isAmazonUrl(url));
+  const isRakuten = !isGuest && (source === 'rakuten' || isRakutenUrl(url));
   const asin = url ? extractAsin(url) : null;
   
   // Amazon・楽天はサーバー側での価格取得ができない
   const cannotAutoCollect = isAmazon || isRakuten;
 
   useEffect(() => {
-    fetch(`/api/items/${itemId}/price-history`)
+    apiFetch(`/api/items/${itemId}/price-history`)
       .then((res) => res.json())
       .then((data) => {
         setHistory(data);
@@ -128,7 +132,7 @@ export default function PriceChart({ itemId, url, source, targetPrice, targetCur
             サーバーからの価格収集ができません
           </p>
         ) : (
-          <p className="text-xs mt-1">登録後、6時間ごとに価格を自動収集します</p>
+          <p className="text-xs mt-1">{isGuest ? 'ゲスト体験では、手動で価格を変更すると履歴が記録されます' : '登録後、6時間ごとに価格を自動収集します'}</p>
         )}
         {isAmazon && asin && (
           <button

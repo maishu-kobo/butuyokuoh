@@ -1,8 +1,11 @@
+import { assertGuestCapacity } from '@/lib/guest';
+import { assertOwnedRelations } from '@/lib/api-access';
+import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 
-export async function GET(
+async function handleGET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -22,7 +25,7 @@ export async function GET(
   return NextResponse.json(item);
 }
 
-export async function PATCH(
+async function handlePATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -40,6 +43,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
 
+  assertOwnedRelations(db, user.id, body);
   // 価格が変更された場合、価格履歴に記録
   const oldPrice = item.current_price;
   const newPrice = body.current_price;
@@ -69,18 +73,21 @@ export async function PATCH(
   updates.push("updated_at = datetime('now')");
   values.push(id);
 
-  db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  return db.transaction(() => {
+    if (priceChanged) assertGuestCapacity(user, 'price_history', db);
+    db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...values);
 
-  // 価格が変更された場合、価格履歴に記録
-  if (priceChanged) {
-    db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(id, newPrice);
-  }
+    // 価格が変更された場合、価格履歴に記録
+    if (priceChanged) {
+      db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(id, newPrice);
+    }
 
-  const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
-  return NextResponse.json(updated);
+    const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
+    return NextResponse.json(updated);
+  }).immediate();
 }
 
-export async function DELETE(
+async function handleDELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -101,3 +108,7 @@ export async function DELETE(
   db.prepare("UPDATE items SET deleted_at = datetime('now') WHERE id = ?").run(id);
   return NextResponse.json({ success: true });
 }
+
+export const GET = withAccess(handleGET, true);
+export const PATCH = withAccess(handlePATCH, true);
+export const DELETE = withAccess(handleDELETE, true);

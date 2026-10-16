@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch } from '@/lib/api-fetch';
+
 import { useEffect, useState } from 'react';
 import { Item } from '@/types';
 import { Calendar, Wallet, Check, Square, CheckSquare, Calculator } from 'lucide-react';
@@ -20,7 +22,7 @@ export default function BudgetView() {
 
   const fetchBudget = async () => {
     try {
-      const res = await fetch('/api/budget');
+      const res = await apiFetch('/api/budget');
       if (!res.ok) throw new Error(`Failed to fetch budget: ${res.status}`);
       const data = await res.json();
       // 月キーのオブジェクト以外（エラーJSON等）を弾く

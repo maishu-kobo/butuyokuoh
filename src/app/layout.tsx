@@ -4,6 +4,8 @@ import { AuthProvider } from "@/components/AuthProvider";
 import { SessionProvider } from "next-auth/react";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
+import GuestBanner from "@/components/GuestBanner";
+
 export const metadata: Metadata = {
   title: "物欲王 - すべてのほしいものを一つに",
   description: "複数のECサイトのほしいものリストを一元管理",
@@ -36,6 +38,7 @@ export default function RootLayout({
         <SessionProvider>
           <AuthProvider>
             <ThemeProvider>
+              <GuestBanner />
               {children}
             </ThemeProvider>
           </AuthProvider>

@@ -1,3 +1,4 @@
+import { getDb } from './db';
 import { Item } from '@/types';
 import { isAllowedWebhookUrl } from '@/lib/url-validator';
 
@@ -24,6 +25,7 @@ export async function sendSlackNotification(
   webhookUrl: string,
   payload: NotificationPayload
 ): Promise<boolean> {
+  if (!getDb().prepare("SELECT i.id FROM items i JOIN users u ON u.id = i.user_id WHERE i.id = ? AND u.account_type = 'member'").get(payload.item.id)) return false;
   // 送信前検証（多重防御 / SSRF対策）
   // PUT検証前に保存された不正URLや別経路で混入した不正URLにもfetchしない。
   if (!isAllowedWebhookUrl(webhookUrl, 'slack')) {
@@ -98,6 +100,7 @@ export async function sendDiscordNotification(
   webhookUrl: string,
   payload: NotificationPayload
 ): Promise<boolean> {
+  if (!getDb().prepare("SELECT i.id FROM items i JOIN users u ON u.id = i.user_id WHERE i.id = ? AND u.account_type = 'member'").get(payload.item.id)) return false;
   // 送信前検証（多重防御 / SSRF対策）
   // PUT検証前に保存された不正URLや別経路で混入した不正URLにもfetchしない。
   if (!isAllowedWebhookUrl(webhookUrl, 'discord')) {
