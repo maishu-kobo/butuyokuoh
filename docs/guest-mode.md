@@ -35,7 +35,8 @@ CookieはHttpOnly・SameSite=Lax・Path=/・ホスト限定、本番ではSecure
 ゲストによる外部画像の手動指定を拒否し、商品ページから取得した画像のみ保存する。画像アップロード・自動価格取得ジョブ・通知は通常ユーザーに限定する。
 
 URL取得は公開HTTP(S)の標準ポートに限定する。接続前に全DNS結果を検証して公開IPに固定し、転送先も毎回検証する。プライベートIP・ループバック・リンクローカル・予約アドレス・資格情報付きURLを拒否する。
-1回につき最大12秒・HTML 2MiB・転送3回まで。ブラウザ起動・JavaScript実行・再試行・画像本体の取得は行わない。JavaScript描画やサイト側のアクセス制限により取得できない商品は手動で追加する。
+1回につき最大12秒・転送3回まで。HTMLは通常2MiB、Amazonの正規商品ページのみ8MiBを上限とし、Amazonで上限に達した場合は読み取り済みの完全な商品情報から登録する。ブラウザ起動・JavaScript実行・再試行・画像本体の取得は行わない。Amazonの短縮リンクも転送先を検証して対応する。商品タイトル・主画像・購入価格を抽出し、おすすめ商品や参考価格を価格として取り込まない。価格が掲載されていない場合も商品名・画像で保存し、価格を編集できる旨を案内する。
+JavaScript描画やサイト側のアクセス制限で商品情報を取得できない場合は、再試行と「商品名を入力して追加」を案内する。手動追加への切替時も入力したURL・メモ・分類を維持する。
 URL追加・プレビュー・個別再取得で回数制限を共有する。取得後もセッションと保存上限を検証し、失敗時は既存の商品情報を保持して画面に理由を表示する。
 
 ## 運用設定
@@ -104,8 +105,8 @@ npx playwright install chromium
 npm run test:e2e
 npm run build
 E2E_PRODUCTION=1 npm run test:e2e
-# 任意: PITAKAの実ページでURL追加・手動商品の再取得・画像保持・上限を検証
-E2E_PRODUCTION=1 E2E_LIVE_SCRAPE=1 npm run test:e2e
+# 任意: PITAKAとAmazonの実URLで登録・再取得・画像表示・上限を検証
+E2E_PRODUCTION=1 E2E_LIVE_SCRAPE=1 E2E_LIVE_AMAZON=1 npm run test:e2e
 E2E_PRODUCTION=1 E2E_GUEST_DISABLED=1 npm run test:e2e
 ```
 
