@@ -1,5 +1,6 @@
 import { extractAmazonProduct } from './amazon-product';
 import { parseProductHtml } from './product-html';
+import { readHtmlResponse } from './html-encoding';
 import puppeteer from 'puppeteer';
 import { validateAndSanitizeUrl, sanitizeGenericUrl } from './url-validator';
 
@@ -405,7 +406,7 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
         'Cookie': 'i18n-prefs=JPY; lc-acbjp=ja_JP',
       },
     });
-    const html = await response.text();
+    const html = await readHtmlResponse(response);
 
     // Amazonのボット対策ページやエラーページを検出
     if (isAmazonBlockedHtml(html)) {
@@ -501,20 +502,24 @@ async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
       },
     });
-    const html = await response.text();
+    const html = await readHtmlResponse(response);
+
+    // Share the structured price / OG image / title fallback used by guests.
+    // Modern Rakuten item_name spans can contain nested markup.
+    const metadata = parseProductHtml(html, sanitizedUrl);
 
     // 商品名
     const nameMatch = html.match(/<span[^>]*class="[^"]*item_name[^"]*"[^>]*>([^<]+)</) ||
                       html.match(/<h1[^>]*>([^<]+)</);
-    const name = nameMatch ? nameMatch[1].trim() : '不明な商品';
+    const name = nameMatch ? nameMatch[1].trim() : metadata.name;
 
     // 価格
     const priceMatch = html.match(/([\d,]+)円/) || html.match(/¥([\d,]+)/);
-    const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null;
+    const price = metadata.price ?? (priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null);
 
     // 画像
     const imageMatch = html.match(/"image":\s*"([^"]+)"/) || html.match(/<img[^>]*class="[^"]*main[^"]*"[^>]*src="([^"]+)"/);
-    const imageUrl = imageMatch ? imageMatch[1] : null;
+    const imageUrl = metadata.imageUrl ?? (imageMatch ? imageMatch[1] : null);
 
     return {
       name,
@@ -563,7 +568,7 @@ async function scrapeGeneric(sanitizedUrl: string): Promise<ScrapedItem> {
         'Cookie': 'localization=JP; cart_currency=JPY',
       },
     });
-    const html = await response.text();
+    const html = await readHtmlResponse(response);
 
     return parseProductHtml(html, sanitizedUrl);
   } catch (error) {

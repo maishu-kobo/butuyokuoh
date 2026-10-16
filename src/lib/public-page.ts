@@ -4,6 +4,7 @@ import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
 import ipaddr from 'ipaddr.js';
 import { isAmazonProductPage } from './amazon-product';
+import { decodeHtml } from './html-encoding';
 
 export class PublicPageError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -83,12 +84,12 @@ export const requestPage = (url: URL, address: { address: string; family: number
             // Reviews/recommendations can be enormous. Retain the bounded
             // product section instead of discarding already fetched metadata.
             chunks.push(chunk.subarray(0, Math.max(0, remaining)));
-            resolve({ status, html: Buffer.concat(chunks).toString('utf8'), truncated: true });
+            resolve({ status, html: decodeHtml(Buffer.concat(chunks), response.headers['content-type']), truncated: true });
           } else reject(new PublicPageError(502, PRODUCT_FETCH_HELP));
           response.destroy();
         } else chunks.push(chunk);
       });
-      response.on('end', () => resolve({ status, html: Buffer.concat(chunks).toString('utf8') }));
+      response.on('end', () => resolve({ status, html: decodeHtml(Buffer.concat(chunks), response.headers['content-type']) }));
     });
     req.on('error', reject);
     req.end();
