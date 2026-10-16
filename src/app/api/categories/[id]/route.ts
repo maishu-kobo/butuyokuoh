@@ -1,8 +1,9 @@
+import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 
-export async function PUT(
+async function handlePUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -29,13 +30,13 @@ export async function PUT(
         icon = COALESCE(?, icon),
         sort_order = COALESCE(?, sort_order)
     WHERE id = ? AND user_id = ?
-  `).run(name, color, icon, sort_order, id, user.id);
+  `).run(name ?? null, color ?? null, icon ?? null, sort_order ?? null, id, user.id);
 
   const updated = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
   return NextResponse.json(updated);
 }
 
-export async function DELETE(
+async function handleDELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -54,10 +55,13 @@ export async function DELETE(
   }
 
   // アイテムのcategory_idをnullに
-  db.prepare('UPDATE items SET category_id = NULL WHERE category_id = ?').run(id);
+  db.prepare('UPDATE items SET category_id = NULL WHERE category_id = ? AND user_id = ?').run(id, user.id);
 
   // カテゴリ削除
   db.prepare('DELETE FROM categories WHERE id = ? AND user_id = ?').run(id, user.id);
 
   return NextResponse.json({ success: true });
 }
+
+export const PUT = withAccess(handlePUT, true);
+export const DELETE = withAccess(handleDELETE, true);

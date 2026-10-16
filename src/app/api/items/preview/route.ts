@@ -1,8 +1,9 @@
+import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   try {
     // 認証チェック
     const user = await getCurrentUser();
@@ -50,3 +51,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withAccess(handlePOST, false);

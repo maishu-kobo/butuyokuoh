@@ -1,3 +1,4 @@
+import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { scrapeUrl, deriveScrapeOutcome, ScrapedItem } from '@/lib/scraper';
@@ -9,7 +10,7 @@ interface DbItem {
   current_price: number | null;
 }
 
-export async function POST(
+async function handlePOST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -92,3 +93,5 @@ export async function POST(
   const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as Record<string, unknown>;
   return NextResponse.json({ ...updated, note: scraped.note });
 }
+
+export const POST = withAccess(handlePOST, false);

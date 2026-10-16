@@ -2,19 +2,24 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 
-const dbPath = path.join(process.cwd(), 'data', 'butuyokuoh.db');
+const dbPath = process.env.BUTUYOKUOH_DB_PATH || path.join(process.cwd(), 'data', 'butuyokuoh.db');
 
 let db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (!db) {
-    // data/ ディレクトリが存在しない新規環境でも DB を初期化できるように自動作成する
-    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-    db = new Database(dbPath);
-    db.pragma('journal_mode = WAL');
-    initDb(db);
+    db = openDatabase(dbPath);
   }
   return db;
+}
+
+export function openDatabase(filename: string): Database.Database {
+  fs.mkdirSync(path.dirname(filename), { recursive: true });
+  const connection = new Database(filename);
+  connection.pragma('journal_mode = WAL');
+  connection.pragma('busy_timeout = 5000');
+  connection.transaction(() => initDb(connection)).immediate();
+  return connection;
 }
 
 function initDb(db: Database.Database) {
@@ -130,6 +135,22 @@ function initDb(db: Database.Database) {
 // CREATE TABLE IF NOT EXISTS は既存テーブルを変更しないため、
 // 後から追加されたカラムはここで ALTER TABLE により追従させる
 function migrateDb(db: Database.Database) {
+  addColumnIfNotExists(db, 'users', 'account_type', "TEXT NOT NULL DEFAULT 'member'");
+  addColumnIfNotExists(db, 'items', 'is_demo_sample', 'INTEGER NOT NULL DEFAULT 0');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS guest_sessions (
+      token_hash TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_guest_sessions_expires ON guest_sessions(expires_at);
+    CREATE TABLE IF NOT EXISTS guest_rate_limits (
+      bucket TEXT PRIMARY KEY,
+      count INTEGER NOT NULL,
+      resets_at INTEGER NOT NULL
+    );
+  `);
   addColumnIfNotExists(db, 'items', 'quantity', 'INTEGER NOT NULL DEFAULT 1');
   addColumnIfNotExists(db, 'items', 'sort_order', 'INTEGER NOT NULL DEFAULT 0');
   // スクレイプ結果の記録用カラム

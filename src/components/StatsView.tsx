@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch } from '@/lib/api-fetch';
+
 import { useEffect, useState } from 'react';
 import { BarChart3, PieChart, TrendingUp, Package, ShoppingCart } from 'lucide-react';
 
@@ -37,7 +39,7 @@ export default function StatsView() {
 
   useEffect(() => {
     const fetchStats = async () => {
-      const res = await fetch('/api/stats');
+      const res = await apiFetch('/api/stats');
       const data = await res.json();
       setStats(data);
       setLoading(false);

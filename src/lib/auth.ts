@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 import { getDb } from './db';
 import { auth } from '@/auth';
+import { findGuest, guestEnabled, GUEST_COOKIE, type GuestUser } from './guest';
 
 const TOKEN_COOKIE_NAME = 'butuyokuoh_token';
 
@@ -26,6 +27,7 @@ function getJwtSecret(): string {
 
 export interface User {
   id: number;
+  account_type: 'member';
   email: string;
   name: string | null;
   created_at: string;
@@ -45,6 +47,7 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 }
 
 export function generateToken(user: User): string {
+  if (user.account_type !== 'member') throw new Error('Member account required');
   return jwt.sign(
     { userId: user.id, email: user.email } as JWTPayload,
     getJwtSecret(),
@@ -63,32 +66,30 @@ export function verifyToken(token: string): JWTPayload | null {
   }
 }
 
-export async function getCurrentUser(): Promise<User | null> {
-  // First check NextAuth session
-  try {
-    const session = await auth();
-    if (session?.user?.id) {
-      const db = getDb();
-      const user = db.prepare('SELECT id, email, name, created_at FROM users WHERE id = ?').get(Number(session.user.id)) as User | undefined;
-      if (user) return user;
-    }
-  } catch (e) {
-    // NextAuth not available, continue to legacy auth
-  }
+export type CurrentUser = User | GuestUser;
 
-  // Fallback to legacy cookie-based auth
+export async function getCurrentUser(): Promise<CurrentUser | null> {
+  if (process.env.NODE_ENV === 'production' && !process.env.AUTH_SECRET && !process.env.NEXTAUTH_SECRET) {
+    throw new Error('AUTH_SECRET or NEXTAUTH_SECRET is required in production');
+  }
+  const db = getDb();
+  const member = (id: number) => db.prepare(
+    "SELECT id, email, name, created_at, account_type FROM users WHERE id = ? AND account_type = 'member'"
+  ).get(id) as User | undefined;
+  // Configuration failures must not silently turn a member into a guest.
+  const session = await auth();
+  if (session?.user?.id) {
+    const user = member(Number(session.user.id));
+    if (user) return user;
+  }
   const cookieStore = await cookies();
   const token = cookieStore.get(TOKEN_COOKIE_NAME)?.value;
-  
-  if (!token) return null;
-  
-  const payload = verifyToken(token);
-  if (!payload) return null;
-  
-  const db = getDb();
-  const user = db.prepare('SELECT id, email, name, created_at FROM users WHERE id = ?').get(payload.userId) as User | undefined;
-  
-  return user || null;
+  if (token) {
+    const payload = verifyToken(token);
+    const user = payload && member(payload.userId);
+    if (user) return user;
+  }
+  return guestEnabled() ? findGuest(cookieStore.get(GUEST_COOKIE)?.value, db) : null;
 }
 
 export async function setAuthCookie(token: string): Promise<void> {
@@ -109,5 +110,7 @@ export async function clearAuthCookie(): Promise<void> {
 
 export function getUserIdFromToken(token: string): number | null {
   const payload = verifyToken(token);
-  return payload?.userId || null;
+  if (!payload) return null;
+  const member = getDb().prepare("SELECT id FROM users WHERE id = ? AND account_type = 'member'").get(payload.userId);
+  return member ? payload.userId : null;
 }

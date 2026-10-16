@@ -1,8 +1,10 @@
+import { assertGuestCapacity } from '@/lib/guest';
+import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 
-export async function GET() {
+async function handleGET() {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -21,7 +23,7 @@ export async function GET() {
   return NextResponse.json(categories);
 }
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -35,21 +37,27 @@ export async function POST(request: NextRequest) {
 
   const db = getDb();
 
-  // 重複チェック
-  const existing = db.prepare('SELECT id FROM categories WHERE user_id = ? AND name = ?').get(user.id, name.trim());
-  if (existing) {
-    return NextResponse.json({ error: '同じ名前のカテゴリが既に存在します' }, { status: 400 });
-  }
+  return db.transaction(() => {
+    assertGuestCapacity(user, 'categories', db);
+    // 重複チェック
+    const existing = db.prepare('SELECT id FROM categories WHERE user_id = ? AND name = ?').get(user.id, name.trim());
+    if (existing) {
+      return NextResponse.json({ error: '同じ名前のカテゴリが既に存在します' }, { status: 400 });
+    }
 
-  // sort_orderを取得
-  const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM categories WHERE user_id = ?').get(user.id) as { max: number | null };
-  const sortOrder = (maxOrder?.max ?? -1) + 1;
+    // sort_orderを取得
+    const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM categories WHERE user_id = ?').get(user.id) as { max: number | null };
+    const sortOrder = (maxOrder?.max ?? -1) + 1;
 
-  const result = db.prepare(`
-    INSERT INTO categories (user_id, name, color, icon, sort_order)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(user.id, name.trim(), color, icon || null, sortOrder);
+    const result = db.prepare(`
+      INSERT INTO categories (user_id, name, color, icon, sort_order)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(user.id, name.trim(), color, icon || null, sortOrder);
 
-  const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(result.lastInsertRowid);
-  return NextResponse.json(category, { status: 201 });
+    const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(result.lastInsertRowid);
+    return NextResponse.json(category, { status: 201 });
+  }).immediate();
 }
+
+export const GET = withAccess(handleGET, true);
+export const POST = withAccess(handlePOST, true);

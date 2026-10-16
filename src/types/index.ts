@@ -1,4 +1,5 @@
 export interface Item {
+  is_demo_sample?: number;
   id: number;
   name: string;
   url: string;

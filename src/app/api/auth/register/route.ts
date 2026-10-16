@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!isValidEmail(normalizedEmail)) {
+    if (!isValidEmail(normalizedEmail) || normalizedEmail.endsWith('@guest.invalid')) {
       return NextResponse.json(
         { error: 'メールアドレスの形式が正しくありません' },
         { status: 400 }
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     ).run(normalizedEmail, passwordHash, typeof name === 'string' && name ? name : null);
 
     const user = db.prepare(
-      'SELECT id, email, name, created_at FROM users WHERE id = ?'
+      'SELECT id, email, name, created_at, account_type FROM users WHERE id = ?'
     ).get(result.lastInsertRowid) as User;
 
     const token = generateToken(user);

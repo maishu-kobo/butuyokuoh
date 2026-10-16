@@ -1,8 +1,11 @@
 'use client';
 
+import { apiFetch } from '@/lib/api-fetch';
+
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
+import AddItemForm from '@/components/AddItemForm';
 import { Category } from '@/types';
 import { Crown, ArrowLeft, Loader2, Check, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
@@ -18,7 +21,7 @@ interface ProductInfo {
 function AddPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user, isGuest, loading: authLoading } = useAuth();
 
   const [url, setUrl] = useState('');
   const [safeUrl, setSafeUrl] = useState<string | null>(null);
@@ -73,7 +76,7 @@ function AddPageContent() {
   // カテゴリ取得
   useEffect(() => {
     if (user) {
-      fetch('/api/categories')
+      apiFetch('/api/categories')
         .then(res => res.json())
         .then(data => setCategories(data))
         .catch(() => {});
@@ -82,7 +85,7 @@ function AddPageContent() {
 
   // URLがあれば商品情報を取得
   useEffect(() => {
-    if (url && user && !productInfo) {
+    if (url && user && !isGuest && !productInfo) {
       fetchProductInfo();
     }
   }, [url, user]);
@@ -94,7 +97,7 @@ function AddPageContent() {
     setError('');
 
     try {
-      const res = await fetch('/api/items/preview', {
+      const res = await apiFetch('/api/items/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
@@ -121,7 +124,7 @@ function AddPageContent() {
     setError('');
 
     try {
-      const res = await fetch('/api/items', {
+      const res = await apiFetch('/api/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -176,6 +179,12 @@ function AddPageContent() {
       </div>
     );
   }
+
+  if (isGuest) return <main className="p-4 max-w-lg mx-auto space-y-4">
+    <Link href="/">← リストへ戻る</Link>
+    <p>ゲスト体験では商品を手動で追加できます。URLからの取得はログイン後に利用できます。</p>
+    <AddItemForm categories={categories} comparisonGroups={[]} onAdd={() => router.push('/')} />
+  </main>;
 
   // 成功画面
   if (success) {

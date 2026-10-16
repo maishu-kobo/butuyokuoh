@@ -256,3 +256,8 @@ dmesg | grep -i oom
 cd /home/exedev/butuyokuoh
 npm run check-prices
 ```
+
+## ゲスト体験
+
+ゲストモードの有効化、保存期限・件数上限、毎時の清掃タイマー、停止手順は [guest-mode.md](guest-mode.md) を参照する。
+初期状態は無効。本番環境で匿名アクセス・Google OAuth・Cookie・清掃の動作を確認したうえで有効にする。

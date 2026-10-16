@@ -1,5 +1,8 @@
 'use client';
 
+import { apiFetch } from '@/lib/api-fetch';
+
+import { useAuth } from './AuthProvider';
 import { useState, useRef } from 'react';
 import { Plus, X, Upload, Link, Edit3 } from 'lucide-react';
 import { ComparisonGroup, Category } from '@/types';
@@ -11,8 +14,9 @@ interface AddItemFormProps {
 }
 
 export default function AddItemForm({ onAdd, comparisonGroups, categories }: AddItemFormProps) {
+  const { isGuest } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const [isManualMode, setIsManualMode] = useState(false);
+  const [isManualMode, setIsManualMode] = useState(isGuest);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successNote, setSuccessNote] = useState(''); // 追加成功時の注意メッセージ
@@ -46,7 +50,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
       price: '',
       image_url: '',
     });
-    setIsManualMode(false);
+    setIsManualMode(isGuest);
     setError('');
   };
 
@@ -61,7 +65,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
       const uploadData = new FormData();
       uploadData.append('file', file);
 
-      const res = await fetch('/api/upload', {
+      const res = await apiFetch('/api/upload', {
         method: 'POST',
         body: uploadData,
       });
@@ -110,7 +114,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
             quantity: Number(formData.quantity) || 1,
           };
 
-      const res = await fetch('/api/items', {
+      const res = await apiFetch('/api/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -184,6 +188,8 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
       <div className="mb-4 flex items-center justify-end">
         <button
           type="button"
+          disabled={isGuest}
+          title={isGuest ? "URLからの取得はログイン後に利用できます" : undefined}
           onClick={() => setIsManualMode(!isManualMode)}
           className="text-xs text-gray- dark:text-gray-400 hover:text-gray- dark:text-gray-600 flex items-center gap-1"
         >
@@ -237,7 +243,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
             </div>
 
             {/* 画像アップロード */}
-            <div>
+            {!isGuest && <div>
               <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">画像</label>
               <div className="flex gap-2">
                 <input
@@ -269,7 +275,8 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
                   <img src={formData.image_url} alt="プレビュー" className="h-16 w-16 object-cover rounded" />
                 </div>
               )}
-            </div>
+            </div>}
+            {isGuest && <p className="text-sm text-gray-500">画像の追加・URLからの取得はログイン後に利用できます。</p>}
           </>
         ) : (
           /* URLモード（通常） */

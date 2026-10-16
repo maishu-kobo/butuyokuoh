@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch } from '@/lib/api-fetch';
+
 import { useEffect, useState } from 'react';
 import { Item, ComparisonGroup, Category } from '@/types';
 import SortableItemCard from '@/components/SortableItemCard';
@@ -22,7 +24,7 @@ type Tab = 'list' | 'budget' | 'purchased' | 'stats' | 'trash';
 const TABS: Tab[] = ['list', 'budget', 'purchased', 'stats', 'trash'];
 
 export default function Home() {
-  const { user, loading: authLoading, logout } = useAuth();
+  const { user, isGuest, loading: authLoading, logout } = useAuth();
   const [items, setItems] = useState<Item[]>([]);
   const [groups, setGroups] = useState<ComparisonGroup[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -43,7 +45,7 @@ export default function Home() {
 
   const fetchItems = async () => {
     try {
-      const res = await fetch('/api/items');
+      const res = await apiFetch('/api/items');
       if (!res.ok) throw new Error(`Failed to fetch items: ${res.status}`);
       const data = await res.json();
       // 非配列レスポンス（エラーJSON等）を配列stateに入れない
@@ -61,7 +63,7 @@ export default function Home() {
   // 補助データ: 失敗しても空配列のままにしてクラッシュを防ぐ（エラーUIは出さない）
   const fetchGroups = async () => {
     try {
-      const res = await fetch('/api/comparison-groups');
+      const res = await apiFetch('/api/comparison-groups');
       if (!res.ok) return;
       const data = await res.json();
       if (Array.isArray(data)) setGroups(data);
@@ -72,7 +74,7 @@ export default function Home() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch('/api/categories');
+      const res = await apiFetch('/api/categories');
       if (!res.ok) return;
       const data = await res.json();
       if (Array.isArray(data)) setCategories(data);
@@ -99,7 +101,7 @@ export default function Home() {
   }, [user]);
 
   const handleDelete = async (id: number) => {
-    await fetch(`/api/items/${id}`, { method: 'DELETE' });
+    await apiFetch(`/api/items/${id}`, { method: 'DELETE' });
     fetchItems();
   };
 
@@ -107,7 +109,7 @@ export default function Home() {
     setRefreshing(true);
     try {
       await Promise.all(items.map((item) => 
-        fetch(`/api/items/${item.id}/refresh`, { method: 'POST' })
+        apiFetch(`/api/items/${item.id}/refresh`, { method: 'POST' })
       ));
       fetchItems();
     } finally {
@@ -174,7 +176,7 @@ export default function Home() {
     try {
       await Promise.all(
         Array.from(newSortOrders.entries()).map(([id, sort_order]) =>
-          fetch(`/api/items/${id}`, {
+          apiFetch(`/api/items/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sort_order }),
@@ -222,7 +224,7 @@ export default function Home() {
     
     await Promise.all(
       Array.from(selectedItems).map(id =>
-        fetch(`/api/items/${id}`, { method: 'DELETE' })
+        apiFetch(`/api/items/${id}`, { method: 'DELETE' })
       )
     );
     setSelectedItems(new Set());
@@ -235,7 +237,7 @@ export default function Home() {
     
     await Promise.all(
       Array.from(selectedItems).map(id =>
-        fetch(`/api/items/${id}`, {
+        apiFetch(`/api/items/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ category_id: categoryId }),
@@ -252,7 +254,7 @@ export default function Home() {
     
     await Promise.all(
       Array.from(selectedItems).map(id =>
-        fetch(`/api/items/${id}`, {
+        apiFetch(`/api/items/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ comparison_group_id: groupId }),
@@ -271,7 +273,7 @@ export default function Home() {
     const today = new Date().toISOString().split('T')[0];
     await Promise.all(
       Array.from(selectedItems).map(id =>
-        fetch(`/api/items/${id}`, {
+        apiFetch(`/api/items/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ is_purchased: true, purchased_at: today }),
@@ -683,15 +685,18 @@ export default function Home() {
                       選択
                     </button>
                     <button
+                      disabled={isGuest}
+                      title={isGuest ? "インポートはログイン後に利用できます" : undefined}
                       onClick={() => setShowImportModal(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
                     >
                       <Upload size={16} />
                       インポート
                     </button>
                     <button
                       onClick={handleRefreshAll}
-                      disabled={refreshing || items.length === 0}
+                      disabled={isGuest || refreshing || items.length === 0}
+                      title={isGuest ? "価格更新はログイン後に利用できます" : undefined}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
                     >
                       <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />

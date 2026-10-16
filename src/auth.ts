@@ -23,7 +23,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         const db = getDb();
         const user = db
-          .prepare('SELECT * FROM users WHERE email = ?')
+          .prepare("SELECT * FROM users WHERE email = ? AND account_type = 'member'")
           .get(credentials.email as string) as (User & { password_hash: string | null }) | undefined;
 
         if (!user || !user.password_hash) {
@@ -51,13 +51,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async signIn({ user, account }) {
       if (account?.provider === 'google') {
         const db = getDb();
-        const email = user.email!;
+        const email = user.email?.trim().toLowerCase();
+        if (!email || email.endsWith('@guest.invalid')) return false;
         const googleId = account.providerAccountId;
         const name = user.name || null;
 
         // 既存ユーザーをチェック
         const existingUser = db
-          .prepare('SELECT * FROM users WHERE email = ? OR google_id = ?')
+          .prepare("SELECT * FROM users WHERE (email = ? OR google_id = ?) AND account_type = 'member'")
           .get(email, googleId) as (User & { google_id: string | null }) | undefined;
 
         if (existingUser) {
