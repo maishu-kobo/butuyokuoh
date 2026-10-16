@@ -347,3 +347,35 @@ test('live Amazon short link registers product metadata even without a published
   await expect(card.getByRole('status')).toBeVisible();
   expect((await (await browser.request.get(`/api/items/${item.id}`)).json()).image_url).toMatch(/^https:\/\//);
 });
+
+test('live Rakuten EUC-JP product is readable on add, preview and refresh of a garbled name', async ({page,context:browser}) => {
+  test.skip(!process.env.E2E_LIVE_RAKUTEN, 'Optional live Rakuten verification');
+  await page.goto('/');
+  await page.getByRole('button',{name:'ゲストで試す',exact:true}).click();
+  await page.getByRole('button',{name:'新しいアイテムを追加'}).click();
+  const url = 'https://item.rakuten.co.jp/crispin/giacometti_fg173_anero/?variantId=43308';
+  await page.getByPlaceholder('https://www.amazon.co.jp/...').fill(url);
+  await page.getByRole('button',{name:'追加',exact:true}).click();
+  await expect(page.getByRole('heading',{name:/ジャコメッティ/})).toBeVisible({timeout:20_000});
+  const items = await (await browser.request.get('/api/items')).json();
+  const item = items.find((row:{url:string}) => row.url === url);
+  expect(item.name).not.toContain('\ufffd');
+  expect(item.current_price).toBe(107800);
+  expect(item.image_url).toMatch(/^https:\/\/shop.r10s.jp\//);
+  const preview = await browser.request.post('/api/items/preview',{headers:{Origin:origin},data:{url}});
+  expect(preview.status()).toBe(200);
+  expect(await preview.json()).toMatchObject({name:item.name,price:107800});
+
+  const garbledName = '\ufffd\ufffd文字化け再現';
+  expect((await browser.request.patch(`/api/items/${item.id}`,{headers:{Origin:origin},data:{name:garbledName}})).status()).toBe(200);
+  await page.reload();
+  const brokenCard = page.locator('div.rounded-lg.shadow-md').filter({has:page.getByRole('heading',{name:garbledName,exact:true})}).first();
+  await brokenCard.getByRole('button',{name:'価格を更新',exact:true}).click();
+  await expect(page.getByRole('heading',{name:item.name,exact:true})).toBeVisible({timeout:20_000});
+  const card = page.locator('div.rounded-lg.shadow-md').filter({has:page.getByRole('heading',{name:item.name,exact:true})}).first();
+  await expect.poll(() => card.locator('img').evaluate((image:HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  expect(await (await browser.request.get(`/api/items/${item.id}`)).json()).toMatchObject({name:item.name,current_price:107800,image_url:item.image_url});
+  await card.getByRole('button',{name:'編集',exact:true}).click();
+  await expect(card.getByPlaceholder('商品名',{exact:true})).toHaveValue(item.name);
+  await card.screenshot({path:'test-results/rakuten-encoding.png'});
+});
