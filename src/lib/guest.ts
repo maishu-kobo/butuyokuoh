@@ -1,5 +1,4 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import type Database from 'better-sqlite3';
 import { getDb } from './db';
 import { seedDemoData } from './demo-data';
 

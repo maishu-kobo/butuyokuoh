@@ -70,6 +70,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (status !== 'loading') void refresh();
+    // Invalidate the latest request, including refreshes triggered by tab focus.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { revision.current++; };
   }, [status, refresh]);
 
