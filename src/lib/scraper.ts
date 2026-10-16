@@ -1,3 +1,4 @@
+import { extractAmazonProduct } from './amazon-product';
 import { parseProductHtml } from './product-html';
 import puppeteer from 'puppeteer';
 import { validateAndSanitizeUrl, sanitizeGenericUrl } from './url-validator';
@@ -332,43 +333,6 @@ function isAmazonBlockedHtml(html: string): boolean {
     html.includes('automated access') ||
     !html.includes('productTitle')
   );
-}
-
-/**
- * Amazon商品ページのHTMLから商品名・価格・画像を抽出
- */
-function extractAmazonProduct(html: string): {
-  name: string;
-  price: number | null;
-  imageUrl: string | null;
-} {
-  // 商品名
-  const nameMatch = html.match(/<span[^>]*id="productTitle"[^>]*>([^<]+)<\/span>/);
-  const name = nameMatch ? nameMatch[1].trim() : '不明な商品';
-
-  // 価格（複数のパターンに対応）
-  let price: number | null = null;
-
-  // パターン1: a-price-wholeクラス（新形式）
-  const priceWholeMatch = html.match(/a-price-whole">([\d,]+)/);
-  if (priceWholeMatch) {
-    price = parseInt(priceWholeMatch[1].replace(/,/g, ''), 10);
-  }
-
-  // パターン2: 円記号付き（フォールバック、ただしproductTitleがある場合のみ）
-  // ※このパターンは誤検出が多いので無効化
-  // if (!price) {
-  //   const yenMatch = html.match(/[¥￥]([\d,]+)/);
-  //   if (yenMatch) {
-  //     price = parseInt(yenMatch[1].replace(/,/g, ''), 10);
-  //   }
-  // }
-
-  // 画像
-  const imageMatch = html.match(/"hiRes":"([^"]+)"/) || html.match(/id="landingImage"[^>]*src="([^"]+)"/);
-  const imageUrl = imageMatch ? imageMatch[1] : null;
-
-  return { name, price, imageUrl };
 }
 
 /**

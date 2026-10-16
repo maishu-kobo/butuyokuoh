@@ -293,3 +293,57 @@ test('live PITAKA URL add, refresh and editing preserve the fetched image', asyn
   await page.getByRole('button',{name:'商品情報を取得',exact:true}).click();
   await expect(page.getByRole('heading',{name:item.name,exact:true})).toBeVisible();
 });
+
+
+test('failed automatic lookup offers manual entry without losing URL or notes', async ({page,context:browser}) => {
+  await page.goto('/');
+  await page.getByRole('button',{name:'ゲストで試す',exact:true}).click();
+  await page.getByRole('button',{name:'新しいアイテムを追加'}).click();
+  const productUrl = 'https://amzn.asia/d/fallback-test';
+  await page.getByPlaceholder('https://www.amazon.co.jp/...').fill(productUrl);
+  await page.getByPlaceholder('購入理由や比較ポイントなど').fill('入力したメモを残す');
+  await page.route('**/api/items', async route => {
+    const request = route.request();
+    if (request.method() === 'POST' && !request.postDataJSON().manual) {
+      await route.fulfill({status:502,contentType:'application/json',body:JSON.stringify({code:'SCRAPE_FAILED',error:'商品情報を自動取得できませんでした。もう一度試すか、「手動で追加」で商品名を入力してください。入力したURLやメモはそのまま使えます。'})});
+    } else await route.continue();
+  });
+  await page.getByRole('button',{name:'追加',exact:true}).click();
+  await expect(page.getByRole('alert',{name:'商品追加エラー'})).toContainText('商品情報を自動取得できませんでした');
+  await expect(page.getByRole('alert',{name:'商品追加エラー'})).not.toContainText('大きすぎ');
+  await expect(page.getByRole('alert').filter({hasText:'商品情報を自動取得できませんでした'})).toHaveCount(1);
+  await page.getByRole('button',{name:'商品名を入力して追加',exact:true}).click();
+  await expect(page.getByPlaceholder('https://...', {exact:true})).toHaveValue(productUrl);
+  await expect(page.getByPlaceholder('購入理由や比較ポイントなど')).toHaveValue('入力したメモを残す');
+  await page.getByPlaceholder('商品名を入力').fill('手動で保存できた商品');
+  await page.getByRole('button',{name:'追加',exact:true}).click();
+  await expect(page.getByText('手動で保存できた商品',{exact:true})).toBeVisible();
+  const items = await (await browser.request.get('/api/items')).json();
+  expect(items.find((item:{url:string}) => item.url === productUrl)).toMatchObject({name:'手動で保存できた商品',notes:'入力したメモを残す'});
+});
+
+test('live Amazon short link registers product metadata even without a published price', async ({page,context:browser}) => {
+  test.skip(!process.env.E2E_LIVE_AMAZON, 'Optional live Amazon verification');
+  await page.goto('/');
+  await page.getByRole('button',{name:'ゲストで試す',exact:true}).click();
+  await page.getByRole('button',{name:'新しいアイテムを追加'}).click();
+  const url = 'https://amzn.asia/d/0gH1wHkC';
+  await page.getByPlaceholder('https://www.amazon.co.jp/...').fill(url);
+  await page.getByRole('button',{name:'追加',exact:true}).click();
+  await expect(page.getByRole('heading',{name:/NIMASO/})).toBeVisible({timeout:20_000});
+  const items = await (await browser.request.get('/api/items')).json();
+  const item = items.find((row:{url:string}) => row.url === url);
+  expect(item).toMatchObject({source:'amazon',source_name:'Amazon'});
+  expect(item.image_url).toMatch(/^https:\/\/.*media-amazon.com\//);
+  expect(item.name).toContain('NIMASO');
+  if (item.current_price === null) await expect(page.getByText(/商品を追加しました。価格は取得できませんでした/)).toBeVisible();
+  const card = page.locator('div.rounded-lg.shadow-md').filter({has:page.getByRole('heading',{name:item.name,exact:true})}).first();
+  await expect.poll(() => card.locator('img').evaluate((image:HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  await card.screenshot({path:'test-results/amazon-guest-registration.png'});
+  const preview = await browser.request.post('/api/items/preview',{headers:{Origin:origin},data:{url:'https://www.amazon.co.jp/dp/B0HCNJW81Q'}});
+  expect(preview.status()).toBe(200);
+  expect(await preview.json()).toMatchObject({name:item.name,source:'amazon'});
+  await card.getByRole('button',{name:'価格を更新',exact:true}).click();
+  await expect(card.getByRole('status')).toBeVisible();
+  expect((await (await browser.request.get(`/api/items/${item.id}`)).json()).image_url).toMatch(/^https:\/\//);
+});

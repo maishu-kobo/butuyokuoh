@@ -19,6 +19,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
   const [isManualMode, setIsManualMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [canAddManually, setCanAddManually] = useState(false);
   const [successNote, setSuccessNote] = useState(''); // 追加成功時の注意メッセージ
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -52,6 +53,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
     });
     setIsManualMode(false);
     setError('');
+    setCanAddManually(false);
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -60,6 +62,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
 
     setUploading(true);
     setError('');
+    setCanAddManually(false);
 
     try {
       const uploadData = new FormData();
@@ -88,6 +91,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
     e.preventDefault();
     setLoading(true);
     setError('');
+    setCanAddManually(false);
 
     try {
       const payload = isManualMode
@@ -118,17 +122,18 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      });
+      }, { notifyError: false });
 
       const data = await res.json();
       
       if (!res.ok) {
+        setCanAddManually(data.code === 'SCRAPE_FAILED');
         throw new Error(data.error || '追加に失敗しました');
       }
 
       // スクレイピング結果に注意メッセージがあれば表示
       if (data.scrapeNote) {
-        setSuccessNote(data.scrapeNote);
+        setSuccessNote(`商品を追加しました。${data.scrapeNote}`);
         // 10秒後に自動で消す
         setTimeout(() => setSuccessNote(''), 10000);
       }
@@ -188,7 +193,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
       <div className="mb-4 flex items-center justify-end">
         <button
           type="button"
-          onClick={() => setIsManualMode(!isManualMode)}
+          onClick={() => { setIsManualMode(!isManualMode); setError(''); setCanAddManually(false); }}
           className="text-xs text-gray- dark:text-gray-400 hover:text-gray- dark:text-gray-600 flex items-center gap-1"
         >
           {isManualMode ? (
@@ -377,7 +382,14 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
         </div>
 
         {error && (
-          <div className="text-red-500 text-sm">{error}</div>
+          <div role="alert" aria-label="商品追加エラー" className="rounded-md bg-red-50 dark:bg-red-950/40 p-3 text-red-700 dark:text-red-300 text-sm">
+            <p>{error}</p>
+            {canAddManually && !isManualMode && <button
+              type="button"
+              onClick={() => { setIsManualMode(true); setError(''); setCanAddManually(false); }}
+              className="mt-2 rounded border border-current px-3 py-2 font-medium"
+            >商品名を入力して追加</button>}
+          </div>
         )}
 
         <div className="flex gap-2 justify-end">
