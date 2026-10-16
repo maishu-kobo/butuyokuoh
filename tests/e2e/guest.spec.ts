@@ -38,9 +38,11 @@ test('guest API lifecycle, isolation, capabilities, validation and quotas', asyn
       expect((await a.patch(`/api/items/${items[0].id}`, { data: relation })).status()).toBe(400);
     }
     for (const path of ['/api/auth/token','/api/notification-settings']) expect((await a.get(path)).status()).toBe(403);
-    for (const path of ['/api/items/preview',`/api/items/${items[0].id}/refresh`,'/api/import-wishlist','/api/upload']) expect((await a.post(path, { data: {url:'https://example.test'} })).status(), path).toBe(403);
+    for (const path of ['/api/import-wishlist','/api/upload']) expect((await a.post(path, { data: {url:'https://example.test'} })).status(), path).toBe(403);
     expect((await a.put('/api/notification-settings', { data: {} })).status()).toBe(403);
-    expect((await a.post('/api/items', {data:{url:'https://example.test'}})).status()).toBe(403);
+    expect((await a.post('/api/items', {data:{url:'http://127.0.0.1/'}})).status()).toBe(400);
+    expect((await a.post('/api/items/preview', {data:{url:'http://169.254.169.254/'}})).status()).toBe(400);
+    expect((await a.post(`/api/items/${foreign.id}/refresh`)).status()).toBe(404);
     expect((await a.post('/api/items', {headers:{Origin:'https://attacker.test'},data:{manual:true,name:'csrf'}})).status()).toBe(403);
     for (const body of [{name:'x'.repeat(201)}, {price:-1}, {priority:0}, {quantity:{}}, {url:'javascript:alert(1)'}]) expect((await a.post('/api/items', {data:{manual:true,name:'invalid',...body}})).status()).toBe(400);
     expect((await a.post('/api/items', {data:{manual:true,name:'image',image_url:'https://example.test/a.png'}})).status()).toBe(403);
@@ -135,6 +137,7 @@ test('browser demo flow, manual add, restricted controls, tabs and member transi
   await expect(page.getByRole('button',{name:'全て更新'})).toBeDisabled();
   await expect(page.getByRole('button',{name:'インポート',exact:true})).toBeDisabled();
   await page.getByRole('button',{name:'新しいアイテムを追加'}).click();
+  await page.getByRole('button',{name:'手動で追加',exact:true}).click();
   await page.getByPlaceholder('商品名を入力').fill('自分で追加した商品');
   await page.getByPlaceholder('例: 3990').fill('1200');
   await page.getByRole('button',{name:'追加',exact:true}).click();
@@ -142,8 +145,9 @@ test('browser demo flow, manual add, restricted controls, tabs and member transi
   await page.screenshot({path:'test-results/guest-desktop.png',fullPage:true});
   const tab = await browser.newPage(); await tab.goto('/settings');
   await expect(tab.getByText('通知設定と拡張機能はログイン後に利用できます。')).toBeVisible();
-  await tab.goto('/add?url=https://example.test/product');
-  await expect(tab.getByText('ゲスト体験では商品を手動で追加できます。URLからの取得はログイン後に利用できます。')).toBeVisible();
+  await tab.goto('/add?url=http://127.0.0.1/product');
+  await expect(tab.getByRole('main').getByText('公開されている商品ページのHTTP(S) URLを指定してください')).toBeVisible();
+  await expect(tab.getByRole('button',{name:'再試行',exact:true})).toBeEnabled();
   // Canceling login/end must preserve the guest session.
   page.once('dialog',d=>d.dismiss());
   await page.getByRole('button',{name:'Googleでログイン',exact:true}).click();
@@ -220,4 +224,72 @@ test('an expired browser session returns to login without reseeding', async ({pa
   await expect(page.getByRole('button',{name:'ゲストで試す',exact:true})).toBeVisible();
   expect(connection.prepare('SELECT COUNT(*) n FROM users').get()).toEqual(before);
   connection.close();
+});
+
+
+test('guest scrape limits cover preview, add and refresh and preserve existing data', async () => {
+  const c = await context();
+  try {
+    const g = await guest(c);
+    const added = await c.post('/api/items', {data:{manual:true,name:'元の商品名',url:'http://127.0.0.1/product',price:300}});
+    expect(added.status()).toBe(201);
+    const item = await added.json();
+    expect((await c.post(`/api/items/${item.id}/refresh`)).status()).toBe(400);
+    expect(await (await c.get(`/api/items/${item.id}`)).json()).toMatchObject({name:'元の商品名',current_price:300});
+    const connection = db();
+    connection.prepare('INSERT OR REPLACE INTO guest_rate_limits VALUES (?,5,?)').run(`scrape:${g.id}`,Date.now()+60_000);
+    for (const path of ['/api/items/preview','/api/items',`/api/items/${item.id}/refresh`]) {
+      const response = await c.post(path,{data:{url:'https://pitakajapan.com/products/magez-grip'}});
+      expect(response.status()).toBe(429);
+      expect(Number(response.headers()['retry-after'])).toBeGreaterThan(0);
+    }
+    connection.prepare('DELETE FROM guest_rate_limits WHERE bucket = ?').run(`scrape:${g.id}`);
+    connection.prepare('INSERT OR REPLACE INTO guest_rate_limits VALUES (?,30,?)').run('scrape:global',Date.now()+60_000);
+    expect((await c.post('/api/items/preview',{data:{url:'https://pitakajapan.com/products/magez-grip'}})).status()).toBe(429);
+    connection.prepare('DELETE FROM guest_rate_limits WHERE bucket = ?').run('scrape:global');
+    connection.close();
+    await c.delete('/api/auth/guest');
+  } finally { await c.dispose(); }
+});
+
+test('live PITAKA URL add, refresh and editing preserve the fetched image', async ({page,context:browser}) => {
+  test.skip(!process.env.E2E_LIVE_SCRAPE, 'Optional live shop verification');
+  await page.goto('/');
+  await page.getByRole('button',{name:'ゲストで試す',exact:true}).click();
+  await page.getByRole('button',{name:'新しいアイテムを追加'}).click();
+  await page.getByPlaceholder('https://www.amazon.co.jp/...').fill('https://pitakajapan.com/products/magez-grip');
+  await page.getByRole('button',{name:'追加',exact:true}).click();
+  await expect(page.getByText(/PITAKA MagEZ Grip 3/).first()).toBeVisible();
+  const items = await (await browser.request.get('/api/items')).json();
+  const item = items.find((row: {url:string}) => row.url === 'https://pitakajapan.com/products/magez-grip');
+  expect(item.current_price).toBeGreaterThan(0);
+  expect(item.image_url).toMatch(/^https:\/\//);
+  // Reproduce the reported existing manual item with a URL but no price/image.
+  expect((await browser.request.patch(`/api/items/${item.id}`,{headers:{Origin:origin},data:{name:'MagEZ Grip',current_price:null,image_url:null}})).status()).toBe(200);
+  await page.reload();
+  const card = page.locator('div.rounded-lg.shadow-md').filter({has:page.getByText('MagEZ Grip',{exact:true})}).first();
+  await card.getByRole('button',{name:'価格を更新',exact:true}).click();
+  await expect(page.getByText('商品情報を更新しました')).toBeVisible();
+  const refreshedCard = page.locator('div.rounded-lg.shadow-md').filter({has:page.getByText(item.name,{exact:true})}).first();
+  await expect.poll(() => refreshedCard.locator('img').evaluate((image:HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  await refreshedCard.getByRole('button',{name:'編集',exact:true}).click();
+  await refreshedCard.getByPlaceholder('商品名',{exact:true}).fill('PITAKA 動作確認');
+  await refreshedCard.getByRole('button',{name:'保存',exact:true}).click();
+  await expect(page.getByText('PITAKA 動作確認',{exact:true})).toBeVisible();
+  expect((await (await browser.request.get(`/api/items/${item.id}`)).json()).image_url).toBe(item.image_url);
+  await page.screenshot({path:'test-results/guest-url-product.png',fullPage:true});
+  // The recovered price filled the history quota. Refresh/add must roll back.
+  const connection = db();
+  connection.prepare('UPDATE items SET current_price = 1 WHERE id = ?').run(item.id);
+  connection.close();
+  const refresh = await browser.request.post(`/api/items/${item.id}/refresh`,{headers:{Origin:origin}});
+  expect(refresh.status()).toBe(409);
+  expect((await (await browser.request.get(`/api/items/${item.id}`)).json()).current_price).toBe(1);
+  const add = await browser.request.post('/api/items',{headers:{Origin:origin},data:{url:'https://pitakajapan.com/products/magez-grip?quota-test=1'}});
+  expect(add.status()).toBe(409);
+  expect(await (await browser.request.get('/api/items')).json()).toHaveLength(items.length);
+  await page.goto('/add');
+  await page.getByPlaceholder('https://www.amazon.co.jp/...').fill('https://pitakajapan.com/products/magez-grip');
+  await page.getByRole('button',{name:'商品情報を取得',exact:true}).click();
+  await expect(page.getByRole('heading',{name:item.name,exact:true})).toBeVisible();
 });
