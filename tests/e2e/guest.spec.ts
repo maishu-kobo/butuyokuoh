@@ -83,6 +83,21 @@ test('expiry and persistent write rate are enforced without running cleanup', as
   } finally { await c.dispose(); }
 });
 
+test('explicit alternate public origin works without trusting forwarded hosts', async () => {
+  const c = await playwrightRequest.newContext({baseURL:origin,extraHTTPHeaders:{Origin:'http://127.0.0.1:3107'}});
+  try {
+    await guest(c);
+    expect((await c.post('/api/items',{data:{manual:true,name:'alternate origin'}})).status()).toBe(201);
+    for (const untrusted of ['https://attacker.test', 'http://127.0.0.1:3108', 'null', '']) {
+      expect((await c.post('/api/categories', {
+        headers:{Origin:untrusted,'X-Forwarded-Host':'attacker.test','X-Forwarded-Proto':'https'},
+        data:{name:'blocked'},
+      })).status()).toBe(403);
+    }
+    expect((await c.delete('/api/auth/guest')).status()).toBe(204);
+  } finally { await c.dispose(); }
+});
+
 test('member precedence, reserved email and extension bearer cannot impersonate guests', async () => {
   const c = await context();
   try {

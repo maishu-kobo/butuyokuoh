@@ -43,6 +43,7 @@ CookieはHttpOnly・SameSite=Lax・Path=/・ホスト限定、本番ではSecure
 | --- | --- | --- |
 | `GUEST_MODE_ENABLED` | false | `true` で有効 |
 | `AUTH_URL`（または `NEXTAUTH_URL`） | 本番必須 | ブラウザから見た公開URL。Origin照合に使用 |
+| `GUEST_ALLOWED_ORIGINS` | なし | 別の公開Originも使う場合だけ、カンマ区切りで追加。例: `https://butsuyokuoh.exe.xyz`。パス・末尾スラッシュを含めない |
 | `BUTUYOKUOH_DB_PATH` | `data/butuyokuoh.db` | Web・ジョブ共通のSQLiteパス |
 | `GUEST_TTL_HOURS` | 24 | 新規体験の期限。既存セッションには遡及しない |
 | `GUEST_MAX_ACTIVE` | 500 | 有効ゲストセッション上限 |
@@ -54,6 +55,7 @@ CookieはHttpOnly・SameSite=Lax・Path=/・ホスト限定、本番ではSecure
 | `GUEST_MAX_HISTORY` | 500 | ゲスト全商品の価格履歴合計 |
 
 数値設定は正の整数。サンプルが入るため、商品6・カテゴリ3・グループ2・履歴18以上で設定する。
+Google OAuthの公開URLと異なるポート等でもアプリを公開している場合、追加のOriginを `GUEST_ALLOWED_ORIGINS` に明記する。Host・転送ヘッダーを根拠に自動で許可しない。
 件数上限は409、時間あたりの制限と全体混雑は429＋Retry-After、ゲスト禁止機能は403、セッション不成立は401を返す。
 SQLiteの即時トランザクション内で上限チェックと書込を行い、並列要求でも超過させない。
 回数カウンタはSQLiteに保存し、プロセス再起動・Cookie削除で作成制限を回避できない。

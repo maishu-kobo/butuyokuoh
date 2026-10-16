@@ -9,8 +9,18 @@ export function requireSameOrigin(request: NextRequest) {
   if (!configured && process.env.NODE_ENV === 'production') {
     throw new Error('AUTH_URL is required for guest mode in production');
   }
-  const expected = new URL(configured || request.url).origin;
-  if (request.headers.get('origin') !== expected) {
+  // A deployment can expose another public origin while retaining the existing
+  // OAuth callback URL. Only explicit operator configuration may add origins;
+  // never trust Host or forwarded headers to expand this list.
+  const allowed = new Set([new URL(configured || request.url).origin]);
+  for (const entry of (process.env.GUEST_ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean)) {
+    const url = new URL(entry);
+    if (!['https:', 'http:'].includes(url.protocol) || url.origin !== entry) {
+      throw new Error('GUEST_ALLOWED_ORIGINS must contain comma-separated HTTP(S) origins');
+    }
+    allowed.add(url.origin);
+  }
+  if (!allowed.has(request.headers.get('origin') || '')) {
     throw new GuestError(403, 'INVALID_ORIGIN', 'この操作はアプリの画面から実行してください');
   }
 }

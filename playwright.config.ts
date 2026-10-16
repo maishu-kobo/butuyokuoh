@@ -20,6 +20,7 @@ export default defineConfig({
     env: {
       BUTUYOKUOH_DB_PATH: process.env.E2E_DB_PATH,
       GUEST_MODE_ENABLED: process.env.E2E_GUEST_DISABLED ? 'false' : 'true',
+      GUEST_ALLOWED_ORIGINS: 'http://127.0.0.1:3107',
       GUEST_MAX_ITEMS: '8', GUEST_MAX_CATEGORIES: '5', GUEST_MAX_GROUPS: '4', GUEST_MAX_HISTORY: '20',
       AUTH_URL: `http://localhost:${port}`, NEXTAUTH_URL: `http://localhost:${port}`,
       AUTH_SECRET: 'guest-e2e-only-auth-secret-not-for-production',
