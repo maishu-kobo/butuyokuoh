@@ -200,7 +200,7 @@ test('a bad shape, a check-digit failure alone, and a URL name do not leak the m
   });
 });
 
-test('the Meta license gate sends prompt agree without the photo, then retries once', async () => {
+test('a 5016 response is AI_UNAVAILABLE and does not send prompt agree', async () => {
   const license = {
     status: 403,
     body: JSON.stringify({
@@ -210,25 +210,8 @@ test('the Meta license gate sends prompt agree without the photo, then retries o
     }),
   };
   await withFetchBlocked(async () => {
-    const { calls, identifier } = harness({
-      responses: [license, cf({ response: 'agreed' }), textResult(JSON.stringify(SURE))],
-    });
-    const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
-    assert.equal(result.ok, true);
-    if (result.ok) assert.deepEqual(result.value, SURE);
-    assert.equal(calls.length, 3);
-    assert.equal(calls[1].url, endpoint());
-    assert.equal(calls[1].body, '{"prompt":"agree"}');
-    assert.equal(calls[1].body.includes('/9j/'), false);
-    assert.equal(calls[1].body.includes('image'), false);
-    assert.equal(calls[2].body.includes(JPEG_DATA_URL), true);
-    assert.equal(JSON.stringify(result).includes('Llama3.2'), false);
-    assert.equal(JSON.stringify(result).includes(TOKEN), false);
-
-    const refused = harness({
-      responses: [license, { status: 403, body: JSON.stringify({ success: false, errors: [{ code: 5016, message: TOKEN }], messages: [] }) }],
-    });
-    const failed = await refused.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+    const { calls, identifier } = harness({ responses: [license, textResult(JSON.stringify(SURE))] });
+    const failed = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
     assert.equal(failed.ok, false);
     if (!failed.ok) {
       assert.equal(failed.status, 503);
@@ -236,9 +219,13 @@ test('the Meta license gate sends prompt agree without the photo, then retries o
       assert.equal(failed.error.error, CaptureMessages.aiFailed);
       assert.equal(JSON.stringify(failed).includes(TOKEN), false);
       assert.equal(JSON.stringify(failed).includes('Llama'), false);
+      assert.equal(JSON.stringify(failed).includes('agree'), false);
     }
-    assert.equal(refused.calls.length, 2);
-    assert.equal(refused.calls[1].body, '{"prompt":"agree"}');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, endpoint());
+    assert.equal(calls[0].body.includes(JPEG_DATA_URL), true);
+    assert.equal(calls.some((call) => call.body.includes('"agree"')), false);
+    assert.equal(calls.some((call) => call.body === '{"prompt":"agree"}'), false);
   });
 });
 

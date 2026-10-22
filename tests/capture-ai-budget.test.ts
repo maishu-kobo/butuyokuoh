@@ -52,7 +52,7 @@ function harness(options: {
     timeoutMs: 30_000,
     http: options.http ?? (async (request) => {
       calls.push(request);
-      const next = queued.shift() ?? textResult({ prompt_tokens: 0, completion_tokens: 0 });
+      const next = queued.shift() ?? textResult({ neurons: 0 });
       return next;
     }),
   });
@@ -112,7 +112,7 @@ test('one person gets 3 calls a minute and 10 a UTC day, and failures count', as
       { status: 500, body: JSON.stringify({ success: false, errors: [{ code: 1, message: `boom ${TOKEN}` }], messages: [] }) },
       { status: 500, body: '{"success":false,"errors":[{"code":1,"message":"boom"}],"messages":[]}' },
       { status: 500, body: '{"success":false,"errors":[{"code":1,"message":"boom"}],"messages":[]}' },
-      textResult({ prompt_tokens: 0, completion_tokens: 0 }),
+      textResult({ neurons: 0 }),
     ],
   });
   for (let index = 0; index < 3; index += 1) {
@@ -166,13 +166,82 @@ test('invalid photos do not spend the per-user allowance', async () => {
   assert.equal(budget.usedNeurons(clock.t), 0);
 });
 
+test('reported neurons are counted, including zero, and token prices are not added', async () => {
+  const clock = { t: Date.UTC(2026, 9, 22, 5, 10, 0) };
+  const measured = createAiBudget();
+  const measuredCall = harness({
+    budget: measured,
+    clock,
+    responses: [
+      textResult({ neurons: 15, prompt_tokens: 1_814_058, completion_tokens: 400 }),
+      textResult({ neurons: 30, prompt_tokens: 6_500, completion_tokens: 20 }),
+    ],
+  });
+  assert.equal((await measuredCall.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg })).ok, true);
+  assert.equal(measured.usedNeurons(clock.t), 15);
+  clock.t += 60_001;
+  assert.equal((await measuredCall.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg })).ok, true);
+  assert.equal(measured.usedNeurons(clock.t), 45);
+  assert.equal(measuredCall.calls.length, 2);
+
+  const zeroBudget = createAiBudget();
+  const zeroClock = { t: Date.UTC(2026, 9, 22, 5, 20, 0) };
+  const zero = harness({
+    budget: zeroBudget,
+    clock: zeroClock,
+    responses: [textResult({ neurons: 0, prompt_tokens: 1_814_058, completion_tokens: 400 })],
+  });
+  assert.equal((await zero.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg })).ok, true);
+  assert.equal(zeroBudget.usedNeurons(zeroClock.t), 0);
+
+  const missingBudget = createAiBudget();
+  const missingClock = { t: Date.UTC(2026, 9, 22, 5, 30, 0) };
+  const missing = harness({
+    budget: missingBudget,
+    clock: missingClock,
+    responses: [textResult({ prompt_tokens: 1_000_000, completion_tokens: 0 })],
+  });
+  assert.equal((await missing.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg })).ok, true);
+  assert.equal(missingBudget.usedNeurons(missingClock.t), AI_NEURONS_WHEN_USAGE_MISSING);
+
+  const blankBudget = createAiBudget();
+  const blank = harness({
+    budget: blankBudget,
+    clock: missingClock,
+    userId: '16',
+    responses: [textResult(null)],
+  });
+  assert.equal((await blank.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg })).ok, true);
+  assert.equal(blankBudget.usedNeurons(missingClock.t), AI_NEURONS_WHEN_USAGE_MISSING);
+
+  const oddClock = { t: Date.UTC(2026, 9, 22, 5, 40, 0) };
+  for (const neurons of [-1, '15', null] as unknown[]) {
+    const budget = createAiBudget();
+    const odd = harness({
+      budget,
+      clock: oddClock,
+      responses: [{
+        status: 200,
+        body: JSON.stringify({
+          success: true,
+          result: { response: JSON.stringify(SURE), usage: { neurons, prompt_tokens: 1_000_000, completion_tokens: 400 } },
+          errors: [],
+          messages: [],
+        }),
+      }],
+    });
+    assert.equal((await odd.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg })).ok, true, String(neurons));
+    assert.equal(budget.usedNeurons(oddClock.t), AI_NEURONS_WHEN_USAGE_MISSING, String(neurons));
+  }
+});
+
 test('the global neuron stop is 8000 per UTC day and a missing usage count is reserved', async () => {
   const budget = createAiBudget();
   const clock = { t: Date.UTC(2026, 9, 22, 5, 0, 0) };
   const priced = harness({
     budget,
     clock,
-    responses: [textResult({ prompt_tokens: 1_814_058, completion_tokens: 0 })],
+    responses: [textResult({ neurons: 8000 })],
   });
   const spent = await priced.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
   assert.equal(spent.ok, true);
@@ -238,31 +307,40 @@ test('the global neuron stop is 8000 per UTC day and a missing usage count is re
   assert.equal(upstream.usedNeurons(upstreamClock.t) >= AI_NEURON_DAILY_CAP, true);
 });
 
-test('a license retry is one user attempt and keeps token usage when the reply has it', async () => {
+test('a 5016 response is one user attempt, returns AI_UNAVAILABLE, and does not agree', async () => {
   const budget = createAiBudget();
   const clock = { t: Date.UTC(2026, 9, 22, 8, 0, 0) };
   const license = {
     status: 403,
-    body: JSON.stringify({ success: false, errors: [{ code: 5016, message: 'terms' }], messages: [] }),
+    body: JSON.stringify({
+      success: false,
+      errors: [{ code: 5016, message: `terms ${TOKEN}` }],
+      messages: [],
+    }),
   };
   const { calls, identifier } = harness({
     budget,
     clock,
-    responses: [
-      license,
-      { status: 200, body: JSON.stringify({ success: true, result: { response: 'agreed' }, errors: [], messages: [] }) },
-      textResult({ prompt_tokens: 1_000_000, completion_tokens: 0 }),
-    ],
+    responses: [license, textResult({ neurons: 4410, prompt_tokens: 1_000_000, completion_tokens: 0 })],
   });
   const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
-  assert.equal(result.ok, true);
-  assert.equal(calls.length, 3);
-  assert.equal(budget.usedNeurons(clock.t), 4410);
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.status, 503);
+    assert.equal(result.error.code, 'AI_UNAVAILABLE');
+    assert.equal(result.error.error, CaptureMessages.aiFailed);
+    assert.equal(JSON.stringify(result).includes(TOKEN), false);
+    assert.equal(JSON.stringify(result).includes('agree'), false);
+  }
+  assert.equal(calls.length, 1);
+  assert.equal(calls.some((call) => call.body.includes('"agree"')), false);
+  assert.equal(budget.usedNeurons(clock.t), AI_NEURONS_WHEN_USAGE_MISSING);
   assert.equal((await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg })).ok, true);
   assert.equal((await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg })).ok, true);
   const blocked = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
   assert.equal(blocked.ok, false);
   if (!blocked.ok) assert.equal(blocked.error.error, AI_MINUTE_LIMIT_MESSAGE);
+  assert.equal(calls.length, 3);
 });
 
 test('AI failures tell the client to enter the product name, and photo errors do not', () => {
@@ -298,7 +376,7 @@ test('real identification is used only when secrets exist and the fake scenario 
   const calls: string[] = [];
   const http = async (request: WorkersAiHttpRequest): Promise<WorkersAiHttpResponse> => {
     calls.push(request.url);
-    return textResult({ prompt_tokens: 0, completion_tokens: 0 });
+    return textResult({ neurons: 0 });
   };
   const fake: ProductIdentifier = {
     async identify(): Promise<{ ok: true; value: IdentifyResponse }> {
@@ -358,4 +436,21 @@ test('the identify route keeps the kill switch and reads keys only through captu
   const source = readFileSync(new URL('../src/lib/capture/workers-ai.ts', import.meta.url), 'utf8');
   assert.equal(/process\.env/.test(source), false);
   assert.equal(/console\./.test(source), false);
+  assert.equal(source.includes('{"prompt":"agree"}'), false);
+  assert.equal(source.includes('"agree"'), false);
+  assert.equal(source.includes('appAiBudget'), true);
+  assert.equal(source.includes('createSqliteAiBudget'), true);
+});
+
+test('the capture AI doc counts reported neurons, keeps a Read token, and does not agree', () => {
+  const doc = readFileSync(new URL('../docs/capture-ai.md', import.meta.url), 'utf8');
+  assert.equal(/agree/i.test(doc), false);
+  assert.equal(doc.includes('同意'), false);
+  assert.equal(doc.includes('Read と Edit'), false);
+  assert.equal(doc.includes('Edit'), false);
+  assert.equal(doc.includes('Workers AI の Read'), true);
+  assert.equal(doc.includes('result.usage.neurons'), true);
+  assert.equal(doc.includes('capture_ai_usage'), true);
+  assert.equal(doc.includes('メモリ上'), false);
+  assert.equal(doc.includes('prompt_tokens'), false);
 });
