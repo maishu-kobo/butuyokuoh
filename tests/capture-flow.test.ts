@@ -4,11 +4,14 @@ import {
   RETAKE_MESSAGE,
   SLOW_MS,
   candidateCountStatus,
+  fallbackFromIdentify,
+  fallbackFromSearch,
   flowIsSlow,
   orderCandidates,
   productsToShow,
 } from '../src/lib/capture/capture-flow';
-import type { ProductGuess } from '../src/lib/capture/contract';
+import { CaptureMessages, type ProductGuess } from '../src/lib/capture/contract';
+import { AI_LIMIT_MESSAGE } from '../src/lib/capture/workers-ai';
 
 function product(name: string): ProductGuess {
   return { name, brand: null, model: null, jan: null };
@@ -38,4 +41,50 @@ test('the capture flow is slow at 15 seconds and not one millisecond earlier', (
   assert.equal(SLOW_MS, 15_000);
   assert.equal(flowIsSlow(1_000, 16_000 - 1), false);
   assert.equal(flowIsSlow(1_000, 16_000), true);
+});
+
+test('zero candidates, an unreadable photo, the daily limit, and a failed shop open manual entry with the estimated name', () => {
+  assert.deepEqual(
+    fallbackFromSearch({ candidates: [], amazonUrl: 'https://www.amazon.co.jp/s?k=pen' }, true, '  テスト用ゲルボールペン 0.5  '),
+    { enter: true, name: 'テスト用ゲルボールペン 0.5' },
+  );
+  assert.deepEqual(
+    fallbackFromIdentify({
+      confidence: 'unreadable',
+      products: [{ name: ' 見えにくいペン ', brand: null, model: null, jan: null }],
+    }, true),
+    { enter: true, name: '見えにくいペン' },
+  );
+  assert.deepEqual(
+    fallbackFromIdentify({
+      code: 'AI_LIMIT',
+      error: AI_LIMIT_MESSAGE,
+      fallback: 'manual-entry',
+      products: [{ name: '上限のペン', brand: null, model: null, jan: null }],
+    }, false),
+    { enter: true, name: '上限のペン' },
+  );
+  assert.deepEqual(
+    fallbackFromIdentify({ code: 'AI_LIMIT', error: AI_LIMIT_MESSAGE, fallback: 'manual-entry' }, false),
+    { enter: true, name: '' },
+  );
+  assert.deepEqual(
+    fallbackFromSearch({ code: 'SEARCH_FAILED', error: CaptureMessages.searchFailed }, false, 'テスト用ゲルボールペン 0.5'),
+    { enter: true, name: 'テスト用ゲルボールペン 0.5' },
+  );
+  assert.deepEqual(
+    fallbackFromIdentify({ confidence: 'sure', products: [product('ペン')] }, true),
+    { enter: false },
+  );
+  assert.deepEqual(
+    fallbackFromIdentify({
+      confidence: 'unsure',
+      products: [product('ペン'), product('ノート')],
+    }, true),
+    { enter: false },
+  );
+  assert.deepEqual(
+    fallbackFromSearch({ candidates: [{ id: 'yahoo:pen' }] }, true, 'ペン'),
+    { enter: false },
+  );
 });
