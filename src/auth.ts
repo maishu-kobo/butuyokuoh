@@ -3,6 +3,7 @@ import Google from 'next-auth/providers/google';
 import Credentials from 'next-auth/providers/credentials';
 import { getDb } from '@/lib/db';
 import { verifyPassword, User } from '@/lib/auth';
+import { linkGoogleAccount } from '@/lib/link-google-account';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
@@ -48,37 +49,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user, account, profile }) {
       if (account?.provider === 'google') {
-        const db = getDb();
-        const email = user.email?.trim().toLowerCase();
+        const googleProfile = profile as { email?: string; email_verified?: boolean } | undefined;
+        const email = (googleProfile?.email ?? user.email ?? '').trim().toLowerCase();
         if (!email || email.endsWith('@guest.invalid')) return false;
-        const googleId = account.providerAccountId;
-        const name = user.name || null;
 
-        // 既存ユーザーをチェック
-        const existingUser = db
-          .prepare("SELECT * FROM users WHERE (email = ? OR google_id = ?) AND account_type = 'member'")
-          .get(email, googleId) as (User & { google_id: string | null }) | undefined;
+        const result = linkGoogleAccount(getDb(), {
+          email,
+          googleId: account.providerAccountId,
+          name: user.name || null,
+          emailVerified: googleProfile?.email_verified === true,
+        });
 
-        if (existingUser) {
-          // google_idを更新（メールで登録済みだがgoogle_idがない場合）
-          if (!existingUser.google_id) {
-            db.prepare('UPDATE users SET google_id = ?, name = COALESCE(name, ?) WHERE id = ?').run(
-              googleId,
-              name,
-              existingUser.id
-            );
-          }
-          // セッション用にユーザーIDをセット
-          user.id = String(existingUser.id);
-        } else {
-          // 新規ユーザー作成
-          const result = db
-            .prepare('INSERT INTO users (email, password_hash, google_id, name) VALUES (?, NULL, ?, ?)')
-            .run(email, googleId, name);
-          user.id = String(result.lastInsertRowid);
+        if (!result.ok) {
+          return false;
         }
+
+        user.id = String(result.userId);
       }
       return true;
     },

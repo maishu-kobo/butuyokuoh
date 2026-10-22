@@ -4,7 +4,7 @@ import { verifyPassword, generateToken, setAuthCookie, User } from '@/lib/auth';
 import { normalizeEmail, isValidEmail } from '@/lib/email';
 
 interface DbUser extends User {
-  password_hash: string;
+  password_hash: string | null;
 }
 
 export async function POST(request: NextRequest) {
