@@ -1,5 +1,5 @@
 // 写真から候補一覧までの進め方。画面はこの結果だけを出す。確かさは数字にしない。
-import type { IdentifyConfidence, ProductGuess } from './contract';
+import { CaptureMessages, type IdentifyConfidence, type ProductGuess } from './contract';
 
 export const SLOW_MS = 15_000;
 
@@ -63,4 +63,33 @@ export function fallbackFromSearch(body: unknown, ok: boolean, queryName: string
   const candidates = recordOf(body)?.candidates;
   if (ok && Array.isArray(candidates) && candidates.length > 0) return { enter: false };
   return { enter: true, name };
+}
+
+export function statusAfterIdentify(body: unknown, ok: boolean): { message: string; retryable: boolean } | null {
+  const record = recordOf(body);
+  const products = record && Array.isArray(record.products) ? record.products : null;
+  const confidence = record?.confidence;
+  const listed = ok && (confidence === 'sure' || confidence === 'unsure') && products !== null && products.length > 0;
+  if (listed) return null;
+  if (ok && confidence === 'unreadable') return { message: RETAKE_MESSAGE, retryable: false };
+  const serverMessage = typeof record?.error === 'string' ? record.error : '';
+  return {
+    message: serverMessage || CaptureMessages.aiRetryable,
+    retryable: record?.retryable === true || serverMessage.length === 0,
+  };
+}
+
+export function statusAfterSearch(body: unknown, ok: boolean, queryName: string): {
+  blocked: boolean;
+  message: string;
+  manual: ManualFallback;
+} {
+  const manual = fallbackFromSearch(body, ok, queryName);
+  if (!manual.enter) return { blocked: false, message: '', manual };
+  const record = recordOf(body);
+  const blocked = record?.code === 'SEARCH_NOT_CONFIGURED';
+  const message = blocked
+    ? CaptureMessages.searchUnconfigured
+    : (typeof record?.error === 'string' ? record.error : CaptureMessages.searchFailed);
+  return { blocked, message, manual };
 }

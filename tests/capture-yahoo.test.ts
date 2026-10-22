@@ -165,7 +165,7 @@ test('a missing app id makes Yahoo unavailable and does not hide Rakuten', async
   const missing = await search.search(janQuery);
   assert.equal(missing.ok, false);
   if (!missing.ok) {
-    assert.equal(missing.error.code, 'SEARCH_FAILED');
+    assert.equal(missing.error.code, 'SEARCH_NOT_CONFIGURED');
     assert.equal(missing.error.error, UNAVAILABLE);
     assert.equal(missing.status, 503);
   }

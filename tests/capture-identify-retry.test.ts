@@ -1,11 +1,11 @@
 // 写真判定の一時失敗と、色違いをスラッシュで並べた商品名。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { statusAfterIdentify, statusAfterSearch } from '../src/lib/capture/capture-flow';
 import { CaptureMessages } from '../src/lib/capture/contract';
-import { createFakePorts } from '../src/lib/capture/fakes';
+import { createFakePorts, searchWithPorts } from '../src/lib/capture/fakes';
 import { createRakutenLimiter, createRakutenSearch } from '../src/lib/capture/rakuten';
 import { createYahooSearch } from '../src/lib/capture/yahoo';
-import { searchWithPorts } from '../src/lib/capture/fakes';
 import {
   WORKERS_AI_MODEL,
   createWorkersAiIdentifier,
@@ -109,9 +109,37 @@ test('a slash list of color variants becomes one generic name and is not sure', 
   assert.equal(name.includes('8'), false);
   assert.equal(name.includes('Google'), true);
   assert.equal(name.includes('Pixel'), true);
+  assert.equal(result.value.products[0].model, null);
   const instruction = JSON.parse(calls[0].body).messages[0].content as string;
   assert.equal(instruction.includes('スラッシュ'), true);
   assert.equal(instruction.includes('世代'), true);
+});
+
+test('a slash that is part of the name stays, and a two-color tail does not', async () => {
+  const cable = harness([
+    textResult(JSON.stringify({
+      confidence: 'sure',
+      products: [{ name: 'USB A/C ケーブル', brand: null, model: null, jan: null }],
+    })),
+  ]);
+  const kept = await cable.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(kept.ok, true);
+  if (!kept.ok) return;
+  assert.equal(kept.value.confidence, 'sure');
+  assert.equal(kept.value.products[0].name, 'USB A/C ケーブル');
+
+  const colors = harness([
+    textResult(JSON.stringify({
+      confidence: 'sure',
+      products: [{ name: 'Pixel Black/White', brand: null, model: null, jan: null }],
+    })),
+  ]);
+  const trimmed = await colors.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(trimmed.ok, true);
+  if (!trimmed.ok) return;
+  assert.equal(trimmed.value.confidence, 'unsure');
+  assert.equal(trimmed.value.products[0].name, 'Pixel Black');
+  assert.equal(trimmed.value.products[0].name.includes('/'), false);
 });
 
 test('a name without a variant list keeps its generation', async () => {
@@ -160,13 +188,10 @@ test('missing shop keys are not a retryable search failure, and one configured s
   assert.equal(partial.value.failures.length, 1);
 });
 
-test('call failures and an unreadable photo use different messages', async () => {
-  const flow = await import('../src/lib/capture/capture-flow.ts');
-  assert.equal(typeof flow.statusAfterIdentify, 'function');
-  assert.equal(typeof flow.statusAfterSearch, 'function');
-  const unreadable = flow.statusAfterIdentify({ confidence: 'unreadable', products: [] }, true);
+test('call failures and an unreadable photo use different messages', () => {
+  const unreadable = statusAfterIdentify({ confidence: 'unreadable', products: [] }, true);
   assert.deepEqual(unreadable, { message: 'この写真からは商品が読み取れません。もう一度撮ってください', retryable: false });
-  const parsed = flow.statusAfterIdentify({
+  const parsed = statusAfterIdentify({
     code: 'AI_INVALID_RESPONSE',
     error: CaptureMessages.aiRetryable,
     retryable: true,
@@ -174,17 +199,17 @@ test('call failures and an unreadable photo use different messages', async () =>
   }, false);
   assert.equal(parsed?.retryable, true);
   assert.equal(parsed?.message.includes('読み取れません'), false);
-  const thrown = flow.statusAfterIdentify(null, false);
+  const thrown = statusAfterIdentify(null, false);
   assert.equal(thrown?.message.includes('読み取れません'), false);
   assert.equal(thrown?.retryable, true);
-  const blocked = flow.statusAfterSearch({
+  const blocked = statusAfterSearch({
     code: 'SEARCH_NOT_CONFIGURED',
     error: CaptureMessages.searchUnconfigured,
   }, false, 'Google Pixel');
   assert.equal(blocked.blocked, true);
   assert.equal(blocked.message, CaptureMessages.searchUnconfigured);
   assert.equal(blocked.manual.enter, true);
-  const failed = flow.statusAfterSearch({
+  const failed = statusAfterSearch({
     code: 'SEARCH_FAILED',
     error: CaptureMessages.searchFailed,
   }, false, 'ペン');

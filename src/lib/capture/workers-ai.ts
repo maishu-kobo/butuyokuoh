@@ -7,6 +7,7 @@ import {
   captureFailure,
   decodeCapturePhoto,
   isValidJan,
+  type CaptureErrorCode,
   type CaptureResult,
   type IdentifyConfidence,
   type IdentifyResponse,
@@ -37,12 +38,18 @@ const MAX_PRODUCTS = 5;
 const HOST = 'api.cloudflare.com';
 
 const INSTRUCTION = [
-  '店頭の写真に写っている商品だけを見て、JSONオブジェクトだけを返してください。',
-  '説明、Markdown、URLは付けません。',
+  '写真に写っている商品を1つだけ見て、JSONオブジェクトだけを返してください。',
+  '説明、Markdown、URL、前置きは付けません。',
   '{"confidence":"sure"|"unsure"|"unreadable","products":[{"name":"","brand":null,"model":null,"jan":null}]}',
-  '自信がある商品が1つなら sure、候補が複数なら unsure、判別できなければ unreadable で products は空です。',
+  'nameは簡潔な商品名1つです。色、容量、キャリアの候補をスラッシュ（/）で並べてはいけません。',
+  '世代や型番が写真から読み取れないときは数字を推測せず、ブランドと商品の種類だけにします。例: Google Pixel。',
+  '自信がある商品が1つなら sure。似た候補が複数なら unsure で products は3つまで。',
+  '商品が判別できなければ confidence は unreadable、products は空配列です。',
+  '判別できたのに products を空にしてはいけません。',
   'JANは写真に印字された8桁か13桁だけ。分からない値は null。',
 ].join('');
+
+const AI_TRANSIENT_ATTEMPTS = 2;
 
 export interface WorkersAiHttpRequest {
   url: string;
@@ -139,25 +146,40 @@ export function createWorkersAiIdentifier(options: WorkersAiIdentifierOptions): 
             max_tokens: AI_MAX_OUTPUT_TOKENS,
             temperature: 0,
           });
-          const apply = (response: WorkersAiHttpResponse): CaptureResult<IdentifyResponse> => {
-            meter.note(response);
-            if (isDailyCap(response)) {
-              hitUpstreamCap = true;
-              return captureFailure('AI_LIMIT', AI_LIMIT_MESSAGE, 429);
+          for (let attempt = 0; attempt < AI_TRANSIENT_ATTEMPTS; attempt += 1) {
+            const called = await callModel(http, url, apiToken, imageBody, timeoutMs);
+            if (called.kind !== 'response') {
+              if (attempt > 0 && !outcome.ok && outcome.error.code === 'AI_INVALID_RESPONSE') break;
+              outcome = called.kind === 'timeout'
+                ? retryableFailure('AI_TIMEOUT', CaptureMessages.aiTimeout, 504)
+                : retryableFailure('AI_UNAVAILABLE', CaptureMessages.aiRetryable, 503);
+              if (attempt === 0) continue;
+              break;
             }
-            return interpret(response);
-          };
-          const called = await callModel(http, url, apiToken, imageBody, timeoutMs);
-          if (called.kind === 'timeout') {
-            outcome = captureFailure('AI_TIMEOUT', CaptureMessages.aiTimeout, 504);
-          } else if (called.kind === 'failed') {
-            outcome = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
-          } else {
-            outcome = apply(called.response);
+            meter.note(called.response);
+            if (isDailyCap(called.response)) {
+              hitUpstreamCap = true;
+              outcome = captureFailure('AI_LIMIT', AI_LIMIT_MESSAGE, 429);
+              break;
+            }
+            if (agreementRequired(called.response)) {
+              outcome = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
+              break;
+            }
+            if (called.response.status === 408 || called.response.status === 429 || called.response.status >= 500) {
+              outcome = called.response.status === 408
+                ? retryableFailure('AI_TIMEOUT', CaptureMessages.aiTimeout, 504)
+                : retryableFailure('AI_UNAVAILABLE', CaptureMessages.aiRetryable, 503);
+              if (attempt === 0) continue;
+              break;
+            }
+            outcome = interpret(called.response);
+            if (!outcome.ok && outcome.error.retryable && attempt === 0) continue;
+            break;
           }
         }
       } catch {
-        outcome = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
+        outcome = retryableFailure('AI_UNAVAILABLE', CaptureMessages.aiRetryable, 503);
       } finally {
         if (slot != null) budget.settle(slot, meter.neurons());
         if (hitUpstreamCap) budget.trip(started);
@@ -304,6 +326,7 @@ export function identifyHttpBody(result: CaptureResult<IdentifyResponse>): { sta
   if (result.error.code === 'AI_UNAVAILABLE' || result.error.code === 'AI_TIMEOUT' || result.error.code === 'AI_INVALID_RESPONSE' || result.error.code === 'AI_LIMIT') {
     body.fallback = 'manual-entry';
   }
+  if (result.error.retryable) body.retryable = true;
   return { status: result.status, body };
 }
 
@@ -392,6 +415,21 @@ function neuronsIn(response: WorkersAiHttpResponse): number | null {
   return finiteNeuronCount((usage as { neurons?: unknown }).neurons);
 }
 
+function retryableFailure(code: CaptureErrorCode, error: string, status: number): CaptureResult<never> {
+  const result = captureFailure(code, error, status);
+  if (!result.ok) result.error.retryable = true;
+  return result;
+}
+
+function agreementRequired(response: WorkersAiHttpResponse): boolean {
+  if (response.status !== 403) return false;
+  const parsed = parseJson(response.body);
+  if (!parsed || typeof parsed !== 'object') return false;
+  const errors = (parsed as { errors?: unknown }).errors;
+  if (!Array.isArray(errors)) return false;
+  return errors.some((error) => Boolean(error) && typeof error === 'object' && (error as { code?: unknown }).code === 5016);
+}
+
 function isDailyCap(response: WorkersAiHttpResponse): boolean {
   if (response.status !== 429) return false;
   const parsed = parseJson(response.body);
@@ -478,21 +516,21 @@ function interpret(response: WorkersAiHttpResponse): CaptureResult<IdentifyRespo
   if (response.status >= 300 && response.status < 400) {
     return captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
   }
-  if (response.status === 408) return captureFailure('AI_TIMEOUT', CaptureMessages.aiTimeout, 504);
+  if (response.status === 408) return retryableFailure('AI_TIMEOUT', CaptureMessages.aiTimeout, 504);
   if (response.status >= 400) return captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
   if (response.body.length > MAX_RESPONSE_CHARS) {
-    return captureFailure('AI_INVALID_RESPONSE', CaptureMessages.aiFailed, 502);
+    return retryableFailure('AI_INVALID_RESPONSE', CaptureMessages.aiRetryable, 502);
   }
   const parsed = parseJson(response.body);
   if (!parsed || typeof parsed !== 'object') {
-    return captureFailure('AI_INVALID_RESPONSE', CaptureMessages.aiFailed, 502);
+    return retryableFailure('AI_INVALID_RESPONSE', CaptureMessages.aiRetryable, 502);
   }
   if ((parsed as { success?: unknown }).success === false) {
-    return captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
+    return retryableFailure('AI_INVALID_RESPONSE', CaptureMessages.aiRetryable, 502);
   }
   const guess = parseGuess(extractModelOutput(parsed));
-  if (!guess) return captureFailure('AI_INVALID_RESPONSE', CaptureMessages.aiFailed, 502);
-  return { ok: true, value: guess };
+  if (guess.kind === 'invalid') return retryableFailure('AI_INVALID_RESPONSE', CaptureMessages.aiRetryable, 502);
+  return { ok: true, value: guess.value };
 }
 
 function parseJson(body: string): unknown {
@@ -521,25 +559,78 @@ function extractModelOutput(payload: object): unknown {
   return null;
 }
 
-function parseGuess(output: unknown): IdentifyResponse | null {
+type ParsedGuess =
+  | { kind: 'guess'; value: IdentifyResponse }
+  | { kind: 'invalid' };
+
+function parseGuess(output: unknown): ParsedGuess {
   const value = typeof output === 'string' ? firstJsonObject(output) : output;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const productsField = (value as { products?: unknown }).products;
-  if (!Array.isArray(productsField)) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { kind: 'invalid' };
+  const record = value as { products?: unknown; confidence?: unknown };
+  if (!Array.isArray(record.products)) return { kind: 'invalid' };
+  if (record.confidence === 'unreadable') return { kind: 'guess', value: { confidence: 'unreadable', products: [] } };
   const products: ProductGuess[] = [];
-  for (const item of productsField) {
+  let catalog = false;
+  for (const item of record.products) {
     if (products.length >= MAX_PRODUCTS) break;
     const product = normalizeProduct(item);
-    if (product) products.push(product);
+    if (!product) continue;
+    const sanitized = sanitizeGuessProduct(product);
+    if (!sanitized) continue;
+    if (sanitized.catalog) catalog = true;
+    products.push(sanitized.product);
   }
-  if (products.length === 0) return { confidence: 'unreadable', products: [] };
-  const raw = (value as { confidence?: unknown }).confidence;
-  let confidence: IdentifyConfidence = raw === 'sure' || raw === 'unsure' || raw === 'unreadable'
-    ? raw
+  if (products.length === 0) return { kind: 'invalid' };
+  let confidence: IdentifyConfidence = record.confidence === 'sure' || record.confidence === 'unsure'
+    ? record.confidence
     : products.length === 1 ? 'sure' : 'unsure';
-  if (confidence === 'unreadable') return { confidence: 'unreadable', products: [] };
   if (confidence === 'sure' && products.length !== 1) confidence = 'unsure';
-  return { confidence, products };
+  if (catalog) confidence = 'unsure';
+  return { kind: 'guess', value: { confidence, products } };
+}
+
+function sanitizeGuessProduct(product: ProductGuess): { product: ProductGuess; catalog: boolean } | null {
+  const named = sanitizeProductName(product.name);
+  if (!named.name) return null;
+  let catalog = named.catalog;
+  let brand = product.brand;
+  if (brand) {
+    const cleaned = sanitizeProductName(brand);
+    brand = cleaned.name || null;
+    catalog = catalog || cleaned.catalog;
+  }
+  let model = product.model;
+  if (catalog) {
+    model = null;
+  } else if (model) {
+    const cleaned = sanitizeProductName(model);
+    catalog = catalog || cleaned.catalog;
+    model = catalog ? null : (cleaned.name || null);
+  }
+  return { product: { ...product, name: named.name, brand, model }, catalog };
+}
+
+function sanitizeProductName(name: string): { name: string; catalog: boolean } {
+  const normalized = name.replaceAll('／', '/');
+  const hadList = /(?:^|\s)\S+(?:\/\S+){2,}(?:\s|$)/.test(normalized);
+  let next = normalized.replace(/(?:^|\s)\S+(?:\/\S+){2,}(?=\s|$)/g, ' ');
+  if (hadList) {
+    next = next.replace(/\s*[（(][^（）()]{0,80}[）)]/g, ' ');
+    next = next.replace(/(^|\s)\d{1,2}(?=\s|$)/g, ' ');
+  }
+  next = next.replace(/\s+/g, ' ').trim();
+  if (next.includes('/')) {
+    const slash = next.indexOf('/');
+    const head = next.slice(0, slash).trim();
+    const tail = next.slice(slash + 1).trim();
+    const variantTail = tail.split('/').every((part) => {
+      const token = part.trim();
+      return token.length > 0 && token.length <= 24 && !token.includes(' ') && !/\d/.test(token);
+    });
+    if (variantTail && head) next = head;
+  }
+  next = next.replace(/\s+/g, ' ').trim();
+  return { name: next, catalog: hadList || next !== normalized.trim() };
 }
 
 function normalizeProduct(item: unknown): ProductGuess | null {

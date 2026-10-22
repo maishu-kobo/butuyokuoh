@@ -311,6 +311,34 @@ test('missing shop keys do not call the shops or throw', async () => {
   });
 });
 
+test('one configured shop still returns candidates when the other key is missing', async () => {
+  const database = await db();
+  const owner = await createMember('search-one-key');
+  await withEnv(liveEnv({
+    RAKUTEN_APP_ID: undefined,
+    RAKUTEN_ACCESS_KEY: undefined,
+  }), async () => {
+    await setTestUser(owner);
+    const { yahooCalls, rakutenCalls } = install();
+    const response = await searchPost(searchRequest({ name: 'ペン', jan: JAN }));
+    const body = await response.json() as {
+      code?: string;
+      error?: string;
+      candidates: { site: string }[];
+      failures: { code: string; site: string }[];
+    };
+    assert.equal(response.status, 200);
+    assert.equal(body.code, undefined);
+    assert.equal(body.error, undefined);
+    assert.deepEqual(body.candidates.map((item) => item.site), ['yahoo']);
+    assert.deepEqual(body.failures.map((failure) => failure.site), ['rakuten']);
+    assert.equal(body.failures[0].code, 'SEARCH_NOT_CONFIGURED');
+    assert.equal(yahooCalls.length, 1);
+    assert.equal(rakutenCalls.length, 0);
+    assert.equal(candidateRows(database, owner.id).length, 1);
+  });
+});
+
 test('the test scenario still uses fakes and does not call the shop transports', async () => {
   const database = await db();
   const owner = await createMember('search-fake');
