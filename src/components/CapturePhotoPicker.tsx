@@ -29,6 +29,7 @@ export function useCapturePhotoPick(
   if (enabled !== shown) {
     setShown(enabled);
     if (!enabled) {
+      requestRef.current += 1;
       setMessage('');
       setSelected(false);
     }
