@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   CAPTURE_AI_DISABLED_MESSAGE,
   CaptureDisabledError,
@@ -11,6 +11,8 @@ import {
   withCaptureAi,
 } from '../src/lib/capture-flags';
 import { GET, POST } from '../src/app/api/capture/route';
+import { POST as identifyPost } from '../src/app/api/capture/identify/route';
+import { POST as searchPost } from '../src/app/api/capture/search/route';
 
 const FLAG_NAMES = ['CAPTURE_ENABLED', 'CAPTURE_AI_ENABLED'] as const;
 
@@ -131,6 +133,57 @@ test('wrappers reject hidden capture calls and do not leak flag values', async (
     const response = await withCaptureAi(() => NextResponse.json({ ran: true }))();
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { ran: true });
+  });
+});
+
+function captureRequest(path: string, body?: string) {
+  return new NextRequest(`http://localhost${path}`, {
+    method: 'POST',
+    headers: body ? { origin: 'http://localhost', 'content-type': 'application/json' } : undefined,
+    body,
+  });
+}
+
+test('identify and search stay closed unless CAPTURE_ENABLED is exactly true', async () => {
+  await withFlags({}, async () => {
+    const identifyResponse = await identifyPost(captureRequest('/api/capture/identify'));
+    assert.equal(identifyResponse.status, 404);
+    assert.equal(identifyResponse.headers.get('cache-control'), 'no-store');
+    const identifyBody = await identifyResponse.json();
+    assert.equal(identifyBody.code, 'CAPTURE_DISABLED');
+    assert.equal(identifyBody.error, 'この機能は利用できません');
+    assert.equal('fallback' in identifyBody, false);
+    assert.equal(JSON.stringify(identifyBody).includes('CAPTURE_ENABLED'), false);
+
+    const searchResponse = await searchPost(captureRequest('/api/capture/search', JSON.stringify({ name: 'ペン' })));
+    assert.equal(searchResponse.status, 404);
+    const searchBody = await searchResponse.json();
+    assert.equal(searchBody.code, 'CAPTURE_DISABLED');
+    assert.equal(searchBody.error, 'この機能は利用できません');
+  });
+});
+
+test('CAPTURE_AI_ENABLED stops photo identification and leaves name search open', async () => {
+  await withFlags({ CAPTURE_ENABLED: 'true' }, async () => {
+    const identifyResponse = await identifyPost(captureRequest('/api/capture/identify'));
+    assert.equal(identifyResponse.status, 503);
+    const identifyBody = await identifyResponse.json();
+    assert.equal(identifyBody.code, 'CAPTURE_AI_DISABLED');
+    assert.equal(identifyBody.fallback, 'manual-entry');
+    assert.equal(identifyBody.error, CAPTURE_AI_DISABLED_MESSAGE);
+    assert.equal(JSON.stringify(identifyBody).includes('CAPTURE_AI_ENABLED'), false);
+
+    let searchStatus: number;
+    try {
+      searchStatus = (await searchPost(captureRequest('/api/capture/search', JSON.stringify({ name: 'ペン' })))).status;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      assert.equal(message.includes('CAPTURE_AI_DISABLED'), false);
+      assert.equal(message.includes('この機能は利用できません'), false);
+      return;
+    }
+    assert.notEqual(searchStatus, 404);
+    assert.notEqual(searchStatus, 503);
   });
 });
 
