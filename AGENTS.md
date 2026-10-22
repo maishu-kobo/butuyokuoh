@@ -6,8 +6,7 @@
 
 Next.js 16 / React 19 は、古い学習データと違うことがある。迷ったら https://nextjs.org/docs の該当ページを見る。Markdown が要るときは URL の末尾に `.md` を足す。
 
-仕様（写真から登録）: https://docs.google.com/document/d/1BIKZ_U2Sg0bM1Vh4TUsBoV25iCSdnSyTbYqtzOuJ6IQ/edit
-ローカルの SPEC 下書きはコミットしない。
+機能の仕様は、その機能のまとめの Issue からリンクする。ローカルの仕様の下書きはコミットしない。
 
 ## 地図
 
@@ -58,7 +57,7 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 
 エージェントはデプロイしない。`develop` と `main` へ直接 push しない。リポジトリ設定を変えない。データを削除しない。
 
-写真から登録（Issue #80〜#121、ラベル `feature:photo-capture`）は `feature/photo-capture` から切り、PR もそこへ向ける。`develop` へは出さない。自動マージは `feature/photo-capture` に入れるときだけ。`feature/photo-capture` を `develop` へ入れるのは、機能全体をそのブランチで確認したあとの1回で、必ず人が承認する（`develop` は本番）。`develop` の取り込みは merge で行う。共有ブランチの rebase と force-push はしない。
+大きい機能は `feature/<名前>` の統合ブランチを `develop` から切って進める。その機能の Issue はラベル `feature:<名前>` とまとめの Issue で束ね、どの統合ブランチかはラベルかまとめの Issue に書く。各タスクのブランチは統合ブランチから切り、PR もそこへ向ける。自動マージは統合ブランチへの PR だけ（人の承認が要る変更は除く）。`develop` への統合は、機能全体を確かめたあとの1回で、必ず人が承認する。統合ブランチへの `develop` の取り込みは merge で行い、rebase と force-push はしない。小さい修正は `develop` への PR でよく、上のマージ規則に従う。
 
 ## Code Review Rules
 
