@@ -92,12 +92,34 @@ async function identified(options: {
 }
 
 test('missing cloudflare keys in production return AI_UNAVAILABLE instead of the fake product', async () => {
-  const { result, calls, identifier } = await identified({
+  for (const keys of [
+    { accountId: null, apiToken: null },
+    { accountId: null, apiToken: TOKEN },
+    { accountId: ACCOUNT, apiToken: null },
+    { accountId: '', apiToken: TOKEN },
+    { accountId: ACCOUNT, apiToken: '' },
+  ]) {
+    const { result, calls, identifier } = await identified({
+      ...keys,
+      env: { NODE_ENV: 'production' },
+    });
+    assert.deepEqual(result, UNAVAILABLE);
+    assert.equal(calls.length, 0);
+    assert.notEqual(identifier, fake);
+  }
+});
+
+test('an unreadable photo is reported before AI_UNAVAILABLE when keys are missing', async () => {
+  const opened = openIdentifier({
+    hooked: false,
+    accountId: null,
+    apiToken: null,
     env: { NODE_ENV: 'production' },
   });
-  assert.deepEqual(result, UNAVAILABLE);
-  assert.equal(calls.length, 0);
-  assert.notEqual(identifier, fake);
+  const result = await opened.identifier.identify({ mediaType: 'image/jpeg', bytes: Uint8Array.of(1, 2, 3, 4) });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, 'PHOTO_UNREADABLE');
+  assert.equal(opened.calls.length, 0);
 });
 
 test('missing cloudflare keys in development without test hooks return AI_UNAVAILABLE', async () => {
@@ -130,6 +152,31 @@ test('production does not serve the fake identifier when hooks are on and a scen
   assert.equal(forced.calls.length, 1);
   assert.equal(forced.calls[0]?.includes(TOKEN), false);
   assert.notEqual(forced.identifier, fake);
+});
+
+test('only CAPTURE_TEST_HOOKS=1 enables the fake identifier', async () => {
+  for (const hooks of ['true', '1 ', 'yes', '0']) {
+    const { result, calls, identifier } = await identified({
+      env: { NODE_ENV: 'development', CAPTURE_TEST_HOOKS: hooks },
+    });
+    assert.deepEqual(result, UNAVAILABLE, hooks);
+    assert.equal(calls.length, 0, hooks);
+    assert.notEqual(identifier, fake, hooks);
+  }
+});
+
+test('valid keys outside a scenario still use Workers AI when test hooks are on', async () => {
+  const { result, calls, identifier } = await identified({
+    hooked: false,
+    accountId: ACCOUNT,
+    apiToken: TOKEN,
+    env: { NODE_ENV: 'development', CAPTURE_TEST_HOOKS: '1' },
+  });
+  assert.notEqual(identifier, fake);
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value.products[0]?.name, REAL_NAME);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.includes(TOKEN), false);
 });
 
 test('CAPTURE_TEST_HOOKS=1 outside production returns the fake identifier', async () => {
@@ -189,7 +236,15 @@ function writeEnv(name: string, value: string | undefined) {
   else env[name] = value;
 }
 
+let routeEnvQueue: Promise<void> = Promise.resolve();
+
 async function withRouteEnv(values: Partial<Record<(typeof ROUTE_ENV)[number], string | undefined>>, fn: () => Promise<void>) {
+  const previousRun = routeEnvQueue;
+  let release: () => void = () => undefined;
+  routeEnvQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previousRun;
   const previous = new Map<string, string | undefined>();
   for (const name of ROUTE_ENV) {
     previous.set(name, process.env[name]);
@@ -201,6 +256,7 @@ async function withRouteEnv(values: Partial<Record<(typeof ROUTE_ENV)[number], s
   } finally {
     for (const [name, prior] of previous) writeEnv(name, prior);
     await setTestUser(null);
+    release();
   }
 }
 
@@ -210,7 +266,6 @@ test('POST /api/capture/identify returns the manual fallback when keys are missi
     create: { width: 8, height: 8, channels: 3, background: { r: 20, g: 40, b: 60 } },
   }).jpeg().toBuffer();
   const packed = multipart(photo);
-  await createMember('identify-no-keys');
   await withRouteEnv({
     NODE_ENV: 'development',
     CAPTURE_ENABLED: 'true',
@@ -222,6 +277,7 @@ test('POST /api/capture/identify returns the manual fallback when keys are missi
     AUTH_URL: origin,
     NEXTAUTH_URL: undefined,
   }, async () => {
+    await createMember('identify-no-keys');
     const response = await identifyPost(new NextRequest(`${origin}/api/capture/identify`, {
       method: 'POST',
       headers: { origin, 'content-type': packed.contentType },
@@ -247,7 +303,6 @@ test('POST /api/capture/identify keeps the fake product when test hooks are on o
     create: { width: 8, height: 8, channels: 3, background: { r: 20, g: 40, b: 60 } },
   }).jpeg().toBuffer();
   const packed = multipart(photo);
-  await createMember('identify-hooks');
   await withRouteEnv({
     NODE_ENV: 'development',
     CAPTURE_ENABLED: 'true',
@@ -259,6 +314,7 @@ test('POST /api/capture/identify keeps the fake product when test hooks are on o
     AUTH_URL: origin,
     NEXTAUTH_URL: undefined,
   }, async () => {
+    await createMember('identify-hooks');
     const response = await identifyPost(new NextRequest(`${origin}/api/capture/identify`, {
       method: 'POST',
       headers: { origin, 'content-type': packed.contentType },
