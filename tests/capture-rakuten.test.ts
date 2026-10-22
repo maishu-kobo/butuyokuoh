@@ -447,6 +447,40 @@ test('Referer and accessKey with CR, LF, or NUL are not sent', async () => {
   }
 });
 
+test('Rakuten keeps every valid product when the one fallback id is already taken', async () => {
+  // fast-check seed 20261022 を縮約した反例。code の slug が a-3 / a / a の順だと、
+  // 3件目の代替 id `-{index+1}` が 1件目の id と重なって消えていた。
+  const items = [
+    { code: 'a-3', shop: 'shop0', name: 'first', price: 10 },
+    { code: 'a', shop: 'shop1', name: 'second', price: 20 },
+    { code: 'a', shop: 'shoplost', name: 'third', price: 30 },
+  ];
+  const { search } = harness({
+    http: okHttp({
+      items: items.map(entry => ({
+        itemName: entry.name,
+        shopName: entry.shop,
+        itemUrl: `https://item.rakuten.co.jp/${entry.shop}/${entry.code}`,
+        itemPrice: entry.price,
+        itemCode: entry.code,
+      })),
+    }),
+  });
+  const result = await search.search(query);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value.map(candidate => candidate.url), [
+    'https://item.rakuten.co.jp/shop0/a-3',
+    'https://item.rakuten.co.jp/shop1/a',
+    'https://item.rakuten.co.jp/shoplost/a',
+  ]);
+  const ids = result.value.map(candidate => candidate.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.equal(ids.length, 3);
+  assert.deepEqual(ids.slice(0, 2), ['rakuten:a-3', 'rakuten:a']);
+  for (const id of ids) assert.match(id, /^rakuten:[a-z0-9-]{1,64}$/);
+});
+
 test('Rakuten credit is the developers attribution and the client does not read env or call fetch', () => {
   assert.equal(RAKUTEN_CREDIT.label, 'Supported by Rakuten Developers');
   assert.equal(new URL(RAKUTEN_CREDIT.url).hostname, 'webservice.rakuten.co.jp');
