@@ -1,0 +1,34 @@
+{
+  "suppressions": [
+    {
+      "rule": "js/double-escaping",
+      "path": "src/lib/product-html.ts",
+      "line": "  name = name",
+      "reason": "商品名の表示用に既知の実体参照を一度だけ戻す。HTML へは再挿入しない"
+    },
+    {
+      "rule": "js/incomplete-multi-character-sanitization",
+      "path": "src/lib/product-html.ts",
+      "line": "          jsonContent = jsonContent.replace(/<script[^>]*>/gi, '');",
+      "reason": "JSON.parse で価格を読む前のタグ除去。結果は HTML として解釈しない"
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "src/lib/product-html.ts",
+      "line": "    const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme');",
+      "reason": "ページ本文から価格の単位を選ぶだけ。URL の許可判定ではない"
+    },
+    {
+      "rule": "js/incomplete-hostname-regexp",
+      "path": "tests/e2e/guest.spec.ts",
+      "line": "  expect(item.image_url).toMatch(/^https:\\/\\/.*media-amazon.com\\//);",
+      "reason": "本番のホスト検証ではない。任意の実店舗テストが画像 URL を確認する"
+    },
+    {
+      "rule": "js/user-controlled-bypass",
+      "path": "src/app/api/auth/login/route.ts",
+      "line": "    if (!normalizedEmail || !password) {",
+      "reason": "空のメールかパスワードを 400 で拒否するだけ。トークンは後段の検証成功後に出す"
+    }
+  ]
+}

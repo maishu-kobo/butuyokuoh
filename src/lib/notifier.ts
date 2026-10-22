@@ -14,7 +14,8 @@ function isTimeoutError(error: unknown): boolean {
 }
 
 export interface NotificationPayload {
-  item: Item;
+  // 通知文面が使う項目だけにする。価格チェックの行は Item 全体を持たない。
+  item: Pick<Item, 'id' | 'name' | 'url' | 'image_url'>;
   oldPrice: number;
   newPrice: number;
   targetPrice?: number;

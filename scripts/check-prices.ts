@@ -89,7 +89,7 @@ async function checkPrices() {
         const kind = priceDropNotification(oldPrice, newPrice, item.target_price, userSettings);
         if (kind && userSettings) {
           const payload: NotificationPayload = {
-            item: item as any,
+            item,
             oldPrice,
             newPrice,
             targetPrice: item.target_price || undefined,
