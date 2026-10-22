@@ -16,7 +16,21 @@ export const WORKERS_AI_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 export const WORKERS_AI_TIMEOUT_MS = 30_000;
 export const AI_MAX_OUTPUT_TOKENS = 400;
 
+// 料金表（2026-10-20）の入力 4410 / 出力 61493 ニューロン毎100万トークン。
+export const AI_NEURONS_PER_MILLION_INPUT = 4410;
+export const AI_NEURONS_PER_MILLION_OUTPUT = 61493;
+export const AI_NEURON_DAILY_CAP = 8000;
+export const AI_USER_PER_MINUTE = 3;
+export const AI_USER_PER_DAY = 10;
+// 返事にトークン数が無いときの仮の1回分。8万入力トークンと出力上限400を料金表で切り上げた値。
+// 写真20枚の実測（#100）は未確認。実測に置き換える。
+export const AI_NEURONS_WHEN_USAGE_MISSING = 378;
+export const AI_LIMIT_MESSAGE = '今日は写真からの自動の判定が上限に達しました。商品名を入れて探してください';
+export const AI_MINUTE_LIMIT_MESSAGE = '写真からの判定は1分に3回までです。商品名を入れて探してください';
+
+const MINUTE_MS = 60_000;
 const MAX_RESPONSE_CHARS = 65_536;
+const CAP_USER = '\u0000';
 const MAX_PRODUCTS = 5;
 const HOST = 'api.cloudflare.com';
 
@@ -53,10 +67,18 @@ export interface WorkersAiTiming {
   elapsedMs: number;
 }
 
+export interface AiBudget {
+  tryBegin(userId: string, now: number): { ok: true; token: number } | { ok: false; reason: 'minute' | 'day' | 'neurons' };
+  settle(token: number, neurons: number): void;
+  trip(now: number): void;
+  usedNeurons(now: number): number;
+}
+
 export interface WorkersAiIdentifierOptions {
   accountId: string;
   apiToken: string;
   userId: string;
+  budget?: AiBudget;
   http?: WorkersAiHttp;
   now?: () => number;
   timeoutMs?: number;
@@ -68,10 +90,16 @@ type CallOutcome =
   | { kind: 'timeout' }
   | { kind: 'failed' };
 
+type UsageMeter = {
+  note(response: WorkersAiHttpResponse): void;
+  neurons(): number;
+};
+
 export function createWorkersAiIdentifier(options: WorkersAiIdentifierOptions): ProductIdentifier {
   const now = options.now ?? (() => Date.now());
   const timeoutMs = options.timeoutMs ?? WORKERS_AI_TIMEOUT_MS;
   const http = options.http ?? defaultHttp;
+  const budget = options.budget ?? createAiBudget();
 
   return {
     async identify(input) {
@@ -86,47 +114,217 @@ export function createWorkersAiIdentifier(options: WorkersAiIdentifierOptions): 
       }
 
       const started = now();
+      let slot: number | null = null;
+      const meter = createUsageMeter();
       let outcome: CaptureResult<IdentifyResponse> = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
       try {
-        const imageBody = JSON.stringify({
-          messages: [
-            { role: 'system', content: INSTRUCTION },
-            { role: 'user', content: 'この写真の商品をJSONで返してください。' },
-          ],
-          image: `data:${photo.value.mediaType};base64,${Buffer.from(photo.value.bytes).toString('base64')}`,
-          max_tokens: AI_MAX_OUTPUT_TOKENS,
-          temperature: 0,
-        });
-        let called = await callModel(http, url, apiToken, imageBody, timeoutMs);
-        if (called.kind === 'timeout') {
-          outcome = captureFailure('AI_TIMEOUT', CaptureMessages.aiTimeout, 504);
-        } else if (called.kind === 'failed') {
-          outcome = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
-        } else if (isLicenseGate(called.response)) {
-          const agreed = await callModel(http, url, apiToken, '{"prompt":"agree"}', timeoutMs);
-          if (agreed.kind === 'timeout') {
-            outcome = captureFailure('AI_TIMEOUT', CaptureMessages.aiTimeout, 504);
-          } else if (agreed.kind !== 'response' || isLicenseGate(agreed.response) || agreed.response.status >= 300) {
-            outcome = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
-          } else {
-            called = await callModel(http, url, apiToken, imageBody, timeoutMs);
-            outcome = called.kind === 'timeout'
-              ? captureFailure('AI_TIMEOUT', CaptureMessages.aiTimeout, 504)
-              : called.kind === 'response' && !isLicenseGate(called.response)
-                ? interpret(called.response)
-                : captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
-          }
+        const begun = budget.tryBegin(userId, started);
+        if (!begun.ok) {
+          outcome = captureFailure(
+            'AI_LIMIT',
+            begun.reason === 'minute' ? AI_MINUTE_LIMIT_MESSAGE : AI_LIMIT_MESSAGE,
+            429,
+          );
         } else {
-          outcome = interpret(called.response);
+          slot = begun.token;
+          const imageBody = JSON.stringify({
+            messages: [
+              { role: 'system', content: INSTRUCTION },
+              { role: 'user', content: 'この写真の商品をJSONで返してください。' },
+            ],
+            image: `data:${photo.value.mediaType};base64,${Buffer.from(photo.value.bytes).toString('base64')}`,
+            max_tokens: AI_MAX_OUTPUT_TOKENS,
+            temperature: 0,
+          });
+          const apply = (response: WorkersAiHttpResponse): CaptureResult<IdentifyResponse> => {
+            meter.note(response);
+            if (isDailyCap(response)) {
+              budget.trip(started);
+              return captureFailure('AI_LIMIT', AI_LIMIT_MESSAGE, 429);
+            }
+            return interpret(response);
+          };
+          let called = await callModel(http, url, apiToken, imageBody, timeoutMs);
+          if (called.kind === 'timeout') {
+            outcome = captureFailure('AI_TIMEOUT', CaptureMessages.aiTimeout, 504);
+          } else if (called.kind === 'failed') {
+            outcome = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
+          } else if (isLicenseGate(called.response)) {
+            meter.note(called.response);
+            const agreed = await callModel(http, url, apiToken, '{"prompt":"agree"}', timeoutMs);
+            if (agreed.kind === 'timeout') {
+              outcome = captureFailure('AI_TIMEOUT', CaptureMessages.aiTimeout, 504);
+            } else if (agreed.kind !== 'response' || isLicenseGate(agreed.response) || agreed.response.status >= 300) {
+              if (agreed.kind === 'response') meter.note(agreed.response);
+              outcome = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
+            } else {
+              meter.note(agreed.response);
+              called = await callModel(http, url, apiToken, imageBody, timeoutMs);
+              outcome = called.kind === 'timeout'
+                ? captureFailure('AI_TIMEOUT', CaptureMessages.aiTimeout, 504)
+                : called.kind === 'response' && !isLicenseGate(called.response)
+                  ? apply(called.response)
+                  : captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
+            }
+          } else {
+            outcome = apply(called.response);
+          }
         }
       } catch {
         outcome = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
       } finally {
+        if (slot != null) budget.settle(slot, meter.neurons());
         options.onTiming?.({ elapsedMs: Math.max(0, now() - started) });
       }
       return outcome;
     },
   };
+}
+
+type BudgetRow = { token: number; userId: string; at: number; neurons: number };
+
+export function createAiBudget(): AiBudget {
+  let rows: BudgetRow[] = [];
+  let nextToken = 1;
+
+  function active(now: number): BudgetRow[] {
+    const start = utcDayStart(now);
+    rows = rows.filter((row) => row.at >= start);
+    return rows;
+  }
+
+  return {
+    tryBegin(userId, now) {
+      const current = active(now);
+      const mine = current.filter((row) => row.userId === userId);
+      if (mine.filter((row) => now - row.at < MINUTE_MS).length >= AI_USER_PER_MINUTE) {
+        return { ok: false, reason: 'minute' };
+      }
+      if (mine.length >= AI_USER_PER_DAY) return { ok: false, reason: 'day' };
+      if (current.reduce((sum, row) => sum + row.neurons, 0) >= AI_NEURON_DAILY_CAP) {
+        return { ok: false, reason: 'neurons' };
+      }
+      const token = nextToken;
+      nextToken += 1;
+      current.push({ token, userId, at: now, neurons: 0 });
+      return { ok: true, token };
+    },
+    settle(token, neurons) {
+      const row = rows.find((item) => item.token === token);
+      if (!row) return;
+      row.neurons = Number.isSafeInteger(neurons) && neurons > 0 ? neurons : 0;
+    },
+    trip(now) {
+      const current = active(now);
+      const used = current.reduce((sum, row) => sum + row.neurons, 0);
+      if (used >= AI_NEURON_DAILY_CAP) return;
+      const token = nextToken;
+      nextToken += 1;
+      current.push({ token, userId: CAP_USER, at: now, neurons: AI_NEURON_DAILY_CAP - used });
+    },
+    usedNeurons(now) {
+      return active(now).reduce((sum, row) => sum + row.neurons, 0);
+    },
+  };
+}
+
+export const sharedAiBudget = createAiBudget();
+
+export function neuronsFromTokenUsage(usage: unknown): number | null {
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return null;
+  const record = usage as Record<string, unknown>;
+  const prompt = finiteToken(record.prompt_tokens);
+  const completion = finiteToken(record.completion_tokens);
+  if (prompt == null && completion == null) {
+    const total = finiteToken(record.total_tokens);
+    if (total == null) return null;
+    return ceilNeurons(total * AI_NEURONS_PER_MILLION_OUTPUT);
+  }
+  return ceilNeurons((prompt ?? 0) * AI_NEURONS_PER_MILLION_INPUT + (completion ?? 0) * AI_NEURONS_PER_MILLION_OUTPUT);
+}
+
+export function identifyHttpBody(result: CaptureResult<IdentifyResponse>): { status: number; body: Record<string, unknown> } {
+  if (result.ok) return { status: 200, body: { confidence: result.value.confidence, products: result.value.products } };
+  const body: Record<string, unknown> = { code: result.error.code, error: result.error.error };
+  if (result.error.failures) body.failures = result.error.failures;
+  if (result.error.code === 'AI_UNAVAILABLE' || result.error.code === 'AI_TIMEOUT' || result.error.code === 'AI_INVALID_RESPONSE' || result.error.code === 'AI_LIMIT') {
+    body.fallback = 'manual-entry';
+  }
+  return { status: result.status, body };
+}
+
+export function resolveProductIdentifier(input: {
+  hooked: boolean;
+  accountId: string | null;
+  apiToken: string | null;
+  userId: string;
+  fake: ProductIdentifier;
+  budget?: AiBudget;
+  http?: WorkersAiHttp;
+  now?: () => number;
+  timeoutMs?: number;
+}): ProductIdentifier {
+  if (input.hooked || !input.accountId || !input.apiToken) return input.fake;
+  return createWorkersAiIdentifier({
+    accountId: input.accountId,
+    apiToken: input.apiToken,
+    userId: input.userId,
+    budget: input.budget ?? sharedAiBudget,
+    http: input.http,
+    now: input.now,
+    timeoutMs: input.timeoutMs,
+  });
+}
+
+function utcDayStart(now: number): number {
+  const date = new Date(now);
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+function finiteToken(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > 10_000_000) return null;
+  return value;
+}
+
+function ceilNeurons(scaled: number): number {
+  return Math.ceil(scaled / 1_000_000);
+}
+
+function createUsageMeter(): UsageMeter {
+  let metered = 0;
+  let sawUsage = false;
+  return {
+    note(response) {
+      const neurons = neuronsIn(response);
+      if (neurons == null) return;
+      sawUsage = true;
+      metered += neurons;
+    },
+    neurons() {
+      return sawUsage ? metered : AI_NEURONS_WHEN_USAGE_MISSING;
+    },
+  };
+}
+
+function neuronsIn(response: WorkersAiHttpResponse): number | null {
+  const parsed = parseJson(response.body);
+  if (!parsed || typeof parsed !== 'object') return null;
+  const record = parsed as Record<string, unknown>;
+  const result = record.result;
+  if (result && typeof result === 'object') {
+    const nested = neuronsFromTokenUsage((result as { usage?: unknown }).usage);
+    if (nested != null) return nested;
+  }
+  return neuronsFromTokenUsage(record.usage);
+}
+
+function isDailyCap(response: WorkersAiHttpResponse): boolean {
+  if (response.status !== 429) return false;
+  const parsed = parseJson(response.body);
+  if (!parsed || typeof parsed !== 'object') return false;
+  const errors = (parsed as { errors?: unknown }).errors;
+  if (!Array.isArray(errors)) return false;
+  return errors.some((error) => Boolean(error) && typeof error === 'object' && (error as { code?: unknown }).code === 3036);
 }
 
 function normalizeAccount(value: string): string | null {
