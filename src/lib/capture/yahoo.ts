@@ -4,7 +4,6 @@ import {
   CaptureMessages,
   acceptCandidate,
   captureFailure,
-  isAllowedCandidateUrl,
   isValidJan,
   type CaptureCandidate,
   type CaptureResult,
@@ -161,12 +160,27 @@ function yahooId(code: string, used: Set<string>): string | null {
   return id;
 }
 
+function canonicalProductUrl(raw: string): string | null {
+  if (/[\u0000-\u0020\\]/.test(raw)) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port) return null;
+  if (parsed.hostname !== 'shopping.yahoo.co.jp' && parsed.hostname !== 'store.shopping.yahoo.co.jp') return null;
+  return `${parsed.origin}${parsed.pathname}${parsed.search}`;
+}
+
 function imageUrl(hit: Record<string, unknown>): string | undefined {
   const image = hit.image;
   if (!image || typeof image !== 'object') return undefined;
   const record = image as { medium?: unknown; small?: unknown };
   for (const candidate of [record.medium, record.small]) {
-    if (typeof candidate === 'string' && isAllowedCandidateUrl('yahoo', candidate)) return candidate;
+    if (typeof candidate !== 'string') continue;
+    const safe = canonicalProductUrl(candidate);
+    if (safe) return safe;
   }
   return undefined;
 }
@@ -187,12 +201,14 @@ function toCandidate(value: unknown, fetchedAt: string, used: Set<string>): Capt
   if (!title || !shopName) return reject();
   if (typeof hit.price !== 'number' || !Number.isSafeInteger(hit.price) || hit.price < 0) return reject();
   if (typeof hit.url !== 'string') return reject();
+  const url = canonicalProductUrl(hit.url);
+  if (!url) return reject();
   const draft: CaptureCandidate = {
     id,
     site: 'yahoo',
     title,
     price: hit.price,
-    url: hit.url,
+    url,
     fetchedAt,
     shopName,
   };
@@ -208,11 +224,12 @@ function mapHits(body: unknown, fetchedAt: string): CaptureResult<CaptureCandida
   if (!body || typeof body !== 'object' || Array.isArray(body)) return failed();
   const hits = (body as { hits?: unknown }).hits;
   if (!Array.isArray(hits)) return failed();
+  const limited = hits.slice(0, RESULT_COUNT);
   const used = new Set<string>();
-  const candidates = hits
+  const candidates = limited
     .map(hit => toCandidate(hit, fetchedAt, used))
     .filter((item): item is CaptureCandidate => item !== null);
-  if (hits.length > 0 && candidates.length === 0) return failed();
+  if (limited.length > 0 && candidates.length === 0) return failed();
   return { ok: true, value: candidates };
 }
 
@@ -230,9 +247,49 @@ async function readLimited(response: Response): Promise<string | null> {
     await discard(response);
     return null;
   }
-  const text = await response.text();
+  const reader = response.body?.getReader();
+  if (!reader) return null;
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done || !value) break;
+      size += value.byteLength;
+      if (size > MAX_BODY_CHARS) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  } catch {
+    await reader.cancel().catch(() => undefined);
+    return null;
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const text = new TextDecoder().decode(bytes);
   if (text.length > MAX_BODY_CHARS) return null;
   return text;
+}
+
+function whenAborted(signal: AbortSignal): Promise<never> {
+  return new Promise((_, reject) => {
+    const fail = () => {
+      const error = new Error('timeout');
+      error.name = 'AbortError';
+      reject(error);
+    };
+    if (signal.aborted) {
+      fail();
+      return;
+    }
+    signal.addEventListener('abort', fail, { once: true });
+  });
 }
 
 function isAbort(error: unknown, signal: AbortSignal): boolean {
@@ -262,14 +319,23 @@ export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
 
       const controller = new AbortController();
       const cancel = schedule(() => controller.abort(), TIMEOUT_MS);
+      const aborted = whenAborted(controller.signal);
+      void aborted.catch(() => undefined);
       try {
-        const response = await fetchImpl(url, {
-          method: 'GET',
-          redirect: 'manual',
-          cache: 'no-store',
-          signal: controller.signal,
-          headers: { Accept: 'application/json' },
-        });
+        const response = await Promise.race([
+          fetchImpl(url, {
+            method: 'GET',
+            redirect: 'manual',
+            cache: 'no-store',
+            signal: controller.signal,
+            headers: { Accept: 'application/json' },
+          }),
+          aborted,
+        ]);
+        if (controller.signal.aborted) {
+          await discard(response);
+          return captureFailure('SEARCH_TIMEOUT', TIMEOUT, 504);
+        }
         if (response.status === 429) {
           await discard(response);
           return captureFailure('SEARCH_FAILED', UPSTREAM_LIMITED, 429);
