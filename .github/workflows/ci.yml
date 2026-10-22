@@ -1,0 +1,61 @@
+# Issue #85。feature/photo-capture と develop 向け PR の共通検査。
+# 同じコマンドのワークフローを別に足さない。足すときはこのファイルを伸ばす。
+#
+# ここには入れない（二重実装を避ける）:
+# - e2e（Playwright、固定 fixture、ゲスト無効）: #79 と #89
+# - npm audit: Next.js の更新（PR #31）のあと。#85 と仕様 7章
+# - develop への push と、マージ条件への組み込み: #79
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - feature/photo-capture
+      - develop
+  push:
+    branches:
+      - feature/photo-capture
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: test, types, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          # 本番は Node.js 20.x（docs/deployment.md）。#79 もこの版に合わせる。
+          node-version: "20"
+          # npm cache は actions: write が要る。権限は contents: read のままにする。
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Production build
+        run: npm run build
+
+      # 既存の違反（2026-10-22 時点で 4 errors / 22 warnings）ではジョブを落とさない。
+      # 新しい違反だけを落とす基準ファイルは、行ずれで誤検知しやすいので置かない。
+      - name: Lint (existing violations do not fail the job)
+        continue-on-error: true
+        run: npm run lint
