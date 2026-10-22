@@ -5,6 +5,8 @@ import { apiFetch } from '@/lib/api-fetch';
 import { useEffect, useState } from 'react';
 import { Item, ComparisonGroup, Category } from '@/types';
 import SortableItemCard from '@/components/SortableItemCard';
+import PhotoGroupCard from '@/components/PhotoGroupCard';
+import { wishlistRows } from '@/lib/capture/list-card';
 import AddItemForm from '@/components/AddItemForm';
 import BudgetView from '@/components/BudgetView';
 import PurchasedHistory from '@/components/PurchasedHistory';
@@ -26,6 +28,7 @@ const TABS: Tab[] = ['list', 'budget', 'purchased', 'stats', 'trash'];
 export default function Home() {
   const { user, isGuest, loading: authLoading, logout } = useAuth();
   const [items, setItems] = useState<Item[]>([]);
+  const [purchasedItems, setPurchasedItems] = useState<Item[]>([]);
   const [groups, setGroups] = useState<ComparisonGroup[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>('list');
@@ -61,6 +64,17 @@ export default function Home() {
   };
 
   // 補助データ: 失敗しても空配列のままにしてクラッシュを防ぐ（エラーUIは出さない）
+  const fetchPurchased = async () => {
+    try {
+      const res = await apiFetch('/api/purchased');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data?.items)) setPurchasedItems(data.items);
+    } catch (error) {
+      console.error('Failed to fetch purchased items:', error);
+    }
+  };
+
   const fetchGroups = async () => {
     try {
       const res = await apiFetch('/api/comparison-groups');
@@ -88,6 +102,7 @@ export default function Home() {
     setLoadError(false);
     setLoading(true);
     fetchItems();
+    fetchPurchased();
     fetchGroups();
     fetchCategories();
   };
@@ -97,6 +112,7 @@ export default function Home() {
     // 取得関数の中の setState は await のあと。effect から直接呼ぶと新しい react-hooks が同期 setState と誤認する。
     // 各関数は今までどおり同時に始める。
     void (async () => { await fetchItems(); })();
+    void (async () => { await fetchPurchased(); })();
     void (async () => { await fetchGroups(); })();
     void (async () => { await fetchCategories(); })();
   }, [user]);
@@ -382,6 +398,11 @@ export default function Home() {
   const lowestPriceInGroup = selectedGroup
     ? Math.min(...filteredItems.filter(i => i.current_price).map(i => i.current_price!))
     : null;
+  const wishlist = wishlistRows(filteredItems, groups, purchasedItems);
+  const refreshPhotoCard = () => {
+    void fetchItems();
+    void fetchPurchased();
+  };
 
   // 認証チェック
   if (authLoading) {
@@ -744,24 +765,26 @@ export default function Home() {
                 onDragEnd={handleDragEnd}
               >
                 <SortableContext
-                  items={filteredItems.map(item => item.id)}
+                  items={wishlist.flatMap(row => row.kind === 'item' ? [row.item.id] : [])}
                   strategy={verticalListSortingStrategy}
                 >
                   <div className="space-y-3">
-                    {filteredItems.map((item) => (
+                    {wishlist.map((row) => row.kind === 'item' ? (
                       <SortableItemCard
-                        key={item.id}
-                        item={item}
+                        key={row.item.id}
+                        item={row.item}
                         onUpdate={fetchItems}
                         onDelete={handleDelete}
                         categories={categories}
                         comparisonGroups={groups}
-                        isLowestPrice={selectedGroup !== null && lowestPriceInGroup !== null && item.current_price === lowestPriceInGroup}
+                        isLowestPrice={selectedGroup !== null && lowestPriceInGroup !== null && row.item.current_price === lowestPriceInGroup}
                         isDragEnabled={isDragEnabled && !selectionMode}
                         selectionMode={selectionMode}
-                        isSelected={selectedItems.has(item.id)}
+                        isSelected={selectedItems.has(row.item.id)}
                         onToggleSelect={toggleItemSelection}
                       />
+                    ) : (
+                      <PhotoGroupCard key={`photo-${row.groupId}`} card={row} onUpdate={refreshPhotoCard} />
                     ))}
                   </div>
                 </SortableContext>

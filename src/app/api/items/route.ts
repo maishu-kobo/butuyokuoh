@@ -23,6 +23,7 @@ async function handleGET() {
     SELECT
       i.*,
       cg.name as comparison_group_name,
+      cg.origin as comparison_group_origin,
       cg.priority as group_priority,
       cat.name as category_name,
       cat.color as category_color,

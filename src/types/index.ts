@@ -14,6 +14,8 @@ export interface Item {
   priority: number; // 1-5
   planned_purchase_date: string | null;
   comparison_group_id: number | null;
+  comparison_group_name?: string | null;
+  comparison_group_origin?: string | null;
   category_id: number | null;
   category_name?: string | null;
   category_color?: string | null;
