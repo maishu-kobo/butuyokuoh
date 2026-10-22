@@ -1,6 +1,7 @@
 import { test, expect, request as playwrightRequest, type APIRequestContext } from '@playwright/test';
 import Database from 'better-sqlite3';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import sharp from 'sharp';
 import { CaptureMessages } from '../../src/lib/capture/contract';
 
@@ -71,7 +72,7 @@ test('logged-in capture APIs use fakes and reject guests, bad photos, and other 
       expect(accepted.status(), mimeType).toBe(200);
     }
 
-    const realHeic = readFileSync(new URL('../fixtures/tiny-hevc.heic', import.meta.url));
+    const realHeic = readFileSync(join(process.cwd(), 'tests/fixtures/tiny-hevc.heic'));
     const converted = await user.post('/api/capture/identify', { multipart: { photo: photo('pixel.heic', 'image/heic', realHeic) } });
     expect(converted.status()).toBe(200);
 
