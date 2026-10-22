@@ -2,7 +2,7 @@
 
 import { CaptureMessages } from '@/lib/capture/contract';
 import { photoForUpload } from '@/lib/capture/photo-pick';
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 
 export type CapturePhotoPick = {
   enabled: boolean;
@@ -23,13 +23,15 @@ export function useCapturePhotoPick(
   useEffect(() => {
     onAcceptedRef.current = onAccepted;
   });
+  useLayoutEffect(() => {
+    if (!enabled) requestRef.current += 1;
+  }, [enabled]);
   const [message, setMessage] = useState('');
   const [selected, setSelected] = useState(false);
   const [shown, setShown] = useState(enabled);
   if (enabled !== shown) {
     setShown(enabled);
     if (!enabled) {
-      requestRef.current += 1;
       setMessage('');
       setSelected(false);
     }

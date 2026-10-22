@@ -159,7 +159,8 @@ test('gif and multiple files do not go through shrink', async () => {
 
 test('撮る, 写真を選ぶ, and drop all go through photoForUpload', () => {
   const sourceText = readFileSync(new URL('../src/components/CapturePhotoPicker.tsx', import.meta.url), 'utf8');
-  assert.equal(sourceText.includes('photoForUpload('), true);
+  assert.equal(sourceText.includes('upload: typeof photoForUpload = photoForUpload'), true);
+  assert.equal(sourceText.includes('void upload(files)'), true);
   assert.equal(sourceText.split('onChange={onChange}').length - 1, 2);
   assert.equal(sourceText.includes('acceptFiles([...event.dataTransfer.files])'), true);
 });
