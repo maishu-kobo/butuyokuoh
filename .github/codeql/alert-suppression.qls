@@ -1,0 +1,5 @@
+- description: ソースの codeql コメントを SARIF の suppressions に載せる
+- queries: .
+  from: codeql/javascript-queries
+- include:
+    kind: alert-suppression
