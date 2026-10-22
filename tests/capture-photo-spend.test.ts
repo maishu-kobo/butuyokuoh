@@ -237,7 +237,8 @@ test('the counted photo item month is the only month that receives its price', a
   const cleared = await call(groupRoute, 'PUT', `/api/comparison-groups/${photo}`, { budgetItemId: null }, { id: String(photo) });
   assert.equal(cleared.status, 200);
   assert.equal((cleared.json as { budget_item_id: number | null }).budget_item_id, null);
-  assert.equal((await call(budgetRoute, 'GET', '/api/budget')).json['2026-10'].total, 150);
+  const restored = (await call(budgetRoute, 'GET', '/api/budget')).json as Record<string, { total: number }>;
+  assert.equal(restored['2026-10'].total, 150);
 
   await setTestUser(other);
   assert.equal((await call(groupRoute, 'PUT', `/api/comparison-groups/${photo}`, { budgetItemId: dearId }, { id: String(photo) })).status, 404);
@@ -246,8 +247,8 @@ test('the counted photo item month is the only month that receives its price', a
   assert.equal((await call(groupRoute, 'PUT', `/api/comparison-groups/${photo}`, { budgetItemId: outsider }, { id: String(photo) })).status, 400);
   assert.equal((await call(groupRoute, 'PUT', `/api/comparison-groups/${manualGroup}`, { budgetItemId: outsider }, { id: String(manualGroup) })).status, 400);
   assert.equal((await call(groupRoute, 'PUT', '/api/comparison-groups/999999', { budgetItemId: cheapId }, { id: '999999' })).status, 404);
-  assert.equal(database.prepare('SELECT budget_item_id FROM comparison_groups WHERE id = ?').get(photo), { budget_item_id: null });
-  assert.equal(database.prepare('SELECT budget_item_id FROM comparison_groups WHERE id = ?').get(manualGroup), { budget_item_id: null });
+  assert.deepEqual(database.prepare('SELECT budget_item_id FROM comparison_groups WHERE id = ?').get(photo), { budget_item_id: null });
+  assert.deepEqual(database.prepare('SELECT budget_item_id FROM comparison_groups WHERE id = ?').get(manualGroup), { budget_item_id: null });
 });
 
 test('stats money totals follow the photo rule and the breakdowns stay on the old sums', async () => {
