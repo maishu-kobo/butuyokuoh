@@ -1,5 +1,5 @@
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, statSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 /** Names only. Values stay in the server process and are never logged. */
 export const CAPTURE_SECRET_NAMES = {
@@ -79,7 +79,10 @@ function parseEnvText(text: string): Map<string, string> {
 
 function isOutsideRepo(filePath: string): boolean {
   const rel = relative(resolve(process.cwd()), resolve(filePath));
-  return rel !== '' && (rel.startsWith('..') || isAbsolute(rel));
+  // `relative` は別ドライブのときだけ絶対パスになる。`...` や `..secrets` はリポジトリの中。
+  if (rel === '') return false;
+  if (isAbsolute(rel)) return true;
+  return rel === '..' || rel.startsWith(`..${sep}`);
 }
 
 /** Mode 0600 regular file outside the repository. Null means "do not use". */

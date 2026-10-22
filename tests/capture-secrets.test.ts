@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chmodSync, closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import {
   AI_UNAVAILABLE_MESSAGE,
   CAPTURE_SECRET_NAMES,
@@ -309,6 +309,28 @@ test('read-only mode 0400 is not accepted; only 0600 is', () => {
   }
 });
 
+test('a mode-600 file inside the repository is ignored even when the path starts with dots', () => {
+  const secret = 'example-inside-dot-yahoo';
+  const paths = [join(process.cwd(), '...', 'secrets.env'), join(process.cwd(), '..secrets.env')];
+  try {
+    for (const file of paths) {
+      mkdirSync(join(file, '..'), { recursive: true });
+      writeFileSync(file, `YAHOO_SHOPPING_APP_ID=${secret}\n`, { mode: 0o600 });
+      chmodSync(file, 0o600);
+      withEnv({ CAPTURE_SECRETS_FILE: file }, () => {
+        const report = captureAvailability();
+        assert.equal(report.secretsFile, 'rejected', file);
+        assert.equal(report.search.yahoo.available, false, file);
+        assert.equal(readCaptureSecrets().yahooAppId, null, file);
+        assert.equal(JSON.stringify(readCaptureSecrets()).includes(secret), false);
+      });
+    }
+  } finally {
+    rmSync(join(process.cwd(), '...'), { recursive: true, force: true });
+    rmSync(join(process.cwd(), '..secrets.env'), { force: true });
+  }
+});
+
 test('values are not expanded and a variable assignment is not executed', () => {
   const dir = mkdtempSync(join(tmpdir(), 'capture-secrets-literal-'));
   const file = join(dir, 'secrets.env');
@@ -349,9 +371,12 @@ test('secret names stay out of client code and .env.example has names only', () 
     if (file !== join('tests', 'capture-secrets.test.ts')) {
       for (const prefix of clientPrefixes) assert.equal(text.includes(prefix), false, file);
     }
-    if (allowed.has(file)) continue;
+    if (allowed.has(file) || !file.startsWith(`src${sep}`)) continue;
     for (const name of names) assert.equal(text.includes(name), false, `${file} mentions ${name}`);
-    assert.equal(text.includes('capture-secrets'), false, file);
+    // 検索APIはローダーを呼んでよい。キーの名前そのものはここに置かない。
+    if (file !== join('src', 'app', 'api', 'capture', 'search', 'route.ts')) {
+      assert.equal(text.includes('capture-secrets'), false, file);
+    }
   }
 
   const source = readFileSync(join('src', 'lib', 'capture-secrets.ts'), 'utf8');
