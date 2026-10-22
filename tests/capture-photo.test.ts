@@ -70,7 +70,11 @@ async function gpsJpeg(): Promise<Buffer> {
   }).withMetadata({ orientation: 6 }).jpeg().toBuffer();
 }
 
-function multipart(parts: { name: string; filename: string; type: string; bytes: Buffer }[]): { body: Buffer; contentType: string } {
+function asBody(buffer: Buffer): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(buffer);
+}
+
+function multipart(parts: { name: string; filename: string; type: string; bytes: Buffer }[]): { body: Uint8Array<ArrayBuffer>; contentType: string } {
   const boundary = '----capturetest';
   const chunks = parts.flatMap(part => [
     Buffer.from(
@@ -80,7 +84,7 @@ function multipart(parts: { name: string; filename: string; type: string; bytes:
     Buffer.from('\r\n'),
   ]);
   chunks.push(Buffer.from(`--${boundary}--\r\n`));
-  return { body: Buffer.concat(chunks), contentType: `multipart/form-data; boundary=${boundary}` };
+  return { body: asBody(Buffer.concat(chunks)), contentType: `multipart/form-data; boundary=${boundary}` };
 }
 
 test('photo limits match the capture spec', () => {
@@ -115,7 +119,7 @@ test('a body over 5MB is cancelled before the rest is read', async () => {
   assert.equal(result.ok, false);
   assert.ok(produced < total);
   assert.ok(produced <= captureBodyByteLimit() + chunkSize);
-  assert.equal('bytes' in result && result.bytes && result.bytes.byteLength > captureBodyByteLimit(), false);
+  assert.equal('bytes' in result, false);
 });
 
 test('content-length over the photo limit is rejected before the body is read', async () => {
@@ -134,7 +138,7 @@ test('content-length over the photo limit is rejected before the body is read', 
     },
     body: stream,
     duplex: 'half',
-  });
+  } as RequestInit);
   const result = await readCapturePhoto(request);
   assert.equal(result.ok, false);
   if (result.ok) return;
@@ -252,7 +256,7 @@ test('photo processing allows two at a time and times out without keeping the ta
 test('one uploaded photo is re-encoded and a second file is refused', async () => {
   const jpeg = await sharp({
     create: { width: 12, height: 8, channels: 3, background: { r: 1, g: 2, b: 3 } },
-  }).jpeg().toBuffer();
+  }).withExif({ IFD0: { ImageDescription: 'keep-me-out' } }).jpeg().toBuffer();
   const single = multipart([{ name: 'photo', filename: 'a.jpg', type: 'image/jpeg', bytes: jpeg }]);
   const accepted = await readCapturePhoto(new Request('http://localhost/api/capture/identify', {
     method: 'POST',
@@ -262,6 +266,7 @@ test('one uploaded photo is re-encoded and a second file is refused', async () =
   assert.equal(accepted.ok, true);
   if (!accepted.ok) return;
   assert.equal(accepted.value.mediaType, 'image/jpeg');
+  assert.equal(Buffer.from(accepted.value.bytes).includes('keep-me-out'), false);
   assert.equal(Buffer.from(accepted.value.bytes).equals(jpeg), false);
   const meta = await sharp(Buffer.from(accepted.value.bytes)).metadata();
   assert.equal(meta.exif, undefined);
