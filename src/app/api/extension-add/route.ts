@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getUserIdFromToken } from '@/lib/auth';
 import { validateAndSanitizeUrl } from '@/lib/url-validator';
+import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
 
 interface AddItemRequest {
   token: string;
@@ -47,6 +48,13 @@ export async function POST(request: NextRequest) {
     if (!item || !item.name || !item.url) {
       return NextResponse.json(
         { error: '商品名とURLは必須です' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    if (!isStorableItemUrl(item.url)) {
+      return NextResponse.json(
+        { error: ITEM_URL_ERROR },
         { status: 400, headers: corsHeaders }
       );
     }

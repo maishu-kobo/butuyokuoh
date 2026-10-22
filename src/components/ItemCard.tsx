@@ -2,6 +2,7 @@
 
 import { apiFetch } from '@/lib/api-fetch';
 import { localCalendarDate } from '@/lib/local-date';
+import { linkableHttpUrl } from '@/lib/http-url';
 
 import { useState, useRef } from 'react';
 import { Item, Category, ComparisonGroup } from '@/types';
@@ -251,8 +252,8 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
               {Boolean(item.is_demo_sample) && <span className="text-xs text-amber-700 dark:text-amber-300">デモ商品・参考価格</span>}
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">{item.name}</h3>
             </div>
-            {/^https?:\/\//i.test(item.url) && <a
-              href={item.url}
+              {linkableHttpUrl(item.url) && <a
+              href={linkableHttpUrl(item.url)!}
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-400 dark:text-gray-500 hover:text-blue-500 ml-2"
@@ -329,9 +330,9 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
         <div className="flex gap-2">
           <button
             onClick={handleRefresh}
-            disabled={refreshing || !/^https?:\/\//i.test(item.url)}
+            disabled={refreshing || !linkableHttpUrl(item.url)}
             aria-label="価格を更新"
-            title={/^https?:\/\//i.test(item.url) ? "商品名・価格・画像をURLから更新" : "商品URLを登録すると更新できます"}
+            title={linkableHttpUrl(item.url) ? "商品名・価格・画像をURLから更新" : "商品URLを登録すると更新できます"}
             className="text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500 disabled:opacity-50"
           >
             <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />

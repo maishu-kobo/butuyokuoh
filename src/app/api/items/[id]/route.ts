@@ -4,6 +4,7 @@ import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
+import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
 
 async function handleGET(
   request: NextRequest,
@@ -41,6 +42,10 @@ async function handlePATCH(
   const item = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id) as { current_price?: number } | undefined;
   if (!item) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+  }
+
+  if (typeof body.url === 'string' && body.url && !isStorableItemUrl(body.url)) {
+    return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
   }
 
   assertOwnedRelations(db, user.id, body);
