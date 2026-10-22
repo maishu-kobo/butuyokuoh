@@ -173,9 +173,12 @@ test('fresh database has photo-capture columns and tables and does not store pho
     assert.equal(names(db, 'comparison_groups').includes('budget_item_id'), true);
     assert.equal(names(db, 'items').includes('source_item_code'), true);
     assert.equal(names(db, 'items').includes('price_fetched_at'), true);
-    for (const table of ['captures', 'capture_candidates']) {
+    for (const table of ['captures', 'capture_candidates', 'capture_ai_usage']) {
       assert.equal(names(db, table).length > 0, true, table);
       assertNoStoredPhoto(db, table);
+    }
+    for (const column of ['user_key', 'day', 'at_ms', 'neurons']) {
+      assert.equal(names(db, 'capture_ai_usage').includes(column), true, column);
     }
     assert.equal(names(db, 'captures').includes('image_url'), false);
     assert.equal(names(db, 'captures').includes('estimated_name'), true);
@@ -296,9 +299,11 @@ test('migrating a production-like database adds columns and tables without dropp
 
       const fresh = openDatabase(':memory:');
       try {
-        for (const table of ['users', 'items', 'comparison_groups', 'captures', 'capture_candidates']) {
+        for (const table of ['users', 'items', 'comparison_groups', 'captures', 'capture_candidates', 'capture_ai_usage']) {
+          assert.equal(names(db, table).length > 0, true, table);
           assert.deepEqual(columnInfo(db, table), columnInfo(fresh, table), table);
         }
+        assertNoStoredPhoto(db, 'capture_ai_usage');
       } finally {
         fresh.close();
       }
@@ -416,6 +421,12 @@ test('hourly cleanup deletes expired candidates, and guest removal deletes the n
   } finally {
     db.close();
   }
+});
+
+test('the database doc names the AI usage table', () => {
+  const doc = readFileSync(join(process.cwd(), 'docs/database.md'), 'utf8');
+  assert.equal(doc.includes('capture_ai_usage'), true);
+  assert.equal(doc.includes('写真そのものは入れない') || doc.includes('写真のファイルは保存しない'), true);
 });
 
 test('the deployment backup snippet starts the service it stops', () => {
