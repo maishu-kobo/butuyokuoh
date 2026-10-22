@@ -58,6 +58,8 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 
 エージェントはデプロイしない。`develop` と `main` へ直接 push しない。リポジトリ設定を変えない。データを削除しない。
 
+写真から登録（Issue #80〜#121、ラベル `feature:photo-capture`）は `feature/photo-capture` から切り、PR もそこへ向ける。`develop` へは出さない。自動マージは `feature/photo-capture` に入れるときだけ。`feature/photo-capture` を `develop` へ入れるのは、機能全体をそのブランチで確認したあとの1回で、必ず人が承認する（`develop` は本番）。`develop` の取り込みは merge で行う。共有ブランチの rebase と force-push はしない。
+
 ## Code Review Rules
 
 次のときは承認せず、人に回す。判断はファイル名ではなく変更の中身でする。
