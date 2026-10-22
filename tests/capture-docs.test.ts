@@ -39,3 +39,11 @@ test('the capture guide explains usage, settings, key names, and limits', () => 
   assert.equal(changelog.includes('Yahoo!ショッピングと楽天市場'), true);
   assert.equal(/[0-9a-f]{32}/.test(doc), false);
 });
+
+test('the capture guide says the Rakuten daily price update ignores the capture flag and stops when the keys are removed', () => {
+  const doc = readFileSync(new URL('../docs/capture.md', import.meta.url), 'utf8');
+  assert.equal(doc.includes('scripts/check-prices.ts'), true);
+  assert.equal(doc.includes('CAPTURE_ENABLED を見ない'), true);
+  assert.equal(doc.includes('RAKUTEN_APP_ID と RAKUTEN_ACCESS_KEY が両方あるときだけ'), true);
+  assert.equal(doc.includes('楽天のキーを外す'), true);
+});
