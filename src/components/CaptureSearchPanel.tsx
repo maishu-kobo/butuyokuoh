@@ -6,11 +6,13 @@ import {
   RETAKE_MESSAGE,
   SLOW_MS,
   candidateCountStatus,
+  fallbackFromIdentify,
+  fallbackFromSearch,
   orderCandidates,
   productsToShow,
 } from '@/lib/capture/capture-flow';
+import { CaptureMessages, type CaptureCandidate, type ProductGuess } from '@/lib/capture/contract';
 import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
-import type { CaptureCandidate, ProductGuess } from '@/lib/capture/contract';
 import { useEffect, useState } from 'react';
 
 type ListedCandidate = CaptureCandidate & { candidateId?: number };
@@ -61,16 +63,19 @@ export function CaptureSearchPanel({
       const response = await apiFetch('/api/capture/identify', { method: 'POST', body }, { notifyError: false });
       const data = await response.json().catch(() => null);
       if (cancelled) return;
-      if (!response.ok || !data || !Array.isArray(data.products)) {
+      const fallback = fallbackFromIdentify(data, response.ok);
+      if (fallback.enter || !data || !Array.isArray(data.products)) {
         setBusy(false);
-        setStatus(typeof data?.error === 'string' ? data.error : RETAKE_MESSAGE);
+        setStatus(response.ok ? RETAKE_MESSAGE : (typeof data?.error === 'string' ? data.error : RETAKE_MESSAGE));
+        if (fallback.enter) onManual(fallback.name);
         return;
       }
       const shown = productsToShow(data.confidence, data.products);
       setProducts(shown);
-      if (data.confidence === 'unreadable' || shown.length === 0) {
+      if (shown.length === 0) {
         setBusy(false);
         setStatus(RETAKE_MESSAGE);
+        onManual('');
         return;
       }
       const first = shown[0];
@@ -86,6 +91,7 @@ export function CaptureSearchPanel({
       if (!cancelled) {
         setBusy(false);
         setStatus(RETAKE_MESSAGE);
+        onManual('');
       }
     });
 
@@ -116,9 +122,11 @@ export function CaptureSearchPanel({
     const data = await response.json().catch(() => null);
     if (cancelled()) return;
     setBusy(false);
-    if (!response.ok || !data || !Array.isArray(data.candidates)) {
+    const fallback = fallbackFromSearch(data, response.ok, trimmed);
+    if (fallback.enter) {
       setCandidates([]);
-      setStatus(typeof data?.error === 'string' ? data.error : '候補を取得できませんでした。もう一度試すか、商品名を入れて登録してください');
+      setStatus(typeof data?.error === 'string' ? data.error : CaptureMessages.searchFailed);
+      onManual(fallback.name);
       return;
     }
     setCandidates(data.candidates);
