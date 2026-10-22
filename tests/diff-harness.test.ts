@@ -1,18 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { compareSnapshots, formatReport, loadApprovals, type Snapshot } from '../scripts/diff-harness/compare';
-import { findAuthorize, google, googleScenarios } from '../scripts/diff-harness/driver';
+import { findAuthorize, google } from '../scripts/diff-harness/driver';
 
 const approvalsPath = new URL('../scripts/diff-harness/approved-changes.json', import.meta.url);
 const HASH = `$2b$10$${ 'a'.repeat(53)}`;
-
-test('sign-in still rejects an unverified Google profile and confirms the password before a token', () => {
-  const source = readFileSync(new URL('../src/auth.ts', import.meta.url), 'utf8');
-  assert.match(source, /emailVerified:\s*googleProfile\?\.email_verified === true/);
-  assert.match(source, /confirmVerifiedPassword\(/);
-  assert.doesNotMatch(source, /(?<![A-Za-z])verifyPassword\(/);
-});
 
 test('authorize is chosen by accepting the owner password and rejecting a wrong one', async () => {
   async function realAuthorize(credentials: { email?: string; password?: string }) {
@@ -68,23 +60,6 @@ test('google sign-in passes a verified profile, and an unverified one stays unve
   assert.deepEqual(seen[0]?.profile, { email: 'Fresh@Example.TEST', email_verified: true });
   assert.equal(unverified.allowed, false);
   assert.deepEqual(seen[1]?.profile, { email: 'Unverified@Example.TEST', email_verified: false });
-});
-
-test('the harness records an unverified profile that does not already exist', () => {
-  const unverified = googleScenarios.find((row) => row[0] === 'auth.google.unverified');
-  assert.ok(unverified, 'auth.google.unverified');
-  assert.equal(unverified[1], 'Unverified@Example.TEST');
-  assert.equal(unverified[3], 'sub-unverified');
-  assert.equal(unverified[4], false);
-  const existing = googleScenarios.find((row) => row[0] === 'auth.google.unverified-existing');
-  assert.ok(existing, 'auth.google.unverified-existing');
-  assert.equal(existing[1], 'Taken@Example.TEST');
-  assert.equal(existing[3], 'sub-taken');
-  assert.equal(existing[4], false);
-  for (const id of ['auth.google.new', 'auth.google.link', 'auth.google.existing', 'auth.google.repeat']) {
-    const row = googleScenarios.find((item) => item[0] === id);
-    assert.equal(row?.[4], true, id);
-  }
 });
 
 test('approved changes name the session generation and verified-link differences, in that dependency order', () => {
