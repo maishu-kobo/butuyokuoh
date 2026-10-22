@@ -35,6 +35,14 @@ export interface User {
 export interface JWTPayload {
   userId: number;
   email: string;
+  sessionGeneration?: number;
+}
+
+// 主張が無いトークンは世代 0。列の既定値と同じなので、世代を進める前の正常なログインは残る。
+export function sessionGenerationMatches(claimed: unknown, stored: number | null | undefined): boolean {
+  const actual = stored ?? 0;
+  if (claimed === undefined) return actual === 0;
+  return typeof claimed === 'number' && Number.isInteger(claimed) && claimed >= 0 && claimed === actual;
 }
 
 export async function hashPassword(password: string): Promise<string> {
@@ -45,10 +53,48 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash);
 }
 
-export function generateToken(user: User): string {
+// bcrypt の await 中に Google 連携が確定すると、検証に使った hash はもうその会員のものではない。
+// パスワードが合ったあとに hash と世代を一度だけ読み、hash が消えているか変わっていれば拒否する。
+// 署名に使ってよいのは、その同じ読み取りの世代だけ。
+let afterPasswordConfirmed: (() => void) | undefined;
+
+export async function confirmVerifiedPassword(
+  userId: number,
+  password: string,
+  passwordHash: string,
+): Promise<number | null> {
+  const valid = await verifyPassword(password, passwordHash);
+  if (!valid) return null;
+  const row = getDb().prepare(
+    `SELECT password_hash, session_generation
+     FROM users
+     WHERE id = ? AND account_type = 'member'`
+  ).get(userId) as { password_hash: string | null; session_generation: number } | undefined;
+  if (!row || row.password_hash == null || row.password_hash !== passwordHash) return null;
+  const sessionGeneration = row.session_generation ?? 0;
+  if (process.env.NODE_ENV !== 'production') afterPasswordConfirmed?.();
+  return sessionGeneration;
+}
+
+function currentSessionGeneration(userId: number): number {
+  const row = getDb().prepare(
+    "SELECT session_generation FROM users WHERE id = ? AND account_type = 'member'"
+  ).get(userId) as { session_generation: number } | undefined;
+  return row?.session_generation ?? 0;
+}
+
+export function generateToken(user: User, sessionGeneration?: number): string {
   if (user.account_type !== 'member') throw new Error('Member account required');
+  const generation = sessionGeneration ?? currentSessionGeneration(user.id);
+  if (!Number.isInteger(generation) || generation < 0) {
+    throw new Error('Invalid session generation');
+  }
   return jwt.sign(
-    { userId: user.id, email: user.email } as JWTPayload,
+    {
+      userId: user.id,
+      email: user.email,
+      sessionGeneration: generation,
+    } as JWTPayload,
     getJwtSecret(),
     { expiresIn: '7d' }
   );
@@ -74,14 +120,20 @@ type AuthCookieOptions = ReturnType<typeof memberTokenCookieOptions>;
 type TestCookieWriter = {
   set: (name: string, value: string, options?: AuthCookieOptions) => void;
   delete: (name: string, options?: AuthCookieOptions) => void;
+  get?: (name: string) => string | undefined;
 };
+
+type TestSession = { user?: { id?: string; sessionGeneration?: number } } | null;
 
 let testCurrentUser: { user: CurrentUser | null } | undefined;
 let testCookies: TestCookieWriter | null = null;
+let testSession: TestSession | undefined;
 
 export function installAuthTestHooks(hooks: null | {
   user?: CurrentUser | null;
   cookies?: TestCookieWriter | null;
+  session?: TestSession;
+  afterPasswordConfirmed?: () => void;
 }): void {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('Auth test hooks are unavailable in production');
@@ -89,10 +141,14 @@ export function installAuthTestHooks(hooks: null | {
   if (hooks === null) {
     testCurrentUser = undefined;
     testCookies = null;
+    testSession = undefined;
+    afterPasswordConfirmed = undefined;
     return;
   }
   if ('user' in hooks) testCurrentUser = { user: hooks.user ?? null };
   if ('cookies' in hooks) testCookies = hooks.cookies ?? null;
+  if ('session' in hooks) testSession = hooks.session ?? null;
+  if ('afterPasswordConfirmed' in hooks) afterPasswordConfirmed = hooks.afterPasswordConfirmed;
 }
 
 export async function getCurrentUser(): Promise<CurrentUser | null> {
@@ -102,22 +158,42 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   }
   const db = getDb();
   const member = (id: number) => db.prepare(
-    "SELECT id, email, name, created_at, account_type FROM users WHERE id = ? AND account_type = 'member'"
-  ).get(id) as User | undefined;
+    "SELECT id, email, name, created_at, account_type, session_generation FROM users WHERE id = ? AND account_type = 'member'"
+  ).get(id) as (User & { session_generation: number }) | undefined;
+  const accept = (row: (User & { session_generation: number }) | undefined, claimed: unknown): User | null => {
+    if (!row || !sessionGenerationMatches(claimed, row.session_generation)) return null;
+    return {
+      id: row.id,
+      account_type: row.account_type,
+      email: row.email,
+      name: row.name,
+      created_at: row.created_at,
+    };
+  };
   // Configuration failures must not silently turn a member into a guest.
-  const session = await auth();
+  const session = process.env.NODE_ENV !== 'production' && testSession !== undefined
+    ? testSession
+    : await auth();
   if (session?.user?.id) {
-    const user = member(Number(session.user.id));
+    const user = accept(member(Number(session.user.id)), session.user.sessionGeneration);
     if (user) return user;
   }
-  const cookieStore = await cookies();
-  const token = cookieStore.get(MEMBER_TOKEN_COOKIE)?.value;
+  let token: string | undefined;
+  let guestCookie: string | undefined;
+  if (process.env.NODE_ENV !== 'production' && testCookies?.get) {
+    token = testCookies.get(MEMBER_TOKEN_COOKIE);
+    guestCookie = testCookies.get(GUEST_COOKIE);
+  } else {
+    const cookieStore = await cookies();
+    token = cookieStore.get(MEMBER_TOKEN_COOKIE)?.value;
+    guestCookie = cookieStore.get(GUEST_COOKIE)?.value;
+  }
   if (token) {
     const payload = verifyToken(token);
-    const user = payload && member(payload.userId);
+    const user = payload && accept(member(payload.userId), payload.sessionGeneration);
     if (user) return user;
   }
-  return guestEnabled() ? findGuest(cookieStore.get(GUEST_COOKIE)?.value, db) : null;
+  return guestEnabled() ? findGuest(guestCookie, db) : null;
 }
 
 export async function setAuthCookie(token: string): Promise<void> {
@@ -144,6 +220,9 @@ export async function clearAuthCookie(): Promise<void> {
 export function getUserIdFromToken(token: string): number | null {
   const payload = verifyToken(token);
   if (!payload) return null;
-  const member = getDb().prepare("SELECT id FROM users WHERE id = ? AND account_type = 'member'").get(payload.userId);
-  return member ? payload.userId : null;
+  const member = getDb().prepare(
+    "SELECT id, session_generation FROM users WHERE id = ? AND account_type = 'member'"
+  ).get(payload.userId) as { id: number; session_generation: number } | undefined;
+  if (!member || !sessionGenerationMatches(payload.sessionGeneration, member.session_generation)) return null;
+  return member.id;
 }
