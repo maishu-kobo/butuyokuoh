@@ -8,6 +8,7 @@
 #
 # 実店舗の e2e（E2E_LIVE_SCRAPE / E2E_LIVE_AMAZON / E2E_LIVE_RAKUTEN）は環境変数を付けない。
 # develop への push と、マージ条件への組み込みはここではしない。
+# path フィルタは付けない。必須ジョブが skip になると、その SHA のチェックが pending のままマージを止める。
 name: CI
 
 on:
@@ -43,8 +44,8 @@ jobs:
         with:
           # puppeteer 25 は Node.js 22.12 以上。本番を 22 に上げてから develop に入れる（docs/deployment.md）。
           node-version: "22"
-          # npm cache は actions: write が要る。権限は contents: read のままにする。
-          package-manager-cache: false
+          # lockfile をキーにする。pull_request の cache はマージ ref に閉じ、トークンは contents: read のまま。
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
@@ -74,7 +75,7 @@ jobs:
         with:
           # puppeteer 25 は Node.js 22.12 以上。本番を 22 に上げてから develop に入れる（docs/deployment.md）。
           node-version: "22"
-          package-manager-cache: false
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
@@ -98,13 +99,35 @@ jobs:
         with:
           # puppeteer 25 は Node.js 22.12 以上。本番を 22 に上げてから develop に入れる（docs/deployment.md）。
           node-version: "22"
-          package-manager-cache: false
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # ブラウザ本体だけ。OS パッケージはランナーが毎回新しいのでキャッシュしない。
+      - name: Cache Playwright browsers
+        id: playwright-browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('package-lock.json') }}
+
+      # テストの既定ブラウザは chromium。firefox / webkit の apt が 10 分以上止まる。
+      # --with-deps はキャッシュミスだけ。ヒット時は OS 依存だけ入れ直す。
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.playwright-browsers.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+            npx playwright install chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
 
       - name: E2E tests
         run: npm run test:e2e
