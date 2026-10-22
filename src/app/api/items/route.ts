@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
+import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
 
 async function handleGET() {
   const user = await getCurrentUser();
@@ -69,6 +70,10 @@ async function handlePOST(request: NextRequest) {
   } = body;
 
   const db = getDb();
+
+  if (typeof url === 'string' && url && !isStorableItemUrl(url)) {
+    return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
+  }
 
   assertOwnedRelations(db, user.id, body);
 

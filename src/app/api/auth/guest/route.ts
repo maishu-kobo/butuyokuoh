@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getCurrentUser } from '@/lib/auth';
+import { clearGuestCookieOptions, guestSessionCookieOptions } from '@/lib/cookie-policy';
 import { endGuest, GUEST_COOKIE, GuestError, guestEnabled, guestLimit, startGuest } from '@/lib/guest';
 import { guestErrorResponse, requireSameOrigin } from '@/lib/api-access';
 
@@ -16,10 +17,7 @@ export async function POST(request: NextRequest) {
     const store = await cookies();
     const guest = startGuest(store.get(GUEST_COOKIE)?.value);
     const response = NextResponse.json({ user: guest.user }, { status: guest.created ? 201 : 200, headers: { 'Cache-Control': 'no-store' } });
-    response.cookies.set(GUEST_COOKIE, guest.token, {
-      httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/',
-      expires: new Date(guest.user.expiresAt),
-    });
+    response.cookies.set(GUEST_COOKIE, guest.token, guestSessionCookieOptions(guest.user.expiresAt));
     return response;
   } catch (error) {
     if (error instanceof GuestError) return guestErrorResponse(error);
@@ -32,7 +30,7 @@ export async function DELETE(request: NextRequest) {
     requireSameOrigin(request);
     endGuest((await cookies()).get(GUEST_COOKIE)?.value);
     const response = new NextResponse(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
-    response.cookies.set(GUEST_COOKIE, '', { maxAge: 0, httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' });
+    response.cookies.set(GUEST_COOKIE, '', clearGuestCookieOptions());
     return response;
   } catch (error) {
     if (error instanceof GuestError) return guestErrorResponse(error);

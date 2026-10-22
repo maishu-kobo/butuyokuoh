@@ -17,8 +17,8 @@ async function handleGET() {
       SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) as total_items,
       SUM(CASE WHEN is_purchased = 0 AND deleted_at IS NULL THEN 1 ELSE 0 END) as wishlist_count,
       SUM(CASE WHEN is_purchased = 1 AND deleted_at IS NULL THEN 1 ELSE 0 END) as purchased_count,
-      SUM(CASE WHEN is_purchased = 0 AND deleted_at IS NULL THEN current_price ELSE 0 END) as wishlist_total,
-      SUM(CASE WHEN is_purchased = 1 AND deleted_at IS NULL THEN current_price ELSE 0 END) as purchased_total
+      SUM(CASE WHEN is_purchased = 0 AND deleted_at IS NULL THEN current_price * COALESCE(quantity, 1) ELSE 0 END) as wishlist_total,
+      SUM(CASE WHEN is_purchased = 1 AND deleted_at IS NULL THEN current_price * COALESCE(quantity, 1) ELSE 0 END) as purchased_total
     FROM items
     WHERE user_id = ?
   `).get(user.id) as {
@@ -35,7 +35,7 @@ async function handleGET() {
       COALESCE(c.name, '未分類') as category_name,
       COALESCE(c.color, '#6b7280') as category_color,
       COUNT(*) as count,
-      SUM(i.current_price) as total
+      SUM(i.current_price * COALESCE(i.quantity, 1)) as total
     FROM items i
     LEFT JOIN categories c ON i.category_id = c.id
     WHERE i.user_id = ? AND i.is_purchased = 0 AND i.deleted_at IS NULL
@@ -48,7 +48,7 @@ async function handleGET() {
     SELECT 
       priority,
       COUNT(*) as count,
-      SUM(current_price) as total
+      SUM(current_price * COALESCE(quantity, 1)) as total
     FROM items
     WHERE user_id = ? AND is_purchased = 0 AND deleted_at IS NULL
     GROUP BY priority
@@ -60,7 +60,7 @@ async function handleGET() {
     SELECT 
       strftime('%Y-%m', purchased_at) as month,
       COUNT(*) as count,
-      SUM(current_price) as total
+      SUM(current_price * COALESCE(quantity, 1)) as total
     FROM items
     WHERE user_id = ? AND is_purchased = 1 AND purchased_at IS NOT NULL AND deleted_at IS NULL
     GROUP BY strftime('%Y-%m', purchased_at)
@@ -73,7 +73,7 @@ async function handleGET() {
     SELECT 
       source,
       COUNT(*) as count,
-      SUM(current_price) as total
+      SUM(current_price * COALESCE(quantity, 1)) as total
     FROM items
     WHERE user_id = ? AND is_purchased = 0 AND deleted_at IS NULL
     GROUP BY source
