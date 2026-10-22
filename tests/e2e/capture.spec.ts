@@ -1,4 +1,5 @@
 import { test, expect, request as playwrightRequest, type APIRequestContext } from '@playwright/test';
+import Database from 'better-sqlite3';
 import { CaptureMessages } from '../../src/lib/capture/contract';
 
 const origin = 'http://localhost:3107';
@@ -30,10 +31,12 @@ test('logged-in capture APIs use fakes and reject guests, bad photos, and other 
   try {
     expect((await anon.post('/api/capture/identify', { multipart: { photo: photo('a.jpg', 'image/jpeg', jpeg) } })).status()).toBe(401);
     expect((await anon.post('/api/capture/search', { data: { name: 'ペン' } })).status()).toBe(401);
+    expect((await anon.post('/api/capture/register', { data: { candidateIds: [1] } })).status()).toBe(401);
 
     expect((await guest.post('/api/auth/guest')).status()).toBe(201);
     expect((await guest.post('/api/capture/identify', { multipart: { photo: photo('a.jpg', 'image/jpeg', jpeg) } })).status()).toBe(403);
     expect((await guest.post('/api/capture/search', { data: { name: 'ペン' } })).status()).toBe(403);
+    expect((await guest.post('/api/capture/register', { data: { candidateIds: [1] } })).status()).toBe(403);
 
     await member(user);
     const foreign = await user.post('/api/capture/identify', {
@@ -133,5 +136,103 @@ test('search scenarios swap to fakes without leaving the allowed hosts', async (
     expect((await again.json()).candidates).toHaveLength(2);
   } finally {
     await user.dispose();
+  }
+});
+
+test('chosen candidates register once, and another member cannot use them', async () => {
+  const owner = await context();
+  const stranger = await context();
+  const db = new Database(process.env.E2E_DB_PATH!);
+  db.pragma('busy_timeout = 5000');
+  try {
+    await member(owner);
+    await member(stranger);
+    const ownerId = (await (await owner.get('/api/auth/me')).json()).user.id as number;
+    const strangerId = (await (await stranger.get('/api/auth/me')).json()).user.id as number;
+    const captureId = Number(db.prepare(
+      "INSERT INTO captures (user_id, estimated_name, status) VALUES (?, 'e2e牛乳', 'ready')",
+    ).run(ownerId).lastInsertRowid);
+    const expires = Date.now() + 60_000;
+    const insert = db.prepare(
+      `INSERT INTO capture_candidates (user_id, capture_id, source, name, url, price, source_item_code, expires_at)
+       VALUES (?, ?, 'yahoo', ?, ?, 100, ?, ?)`,
+    );
+    const first = Number(insert.run(ownerId, captureId, '牛乳A', 'https://store.shopping.yahoo.co.jp/shop/e2e-a', 'yahoo:e2e-a', expires).lastInsertRowid);
+    const second = Number(insert.run(ownerId, captureId, '牛乳B', 'https://store.shopping.yahoo.co.jp/shop/e2e-b', 'yahoo:e2e-b', expires).lastInsertRowid);
+    db.prepare(
+      'INSERT INTO items (user_id, name, url, is_purchased) VALUES (?, ?, ?, 1)',
+    ).run(ownerId, '購入済み', 'https://store.shopping.yahoo.co.jp/shop/e2e-bought');
+    const bought = Number(insert.run(
+      ownerId,
+      captureId,
+      '購入済み候補',
+      'https://store.shopping.yahoo.co.jp/shop/e2e-bought',
+      'yahoo:e2e-bought',
+      expires,
+    ).lastInsertRowid);
+
+    const created = await owner.post('/api/capture/register', { data: { candidateIds: [first, second, bought] } });
+    expect(created.status()).toBe(201);
+    const body = await created.json();
+    expect(body.itemIds).toHaveLength(2);
+    expect(body.skipped).toEqual([{ candidateId: bought, code: 'ALREADY_REGISTERED', error: '登録済み' }]);
+
+    const replay = await owner.post('/api/capture/register', { data: { candidateIds: [first, second, bought] } });
+    expect(replay.status()).toBe(200);
+    expect(await replay.json()).toMatchObject({ comparisonGroupId: body.comparisonGroupId, itemIds: body.itemIds });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM comparison_groups WHERE user_id = ? AND origin = ?').get(ownerId, 'photo')).toEqual({ n: 1 });
+
+    const stolen = await stranger.post('/api/capture/register', { data: { candidateIds: [first] } });
+    expect(stolen.status()).toBe(404);
+    expect(await stolen.json()).toMatchObject({ code: 'CANDIDATE_NOT_FOUND' });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id = ?').get(strangerId)).toEqual({ n: 0 });
+  } finally {
+    db.close();
+    await owner.dispose();
+    await stranger.dispose();
+  }
+});
+
+test('photo group spending counts one candidate on the list and budget screens', async ({ page }) => {
+  const db = new Database(process.env.E2E_DB_PATH!);
+  db.pragma('busy_timeout = 5000');
+  try {
+    const registered = await page.request.post('/api/auth/register', {
+      headers: { Origin: origin },
+      data: { email: `spend-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`, password: 'test-password' },
+    });
+    expect(registered.ok()).toBeTruthy();
+    const userId = (await (await page.request.get('/api/auth/me')).json()).user.id as number;
+    const groupId = Number(db.prepare(
+      `INSERT INTO comparison_groups (user_id, name, origin) VALUES (?, '牛乳', 'photo')`,
+    ).run(userId).lastInsertRowid);
+    const insert = db.prepare(`
+      INSERT INTO items (user_id, name, url, current_price, source, source_name, planned_purchase_date, comparison_group_id, priority)
+      VALUES (?, ?, ?, ?, ?, ?, '2026-10-02', ?, 3)
+    `);
+    insert.run(userId, '高い牛乳', `manual://${userId}-dear`, 900, 'rakuten', '楽天', groupId);
+    insert.run(userId, '安い牛乳', `manual://${userId}-cheap`, 100, 'yahoo', 'Yahoo!ショッピング', groupId);
+    db.prepare(`
+      INSERT INTO items (user_id, name, url, current_price, planned_purchase_date, priority)
+      VALUES (?, '鉛筆', ?, 50, '2026-10-01', 3)
+    `).run(userId, `manual://${userId}-pencil`);
+
+    await page.goto('/');
+    await expect(page.locator('.text-orange-500')).toHaveText('¥150');
+    await expect(page.getByText('合計に含まない')).toBeVisible();
+
+    await page.getByRole('button', { name: '出費予定' }).click();
+    await expect(page.locator('.text-3xl').first()).toHaveText('¥150');
+    await expect(page.getByText('牛乳', { exact: true })).toBeVisible();
+    await expect(page.getByText('楽天', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '全て選択' }).click();
+    await expect(page.getByText('2件選択中')).toBeVisible();
+
+    const dear = page.locator('div').filter({ hasText: '高い牛乳' }).last();
+    await dear.getByRole('button', { name: '合計に数える' }).click();
+    await expect(page.locator('.text-3xl').first()).toHaveText('¥950');
+    await expect(page.getByText('合計に含まない')).toBeVisible();
+  } finally {
+    db.close();
   }
 });

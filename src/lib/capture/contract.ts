@@ -27,6 +27,7 @@ export type CaptureErrorCode =
   | 'AI_UNAVAILABLE'
   | 'AI_TIMEOUT'
   | 'AI_INVALID_RESPONSE'
+  | 'AI_LIMIT'
   | 'SEARCH_FAILED'
   | 'SEARCH_TIMEOUT'
   | 'NO_CANDIDATES'

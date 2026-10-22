@@ -373,10 +373,10 @@ test('secret names stay out of client code and .env.example has names only', () 
     }
     if (allowed.has(file) || !file.startsWith(`src${sep}`)) continue;
     for (const name of names) assert.equal(text.includes(name), false, `${file} mentions ${name}`);
-    // 検索APIはローダーを呼んでよい。キーの名前そのものはここに置かない。
-    if (file !== join('src', 'app', 'api', 'capture', 'search', 'route.ts')) {
-      assert.equal(text.includes('capture-secrets'), false, file);
-    }
+    // 検索と写真の推定はローダーを呼んでよい。キーの名前そのものはここに置かない。
+    const loader = file === join('src', 'app', 'api', 'capture', 'search', 'route.ts')
+      || file === join('src', 'app', 'api', 'capture', 'identify', 'route.ts');
+    if (!loader) assert.equal(text.includes('capture-secrets'), false, file);
   }
 
   const source = readFileSync(join('src', 'lib', 'capture-secrets.ts'), 'utf8');

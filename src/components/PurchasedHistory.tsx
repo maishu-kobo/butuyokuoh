@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { linkableHttpUrl } from '@/lib/http-url';
 
 import { useEffect, useState } from 'react';
 import { Item } from '@/types';
@@ -159,8 +160,9 @@ export default function PurchasedHistory() {
 
                 {/* アクション */}
                 <div className="flex items-center gap-2">
+                  {linkableHttpUrl(item.url) && (
                   <a
-                    href={item.url}
+                    href={linkableHttpUrl(item.url)!}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-gray-400 hover:text-blue-500"
@@ -168,6 +170,7 @@ export default function PurchasedHistory() {
                   >
                     <ExternalLink size={18} />
                   </a>
+                  )}
                   <button
                     onClick={() => handleUndo(item.id)}
                     className="text-gray-400 hover:text-orange-500"
