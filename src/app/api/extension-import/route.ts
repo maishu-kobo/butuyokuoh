@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getUserIdFromToken } from '@/lib/auth';
+import { isStorableItemUrl } from '@/lib/http-url';
 
 interface ImportItem {
   name: string;
@@ -58,6 +59,11 @@ export async function POST(request: NextRequest) {
 
     for (const item of items) {
       try {
+        if (!item.url || !isStorableItemUrl(item.url)) {
+          skipped++;
+          continue;
+        }
+
         // 既存チェック
         const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, item.url);
         if (existing) {
