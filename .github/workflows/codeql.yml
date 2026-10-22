@@ -12,6 +12,7 @@ on:
   pull_request:
     branches:
       - feature/photo-capture
+      - feature/capture-existing-bugfixes
       - develop
 
 permissions:
