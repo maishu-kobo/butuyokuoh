@@ -262,7 +262,10 @@ test('photo group spending counts one candidate on the list and budget screens',
 
     await page.goto('/');
     await expect(page.locator('.text-orange-500')).toHaveText('¥150');
-    await expect(page.getByText('合計に含まない')).toBeVisible();
+    await expect(page.getByTestId('photo-group-card')).toHaveCount(1);
+    await expect(page.getByRole('heading', { name: '牛乳' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '鉛筆' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '高い牛乳' })).toHaveCount(0);
 
     await page.getByRole('button', { name: '出費予定' }).click();
     await expect(page.locator('.text-3xl').first()).toHaveText('¥150');
