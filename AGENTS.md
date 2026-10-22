@@ -39,8 +39,8 @@ Node.js 20 以上（`docs/development.md`）。`package.json` に `engines` は�
 - コミットは Conventional Commits（`feat` `fix` `perf` `docs` `test` `chore`。必要なら scope）。
 - テストを先に書く。テストと、将来足される CI を壊したままにしない。
 - リファクタの機会を見つけたら Issue を先に開く。頼まれていない書き換えはしない。
-- 使い方は `docs/` に書く。判断は `docs/WORKLOG.md` に日付付きで残す。
-- `CHANGELOG.md` は Keep a Changelog。マージ前の変更は `[Unreleased]` に足す。
+- 使い方は `docs/` に書く。進み具合と引き継ぎは GitHub Issue、プロジェクトボード、PR の説明に書く。
+- 利用者に見える変更は、同じ PR で `CHANGELOG.md` の `[Unreleased]` に1行足す。形式は Keep a Changelog。
 
 ## マージ
 
@@ -72,6 +72,4 @@ CI が通り、作者とは別のエージェントかレビュアーがレビ�
 
 ## 作業の前後
 
-始める前に、このファイルと `docs/WORKLOG.md` を読み、`git log`、開いている PR、`npm test` で今の状態を確認する。
-
-終えるとき、同じ PR で `docs/WORKLOG.md` に日付のエントリを足す。決めたこと、結果、残件を書く。
+始める前にこのファイルを読み、`git log`、開いている PR、`npm test` で今の状態を確認する。
