@@ -31,8 +31,8 @@ export interface PriceNotificationSettings {
 }
 
 // 値上げ・同値・旧価格なし・設定なしは通知しない。
-// 目標価格に届き、目標の通知がオンなら price_drop ではなく target_reached。
-// 目標に届いても目標の通知がオフなら、値下げ通知がオンのときだけ price_drop。
+// 通知の type は送る分岐より前に決まっていた。目標価格に届いていれば、
+// 目標通知がオフで値下げ通知だけオンのときも target_reached のまま送る。
 export function priceDropNotification(
   oldPrice: number | null,
   newPrice: number,
@@ -41,7 +41,10 @@ export function priceDropNotification(
 ): 'target_reached' | 'price_drop' | null {
   if (!oldPrice || newPrice >= oldPrice || !settings) return null;
   const targetReached = targetPrice !== null && targetPrice > 0 && newPrice <= targetPrice;
-  if (targetReached && settings.notify_on_target_price) return 'target_reached';
+  if (targetReached) {
+    if (settings.notify_on_target_price || settings.notify_on_price_drop) return 'target_reached';
+    return null;
+  }
   if (settings.notify_on_price_drop) return 'price_drop';
   return null;
 }
