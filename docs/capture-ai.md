@@ -2,7 +2,7 @@
 
 バーコードは読まない。写真を Cloudflare Workers AI に送り、商品名、ブランド、型番、JAN の候補にする。キーが無いとき、判定できないとき、回数やニューロンの上限に達したときは、商品名の手入力に戻る。
 
-`CAPTURE_ENABLED` と `CAPTURE_AI_ENABLED` が両方 `true` のときだけ呼ぶ。初期値はオフ。キーは `src/lib/capture-secrets.ts` が読む `CLOUDFLARE_ACCOUNT_ID` と `CLOUDFLARE_API_TOKEN` だけを使う。
+`CAPTURE_ENABLED` と `CAPTURE_AI_ENABLED` が両方 `true` のときだけ呼ぶ。初期値はオフ。判定が使うキーは `src/lib/capture-secrets.ts` が読む `CLOUDFLARE_ACCOUNT_ID` と `CLOUDFLARE_API_TOKEN` だけ。画面の使い方と店の検索のキーは [写真から登録](./capture.md)。
 
 ## 選んだモデル
 
