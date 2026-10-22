@@ -1,4 +1,4 @@
-# Issue #85。feature/photo-capture と develop 向け PR の共通検査。
+# Issue #85。feature/photo-capture、feature/capture-existing-bugfixes、develop 向け PR の共通検査。
 # 同じコマンドのワークフローを別に足さない。足すときはこのファイルを伸ばす。
 #
 # pull_request だけで、権限が違う検査は別ファイル:
@@ -14,6 +14,7 @@ on:
   pull_request:
     branches:
       - feature/photo-capture
+      - feature/capture-existing-bugfixes
       - develop
   push:
     branches:
