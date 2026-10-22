@@ -35,6 +35,7 @@ export type Snapshot = {
 
 type ColumnRule = { table: string; column: string; value: unknown };
 type FieldRule = { field: string; equals: unknown };
+type RejectedUrl = { step: string; url: string; status: number; error: string };
 type ChangeRule = {
   id: string;
   reason: string;
@@ -43,6 +44,7 @@ type ChangeRule = {
   columnsAdded?: ColumnRule[];
   indexesAdded?: string[];
   responseFieldsAdded?: FieldRule[];
+  rejectedUrls?: RejectedUrl[];
 };
 
 export type Approval = {
@@ -288,6 +290,7 @@ function applyApprovals(baseline: Snapshot, candidate: Snapshot, rules: ChangeRu
       return true;
     });
     applied += stripFields(baseline, candidate, rule.responseFieldsAdded || [], details);
+    applied += approveRejectedUrls(baseline, candidate, rule.rejectedUrls || [], details);
     return {
       id: rule.id,
       reason: rule.reason,
@@ -295,6 +298,66 @@ function applyApprovals(baseline: Snapshot, candidate: Snapshot, rules: ChangeRu
       detail: details.length ? details.join(', ') : '差分に現れなかった',
     };
   });
+}
+
+function approveRejectedUrls(baseline: Snapshot, candidate: Snapshot, rules: RejectedUrl[], details: string[]): number {
+  let applied = 0;
+  for (const rule of rules) {
+    const baseStep = baseline.steps[rule.step];
+    const candStep = candidate.steps[rule.step];
+    const baseRow = (baseline.db.rows.items || []).find((row) => row.url === rule.url);
+    const candRow = (candidate.db.rows.items || []).some((row) => row.url === rule.url);
+    const stored = Boolean(
+      baseStep
+      && baseRow
+      && baseStep.status === 201
+      && isPlain(baseStep.json)
+      && baseStep.json.url === rule.url,
+    );
+    const rejected = Boolean(
+      candStep
+      && !candRow
+      && candStep.status === rule.status
+      && exactError(candStep.json, rule.error)
+      && !objectWithUrl(candidate.steps, rule.url),
+    );
+    if (!stored || !rejected || !baseStep || !candStep) continue;
+    baseline.db.rows.items = (baseline.db.rows.items || []).filter((row) => row.url !== rule.url);
+    const historyId = `item:${rule.url}`;
+    if (baseline.db.rows.price_history) {
+      baseline.db.rows.price_history = baseline.db.rows.price_history.filter((row) => row.item_id !== historyId);
+    }
+    dropUrl(baseline.steps, rule.url);
+    baseStep.status = candStep.status;
+    baseStep.json = structuredClone(candStep.json);
+    applied += 1;
+    details.push(rule.url);
+  }
+  return applied;
+}
+
+function exactError(value: unknown, error: string): boolean {
+  return isPlain(value) && Object.keys(value).length === 1 && value.error === error;
+}
+
+function objectWithUrl(value: unknown, url: string): boolean {
+  if (Array.isArray(value)) return value.some((entry) => objectWithUrl(entry, url));
+  if (!isPlain(value)) return false;
+  if (value.url === url) return true;
+  return Object.values(value).some((entry) => objectWithUrl(entry, url));
+}
+
+function dropUrl(value: unknown, url: string): void {
+  if (Array.isArray(value)) {
+    const kept = value.filter((entry) => !(isPlain(entry) && entry.url === url));
+    if (kept.length !== value.length) {
+      value.splice(0, value.length, ...kept);
+    }
+    for (const entry of value) dropUrl(entry, url);
+    return;
+  }
+  if (!isPlain(value)) return;
+  for (const entry of Object.values(value)) dropUrl(entry, url);
 }
 
 function stripFields(baseline: unknown, candidate: unknown, rules: FieldRule[], details: string[]): number {

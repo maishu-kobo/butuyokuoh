@@ -42,6 +42,24 @@
         { "field": "source_item_code", "equals": null },
         { "field": "price_fetched_at", "equals": null }
       ]
+    },
+    {
+      "id": "url-scheme-validation",
+      "reason": "security, approved by Sota 2026-10-22",
+      "rejectedUrls": [
+        {
+          "step": "items.create.not-a-url",
+          "url": "not-a-url",
+          "status": 400,
+          "error": "URLは http または https を指定してください"
+        },
+        {
+          "step": "items.create.javascript-url",
+          "url": "javascript:alert(1)",
+          "status": 400,
+          "error": "URLは http または https を指定してください"
+        }
+      ]
     }
   ]
 }
