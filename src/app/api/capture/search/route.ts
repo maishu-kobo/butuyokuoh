@@ -3,6 +3,7 @@ import { withCapture } from '@/lib/capture-flags';
 import { CaptureMessages, parseSearchQuery, type CaptureErrorBody } from '@/lib/capture/contract';
 import { searchWithPorts } from '@/lib/capture/fakes';
 import { portsForRequest } from '@/lib/capture/ports';
+import { amazonAssociateTag } from '@/lib/capture-secrets';
 import { NextRequest, NextResponse } from 'next/server';
 
 function errorResponse(error: CaptureErrorBody, status: number) {
@@ -24,7 +25,7 @@ async function handlePOST(request: NextRequest) {
   const parsed = parseSearchQuery(body);
   if (!parsed.ok) return errorResponse(parsed.error, parsed.status);
   const ports = portsForRequest(request.headers.get('x-capture-fake-scenario'));
-  const result = await searchWithPorts(parsed.value, ports, process.env.AMAZON_ASSOCIATE_TAG);
+  const result = await searchWithPorts(parsed.value, ports, amazonAssociateTag());
   if (!result.ok) return errorResponse(result.error, result.status);
   return NextResponse.json(result.value);
 }
