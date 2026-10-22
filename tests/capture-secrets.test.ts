@@ -176,8 +176,9 @@ test('keys are not written to logs or the public availability report', () => {
 });
 
 test('server-only guard throws before exposing keys when imported for the browser', () => {
-  const previous = globalThis.window;
-  globalThis.window = {} as Window & typeof globalThis;
+  const globalWithWindow = globalThis as Omit<typeof globalThis, 'window'> & { window?: Window & typeof globalThis };
+  const previous = globalWithWindow.window;
+  globalWithWindow.window = {} as Window & typeof globalThis;
   try {
     withEnv({ CLOUDFLARE_API_TOKEN: FAKE.CLOUDFLARE_API_TOKEN }, () => {
       assert.throws(() => readCaptureSecrets(), (error: unknown) => {
@@ -193,8 +194,8 @@ test('server-only guard throws before exposing keys when imported for the browse
       });
     });
   } finally {
-    if (previous === undefined) delete globalThis.window;
-    else globalThis.window = previous;
+    if (previous === undefined) delete globalWithWindow.window;
+    else globalWithWindow.window = previous;
   }
 });
 
