@@ -1,12 +1,20 @@
 import { test, expect, request as playwrightRequest, type APIRequestContext } from '@playwright/test';
 import Database from 'better-sqlite3';
+import sharp from 'sharp';
 import { CaptureMessages } from '../../src/lib/capture/contract';
 
 const origin = 'http://localhost:3107';
-const jpeg = Buffer.of(0xff, 0xd8, 0xff, 0x00);
-const png = Buffer.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0);
-const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBP')]);
+const pixel = { create: { width: 8, height: 8, channels: 3 as const, background: { r: 20, g: 40, b: 60 } } };
+let jpeg: Buffer;
+let png: Buffer;
+let webp: Buffer;
 const heic = Buffer.concat([Buffer.of(0, 0, 0, 0x18), Buffer.from('ftypheic'), Buffer.alloc(4)]);
+
+test.beforeAll(async () => {
+  jpeg = await sharp(pixel).jpeg().toBuffer();
+  png = await sharp(pixel).png().toBuffer();
+  webp = await sharp(pixel).webp().toBuffer();
+});
 
 function context() {
   return playwrightRequest.newContext({ baseURL: origin, extraHTTPHeaders: { Origin: origin } });
@@ -67,8 +75,8 @@ test('logged-in capture APIs use fakes and reject guests, bad photos, and other 
     expect(await unreadable.json()).toMatchObject({ code: 'UNSUPPORTED_MEDIA', error: CaptureMessages.photoUnreadable });
 
     const two = new FormData();
-    two.append('photo', new File([jpeg], 'a.jpg', { type: 'image/jpeg' }));
-    two.append('photo', new File([png], 'b.png', { type: 'image/png' }));
+    two.append('photo', new File([Uint8Array.from(jpeg)], 'a.jpg', { type: 'image/jpeg' }));
+    two.append('photo', new File([Uint8Array.from(png)], 'b.png', { type: 'image/png' }));
     const rejected = await user.post('/api/capture/identify', { multipart: two });
     expect(rejected.status()).toBe(400);
     expect(await rejected.json()).toMatchObject({ code: 'INVALID_INPUT', error: CaptureMessages.onePhoto });
@@ -254,7 +262,10 @@ test('photo group spending counts one candidate on the list and budget screens',
 
     await page.goto('/');
     await expect(page.locator('.text-orange-500')).toHaveText('¥150');
-    await expect(page.getByText('合計に含まない')).toBeVisible();
+    await expect(page.getByTestId('photo-group-card')).toHaveCount(1);
+    await expect(page.getByRole('heading', { name: '牛乳' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '鉛筆' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '高い牛乳' })).toHaveCount(0);
 
     await page.getByRole('button', { name: '出費予定' }).click();
     await expect(page.locator('.text-3xl').first()).toHaveText('¥150');
