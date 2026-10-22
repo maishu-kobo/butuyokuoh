@@ -1,7 +1,7 @@
 import './regression-harness';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { call, createMember, db, useUser } from './regression-harness';
+import { call, createMember, db, setTestUser } from './regression-harness';
 import { deriveScrapeOutcome } from '../src/lib/scraper';
 import { priceCheckItems, priceDropNotification, recordPriceIfChanged } from '../src/lib/price-check-items';
 import { isAllowedWebhookUrl, sanitizeGenericUrl, validateAndSanitizeUrl } from '../src/lib/url-validator';
@@ -173,9 +173,9 @@ test('slack and discord sends skip guests and disallowed urls without fetching',
 test('extension add and import keep ownership, source, and an already active url', async () => {
   const member = await createMember('extension');
   const other = await createMember('extension-other');
-  await useUser(other);
+  await setTestUser(other);
   const foreignCategory = await call('../src/app/api/categories/route.ts', 'POST', '/api/categories', { name: '他人の棚' });
-  await useUser(member);
+  await setTestUser(member);
   const ownCategory = await call('../src/app/api/categories/route.ts', 'POST', '/api/categories', { name: '自分の棚' });
   const { generateToken } = await import('../src/lib/auth');
   const token = generateToken(member as never);

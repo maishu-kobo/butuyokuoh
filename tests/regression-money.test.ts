@@ -1,7 +1,7 @@
 import './regression-harness';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { call, createMember, db, useUser } from './regression-harness';
+import { call, createMember, db, setTestUser } from './regression-harness';
 
 const budget = '../src/app/api/budget/route.ts';
 const stats = '../src/app/api/stats/route.ts';
@@ -26,7 +26,7 @@ test('budget totals use price times quantity and split dated and undated items',
   add(owner.id, 'trashed', 8000, 2, '2026-10-03', { deleted: true });
   add(other.id, 'theirs', 7000, 2, '2026-10-04');
 
-  await useUser(owner);
+  await setTestUser(owner);
   const response = await call(budget, 'GET', '/api/budget');
   assert.equal(response.status, 200);
   const body = response.json as Record<string, { total: number; items: { name: string }[] }>;
@@ -60,7 +60,7 @@ test('stats counts exclude trash and keep a quantity of one in the money total',
   add('bought', 3000, { purchased: 1, purchasedAt: '2026-09-02' });
   add('trashed', 9999, { deleted: true });
 
-  await useUser(owner);
+  await setTestUser(owner);
   const response = await call(stats, 'GET', '/api/stats');
   assert.equal(response.status, 200);
   const body = response.json as {
@@ -110,7 +110,7 @@ test('export writes a BOM csv for the requested set and escapes commas, quotes, 
     INSERT INTO items (user_id, name, url, current_price) VALUES (?, '他人', 'manual://other', 8)
   `).run(other.id);
 
-  await useUser(owner);
+  await setTestUser(owner);
   const wishlist = await call(exportRoute, 'GET', '/api/export?filter=wishlist');
   assert.equal(wishlist.status, 200);
   assert.match(wishlist.headers.get('content-type') || '', /text\/csv/);

@@ -48,11 +48,11 @@ export async function createMember(label = 'member') {
     'SELECT id, email, name, created_at, account_type FROM users WHERE id = ?',
   ).get(id) as CurrentUser;
   if (!user || user.account_type !== 'member') throw new Error('member was not created');
-  await useUser(user);
+  await setTestUser(user);
   return user;
 }
 
-export async function useUser(user: CurrentUser | null) {
+export async function setTestUser(user: CurrentUser | null) {
   const { installAuthTestHooks } = await import('../src/lib/auth');
   installAuthTestHooks({ user });
 }

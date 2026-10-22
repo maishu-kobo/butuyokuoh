@@ -2,7 +2,7 @@ import './regression-harness';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import jwt from 'jsonwebtoken';
-import { call, cookieSink, createMember, db, useUser } from './regression-harness';
+import { call, cookieSink, createMember, db, setTestUser } from './regression-harness';
 import { isValidEmail, normalizeEmail } from '../src/lib/email';
 
 const registerPath = '../src/app/api/auth/register/route.ts';
@@ -74,7 +74,7 @@ test('register normalizes email, rejects bad input, and logs in regardless of ca
 });
 
 test('a logged-out caller is rejected and a member token cannot name a guest', async () => {
-  await useUser(null);
+  await setTestUser(null);
   for (const path of ['/api/items', '/api/budget', '/api/export', '/api/stats', '/api/purchased', '/api/trash', '/api/categories', '/api/comparison-groups', '/api/notification-settings', '/api/auth/token']) {
     const response = await call(itemsPath.replace('items/route.ts', path.slice('/api/'.length) + '/route.ts'), 'GET', path);
     assert.equal(response.status, 401, path);

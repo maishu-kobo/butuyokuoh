@@ -1,7 +1,7 @@
 import './regression-harness';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { call, createMember, db, useUser } from './regression-harness';
+import { call, createMember, db, setTestUser } from './regression-harness';
 
 const items = '../src/app/api/items/route.ts';
 const item = '../src/app/api/items/[id]/route.ts';
@@ -33,7 +33,7 @@ type Item = {
 test('manual add, edit, reorder, purchase, and previous price stay inside one account', async () => {
   const owner = await createMember('owner');
   const other = await createMember('other');
-  await useUser(owner);
+  await setTestUser(owner);
 
   const missingName = await call(items, 'POST', '/api/items', { manual: true });
   assert.equal(missingName.status, 400);
@@ -101,13 +101,13 @@ test('manual add, edit, reorder, purchase, and previous price stay inside one ac
   assert.equal(keyboard?.previous_price, 800);
   assert.equal(keyboard?.current_price, 900);
 
-  await useUser(other);
+  await setTestUser(other);
   assert.equal((await call(item, 'PATCH', `/api/items/${created.id}`, { name: '盗む' }, { id: String(created.id) })).status, 404);
   assert.equal((await call(item, 'DELETE', `/api/items/${created.id}`, undefined, { id: String(created.id) })).status, 404);
   assert.equal((await call(item, 'GET', `/api/items/${created.id}`, undefined, { id: String(created.id) })).status, 404);
   assert.deepEqual(await (await call(items, 'GET', '/api/items')).json, []);
 
-  await useUser(owner);
+  await setTestUser(owner);
   const bought = await call(item, 'PATCH', `/api/items/${mouse.id}`, {
     is_purchased: true, purchased_at: '2026-10-22',
   }, { id: String(mouse.id) });
@@ -136,9 +136,9 @@ test('manual add, edit, reorder, purchase, and previous price stay inside one ac
   assert.equal(trashedRows[0].id, created.id);
   assert.ok(trashedRows[0].deleted_at);
 
-  await useUser(other);
+  await setTestUser(other);
   assert.equal((await call(trashItem, 'POST', `/api/trash/${created.id}`, undefined, { id: String(created.id) })).status, 404);
-  await useUser(owner);
+  await setTestUser(owner);
   assert.equal((await call(trashItem, 'POST', `/api/trash/${created.id}`, undefined, { id: String(created.id) })).status, 200);
   assert.equal(((await call(items, 'GET', '/api/items')).json as Item[]).some((row) => row.id === created.id), true);
   assert.equal((await call(trash, 'GET', '/api/trash')).text, '[]');
@@ -169,7 +169,7 @@ test('trash keeps a recent item, purges after 7 days, and empty deletes only tha
   database.prepare("UPDATE items SET deleted_at = datetime('now', '-8 days') WHERE id = ?").run(foreign);
   database.prepare('INSERT INTO price_history (item_id, price) VALUES (?, 10)').run(stale);
 
-  await useUser(owner);
+  await setTestUser(owner);
   const listed = await call(trash, 'GET', '/api/trash');
   const ids = (listed.json as { id: number }[]).map((row) => row.id);
   assert.deepEqual(ids, [recent]);
@@ -188,7 +188,7 @@ test('trash keeps a recent item, purges after 7 days, and empty deletes only tha
 test('categories and comparison groups count only active wishlist items and stay owned', async () => {
   const owner = await createMember('catalog');
   const other = await createMember('catalog-other');
-  await useUser(owner);
+  await setTestUser(owner);
 
   assert.equal((await call(categories, 'POST', '/api/categories', { name: '   ' })).status, 400);
   const books = await call(categories, 'POST', '/api/categories', { name: '  本  ', color: '#112233' });
@@ -235,13 +235,13 @@ test('categories and comparison groups count only active wishlist items and stay
   const ordered = (await call(items, 'GET', '/api/items')).json as Item[];
   assert.deepEqual(ordered.map((row) => row.name), ['reading', 'loose']);
 
-  await useUser(other);
+  await setTestUser(other);
   assert.equal((await call(items, 'POST', '/api/items', { manual: true, name: '借りる', category_id: book.id })).status, 400);
   assert.equal((await call(items, 'POST', '/api/items', { manual: true, name: '借りる', comparison_group_id: headphones.id })).status, 400);
   assert.equal((await call(category, 'PUT', `/api/categories/${book.id}`, { name: '盗む' }, { id: String(book.id) })).status, 404);
   assert.equal((await call(group, 'DELETE', `/api/comparison-groups/${headphones.id}`, undefined, { id: String(headphones.id) })).status, 404);
 
-  await useUser(owner);
+  await setTestUser(owner);
   const renamed = await call(category, 'PUT', `/api/categories/${book.id}`, { name: '書籍' }, { id: String(book.id) });
   assert.equal(renamed.status, 200);
   assert.equal((renamed.json as { name: string }).name, '書籍');
