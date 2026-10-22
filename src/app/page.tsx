@@ -4,6 +4,7 @@ import { apiFetch } from '@/lib/api-fetch';
 
 import { useEffect, useState } from 'react';
 import { Item, ComparisonGroup, Category } from '@/types';
+import { sumCountedPrices } from '@/lib/photo-spend';
 import SortableItemCard from '@/components/SortableItemCard';
 import PhotoGroupCard from '@/components/PhotoGroupCard';
 import { wishlistRows } from '@/lib/capture/list-card';
@@ -387,12 +388,8 @@ export default function Home() {
       }
     });
 
-  // 合計金額計算
-  const totalAmount = items.reduce((sum, item) => {
-    const price = item.current_price || 0;
-    const quantity = item.quantity || 1;
-    return sum + (price * quantity);
-  }, 0);
+  // 合計金額計算。写真グループはサーバーが付けた印の付いた1件だけを足す。
+  const totalAmount = sumCountedPrices(items);
 
   // 比較グループフィルター時の最安価格を計算
   const lowestPriceInGroup = selectedGroup

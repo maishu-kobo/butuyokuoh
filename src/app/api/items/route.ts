@@ -8,6 +8,7 @@ import { getDb } from '@/lib/db';
 import { scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
+import { annotateSpend, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
 
 async function handleGET() {
   const user = await getCurrentUser();
@@ -24,6 +25,7 @@ async function handleGET() {
       i.*,
       cg.name as comparison_group_name,
       cg.origin as comparison_group_origin,
+      cg.origin as group_origin,
       cg.priority as group_priority,
       cat.name as category_name,
       cat.color as category_color,
@@ -43,9 +45,10 @@ async function handleGET() {
       COALESCE(cg.priority, i.priority) ASC,
       i.sort_order ASC,
       i.created_at DESC
-  `).all(user.id);
+  `).all(user.id) as { id: number }[];
 
-  return NextResponse.json(items);
+  const [spendItems, spendGroups] = userSpendInput(db, user.id);
+  return NextResponse.json(annotateSpend(items, photoSpendDecisions(spendItems, spendGroups)));
 }
 
 async function handlePOST(request: NextRequest) {

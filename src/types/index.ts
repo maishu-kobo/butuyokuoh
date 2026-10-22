@@ -16,6 +16,9 @@ export interface Item {
   comparison_group_id: number | null;
   comparison_group_name?: string | null;
   comparison_group_origin?: string | null;
+  group_origin?: string | null;
+  countsInTotal?: boolean;
+  totalLabel?: string | null;
   category_id: number | null;
   category_name?: string | null;
   category_color?: string | null;

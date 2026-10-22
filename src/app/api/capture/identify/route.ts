@@ -1,11 +1,15 @@
 import { requireSameOrigin, withAccess } from '@/lib/api-access';
+import { getCurrentUser } from '@/lib/auth';
 import { withCapture, withCaptureAi } from '@/lib/capture-flags';
+import { readCaptureSecrets } from '@/lib/capture-secrets';
 import { CAPTURE_PHOTO_MAX_BYTES, CaptureMessages, decodeCapturePhoto, type CaptureErrorBody } from '@/lib/capture/contract';
-import { portsForRequest } from '@/lib/capture/ports';
+import { getCapturePorts, portsForRequest } from '@/lib/capture/ports';
+import { identifyHttpBody, resolveProductIdentifier } from '@/lib/capture/workers-ai';
 import { NextRequest, NextResponse } from 'next/server';
 
 function errorResponse(error: CaptureErrorBody, status: number) {
-  return NextResponse.json(error, { status });
+  const http = identifyHttpBody({ ok: false, error, status });
+  return NextResponse.json(http.body, { status: http.status });
 }
 
 // 5MBを超えた本文を流したまま切る処理は #92。ここでは上限を超えるファイルを読まない。
@@ -25,9 +29,23 @@ async function handlePOST(request: NextRequest) {
   }
   const photo = decodeCapturePhoto([{ mediaType: file.type, bytes: new Uint8Array(await file.arrayBuffer()) }]);
   if (!photo.ok) return errorResponse(photo.error, photo.status);
-  const result = await portsForRequest(request.headers.get('x-capture-fake-scenario')).identifier.identify(photo.value);
-  if (!result.ok) return errorResponse(result.error, result.status);
-  return NextResponse.json(result.value);
+  const ports = portsForRequest(request.headers.get('x-capture-fake-scenario'));
+  const secrets = readCaptureSecrets();
+  const hooked = ports !== getCapturePorts();
+  let userId = '';
+  if (!hooked && secrets.cloudflareAccountId && secrets.cloudflareApiToken) {
+    const user = await getCurrentUser();
+    if (user?.account_type === 'member') userId = String(user.id);
+  }
+  const identifier = resolveProductIdentifier({
+    hooked,
+    accountId: secrets.cloudflareAccountId,
+    apiToken: secrets.cloudflareApiToken,
+    userId,
+    fake: ports.identifier,
+  });
+  const http = identifyHttpBody(await identifier.identify(photo.value));
+  return NextResponse.json(http.body, { status: http.status });
 }
 
 export const POST = withCapture(withCaptureAi(withAccess(handlePOST)));
