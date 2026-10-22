@@ -22,7 +22,6 @@ export async function POST(request: NextRequest) {
     // 正規化: trim + 小文字化（register と同じ正規化を適用し、表記ゆれでもログイン可能にする）
     const normalizedEmail = normalizeEmail(email);
 
-    // codeql[js/user-controlled-bypass] 空のメールかパスワードを 400 で拒否するだけ。トークンは後段の verifyPassword 成功後に出す
     if (!normalizedEmail || !password) {
       return NextResponse.json(
         { error: 'メールアドレスとパスワードを入力してください' },

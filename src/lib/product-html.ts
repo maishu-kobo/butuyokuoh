@@ -12,7 +12,6 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
   const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
   let name = titleMatch ? titleMatch[1].trim() : '不明な商品';
   // タイトルのクリーンアップ: 改行、HTMLエンティティ、サイト名の区切り文字などを除去
-  // codeql[js/double-escaping] 商品名の表示用に既知の実体参照を一度だけ戻す。HTML へは再挿入せず、dangerouslySetInnerHTML も無い
   name = name
     .replace(/\n/g, ' ')                    // 改行をスペースに
     .replace(/&ndash;/g, '-')               // &ndash; を - に
@@ -36,7 +35,6 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
         let prevLength = 0;
         while (jsonContent.length !== prevLength) {
           prevLength = jsonContent.length;
-          // codeql[js/incomplete-multi-character-sanitization] JSON.parse で価格を読む前のタグ除去。結果は HTML として解釈しない
           jsonContent = jsonContent.replace(/<script[^>]*>/gi, '');
           jsonContent = jsonContent.replace(/<\/script>/gi, '');
         }
@@ -98,7 +96,6 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
   
   if (!price) {
     // Shopifyサイトのセント単位価格（Shopifyかどうかを確認）
-    // codeql[js/incomplete-url-substring-sanitization] ページ本文から価格の単位を選ぶだけ。URL の許可判定ではない
     const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme');
     if (isShopify) {
       // Shopifyの場合、"price":NNNNNN (5桁以上、セント単位) をJPYとみなす
