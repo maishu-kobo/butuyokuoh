@@ -6,7 +6,7 @@
 
 | ツール | バージョン | 備考 |
 |--------|----------|------|
-| Node.js | 20.x 以上 | |
+| Node.js | 22.12 以上 | puppeteer 25 の engines。本番へ入れる前の手順は docs/deployment.md |
 | npm | 10.x 以上 | |
 | Git | - | |
 | Chromium/Chrome | - | Puppeteerで使用 |

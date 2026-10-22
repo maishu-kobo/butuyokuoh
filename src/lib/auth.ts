@@ -4,8 +4,7 @@ import { cookies } from 'next/headers';
 import { getDb } from './db';
 import { auth } from '@/auth';
 import { findGuest, guestEnabled, GUEST_COOKIE, type GuestUser } from './guest';
-
-const TOKEN_COOKIE_NAME = 'butuyokuoh_token';
+import { MEMBER_TOKEN_COOKIE, memberTokenCookieOptions } from './cookie-policy';
 
 // 開発モード専用のフォールバック鍵。リポジトリに公開されている値のため、
 // 本番でこの鍵を使うとトークンを偽造される。本番では JWT_SECRET の設定を必須とする。
@@ -70,15 +69,11 @@ export type CurrentUser = User | GuestUser;
 
 // ルートをリクエストの外から呼ぶための注入点。next/headers の cookies() は
 // リクエストの外では例外になる。本番では使えない。定期実行や通常のAPIはここを通らない。
+type AuthCookieOptions = ReturnType<typeof memberTokenCookieOptions>;
+
 type TestCookieWriter = {
-  set: (name: string, value: string, options?: {
-    httpOnly?: boolean;
-    secure?: boolean;
-    sameSite?: 'lax' | 'strict' | 'none';
-    maxAge?: number;
-    path?: string;
-  }) => void;
-  delete: (name: string) => void;
+  set: (name: string, value: string, options?: AuthCookieOptions) => void;
+  delete: (name: string, options?: AuthCookieOptions) => void;
 };
 
 let testCurrentUser: { user: CurrentUser | null } | undefined;
@@ -116,7 +111,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     if (user) return user;
   }
   const cookieStore = await cookies();
-  const token = cookieStore.get(TOKEN_COOKIE_NAME)?.value;
+  const token = cookieStore.get(MEMBER_TOKEN_COOKIE)?.value;
   if (token) {
     const payload = verifyToken(token);
     const user = payload && member(payload.userId);
@@ -126,28 +121,24 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 }
 
 export async function setAuthCookie(token: string): Promise<void> {
-  const options = {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax' as const,
-    maxAge: 7 * 24 * 60 * 60, // 7 days
-    path: '/',
-  };
+  const options = memberTokenCookieOptions();
   if (process.env.NODE_ENV !== 'production' && testCookies) {
-    testCookies.set(TOKEN_COOKIE_NAME, token, options);
+    testCookies.set(MEMBER_TOKEN_COOKIE, token, options);
     return;
   }
   const cookieStore = await cookies();
-  cookieStore.set(TOKEN_COOKIE_NAME, token, options);
+  cookieStore.set(MEMBER_TOKEN_COOKIE, token, options);
 }
 
 export async function clearAuthCookie(): Promise<void> {
+  // 発行と同じ名前と属性で消す。Max-Age を 7 日のまま渡すと Next が期限を延ばして残る。
+  const options = { ...memberTokenCookieOptions(), maxAge: 0 };
   if (process.env.NODE_ENV !== 'production' && testCookies) {
-    testCookies.delete(TOKEN_COOKIE_NAME);
+    testCookies.delete(MEMBER_TOKEN_COOKIE, options);
     return;
   }
   const cookieStore = await cookies();
-  cookieStore.delete(TOKEN_COOKIE_NAME);
+  cookieStore.delete({ name: MEMBER_TOKEN_COOKIE, ...options });
 }
 
 export function getUserIdFromToken(token: string): number | null {

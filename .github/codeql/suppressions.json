@@ -29,6 +29,24 @@
       "path": "src/app/api/auth/login/route.ts",
       "line": "    if (!normalizedEmail || !password) {",
       "reason": "空のメールかパスワードを 400 で拒否するだけ。トークンは後段の検証成功後に出す"
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/capture-rakuten.test.ts",
+      "line": "  assert.equal(yahooDown.value.amazonUrl.includes('amazon.com'), false);",
+      "reason": "本番の URL 許可判定ではない。組み立てた Amazon 検索 URL に amazon.com が含まれないことを確認するテスト"
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/capture-yahoo.test.ts",
+      "line": "  assert.equal(source.includes('https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch'), true);",
+      "reason": "URL の許可判定ではない。yahoo.ts がエンドポイント文字列を含むことのソース契約テスト"
+    },
+    {
+      "rule": "js/file-system-race",
+      "path": "src/lib/capture-secrets.ts",
+      "line": "    fd = openSync(configuredPath, constants.O_RDONLY | constants.O_NOFOLLOW);",
+      "reason": "lstat のあと O_NOFOLLOW で開き、fd の dev/ino を realpath と比べる。シンボリックリンクと差し替えは拒否する"
     }
   ]
 }
