@@ -49,8 +49,10 @@ test('a member chooses one readable photo and is guided away from files we canno
 
   await dropFiles(page, [{ name: 'a.jpg', type: 'image/jpeg', bytes: jpeg }]);
   await expect(page.getByRole('status').filter({ hasText: '1枚の写真を選びました' })).toBeVisible();
-  await expect(page.getByText('この写真は読めません')).toHaveCount(0);
-  await expect(page.getByText('写真は1枚だけ選べます')).toHaveCount(0);
+  // 4バイトの JPEG はここで通る。識別 API はあとから同じ文を status に出す。
+  // ページ全体を数えると、返答の速さで成功したり失敗したりする。
+  await expect(page.getByRole('alert').filter({ hasText: 'この写真は読めません' })).toHaveCount(0);
+  await expect(page.getByRole('alert').filter({ hasText: '写真は1枚だけ選べます' })).toHaveCount(0);
 });
 
 test('guests do not get the photo picker', async ({ page }) => {
