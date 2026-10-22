@@ -62,6 +62,59 @@ test('guests do not get the photo picker', async ({ page }) => {
   await expect(page.getByRole('button', { name: '写真を選ぶ' })).toHaveCount(0);
 });
 
+test('a member adds an item manually while choose-a-photo is showing', async ({ page }) => {
+  await member(page);
+  await openAdd(page);
+  const choose = page.getByRole('button', { name: '写真を選ぶ' });
+  await expect(choose).toBeVisible();
+
+  await page.getByRole('button', { name: '手動で追加', exact: true }).click();
+  await expect(choose).toBeVisible();
+  await expect(page.getByPlaceholder('商品名を入力')).toBeVisible();
+  await page.getByPlaceholder('商品名を入力').fill('手入力のボールペン');
+  await page.getByPlaceholder('例: 3990').fill('1200');
+  await page.getByRole('button', { name: '追加', exact: true }).click();
+
+  await expect(page.getByText('手入力のボールペン', { exact: true })).toBeVisible();
+  await expect(page.getByText('¥1,200')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: '新しいアイテムを追加' })).toBeVisible();
+  await expect(choose).toHaveCount(0);
+});
+
+function capturePath(url: string) {
+  return new URL(url).pathname === '/api/capture';
+}
+
+async function expectNoCaptureCall(page: Page, calls: string[]) {
+  expect(calls).toEqual([]);
+  const late = await page.waitForRequest(request => capturePath(request.url()), { timeout: 1_000 })
+    .then(request => request.url(), () => null);
+  expect(late).toBeNull();
+  expect(calls).toEqual([]);
+}
+
+test('a guest and a closed card do not call /api/capture', async ({ page }) => {
+  const calls: string[] = [];
+  page.on('request', request => {
+    if (capturePath(request.url())) calls.push(`${request.method()} ${request.url()}`);
+  });
+
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'ゲストで試す', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'ゲストで試す', exact: true }).click();
+  await expect(page.getByRole('complementary', { name: 'ゲスト体験' })).toBeVisible();
+  await openAdd(page);
+  await expect(page.getByRole('heading', { name: '新しいアイテムを追加' })).toBeVisible();
+  await page.getByRole('button', { name: '手動で追加', exact: true }).click();
+  await expect(page.getByPlaceholder('商品名を入力')).toBeVisible();
+  await expectNoCaptureCall(page, calls);
+
+  await member(page);
+  await expect(page.getByRole('button', { name: '新しいアイテムを追加' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '新しいアイテムを追加' })).toHaveCount(0);
+  await expectNoCaptureCall(page, calls);
+});
+
 test('the photo picker stays closed when capture is switched off', async ({ page }) => {
   await page.route('**/api/capture', route => {
     if (route.request().method() !== 'GET') return route.continue();
