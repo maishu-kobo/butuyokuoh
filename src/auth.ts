@@ -2,7 +2,7 @@ import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import Credentials from 'next-auth/providers/credentials';
 import { getDb } from '@/lib/db';
-import { verifyPassword, User } from '@/lib/auth';
+import { sessionGenerationMatches, verifyPassword, User } from '@/lib/auth';
 import { linkGoogleAccount } from '@/lib/link-google-account';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -71,14 +71,36 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return true;
     },
     async jwt({ token, user }) {
-      if (user) {
-        token.userId = user.id;
+      const userId = user?.id ?? token.userId;
+      if (!userId) return token;
+      const row = getDb().prepare(
+        "SELECT session_generation FROM users WHERE id = ? AND account_type = 'member'"
+      ).get(Number(userId)) as { session_generation: number } | undefined;
+      if (!row) {
+        delete token.userId;
+        delete token.sessionGeneration;
+        return token;
       }
+      const current = row.session_generation ?? 0;
+      if (user?.id) {
+        token.userId = String(user.id);
+        token.sessionGeneration = current;
+        return token;
+      }
+      if (!sessionGenerationMatches(token.sessionGeneration, current)) {
+        delete token.userId;
+        delete token.sessionGeneration;
+        return token;
+      }
+      token.sessionGeneration = current;
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.userId) {
         session.user.id = token.userId as string;
+        session.user.sessionGeneration = typeof token.sessionGeneration === 'number'
+          ? token.sessionGeneration
+          : 0;
       }
       return session;
     },

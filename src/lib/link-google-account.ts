@@ -31,6 +31,9 @@ interface MemberRow {
  * 確認済み Google を所有者とする。同じメールの会員行からはパスワードを消し、
  * Google ID はログインが選ぶ行（既にある Google ID、なければ最古の会員）にだけ付ける。
  * 別の Google ID が付いているメールは奪わない。ゲスト行と @guest.invalid は対象にしない。
+ *
+ * 会員 id はそのままなので、パスワードがあった行は session_generation を進める。
+ * パスワードが既に無い再ログインでは進めず、本人の別端末は残す。
  */
 export function linkGoogleAccount(
   db: Database.Database,
@@ -100,6 +103,12 @@ export function linkGoogleAccount(
       return { ok: false, reason: 'account_conflict' };
     }
 
+    const retirePassword = db.prepare(
+      `UPDATE users
+       SET session_generation = session_generation + 1,
+           updated_at = datetime('now')
+       WHERE id = ? AND account_type = 'member' AND password_hash IS NOT NULL`
+    );
     const clearPassword = db.prepare(
       `UPDATE users
        SET password_hash = NULL,
@@ -108,9 +117,11 @@ export function linkGoogleAccount(
     );
     for (const row of emailRows) {
       if (row.id === primary.id) continue;
+      retirePassword.run(row.id);
       clearPassword.run(row.id);
     }
 
+    retirePassword.run(primary.id);
     db.prepare(
       `UPDATE users
        SET google_id = ?,

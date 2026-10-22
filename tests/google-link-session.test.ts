@@ -8,7 +8,33 @@ import { linkGoogleAccount } from '../src/lib/link-google-account';
 
 const registerPath = '../src/app/api/auth/register/route.ts';
 const loginPath = '../src/app/api/auth/login/route.ts';
+const tokenPath = '../src/app/api/auth/token/route.ts';
 const sessionCookie = 'authjs.session-token';
+
+async function resetAuthHooks() {
+  const { installAuthTestHooks } = await import('../src/lib/auth');
+  installAuthTestHooks(null);
+}
+
+async function presentCredentials(options: {
+  appToken?: string;
+  session?: { id: string; sessionGeneration?: number } | null;
+}) {
+  const { installAuthTestHooks } = await import('../src/lib/auth');
+  const { MEMBER_TOKEN_COOKIE } = await import('../src/lib/cookie-policy');
+  installAuthTestHooks({
+    session: options.session
+      ? { user: { id: options.session.id, sessionGeneration: options.session.sessionGeneration } }
+      : null,
+    cookies: {
+      set() {},
+      delete() {},
+      get(name) {
+        return name === MEMBER_TOKEN_COOKIE ? options.appToken : undefined;
+      },
+    },
+  });
+}
 
 async function nextAuthToken(claims: Record<string, unknown>) {
   return encode({
@@ -25,6 +51,7 @@ function cookieValue(setCookie: string, name: string) {
 }
 
 test('リンク前の自前JWTとNextAuthのtoken.userIdは確認済みGoogle連携のあと拒否される', async () => {
+  await resetAuthHooks();
   await cookieSink();
   const created = await call(registerPath, 'POST', '/api/auth/register', {
     email: 'PreLink@Session.TEST',
@@ -136,9 +163,45 @@ test('リンク前の自前JWTとNextAuthのtoken.userIdは確認済みGoogle連
   }
 
   assert.deepEqual(problems, []);
+
+  const { getCurrentUser } = await import('../src/lib/auth');
+  const currentAppToken = generateToken(member);
+  await presentCredentials({ appToken: registrationToken, session: null });
+  assert.equal(await getCurrentUser(), null);
+  const extended = await call(tokenPath, 'GET', '/api/auth/token');
+  assert.equal(extended.status, 401);
+  assert.equal((extended.json as { token?: string }).token, undefined);
+
+  await presentCredentials({ session: { id: String(userId) } });
+  assert.equal(await getCurrentUser(), null);
+  const extendedSession = await call(tokenPath, 'GET', '/api/auth/token');
+  assert.equal(extendedSession.status, 401);
+  assert.equal((extendedSession.json as { token?: string }).token, undefined);
+
+  await presentCredentials({ appToken: currentAppToken, session: null });
+  assert.equal((await getCurrentUser())?.id, userId);
+  await presentCredentials({ session: { id: String(userId), sessionGeneration: 1 } });
+  const renewed = await call(tokenPath, 'GET', '/api/auth/token');
+  assert.equal(renewed.status, 200);
+  assert.equal(getUserIdFromToken((renewed.json as { token: string }).token), userId);
+
+  const again = linkGoogleAccount(database, {
+    email: 'prelink@session.test',
+    googleId: 'google-prelink-session',
+    name: '本人',
+    emailVerified: true,
+  });
+  assert.deepEqual(again, { ok: true, userId });
+  assert.equal(getUserIdFromToken(currentAppToken), userId);
+  const keptResponse = await readSession(new NextRequest('http://127.0.0.1/api/auth/session', {
+    headers: { cookie: `${sessionCookie}=${postLinkSession}` },
+  }));
+  const keptBody = JSON.parse(await keptResponse.text()) as { user?: { id?: string } };
+  assert.equal(keptBody.user?.id, String(userId));
 });
 
 test('パスワードログインは従来どおり会員トークンを発行できる', async () => {
+  await resetAuthHooks();
   await cookieSink();
   const created = await call(registerPath, 'POST', '/api/auth/register', {
     email: 'Still-Valid@Login.TEST',
@@ -157,4 +220,21 @@ test('パスワードログインは従来どおり会員トークンを発行�
   const loggedBody = loggedIn.json as { token: string; user: { id: number } };
   assert.equal(loggedBody.user.id, createdBody.user.id);
   assert.equal(getUserIdFromToken(loggedBody.token), loggedBody.user.id);
+
+  const untouched = await nextAuthToken({
+    sub: String(createdBody.user.id),
+    email: 'still-valid@login.test',
+    userId: String(createdBody.user.id),
+  });
+  const { GET: readSession } = await import('../src/app/api/auth/[...nextauth]/route');
+  const sessionResponse = await readSession(new NextRequest('http://127.0.0.1/api/auth/session', {
+    headers: { cookie: `${sessionCookie}=${untouched}` },
+  }));
+  const sessionBody = JSON.parse(await sessionResponse.text()) as { user?: { id?: string } };
+  assert.equal(sessionBody.user?.id, String(createdBody.user.id));
+
+  await presentCredentials({ appToken: loggedBody.token, session: null });
+  const renewed = await call(tokenPath, 'GET', '/api/auth/token');
+  assert.equal(renewed.status, 200);
+  assert.equal(getUserIdFromToken((renewed.json as { token: string }).token), createdBody.user.id);
 });

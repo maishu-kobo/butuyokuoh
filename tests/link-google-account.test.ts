@@ -13,6 +13,7 @@ function createDb() {
       google_id TEXT UNIQUE,
       name TEXT,
       account_type TEXT NOT NULL DEFAULT 'member',
+      session_generation INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -315,6 +316,76 @@ test('@guest.invalid は会員として作らない', () => {
 
   assert.deepEqual(result, { ok: false, reason: 'rejected_email' });
   assert.equal(countUsers(db), 0);
+});
+
+function generation(db: Database.Database, id: number) {
+  return (db.prepare('SELECT session_generation FROM users WHERE id = ?').get(id) as {
+    session_generation: number;
+  }).session_generation;
+}
+
+test('パスワードを消す行だけセッション世代を進め、再ログインでは進めない', () => {
+  const db = createDb();
+  const older = db
+    .prepare('INSERT INTO users (email, password_hash, account_type) VALUES (?, ?, ?)')
+    .run('Victim@Example.com', 'older-hash', 'member');
+  const newer = db
+    .prepare('INSERT INTO users (email, password_hash, account_type) VALUES (?, ?, ?)')
+    .run('victim@example.com', 'newer-hash', 'member');
+  const olderId = Number(older.lastInsertRowid);
+  const newerId = Number(newer.lastInsertRowid);
+
+  const unverified = linkGoogleAccount(db, {
+    email: 'VICTIM@example.com',
+    googleId: 'google-victim',
+    name: '本人',
+    emailVerified: false,
+  });
+  assert.deepEqual(unverified, { ok: false, reason: 'unverified_email' });
+  assert.equal(generation(db, olderId), 0);
+  assert.equal(generation(db, newerId), 0);
+
+  const linked = linkGoogleAccount(db, {
+    email: 'VICTIM@example.com',
+    googleId: 'google-victim',
+    name: '本人',
+    emailVerified: true,
+  });
+  assert.deepEqual(linked, { ok: true, userId: olderId });
+  assert.equal(generation(db, olderId), 1);
+  assert.equal(generation(db, newerId), 1);
+
+  const again = linkGoogleAccount(db, {
+    email: 'victim@example.com',
+    googleId: 'google-victim',
+    name: '本人',
+    emailVerified: true,
+  });
+  assert.deepEqual(again, { ok: true, userId: olderId });
+  assert.equal(generation(db, olderId), 1);
+  assert.equal(generation(db, newerId), 1);
+});
+
+test('既にパスワードのないGoogle会員の世代は残し、先取り行だけ進める', () => {
+  const db = createDb();
+  const preempted = db
+    .prepare('INSERT INTO users (email, password_hash, account_type) VALUES (?, ?, ?)')
+    .run('Victim@Example.com', 'attacker-hash', 'member');
+  const googleUser = db
+    .prepare('INSERT INTO users (email, google_id, account_type) VALUES (?, ?, ?)')
+    .run('victim@example.com', 'google-victim', 'member');
+
+  const result = linkGoogleAccount(db, {
+    email: 'victim@example.com',
+    googleId: 'google-victim',
+    name: '本人',
+    emailVerified: true,
+  });
+
+  assert.deepEqual(result, { ok: true, userId: Number(googleUser.lastInsertRowid) });
+  assert.equal(generation(db, Number(googleUser.lastInsertRowid)), 0);
+  assert.equal(generation(db, Number(preempted.lastInsertRowid)), 1);
+  assert.equal(userById(db, Number(preempted.lastInsertRowid)).password_hash, null);
 });
 
 test('新規の確認済みGoogleユーザーはメールを小文字で保存する', () => {

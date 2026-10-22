@@ -5,6 +5,7 @@ declare module 'next-auth' {
   interface Session {
     user: {
       id: string;
+      sessionGeneration?: number;
     } & DefaultSession['user'];
   }
 
@@ -16,5 +17,6 @@ declare module 'next-auth' {
 declare module 'next-auth/jwt' {
   interface JWT extends DefaultJWT {
     userId?: string;
+    sessionGeneration?: number;
   }
 }
