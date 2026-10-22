@@ -19,7 +19,9 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
   const { isGuest } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [captureEnabled, setCaptureEnabled] = useState(false);
-  const photoPick = useCapturePhotoPick(showPhotoPicker({ enabled: captureEnabled }, isGuest));
+  const captureOpen = isOpen && !isGuest;
+  if (!captureOpen && captureEnabled) setCaptureEnabled(false);
+  const photoPick = useCapturePhotoPick(showPhotoPicker({ enabled: captureOpen && captureEnabled }, isGuest));
   const [isManualMode, setIsManualMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -43,10 +45,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
   });
 
   useEffect(() => {
-    if (!isOpen || isGuest) {
-      setCaptureEnabled(false);
-      return;
-    }
+    if (!captureOpen) return;
     let cancelled = false;
     apiFetch('/api/capture', undefined, { notifyError: false })
       .then(response => response.ok ? response.json() : null)
@@ -59,7 +58,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
     return () => {
       cancelled = true;
     };
-  }, [isOpen, isGuest]);
+  }, [captureOpen]);
 
   const resetForm = () => {
     setFormData({
