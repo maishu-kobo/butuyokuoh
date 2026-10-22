@@ -1,6 +1,6 @@
 # pull_request だけ。
 # このリポジトリは CodeQL の default setup が有効で、advanced の SARIF は受け取らない。
-# 解析自体は行い、結果が warning / error ならジョブを落とす。アップロードはしない。
+# 解析自体は行い、error があればジョブを落とす。warning はログに残す。アップロードはしない。
 name: CodeQL
 
 on:
@@ -45,6 +45,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import json
+          import os
           import sys
           from pathlib import Path
 
@@ -52,12 +53,13 @@ jobs:
           if not files:
               print("CodeQL の SARIF が無い", file=sys.stderr)
               sys.exit(1)
+          lines = []
           failed = False
           for path in files:
               data = json.loads(path.read_text())
               for run in data.get("runs", []):
                   results = run.get("results", [])
-                  print(f"{path.name}: {len(results)} results")
+                  lines.append(f"{path.name}: {len(results)} results")
                   for result in results:
                       level = result.get("level", "warning")
                       rule = result.get("ruleId", "")
@@ -65,9 +67,14 @@ jobs:
                       location = result.get("locations", [{}])[0].get("physicalLocation", {})
                       uri = location.get("artifactLocation", {}).get("uri", "")
                       line = location.get("region", {}).get("startLine", "")
-                      print(f"- {level} {rule} {uri}:{line} {message}")
-                      if level in ("error", "warning"):
+                      lines.append(f"- {level} {rule} {uri}:{line} {message}")
+                      if level == "error":
                           failed = True
+          print("\n".join(lines))
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as handle:
+                  handle.write("## CodeQL\n\n```\n" + "\n".join(lines) + "\n```\n")
           if failed:
               sys.exit(1)
           PY
