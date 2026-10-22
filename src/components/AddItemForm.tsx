@@ -8,6 +8,7 @@ import { Plus, X, Upload, Link, Edit3 } from 'lucide-react';
 import { ComparisonGroup, Category } from '@/types';
 import { showPhotoPicker } from '@/lib/capture/photo-pick';
 import { CapturePhotoControls, useCapturePhotoPick } from './CapturePhotoPicker';
+import { CaptureSearchPanel } from './CaptureSearchPanel';
 
 interface AddItemFormProps {
   onAdd: () => void;
@@ -21,7 +22,11 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
   const [captureEnabled, setCaptureEnabled] = useState(false);
   const captureOpen = isOpen && !isGuest;
   if (!captureOpen && captureEnabled) setCaptureEnabled(false);
-  const photoPick = useCapturePhotoPick(showPhotoPicker({ enabled: captureOpen && captureEnabled }, isGuest));
+  const [pickedFile, setPickedFile] = useState<File | null>(null);
+  const photoPick = useCapturePhotoPick(
+    showPhotoPicker({ enabled: captureOpen && captureEnabled }, isGuest),
+    (file) => setPickedFile(file),
+  );
   const [isManualMode, setIsManualMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -74,6 +79,14 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
       image_url: '',
     });
     setIsManualMode(false);
+    setError('');
+    setCanAddManually(false);
+    setPickedFile(null);
+  };
+
+  const enterManual = (name: string) => {
+    setIsManualMode(true);
+    setFormData((current) => ({ ...current, name, image_url: '' }));
     setError('');
     setCanAddManually(false);
   };
@@ -210,6 +223,13 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
       className="bg-white dark:bg-slate-800 rounded-lg shadow-md p-4"
     >
       <CapturePhotoControls pick={photoPick} />
+      {photoPick.enabled && (
+        <CaptureSearchPanel
+          file={pickedFile}
+          onManual={enterManual}
+          onRegistered={() => { resetForm(); setIsOpen(false); onAdd(); }}
+        />
+      )}
       <div className="flex justify-between items-center mb-4">
         <h3 className="font-semibold text-lg">新しいアイテムを追加</h3>
         <button onClick={() => { setIsOpen(false); resetForm(); }} className="text-gray- dark:text-gray-400 hover:text-gray- dark:text-gray-600">

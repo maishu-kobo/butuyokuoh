@@ -7,7 +7,7 @@ process.env.E2E_DB_PATH ||= join(mkdtempSync(join(tmpdir(), 'butuyokuoh-e2e-')),
 const port = 3107;
 export default defineConfig({
   testDir: './tests/e2e',
-  testMatch: process.env.E2E_GUEST_DISABLED ? 'disabled.spec.ts' : ['guest.spec.ts', 'capture.spec.ts', 'capture-photo-pick.spec.ts', 'capture-photo-group.spec.ts'],
+  testMatch: process.env.E2E_GUEST_DISABLED ? 'disabled.spec.ts' : ['guest.spec.ts', 'capture.spec.ts', 'capture-photo-pick.spec.ts', 'capture-photo-group.spec.ts', 'capture-flow.spec.ts'],
   fullyParallel: false,
   workers: 1,
   timeout: 60_000,
