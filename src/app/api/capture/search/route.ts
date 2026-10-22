@@ -1,9 +1,12 @@
 import { requireSameOrigin, withAccess } from '@/lib/api-access';
+import { getCurrentUser } from '@/lib/auth';
 import { withCapture } from '@/lib/capture-flags';
 import { CaptureMessages, parseSearchQuery, type CaptureErrorBody } from '@/lib/capture/contract';
 import { searchWithPorts } from '@/lib/capture/fakes';
+import { httpsReferer, resolveSearchPorts, saveSearchCandidates } from '@/lib/capture/live-search';
 import { portsForRequest } from '@/lib/capture/ports';
-import { amazonAssociateTag } from '@/lib/capture-secrets';
+import { amazonAssociateTag, readCaptureSecrets } from '@/lib/capture-secrets';
+import { getDb } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 
 function errorResponse(error: CaptureErrorBody, status: number) {
@@ -24,10 +27,33 @@ async function handlePOST(request: NextRequest) {
   }
   const parsed = parseSearchQuery(body);
   if (!parsed.ok) return errorResponse(parsed.error, parsed.status);
-  const ports = portsForRequest(request.headers.get('x-capture-fake-scenario'));
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+
+  // 開発サーバのテストは偽物の候補のまま。本番の NODE_ENV ではヘッダーを見ない。
+  const useFakes = process.env.NODE_ENV !== 'production' && process.env.CAPTURE_TEST_HOOKS === '1';
+  const secrets = readCaptureSecrets();
+  const ports = useFakes
+    ? portsForRequest(request.headers.get('x-capture-fake-scenario'))
+    : resolveSearchPorts({
+        yahooAppId: secrets.yahooAppId,
+        rakutenAppId: secrets.rakutenAppId,
+        rakutenAccessKey: secrets.rakutenAccessKey,
+        userId: String(user.id),
+        referer: httpsReferer(request.headers.get('origin')),
+      });
   const result = await searchWithPorts(parsed.value, ports, amazonAssociateTag());
   if (!result.ok) return errorResponse(result.error, result.status);
-  return NextResponse.json(result.value);
+  const saved = saveSearchCandidates(getDb(), user.id, parsed.value, result.value);
+  if (!saved) return NextResponse.json(result.value);
+  return NextResponse.json({
+    ...result.value,
+    captureId: saved.captureId,
+    candidates: result.value.candidates.map((candidate, index) => ({
+      ...candidate,
+      candidateId: saved.storedIds[index],
+    })),
+  });
 }
 
 export const POST = withCapture(withAccess(handlePOST));
