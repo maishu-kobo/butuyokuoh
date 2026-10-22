@@ -1,13 +1,17 @@
-# Issue #85。feature/photo-capture、feature/capture-existing-bugfixes、develop 向け PR の共通検査。
-# 同じコマンドのワークフローを別に足さない。足すときはこのファイルを伸ばす。
+# Issue #85。feature/photo-capture、feature/capture-existing-bugfixes、develop 向け PR の速いレーン。
+# 単体テスト、型、lint、本番ビルド、npm audit。キャッシュが温かいときの目標は 2 分未満。
+# 同じコマンドをこのファイルに重ねない。重い検査は別ファイルで、毎回走り、失敗すると止める。
 #
-# pull_request だけで、権限が違う検査は別ファイル:
-# - codeql.yml
+# - playwright.yml（e2e。ジョブ名 playwright）
+# - codeql.yml（analyze の high）
 # - dependency-review.yml
 # - gitleaks.yml
 #
+# フレークの隔離は quarantine.yml。失敗すると赤になる。チェック名は必須の名前ではない。
+# 保護したテストは .github/test-quarantine.txt に書けない。このレーンが拒否する。
 # 実店舗の e2e（E2E_LIVE_SCRAPE / E2E_LIVE_AMAZON / E2E_LIVE_RAKUTEN）は環境変数を付けない。
 # develop への push と、マージ条件への組み込みはここではしない。
+# path フィルタは付けない。必須ジョブが skip になると、その SHA のチェックが pending のままマージを止める。
 name: CI
 
 on:
@@ -43,14 +47,16 @@ jobs:
         with:
           # puppeteer 25 は Node.js 22.12 以上。本番を 22 に上げてから develop に入れる（docs/deployment.md）。
           node-version: "22"
-          # npm cache は actions: write が要る。権限は contents: read のままにする。
-          package-manager-cache: false
+          # lockfile をキーにする。pull_request の cache はマージ ref に閉じ、トークンは contents: read のまま。
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
+      # 隔離リストに入った単体テストだけ外す。0 件のときは npm test と同じファイル。
+      # ローカルの npm test はリストを見ない。
       - name: Unit tests
-        run: npm test
+        run: node scripts/test-lanes.mjs blocking-unit
 
       - name: Typecheck
         run: npx tsc --noEmit
@@ -74,7 +80,7 @@ jobs:
         with:
           # puppeteer 25 は Node.js 22.12 以上。本番を 22 に上げてから develop に入れる（docs/deployment.md）。
           node-version: "22"
-          package-manager-cache: false
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
@@ -82,29 +88,3 @@ jobs:
       # braces は開発依存だけの期限つき例外。.github/audit-exceptions.json を見る。
       - name: npm audit
         run: npm run audit:high
-
-  e2e:
-    name: playwright
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      NEXT_TELEMETRY_DISABLED: "1"
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          # puppeteer 25 は Node.js 22.12 以上。本番を 22 に上げてから develop に入れる（docs/deployment.md）。
-          node-version: "22"
-          package-manager-cache: false
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-
-      - name: E2E tests
-        run: npm run test:e2e

@@ -71,6 +71,8 @@ http://localhost:3000 でアクセス。
 | `npm run lint` | ESLintチェック |
 | `npm run check-prices` | 価格チェックスクリプト実行 |
 
+CI の速いレーンと重いレーン、フレークしたテストの隔離は [docs/ci.md](ci.md)。
+
 ---
 
 ## Chrome拡張機能の開発
