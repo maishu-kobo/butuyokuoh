@@ -232,7 +232,7 @@ export function decodeCapturePhoto(parts: { mediaType: string; bytes: Uint8Array
   return captureFailure('PHOTO_UNREADABLE', CaptureMessages.photoUnreadable, 400);
 }
 
-function sniffImage(bytes: Uint8Array): CaptureMediaType | 'heif' | null {
+export function sniffImage(bytes: Uint8Array): CaptureMediaType | 'heif' | null {
   if (bytes.length >= 12 && ascii(bytes, 4, 8) === 'ftyp' && HEIF_BRANDS.has(ascii(bytes, 8, 12))) return 'heif';
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
   if (
