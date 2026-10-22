@@ -300,9 +300,10 @@ test('missing shop keys do not call the shops or throw', async () => {
     const { yahooCalls, rakutenCalls } = install();
     const response = await searchPost(searchRequest({ name: 'ペン' }));
     const body = await response.json() as { code: string; error: string };
-    assert.equal(response.status, 502);
-    assert.equal(body.code, 'SEARCH_FAILED');
-    assert.equal(body.error, CaptureMessages.searchFailed);
+    assert.equal(response.status, 503);
+    assert.equal(body.code, 'SEARCH_NOT_CONFIGURED');
+    assert.equal(body.error, CaptureMessages.searchUnconfigured);
+    assert.equal(body.error.includes('もう一度'), false);
     assert.equal(yahooCalls.length, 0);
     assert.equal(rakutenCalls.length, 0);
     assert.equal(candidateRows(database, owner.id).length, 0);

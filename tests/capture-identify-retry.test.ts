@@ -1,0 +1,193 @@
+// 写真判定の一時失敗と、色違いをスラッシュで並べた商品名。
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { CaptureMessages } from '../src/lib/capture/contract';
+import { createFakePorts } from '../src/lib/capture/fakes';
+import { createRakutenLimiter, createRakutenSearch } from '../src/lib/capture/rakuten';
+import { createYahooSearch } from '../src/lib/capture/yahoo';
+import { searchWithPorts } from '../src/lib/capture/fakes';
+import {
+  WORKERS_AI_MODEL,
+  createWorkersAiIdentifier,
+  type WorkersAiHttpRequest,
+  type WorkersAiHttpResponse,
+} from '../src/lib/capture/workers-ai';
+
+const ACCOUNT = 'c'.repeat(32);
+const TOKEN = 'test-cloudflare-token';
+const jpeg = Uint8Array.of(0xff, 0xd8, 0xff, 0x00);
+const QUERY = { name: 'ペン', brand: null, model: null, jan: null };
+
+const SURE = {
+  confidence: 'sure',
+  products: [{ name: 'Google Pixel', brand: 'Google', model: null, jan: null }],
+};
+
+function cf(result: unknown, status = 200): WorkersAiHttpResponse {
+  return { status, body: JSON.stringify({ success: status < 400, result, errors: [], messages: [] }) };
+}
+
+function textResult(text: string, status = 200): WorkersAiHttpResponse {
+  return cf({ response: text }, status);
+}
+
+function harness(responses: WorkersAiHttpResponse[]) {
+  const calls: WorkersAiHttpRequest[] = [];
+  const queued = [...responses];
+  const identifier = createWorkersAiIdentifier({
+    accountId: ACCOUNT,
+    apiToken: TOKEN,
+    userId: '7',
+    now: () => 1_000,
+    http: async (request) => {
+      calls.push(request);
+      const next = queued.shift();
+      if (!next) throw new Error('no queued response');
+      return next;
+    },
+  });
+  return { calls, identifier };
+}
+
+test('a fast upstream failure is retried once and can still become a product', async () => {
+  const { calls, identifier } = harness([
+    { status: 500, body: JSON.stringify({ success: false, errors: [{ code: 500, message: 'cold' }], messages: [] }) },
+    textResult(JSON.stringify(SURE)),
+  ]);
+  const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, calls[1].url);
+  assert.equal(calls[0].url.includes(WORKERS_AI_MODEL), true);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.products[0].name, 'Google Pixel');
+});
+
+test('an empty product list is a retryable parse failure, not an unreadable photo', async () => {
+  const empty = textResult(JSON.stringify({ confidence: 'sure', products: [] }));
+  const { calls, identifier } = harness([empty, empty]);
+  const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(calls.length, 2);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.error.code, 'AI_INVALID_RESPONSE');
+  assert.equal(result.error.retryable, true);
+  assert.equal(result.error.error, CaptureMessages.aiRetryable);
+  assert.equal(result.error.error.includes('読み取れません'), false);
+});
+
+test('the model saying unreadable is not retried and stays unreadable', async () => {
+  const { calls, identifier } = harness([
+    textResult(JSON.stringify({ confidence: 'unreadable', products: [] })),
+    textResult(JSON.stringify(SURE)),
+  ]);
+  const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(calls.length, 1);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value, { confidence: 'unreadable', products: [] });
+});
+
+test('a slash list of color variants becomes one generic name and is not sure', async () => {
+  const dumped = 'Google Pixel 8 Pro Obsidian/Hazel/Bay/Porcelain (Greyish Blue)';
+  const { calls, identifier } = harness([
+    textResult(JSON.stringify({
+      confidence: 'sure',
+      products: [{ name: dumped, brand: 'Google', model: '8 Pro', jan: null }],
+    })),
+  ]);
+  const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(calls.length, 1);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.confidence, 'unsure');
+  assert.equal(result.value.products.length, 1);
+  const name = result.value.products[0].name;
+  assert.equal(name.includes('/'), false);
+  assert.equal(name.includes('Obsidian'), false);
+  assert.equal(name.includes('Greyish'), false);
+  assert.equal(name.includes('8'), false);
+  assert.equal(name.includes('Google'), true);
+  assert.equal(name.includes('Pixel'), true);
+  const instruction = JSON.parse(calls[0].body).messages[0].content as string;
+  assert.equal(instruction.includes('スラッシュ'), true);
+  assert.equal(instruction.includes('世代'), true);
+});
+
+test('a name without a variant list keeps its generation', async () => {
+  const { identifier } = harness([
+    textResult(JSON.stringify({
+      confidence: 'sure',
+      products: [{ name: 'Google Pixel 10 Pro Fold', brand: 'Google', model: null, jan: null }],
+    })),
+  ]);
+  const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.confidence, 'sure');
+  assert.equal(result.value.products[0].name, 'Google Pixel 10 Pro Fold');
+});
+
+test('missing shop keys are not a retryable search failure, and one configured shop still returns candidates', async () => {
+  const yahoo = createYahooSearch({
+    appId: null,
+    fetch: async () => {
+      throw new Error('yahoo was called');
+    },
+  });
+  const rakuten = createRakutenSearch({
+    credentials: null,
+    limiter: createRakutenLimiter(),
+    http: async () => {
+      throw new Error('rakuten was called');
+    },
+  });
+  const missing = await searchWithPorts(QUERY, { identifier: createFakePorts().identifier, yahoo, rakuten }, null);
+  assert.equal(missing.ok, false);
+  if (missing.ok) return;
+  assert.equal(missing.error.code, 'SEARCH_NOT_CONFIGURED');
+  assert.equal(missing.error.error, CaptureMessages.searchUnconfigured);
+  assert.equal(missing.status, 503);
+  assert.equal(missing.error.error.includes('もう一度'), false);
+
+  const ports = createFakePorts('default', () => new Date('2026-10-22T00:00:00.000Z'));
+  ports.rakuten = rakuten;
+  const partial = await searchWithPorts(QUERY, ports, null);
+  assert.equal(partial.ok, true);
+  if (!partial.ok) return;
+  assert.deepEqual(partial.value.candidates.map((item) => item.site), ['yahoo']);
+  assert.equal(partial.value.failures[0].code, 'SEARCH_NOT_CONFIGURED');
+  assert.equal(partial.value.failures.length, 1);
+});
+
+test('call failures and an unreadable photo use different messages', async () => {
+  const flow = await import('../src/lib/capture/capture-flow.ts');
+  assert.equal(typeof flow.statusAfterIdentify, 'function');
+  assert.equal(typeof flow.statusAfterSearch, 'function');
+  const unreadable = flow.statusAfterIdentify({ confidence: 'unreadable', products: [] }, true);
+  assert.deepEqual(unreadable, { message: 'この写真からは商品が読み取れません。もう一度撮ってください', retryable: false });
+  const parsed = flow.statusAfterIdentify({
+    code: 'AI_INVALID_RESPONSE',
+    error: CaptureMessages.aiRetryable,
+    retryable: true,
+    fallback: 'manual-entry',
+  }, false);
+  assert.equal(parsed?.retryable, true);
+  assert.equal(parsed?.message.includes('読み取れません'), false);
+  const thrown = flow.statusAfterIdentify(null, false);
+  assert.equal(thrown?.message.includes('読み取れません'), false);
+  assert.equal(thrown?.retryable, true);
+  const blocked = flow.statusAfterSearch({
+    code: 'SEARCH_NOT_CONFIGURED',
+    error: CaptureMessages.searchUnconfigured,
+  }, false, 'Google Pixel');
+  assert.equal(blocked.blocked, true);
+  assert.equal(blocked.message, CaptureMessages.searchUnconfigured);
+  assert.equal(blocked.manual.enter, true);
+  const failed = flow.statusAfterSearch({
+    code: 'SEARCH_FAILED',
+    error: CaptureMessages.searchFailed,
+  }, false, 'ペン');
+  assert.equal(failed.blocked, false);
+  assert.equal(failed.message, CaptureMessages.searchFailed);
+});
