@@ -196,11 +196,20 @@ cd /home/exedev/butuyokuoh && git pull && npm install && npm run build && sudo s
 ### データベース
 
 ```bash
-# バックアップ
+# スキーマを変える前。手順の詳細は docs/database.md の「スキーマ変更の前のバックアップ」
+sudo systemctl stop butuyokuoh
+sqlite3 data/butuyokuoh.db ".backup 'data/butuyokuoh.db.pre-migrate.backup'"
+sqlite3 data/butuyokuoh.db.pre-migrate.backup "PRAGMA integrity_check;"
+
+# 停止中のファイルコピー。スキーマ変更の前のバックアップには使わない
 cp data/butuyokuoh.db data/butuyokuoh.db.backup.$(date +%Y%m%d)
 
 # 確認
 sqlite3 data/butuyokuoh.db "SELECT COUNT(*) FROM items;"
+
+# この場ではスキーマを変えない。確認が終わったら起動し直す。
+# 新しいコードを入れる前の止め方は docs/database.md
+sudo systemctl start butuyokuoh
 ```
 
 ### ディスク使用量

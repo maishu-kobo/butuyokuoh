@@ -103,7 +103,7 @@ async function checkPrices() {
 
         if (userSettings) {
           const payload: NotificationPayload = {
-            item: item as any,
+            item,
             oldPrice,
             newPrice,
             targetPrice: item.target_price || undefined,

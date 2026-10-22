@@ -1,0 +1,41 @@
+# 組織アカウントでは gitleaks-action にライセンスが要る。OSS の gitleaks を固定して使う。
+# 検出値は出さない。
+name: gitleaks
+
+on:
+  pull_request:
+    branches:
+      - feature/photo-capture
+      - develop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitleaks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          version="8.30.1"
+          expected="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+          archive="gitleaks_${version}_linux_x64.tar.gz"
+          curl -fsSL -o "$archive" "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${archive}"
+          echo "${expected}  ${archive}" | sha256sum -c -
+          tar -xzf "$archive" gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+
+      - name: Scan
+        run: gitleaks detect --source . --redact --no-banner --exit-code 1
