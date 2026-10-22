@@ -108,7 +108,7 @@ jobs:
         id: playwright-version
         run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
 
-      # ブラウザ本体だけ。OS パッケージはランナーが毎回新しいのでキャッシュしない。
+      # ブラウザ本体だけ。apt のパッケージはキャッシュしない。
       - name: Cache Playwright browsers
         id: playwright-browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -116,18 +116,14 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ms-playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('package-lock.json') }}
 
-      # テストの既定ブラウザは chromium。firefox / webkit の apt が 10 分以上止まる。
-      # --with-deps はキャッシュミスだけ。ヒット時は OS 依存だけ入れ直す。
+      # chromium の共有ライブラリは ubuntu-24.04 に入っている。
+      # --with-deps は apt が 30 分で打ち切られるまで止まっていた（#122 f432e7b）。使わない。
+      # 公式イメージ v1.64.1-noble は約 940MiB で、毎回の pull はブラウザの zip より遅い。
+      # キャッシュヒット時は導入しない。
       - name: Install Playwright browsers
+        if: steps.playwright-browsers.outputs.cache-hit != 'true'
         timeout-minutes: 5
-        run: |
-          set -euo pipefail
-          if [ "${{ steps.playwright-browsers.outputs.cache-hit }}" = "true" ]; then
-            npx playwright install-deps chromium
-            npx playwright install chromium
-          else
-            npx playwright install --with-deps chromium
-          fi
+        run: npx playwright install chromium
 
       - name: E2E tests
         run: npm run test:e2e
