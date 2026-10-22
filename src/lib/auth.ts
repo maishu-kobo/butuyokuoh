@@ -67,7 +67,36 @@ export function verifyToken(token: string): JWTPayload | null {
 
 export type CurrentUser = User | GuestUser;
 
+// ルートをリクエストの外から呼ぶための注入点。next/headers の cookies() は
+// リクエストの外では例外になる。本番では使えない。定期実行や通常のAPIはここを通らない。
+type AuthCookieOptions = ReturnType<typeof memberTokenCookieOptions>;
+
+type TestCookieWriter = {
+  set: (name: string, value: string, options?: AuthCookieOptions) => void;
+  delete: (name: string, options?: AuthCookieOptions) => void;
+};
+
+let testCurrentUser: { user: CurrentUser | null } | undefined;
+let testCookies: TestCookieWriter | null = null;
+
+export function installAuthTestHooks(hooks: null | {
+  user?: CurrentUser | null;
+  cookies?: TestCookieWriter | null;
+}): void {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Auth test hooks are unavailable in production');
+  }
+  if (hooks === null) {
+    testCurrentUser = undefined;
+    testCookies = null;
+    return;
+  }
+  if ('user' in hooks) testCurrentUser = { user: hooks.user ?? null };
+  if ('cookies' in hooks) testCookies = hooks.cookies ?? null;
+}
+
 export async function getCurrentUser(): Promise<CurrentUser | null> {
+  if (process.env.NODE_ENV !== 'production' && testCurrentUser) return testCurrentUser.user;
   if (process.env.NODE_ENV === 'production' && !process.env.AUTH_SECRET && !process.env.NEXTAUTH_SECRET) {
     throw new Error('AUTH_SECRET or NEXTAUTH_SECRET is required in production');
   }
@@ -92,13 +121,24 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 }
 
 export async function setAuthCookie(token: string): Promise<void> {
+  const options = memberTokenCookieOptions();
+  if (process.env.NODE_ENV !== 'production' && testCookies) {
+    testCookies.set(MEMBER_TOKEN_COOKIE, token, options);
+    return;
+  }
   const cookieStore = await cookies();
-  cookieStore.set(MEMBER_TOKEN_COOKIE, token, memberTokenCookieOptions());
+  cookieStore.set(MEMBER_TOKEN_COOKIE, token, options);
 }
 
 export async function clearAuthCookie(): Promise<void> {
+  // 発行と同じ名前と属性で消す。Max-Age を 7 日のまま渡すと Next が期限を延ばして残る。
+  const options = { ...memberTokenCookieOptions(), maxAge: 0 };
+  if (process.env.NODE_ENV !== 'production' && testCookies) {
+    testCookies.delete(MEMBER_TOKEN_COOKIE, options);
+    return;
+  }
   const cookieStore = await cookies();
-  cookieStore.delete(MEMBER_TOKEN_COOKIE);
+  cookieStore.delete({ name: MEMBER_TOKEN_COOKIE, ...options });
 }
 
 export function getUserIdFromToken(token: string): number | null {

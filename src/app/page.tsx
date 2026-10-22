@@ -271,13 +271,12 @@ export default function Home() {
     if (selectedItems.size === 0) return;
     if (!confirm(`${selectedItems.size}件のアイテムを購入済みにしますか？`)) return;
     
-    const today = new Date().toISOString().split('T')[0];
     await Promise.all(
       Array.from(selectedItems).map(id =>
         apiFetch(`/api/items/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ is_purchased: true, purchased_at: today }),
+          body: JSON.stringify({ is_purchased: true }),
         })
       )
     );
