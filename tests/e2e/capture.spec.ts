@@ -192,3 +192,38 @@ test('chosen candidates register once, and another member cannot use them', asyn
     await stranger.dispose();
   }
 });
+
+test('a Rakuten item code shows the fetched time and price note, and Yahoo does not', async ({ page }) => {
+  const db = new Database(process.env.E2E_DB_PATH!);
+  db.pragma('busy_timeout = 5000');
+  try {
+    const registered = await page.request.post('/api/auth/register', {
+      headers: { Origin: origin },
+      data: { email: `rakuten-price-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`, password: 'test-password' },
+    });
+    expect(registered.ok()).toBeTruthy();
+    const userId = (await (await page.request.get('/api/auth/me')).json()).user.id as number;
+    db.prepare(`
+      INSERT INTO items (user_id, name, url, current_price, source, source_name, source_item_code, price_fetched_at, priority)
+      VALUES (?, '楽天の牛乳', ?, 248, 'rakuten', '楽天', 'rakuten:shop:milk', '2026-10-22T00:00:00.000Z', 3)
+    `).run(userId, `manual://${userId}-rakuten`);
+    db.prepare(`
+      INSERT INTO items (user_id, name, url, current_price, source, source_name, source_item_code, price_fetched_at, priority)
+      VALUES (?, 'ヤフーの牛乳', ?, 111, 'yahoo', 'Yahoo!ショッピング', 'yahoo:milk', '2026-10-22T00:00:00.000Z', 3)
+    `).run(userId, `manual://${userId}-yahoo`);
+
+    await page.goto('/');
+    const note = '価格は楽天市場の商品価格です。価格は変動する場合があります。';
+    const rakutenCard = page.locator('div.rounded-lg.shadow-md').filter({ has: page.getByRole('heading', { name: '楽天の牛乳', exact: true }) });
+    await expect(rakutenCard).toContainText(note);
+    await expect(rakutenCard).toContainText('2026');
+    const yahooCard = page.locator('div.rounded-lg.shadow-md').filter({ has: page.getByRole('heading', { name: 'ヤフーの牛乳', exact: true }) });
+    await expect(yahooCard).toBeVisible();
+    await expect(yahooCard).not.toContainText(note);
+
+    await page.getByRole('button', { name: '出費予定' }).click();
+    await expect(page.getByText(note)).toHaveCount(1);
+  } finally {
+    db.close();
+  }
+});

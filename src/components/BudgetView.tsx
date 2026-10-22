@@ -4,7 +4,25 @@ import { apiFetch } from '@/lib/api-fetch';
 
 import { useEffect, useState } from 'react';
 import { Item } from '@/types';
+import { rakutenPriceCaption } from '@/lib/capture/rakuten-price-note';
 import { Calendar, Wallet, Check, Square, CheckSquare, Calculator } from 'lucide-react';
+
+function BudgetPrice({ item, selected }: { item: Item; selected: boolean }) {
+  const caption = rakutenPriceCaption(item);
+  const text = (item.quantity || 1) > 1
+    ? `¥${((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}`
+    : `¥${item.current_price?.toLocaleString() || '---'}`;
+  return (
+    <span className={`ml-2 whitespace-nowrap text-right ${selected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
+      {text}
+      {caption && (
+        <span className="block text-xs font-normal text-gray-400 dark:text-gray-500">
+          {caption.fetchedAt} {caption.note}
+        </span>
+      )}
+    </span>
+  );
+}
 
 interface BudgetData {
   [month: string]: {
@@ -236,12 +254,7 @@ export default function BudgetView() {
                             <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
                           )}
                         </span>
-                        <span className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
-                          {(item.quantity || 1) > 1 
-                            ? `¥${((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}`
-                            : `¥${item.current_price?.toLocaleString() || '---'}`
-                          }
-                        </span>
+                        <BudgetPrice item={item} selected={isSelected} />
                       </div>
                     );
                   })}
@@ -296,12 +309,7 @@ export default function BudgetView() {
                           <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
                         )}
                       </span>
-                      <span className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
-                        {(item.quantity || 1) > 1 
-                          ? `¥${((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}`
-                          : `¥${item.current_price?.toLocaleString() || '---'}`
-                        }
-                      </span>
+                      <BudgetPrice item={item} selected={isSelected} />
                     </div>
                   );
                 })}

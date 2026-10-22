@@ -5,6 +5,8 @@ import { linkableHttpUrl } from '@/lib/http-url';
 
 import { useState, useRef } from 'react';
 import { Item, Category, ComparisonGroup } from '@/types';
+import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
+import { rakutenPriceCaption } from '@/lib/capture/rakuten-price-note';
 import { Trash2, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Calendar, Flag, Upload, ImageIcon, Clock, AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -178,6 +180,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
 
   // 価格更新ステータス（last_scraped_at が無い手動アイテム等は表示しない）
   const lastScrapedDate = item.last_scraped_at ? parseUtcDateTime(item.last_scraped_at) : null;
+  const rakutenPrice = rakutenPriceCaption(item);
   const scrapeFailed = item.scrape_status === 'failed';
 
   const sourceColors: Record<string, string> = {
@@ -264,6 +267,14 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             <span className={`text-xl font-bold ${isLowestPrice ? 'text-green-600' : 'text-gray-900 dark:text-gray-100'}`}>
               ¥{item.current_price?.toLocaleString() || '---'}
             </span>
+            {rakutenPrice && (
+              <span className="basis-full text-xs text-gray-400 dark:text-gray-500">
+                更新 {rakutenPrice.fetchedAt}。{rakutenPrice.note}{' '}
+                <a href={RAKUTEN_CREDIT.url} target="_blank" rel="noopener noreferrer" className="underline">
+                  {RAKUTEN_CREDIT.label}
+                </a>
+              </span>
+            )}
             {isLowestPrice && (
               <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">
                 🏷️ 最安

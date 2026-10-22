@@ -12,6 +12,7 @@ import type { RakutenHttpRequest, RakutenHttpResponse, RakutenLimiter } from '..
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const NOW = '2026-10-22T00:00:00.000Z';
+let guestSequence = 0;
 const SECRET = 'super-secret-access-key';
 const APP_ID = 'app-123';
 
@@ -28,9 +29,13 @@ function priceBody(price: number, itemCode = 'shop:milk') {
 async function fixture() {
   const member = await createMember('rakuten-daily');
   const database = await db();
+  database.prepare(`
+    UPDATE items SET price_fetched_at = '2026-10-21T23:30:00.000Z'
+    WHERE source_item_code LIKE 'rakuten:%' AND price_fetched_at IS NULL
+  `).run();
   const guestId = Number(database.prepare(
-    "INSERT INTO users (email, name, account_type) VALUES ('rakuten-daily-guest@guest.invalid', 'ゲスト', 'guest')",
-  ).run().lastInsertRowid);
+    "INSERT INTO users (email, name, account_type) VALUES (?, 'ゲスト', 'guest')",
+  ).run(`rakuten-daily-guest-${++guestSequence}@guest.invalid`).lastInsertRowid);
   const add = (
     userId: number,
     name: string,
