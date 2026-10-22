@@ -13,7 +13,11 @@ export type CapturePhotoPick = {
   onDrop: (event: DragEvent) => void;
 };
 
-export function useCapturePhotoPick(enabled: boolean, onAccepted?: (file: File) => void): CapturePhotoPick {
+export function useCapturePhotoPick(
+  enabled: boolean,
+  onAccepted?: (file: File) => void,
+  upload: typeof photoForUpload = photoForUpload,
+): CapturePhotoPick {
   const onAcceptedRef = useRef(onAccepted);
   const requestRef = useRef(0);
   useEffect(() => {
@@ -34,7 +38,7 @@ export function useCapturePhotoPick(enabled: boolean, onAccepted?: (file: File) 
     if (!enabled) return;
     const request = requestRef.current + 1;
     requestRef.current = request;
-    void photoForUpload(files).then(result => {
+    void upload(files).then(result => {
       if (requestRef.current !== request) return;
       if (!result.ok) {
         if (result.ignored) return;
