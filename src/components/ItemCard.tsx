@@ -275,6 +275,11 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                 </a>
               </span>
             )}
+            {item.totalLabel && (
+              <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300 rounded-full">
+                {item.totalLabel}
+              </span>
+            )}
             {isLowestPrice && (
               <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">
                 🏷️ 最安
