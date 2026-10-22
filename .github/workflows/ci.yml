@@ -1,11 +1,14 @@
-# Issue #85。feature/photo-capture、feature/capture-existing-bugfixes、develop 向け PR の共通検査。
-# 同じコマンドのワークフローを別に足さない。足すときはこのファイルを伸ばす。
+# Issue #85。feature/photo-capture、feature/capture-existing-bugfixes、develop 向け PR の速いレーン。
+# 単体テスト、型、lint、本番ビルド、npm audit。キャッシュが温かいときの目標は 2 分未満。
+# 同じコマンドをこのファイルに重ねない。重い検査は別ファイルで、毎回走り、失敗すると止める。
 #
-# pull_request だけで、権限が違う検査は別ファイル:
-# - codeql.yml
+# - playwright.yml（e2e。ジョブ名 playwright）
+# - codeql.yml（analyze の high）
 # - dependency-review.yml
 # - gitleaks.yml
 #
+# フレークの隔離は quarantine.yml。失敗すると赤になる。チェック名は必須の名前ではない。
+# 保護したテストは .github/test-quarantine.txt に書けない。このレーンが拒否する。
 # 実店舗の e2e（E2E_LIVE_SCRAPE / E2E_LIVE_AMAZON / E2E_LIVE_RAKUTEN）は環境変数を付けない。
 # develop への push と、マージ条件への組み込みはここではしない。
 # path フィルタは付けない。必須ジョブが skip になると、その SHA のチェックが pending のままマージを止める。
@@ -50,8 +53,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # 隔離リストに入った単体テストだけ外す。0 件のときは npm test と同じファイル。
+      # ローカルの npm test はリストを見ない。
       - name: Unit tests
-        run: npm test
+        run: node scripts/test-lanes.mjs blocking-unit
 
       - name: Typecheck
         run: npx tsc --noEmit
@@ -83,47 +88,3 @@ jobs:
       # braces は開発依存だけの期限つき例外。.github/audit-exceptions.json を見る。
       - name: npm audit
         run: npm run audit:high
-
-  e2e:
-    name: playwright
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      NEXT_TELEMETRY_DISABLED: "1"
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          # puppeteer 25 は Node.js 22.12 以上。本番を 22 に上げてから develop に入れる（docs/deployment.md）。
-          node-version: "22"
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Resolve Playwright version
-        id: playwright-version
-        run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-
-      # ブラウザ本体だけ。apt のパッケージはキャッシュしない。
-      - name: Cache Playwright browsers
-        id: playwright-browsers
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: ms-playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('package-lock.json') }}
-
-      # chromium の共有ライブラリは ubuntu-24.04 に入っている。
-      # --with-deps は apt が 30 分で打ち切られるまで止まっていた（#122 f432e7b）。使わない。
-      # 公式イメージ v1.64.1-noble は約 940MiB で、毎回の pull はブラウザの zip より遅い。
-      # キャッシュヒット時は導入しない。
-      - name: Install Playwright browsers
-        if: steps.playwright-browsers.outputs.cache-hit != 'true'
-        timeout-minutes: 5
-        run: npx playwright install chromium
-
-      - name: E2E tests
-        run: npm run test:e2e
