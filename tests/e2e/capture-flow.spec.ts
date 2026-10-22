@@ -46,11 +46,18 @@ test('a member can take or choose a photo, edit the name, and register a candida
   await page.getByRole('button', { name: '安い順' }).click();
   await expect(page.getByRole('button', { name: '安い順' })).toHaveAttribute('aria-pressed', 'true');
 
+  const identifies = () => calls.filter((call) => call === 'identify').length;
+  const searches = () => calls.filter((call) => call === 'search').length;
+  const identifyBefore = identifies();
+  const searchBefore = searches();
+  expect(identifyBefore).toBeGreaterThan(0);
+  expect(searchBefore).toBeGreaterThan(0);
+
   await page.getByLabel('探す商品名').fill('別のペン');
   await page.getByRole('button', { name: 'この名前で探す' }).click();
   await expect(page.getByRole('checkbox', { name: '候補を選ぶ 別のペン' }).first()).toBeVisible();
-  expect(calls.filter((call) => call === 'identify')).toEqual(['identify']);
-  expect(calls.filter((call) => call === 'search').length).toBeGreaterThanOrEqual(2);
+  expect(identifies()).toBe(identifyBefore);
+  expect(searches()).toBe(searchBefore + 1);
 
   await page.getByRole('checkbox', { name: '候補を選ぶ 別のペン' }).first().check();
   await page.getByRole('button', { name: '選んだ候補を登録' }).click();
