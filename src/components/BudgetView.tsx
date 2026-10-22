@@ -32,10 +32,11 @@ export default function BudgetView() {
       // 各エントリを検証し、不正な形のエントリは除外してクラッシュを防ぐ
       const safeBudget: BudgetData = {};
       const items: Item[] = [];
-      Object.entries(data as Record<string, any>).forEach(([month, monthData]) => {
+      Object.entries(data as Record<string, { items?: unknown; total?: unknown }>).forEach(([month, monthData]) => {
         if (monthData && Array.isArray(monthData.items) && typeof monthData.total === 'number') {
-          safeBudget[month] = monthData;
-          items.push(...monthData.items);
+          const monthItems = monthData.items as Item[];
+          safeBudget[month] = { items: monthItems, total: monthData.total };
+          items.push(...monthItems);
         }
       });
       setBudget(safeBudget);

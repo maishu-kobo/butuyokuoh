@@ -1,0 +1,5 @@
+# CodeQL の high 判定、例外リスト、このファイル。
+# ブランチ保護で Code owners のレビューが必須になってから効く。
+/.github/CODEOWNERS @sota009
+/.github/codeql/ @sota009
+/.github/workflows/codeql.yml @sota009

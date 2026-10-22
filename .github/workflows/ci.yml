@@ -1,10 +1,13 @@
 # Issue #85。feature/photo-capture と develop 向け PR の共通検査。
 # 同じコマンドのワークフローを別に足さない。足すときはこのファイルを伸ばす。
 #
-# ここには入れない（二重実装を避ける）:
-# - e2e（Playwright、固定 fixture、ゲスト無効）: #79 と #89
-# - npm audit: Next.js の更新（PR #31）のあと。#85 と仕様 7章
-# - develop への push と、マージ条件への組み込み: #79
+# pull_request だけで、権限が違う検査は別ファイル:
+# - codeql.yml
+# - dependency-review.yml
+# - gitleaks.yml
+#
+# 実店舗の e2e（E2E_LIVE_SCRAPE / E2E_LIVE_AMAZON / E2E_LIVE_RAKUTEN）は環境変数を付けない。
+# develop への push と、マージ条件への組み込みはここではしない。
 name: CI
 
 on:
@@ -32,10 +35,10 @@ jobs:
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # 本番は Node.js 20.x（docs/deployment.md）。#79 もこの版に合わせる。
           node-version: "20"
@@ -54,8 +57,50 @@ jobs:
       - name: Production build
         run: npm run build
 
-      # 既存の違反（2026-10-22 時点で 4 errors / 22 warnings）ではジョブを落とさない。
-      # 新しい違反だけを落とす基準ファイルは、行ずれで誤検知しやすいので置かない。
-      - name: Lint (existing violations do not fail the job)
-        continue-on-error: true
+      - name: Lint
         run: npm run lint
+
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "20"
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: npm audit
+        run: npm audit --audit-level=high
+
+  e2e:
+    name: playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "20"
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: E2E tests
+        run: npm run test:e2e
