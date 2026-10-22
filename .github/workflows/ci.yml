@@ -40,8 +40,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          # 本番は Node.js 20.x（docs/deployment.md）。#79 もこの版に合わせる。
-          node-version: "20"
+          # puppeteer 25 は Node.js 22.12 以上。本番を 22 に上げてから develop に入れる（docs/deployment.md）。
+          node-version: "22"
           # npm cache は actions: write が要る。権限は contents: read のままにする。
           package-manager-cache: false
 
@@ -71,14 +71,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "20"
+          # puppeteer 25 は Node.js 22.12 以上。本番を 22 に上げてから develop に入れる（docs/deployment.md）。
+          node-version: "22"
           package-manager-cache: false
 
       - name: Install dependencies
         run: npm ci
 
+      # braces は開発依存だけの期限つき例外。.github/audit-exceptions.json を見る。
       - name: npm audit
-        run: npm audit --audit-level=high
+        run: npm run audit:high
 
   e2e:
     name: playwright
@@ -93,7 +95,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "20"
+          # puppeteer 25 は Node.js 22.12 以上。本番を 22 に上げてから develop に入れる（docs/deployment.md）。
+          node-version: "22"
           package-manager-cache: false
 
       - name: Install dependencies

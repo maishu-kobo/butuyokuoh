@@ -34,7 +34,8 @@ export default function TrashView() {
   };
 
   useEffect(() => {
-    fetchItems();
+    // 取得関数の中の setState は await のあと。effect から直接呼ぶと新しい react-hooks が同期 setState と誤認する。
+    void (async () => { await fetchItems(); })();
   }, []);
 
   // 読み込み失敗時の再試行

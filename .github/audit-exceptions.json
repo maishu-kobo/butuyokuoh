@@ -1,0 +1,11 @@
+{
+  "exceptions": [
+    {
+      "name": "braces",
+      "ghsa": "GHSA-vfj7-8cjw-p6xm",
+      "devOnly": true,
+      "expires": "2027-01-22",
+      "reason": "braces は eslint-config-next → @next/eslint-plugin-next → fast-glob → micromatch の開発依存だけで、本番の依存木には入らない。npm の最新公開版は 3.0.3 のままで、ネスト上限の修正（micromatch/braces#79）は未マージ。手パッチを vendor に置くより、期限つきの例外の方が供給網の面が小さい。この日を過ぎたら CI は落とす。"
+    }
+  ]
+}

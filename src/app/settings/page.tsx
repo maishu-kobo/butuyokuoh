@@ -56,6 +56,16 @@ export default function SettingsPage() {
     }
   }, [user, loading, router]);
 
+  const fetchCategories = async () => {
+    const res = await apiFetch('/api/categories');
+    if (res.ok) setCategories(await res.json());
+  };
+
+  const fetchGroups = async () => {
+    const res = await apiFetch('/api/comparison-groups');
+    if (res.ok) setGroups(await res.json());
+  };
+
   useEffect(() => {
     // トークンを取得
     const fetchToken = async () => {
@@ -89,21 +99,15 @@ export default function SettingsPage() {
     };
     
     if (user) {
-      if (!isGuest) { fetchToken(); fetchNotifySettings(); }
-      fetchCategories();
-      fetchGroups();
+      // 取得は今までどおり同時に始める。await で包むと、新しい react-hooks が中の setState を同期呼び出しと誤認しない。
+      if (!isGuest) {
+        void (async () => { await fetchToken(); })();
+        void (async () => { await fetchNotifySettings(); })();
+      }
+      void (async () => { await fetchCategories(); })();
+      void (async () => { await fetchGroups(); })();
     }
   }, [user]);
-
-  const fetchCategories = async () => {
-    const res = await apiFetch('/api/categories');
-    if (res.ok) setCategories(await res.json());
-  };
-
-  const fetchGroups = async () => {
-    const res = await apiFetch('/api/comparison-groups');
-    if (res.ok) setGroups(await res.json());
-  };
 
   // カテゴリ操作
   const handleAddCategory = async () => {
