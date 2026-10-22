@@ -1,0 +1,96 @@
+# フレークしたテストの隔離レーン。リストは .github/test-quarantine.txt。最初は 0 件。
+# 毎回報告する。失敗してもマージは止めない（continue-on-error）。
+# 必須の単体テストと playwright からは外れる。path フィルタは付けない。
+# ローカルの npm test と npm run test:e2e はこのリストを見ない。
+name: quarantined tests
+
+on:
+  pull_request:
+    branches:
+      - feature/photo-capture
+      - feature/capture-existing-bugfixes
+      - develop
+  push:
+    branches:
+      - feature/photo-capture
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quarantine:
+    name: quarantined tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # 0 件なら依存もブラウザも要らない。ランナーの node で数える。
+      # stdout は「単体の件数 e2e の件数」。
+      - name: Count quarantined tests
+        id: count
+        run: |
+          set -euo pipefail
+          output="$(node scripts/test-lanes.mjs count)"
+          read -r unit e2e <<< "$output"
+          case "$unit" in ''|*[!0-9]*) echo "単体の件数が数値ではない" >&2; exit 1 ;; esac
+          case "$e2e" in ''|*[!0-9]*) echo "e2e の件数が数値ではない" >&2; exit 1 ;; esac
+          echo "unit=${unit}" >> "$GITHUB_OUTPUT"
+          echo "e2e=${e2e}" >> "$GITHUB_OUTPUT"
+          echo "count=$((unit + e2e))" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        if: steps.count.outputs.count != '0'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.count.outputs.count != '0'
+        run: npm ci
+
+      - name: Resolve Playwright version
+        if: steps.count.outputs.e2e != '0'
+        id: playwright-version
+        run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        if: steps.count.outputs.e2e != '0'
+        id: playwright-browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.count.outputs.e2e != '0' && steps.playwright-browsers.outputs.cache-hit != 'true'
+        timeout-minutes: 5
+        run: npx playwright install chromium
+
+      - name: Verify Playwright browsers
+        if: steps.count.outputs.e2e != '0'
+        timeout-minutes: 5
+        run: node scripts/verify-playwright-browsers.mjs
+
+      - name: Run quarantined tests
+        id: run
+        run: node scripts/test-lanes.mjs quarantine
+
+      - name: Report quarantine result
+        if: always()
+        run: |
+          {
+            echo "## 隔離レーン"
+            echo "失敗してもマージは止めない。リストは \`.github/test-quarantine.txt\`。"
+            echo "件数: ${{ steps.count.outputs.count }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.run.outcome }}" = "failure" ] || [ "${{ steps.count.outcome }}" = "failure" ]; then
+            echo "::warning::隔離したテストが失敗した。マージは止めない。ログを見て直す。"
+          fi
