@@ -1,5 +1,6 @@
 # develop を正にした差分。必須チェックには入れない。
 # pull_request_target は使わない。権限はチェックアウトだけ。
+# paths は、ハーネスが比べる挙動とハーネス自身。ログインや価格取得だけを変えても起動する。
 name: Differential behavior
 
 on:
@@ -11,7 +12,26 @@ on:
     paths:
       - src/lib/db.ts
       - src/auth.ts
+      - src/lib/auth.ts
       - src/app/api/items/**
+      - src/app/api/auth/login/**
+      - src/lib/scraper.ts
+      - src/lib/member-fetch.ts
+      - src/lib/http-url.ts
+      - src/lib/photo-spend.ts
+      - src/lib/product-html.ts
+      - src/lib/amazon-product.ts
+      - src/lib/html-encoding.ts
+      - src/lib/url-validator.ts
+      - src/lib/email.ts
+      - src/lib/guest.ts
+      - src/lib/guest-scraper.ts
+      - src/lib/api-access.ts
+      - src/lib/price-check-items.ts
+      - src/lib/cookie-policy.ts
+      - scripts/diff-harness/**
+      - .github/workflows/diff-behavior.yml
+      - package.json
 
 permissions:
   contents: read
