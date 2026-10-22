@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { localCalendarDate } from '@/lib/local-date';
 
 import { useState, useRef } from 'react';
 import { Item, Category, ComparisonGroup } from '@/types';
@@ -166,7 +167,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         is_purchased: true,
-        purchased_at: new Date().toISOString().split('T')[0],
+        purchased_at: localCalendarDate(),
       }),
     });
     onUpdate();

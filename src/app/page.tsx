@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { localCalendarDate } from '@/lib/local-date';
 
 import { useEffect, useState } from 'react';
 import { Item, ComparisonGroup, Category } from '@/types';
@@ -270,7 +271,7 @@ export default function Home() {
     if (selectedItems.size === 0) return;
     if (!confirm(`${selectedItems.size}件のアイテムを購入済みにしますか？`)) return;
     
-    const today = new Date().toISOString().split('T')[0];
+    const today = localCalendarDate();
     await Promise.all(
       Array.from(selectedItems).map(id =>
         apiFetch(`/api/items/${id}`, {

@@ -55,7 +55,8 @@ export async function POST(request: NextRequest) {
     assertOwnedRelations(db, userId, { category_id: item.categoryId ? Number(item.categoryId) : null });
 
     // 重複チェック
-    const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ? AND deleted_at IS NULL').get(userId, item.url) as { id: number } | undefined;
+    // ゴミ箱の行も UNIQUE(user_id, url) に残る。ここを外すと INSERT が 500 になる。
+    const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, item.url) as { id: number } | undefined;
     if (existing) {
       return NextResponse.json(
         { error: 'この商品はすでに登録されています' },
