@@ -13,6 +13,7 @@ export function captureCandidateExpiresAt(now = Date.now()): number {
 
 // 写真そのものは保存しない。候補の image_url は店舗の商品画像。
 // origin = 'photo' のグループだけ出費の数え方を変える。budget_item_id は選んだ候補。NULL は未選択。
+// capture_ai_usage は写真判定の回数とニューロン。user_key は会員 ID の文字列。写真は入れない。
 const CAPTURE_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS captures (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,6 +52,17 @@ const CAPTURE_SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_capture_candidates_user ON capture_candidates(user_id);
   CREATE INDEX IF NOT EXISTS idx_capture_candidates_capture ON capture_candidates(capture_id);
   CREATE INDEX IF NOT EXISTS idx_capture_candidates_expires ON capture_candidates(expires_at);
+
+  CREATE TABLE IF NOT EXISTS capture_ai_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_key TEXT NOT NULL,
+    day TEXT NOT NULL,
+    at_ms INTEGER NOT NULL,
+    neurons INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_capture_ai_usage_day ON capture_ai_usage(day);
+  CREATE INDEX IF NOT EXISTS idx_capture_ai_usage_user ON capture_ai_usage(user_key, day, at_ms);
 `;
 
 export function deleteExpiredCaptureCandidates(db: Database.Database, now = Date.now()): number {
