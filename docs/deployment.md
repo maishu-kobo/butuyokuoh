@@ -43,6 +43,11 @@ GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 ```
 
+**JWT_SECRETは本番（NODE_ENV=production）で必須。** 未設定の場合、トークンの発行・検証が
+`JWT_SECRET environment variable must be set in production` というエラーで失敗し、
+ログイン・拡張機能連携が動作しない（公開フォールバック鍵によるトークン偽造を防ぐためのフェイルファスト）。
+`openssl rand -base64 32` で生成した値を`.env.local`または systemd unit の`Environment=`で設定すること。
+
 ### 4. ビルド
 
 ```bash
@@ -251,3 +256,8 @@ dmesg | grep -i oom
 cd /home/exedev/butuyokuoh
 npm run check-prices
 ```
+
+## ゲスト体験
+
+ゲストモードの有効化、保存期限・件数上限、毎時の清掃タイマー、停止手順は [guest-mode.md](guest-mode.md) を参照する。
+初期状態は無効。本番環境で匿名アクセス・Google OAuth・Cookie・清掃の動作を確認したうえで有効にする。

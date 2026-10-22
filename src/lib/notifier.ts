@@ -1,4 +1,17 @@
+import { getDb } from './db';
 import { Item } from '@/types';
+import { isAllowedWebhookUrl } from '@/lib/url-validator';
+
+// Webhook送信のタイムアウト（ミリ秒）。
+// 応答しないエンドポイントでcheck-pricesのループが停止しないようにする。
+const WEBHOOK_TIMEOUT_MS = 10_000;
+
+// タイムアウト起因の例外かどうかを判定する。
+// AbortSignal.timeout()はTimeoutError、abort()経由はAbortErrorを投げる。
+function isTimeoutError(error: unknown): boolean {
+  return error instanceof Error &&
+    (error.name === 'TimeoutError' || error.name === 'AbortError');
+}
 
 export interface NotificationPayload {
   item: Item;
@@ -12,13 +25,21 @@ export async function sendSlackNotification(
   webhookUrl: string,
   payload: NotificationPayload
 ): Promise<boolean> {
+  if (!getDb().prepare("SELECT i.id FROM items i JOIN users u ON u.id = i.user_id WHERE i.id = ? AND u.account_type = 'member'").get(payload.item.id)) return false;
+  // 送信前検証（多重防御 / SSRF対策）
+  // PUT検証前に保存された不正URLや別経路で混入した不正URLにもfetchしない。
+  if (!isAllowedWebhookUrl(webhookUrl, 'slack')) {
+    console.warn('Slack notification skipped: disallowed webhook host');
+    return false;
+  }
+
   const { item, oldPrice, newPrice, targetPrice, type } = payload;
-  
+
   const emoji = type === 'target_reached' ? '🎉' : '📉';
-  const title = type === 'target_reached' 
+  const title = type === 'target_reached'
     ? `${emoji} 目標価格に到達！`
     : `${emoji} 価格が下がりました！`;
-  
+
   const priceChange = oldPrice - newPrice;
   const changePercent = Math.round((priceChange / oldPrice) * 100);
 
@@ -61,10 +82,16 @@ export async function sendSlackNotification(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(message),
+      // 応答しないエンドポイントで処理が止まらないようタイムアウトを設定
+      signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
     });
     return res.ok;
   } catch (error) {
-    console.error('Slack notification failed:', error);
+    if (isTimeoutError(error)) {
+      console.error(`Slack notification timed out after ${WEBHOOK_TIMEOUT_MS}ms`);
+    } else {
+      console.error('Slack notification failed:', error);
+    }
     return false;
   }
 }
@@ -73,13 +100,21 @@ export async function sendDiscordNotification(
   webhookUrl: string,
   payload: NotificationPayload
 ): Promise<boolean> {
+  if (!getDb().prepare("SELECT i.id FROM items i JOIN users u ON u.id = i.user_id WHERE i.id = ? AND u.account_type = 'member'").get(payload.item.id)) return false;
+  // 送信前検証（多重防御 / SSRF対策）
+  // PUT検証前に保存された不正URLや別経路で混入した不正URLにもfetchしない。
+  if (!isAllowedWebhookUrl(webhookUrl, 'discord')) {
+    console.warn('Discord notification skipped: disallowed webhook host');
+    return false;
+  }
+
   const { item, oldPrice, newPrice, targetPrice, type } = payload;
-  
+
   const emoji = type === 'target_reached' ? '🎉' : '📉';
-  const title = type === 'target_reached' 
+  const title = type === 'target_reached'
     ? `${emoji} 目標価格に到達！`
     : `${emoji} 価格が下がりました！`;
-  
+
   const priceChange = oldPrice - newPrice;
   const changePercent = Math.round((priceChange / oldPrice) * 100);
 
@@ -122,10 +157,16 @@ export async function sendDiscordNotification(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ embeds: [embed] }),
+      // 応答しないエンドポイントで処理が止まらないようタイムアウトを設定
+      signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
     });
     return res.ok;
   } catch (error) {
-    console.error('Discord notification failed:', error);
+    if (isTimeoutError(error)) {
+      console.error(`Discord notification timed out after ${WEBHOOK_TIMEOUT_MS}ms`);
+    } else {
+      console.error('Discord notification failed:', error);
+    }
     return false;
   }
 }

@@ -1,3 +1,7 @@
+import { extractAmazonProduct } from './amazon-product';
+import { parseProductHtml } from './product-html';
+import { readHtmlResponse } from './html-encoding';
+import puppeteer from 'puppeteer';
 import { validateAndSanitizeUrl, sanitizeGenericUrl } from './url-validator';
 
 export interface ScrapedItem {
@@ -7,6 +11,22 @@ export interface ScrapedItem {
   source: string;
   sourceName: string | null;
   note?: string; // ユーザーへのメッセージ（短縮リンクの制限など）
+}
+
+// スクレイプ結果から items テーブルに記録する状態を導出する。
+// check-prices と refresh API の双方で共有し、記録ロジックを統一する。
+export interface ScrapeOutcome {
+  status: 'success' | 'failed';
+  error: string | null;
+}
+
+export function deriveScrapeOutcome(scraped: ScrapedItem): ScrapeOutcome {
+  if (scraped.price) {
+    return { status: 'success', error: null };
+  }
+  // 価格が取れなかった場合は失敗扱い。理由は scraper の note を優先し、
+  // なければ汎用メッセージにフォールバックする。
+  return { status: 'failed', error: scraped.note ?? 'price not found' };
 }
 
 // 許可されたAmazonドメイン
@@ -33,6 +53,98 @@ const RAKUTEN_DOMAINS = new Set([
   'books.rakuten.co.jp',
   'product.rakuten.co.jp',
 ]);
+
+export interface FetchWithRetryOptions {
+  maxRetries?: number; // 最大リトライ回数（デフォルト: 3）
+  baseDelayMs?: number; // リトライ間隔の基準ミリ秒（デフォルト: 1000）
+  timeoutMs?: number; // 各fetch attemptのタイムアウト（デフォルト: 15000）
+}
+
+// リトライ間隔の倍率（baseDelayMs=1000の場合: 1秒 → 5秒 → 15秒）
+const RETRY_DELAY_MULTIPLIERS = [1, 5, 15];
+
+// 各fetch attemptのデフォルトタイムアウト（TCP/HTTPのハングで定期ジョブが無限に止まるのを防ぐ）
+const DEFAULT_TIMEOUT_MS = 15000;
+
+/**
+ * HTTPステータスコードを持つエラー
+ * fetchWithRetryがHTTPエラー応答でthrowする際に使用し、
+ * 呼び出し元がステータスに応じてフォールバック要否を判断できるようにする
+ */
+export class HttpError extends Error {
+  status: number;
+
+  constructor(status: number, url: string) {
+    super(`HTTP error ${status}: ${url}`);
+    this.name = 'HttpError';
+    this.status = status;
+  }
+}
+
+/**
+ * HTTPステータス確認と指数バックオフリトライ付きのfetch
+ * - 各attemptにtimeoutMsのタイムアウトを設定し、TCP/HTTPのハングを中断してリトライする
+ * - 429 / 5xx 応答とネットワークエラー（タイムアウト含む）時に最大maxRetries回リトライする
+ * - 404等の4xx（429除く）はリトライせず即座にHttpErrorを投げる
+ * - リトライが尽きた場合は最後のエラーを投げる
+ */
+export async function fetchWithRetry(
+  url: string,
+  init?: RequestInit,
+  options?: FetchWithRetryOptions
+): Promise<Response> {
+  const maxRetries = options?.maxRetries ?? 3;
+  const baseDelayMs = options?.baseDelayMs ?? 1000;
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let response: Response | null = null;
+    try {
+      // per-attemptタイムアウトのシグナルを構築
+      // 呼び出し元がinit.signalを渡している場合は合成し、既存のキャンセル機能を壊さない
+      const timeoutSignal = AbortSignal.timeout(timeoutMs);
+      const signal = init?.signal
+        ? AbortSignal.any([init.signal, timeoutSignal])
+        : timeoutSignal;
+      response = await fetch(url, { ...init, signal });
+    } catch (error) {
+      // ネットワークエラー・タイムアウトはリトライ対象
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+
+    if (response) {
+      if (response.ok) {
+        return response;
+      }
+
+      // 429（レート制限）と5xx（サーバーエラー）のみリトライ対象
+      const isRetryable = response.status === 429 || response.status >= 500;
+      if (!isRetryable) {
+        // 404等の4xx（429除く）はリトライせず即座に失敗
+        // 未消費のbodyを破棄してソケットリークを防ぐ
+        await response.body?.cancel();
+        throw new HttpError(response.status, url);
+      }
+      // リトライ前に未消費のbodyを破棄してソケットリークを防ぐ
+      await response.body?.cancel();
+      lastError = new HttpError(response.status, url);
+    }
+
+    // リトライ回数が残っていれば指数バックオフで待機
+    if (attempt < maxRetries) {
+      const multiplier =
+        RETRY_DELAY_MULTIPLIERS[Math.min(attempt, RETRY_DELAY_MULTIPLIERS.length - 1)];
+      const delayMs = baseDelayMs * multiplier;
+      console.log(
+        `Fetch failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delayMs}ms: ${url}`
+      );
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw lastError ?? new Error(`Fetch failed after ${maxRetries + 1} attempts: ${url}`);
+}
 
 /**
  * URLのホスト名を取得（SSRF対策のガード）
@@ -116,7 +228,7 @@ async function expandShortUrl(url: string): Promise<string | null> {
   try {
     // redirect: 'follow'で自動的にリダイレクトを追跡し、最終URLを取得
     // safeUrlはホワイトリストから構築された安全なURL
-    const response = await fetch(safeUrl, {
+    const response = await fetchWithRetry(safeUrl, {
       method: 'GET',
       redirect: 'follow',
       headers: {
@@ -208,7 +320,65 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
     };
   }
 
-  return scrapeGeneric(genericValidation.sanitizedUrl, genericValidation.hostname);
+  return scrapeGeneric(genericValidation.sanitizedUrl);
+}
+
+/**
+ * Amazonのボット対策ページやエラーページを検出
+ */
+function isAmazonBlockedHtml(html: string): boolean {
+  return (
+    html.includes('api-services-support@amazon.com') ||
+    html.includes('Service Unavailable') ||
+    html.includes('ロボットではない') ||
+    html.includes('automated access') ||
+    !html.includes('productTitle')
+  );
+}
+
+/**
+ * Puppeteer（ヘッドレスブラウザ）でAmazon商品ページを取得するフォールバック
+ * 素のfetchがAmazonのボット対策に弾かれた場合に使用する
+ * @returns 取得したScrapedItem（ボット検知された場合はnull）
+ */
+async function scrapeAmazonWithPuppeteer(sanitizedUrl: string): Promise<ScrapedItem | null> {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+    );
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'ja-JP,ja;q=0.9',
+    });
+
+    await page.goto(sanitizedUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+
+    // レンダリング後のHTMLを取得し、fetch経路と同じ抽出ロジックを通す
+    const html = await page.content();
+
+    if (isAmazonBlockedHtml(html)) {
+      console.log('Amazon bot detection persists even with Puppeteer');
+      return null;
+    }
+
+    const { name, price, imageUrl } = extractAmazonProduct(html);
+
+    return {
+      name,
+      price,
+      imageUrl,
+      source: 'amazon',
+      sourceName: 'Amazon',
+    };
+  } finally {
+    // ブラウザプロセスのリーク防止のため必ずクローズする
+    await browser.close();
+  }
 }
 
 async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
@@ -224,8 +394,11 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
     };
   }
 
+  // Puppeteerフォールバックも失敗した場合に返す結果（従来の挙動を維持）
+  let fallbackResult: ScrapedItem;
+
   try {
-    const response = await fetch(sanitizedUrl, {
+    const response = await fetchWithRetry(sanitizedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -233,16 +406,12 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
         'Cookie': 'i18n-prefs=JPY; lc-acbjp=ja_JP',
       },
     });
-    const html = await response.text();
+    const html = await readHtmlResponse(response);
 
     // Amazonのボット対策ページやエラーページを検出
-    if (html.includes('api-services-support@amazon.com') || 
-        html.includes('Service Unavailable') ||
-        html.includes('ロボットではない') ||
-        html.includes('automated access') ||
-        !html.includes('productTitle')) {
+    if (isAmazonBlockedHtml(html)) {
       console.log('Amazon bot detection or error page detected');
-      return {
+      fallbackResult = {
         name: 'Amazonのボット対策により価格を取得できませんでした',
         price: null,
         imageUrl: null,
@@ -250,44 +419,46 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
         sourceName: 'Amazon',
         note: 'Amazonのボット対策により自動取得が制限されています。価格は手動で編集してください。',
       };
+    } else {
+      const { name, price, imageUrl } = extractAmazonProduct(html);
+
+      const result: ScrapedItem = {
+        name,
+        price,
+        imageUrl,
+        source: 'amazon',
+        sourceName: 'Amazon',
+      };
+
+      // 価格が取得できた場合はそのまま返す
+      if (price !== null) {
+        return result;
+      }
+
+      // 価格が抽出できなかった場合はPuppeteerフォールバックを試す
+      fallbackResult = result;
     }
-
-    // 商品名
-    const nameMatch = html.match(/<span[^>]*id="productTitle"[^>]*>([^<]+)<\/span>/);
-    const name = nameMatch ? nameMatch[1].trim() : '不明な商品';
-
-    // 価格（複数のパターンに対応）
-    let price: number | null = null;
-    
-    // パターン1: a-price-wholeクラス（新形式）
-    const priceWholeMatch = html.match(/a-price-whole">([\d,]+)/);
-    if (priceWholeMatch) {
-      price = parseInt(priceWholeMatch[1].replace(/,/g, ''), 10);
-    }
-    
-    // パターン2: 円記号付き（フォールバック、ただしproductTitleがある場合のみ）
-    // ※このパターンは誤検出が多いので無効化
-    // if (!price) {
-    //   const yenMatch = html.match(/[¥￥]([\d,]+)/);
-    //   if (yenMatch) {
-    //     price = parseInt(yenMatch[1].replace(/,/g, ''), 10);
-    //   }
-    // }
-
-    // 画像
-    const imageMatch = html.match(/"hiRes":"([^"]+)"/) || html.match(/id="landingImage"[^>]*src="([^"]+)"/);
-    const imageUrl = imageMatch ? imageMatch[1] : null;
-
-    return {
-      name,
-      price,
-      imageUrl,
-      source: 'amazon',
-      sourceName: 'Amazon',
-    };
   } catch (error) {
+    // fetchWithRetryのリトライが尽きた場合もPuppeteerフォールバックを試す
     console.error('Amazon scraping error:', error);
-    return {
+
+    // 404/410等の恒久的な非リトライ4xx（429は除く）はPuppeteerを起動しても無駄なので即座に返す
+    if (
+      error instanceof HttpError &&
+      error.status >= 400 &&
+      error.status < 500 &&
+      error.status !== 429
+    ) {
+      return {
+        name: '取得失敗',
+        price: null,
+        imageUrl: null,
+        source: 'amazon',
+        sourceName: 'Amazon',
+      };
+    }
+
+    fallbackResult = {
       name: '取得失敗',
       price: null,
       imageUrl: null,
@@ -295,6 +466,20 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
       sourceName: 'Amazon',
     };
   }
+
+  // Puppeteerフォールバック: ボット検知・fetch失敗・価格抽出失敗のいずれかで発動
+  console.log('Falling back to Puppeteer for Amazon scraping:', sanitizedUrl);
+  try {
+    const puppeteerResult = await scrapeAmazonWithPuppeteer(sanitizedUrl);
+    if (puppeteerResult && puppeteerResult.price !== null) {
+      return puppeteerResult;
+    }
+  } catch (error) {
+    console.error('Amazon Puppeteer fallback error:', error);
+  }
+
+  // Puppeteerでも取得できなかった場合は従来どおりの結果（price: null）を返す
+  return fallbackResult;
 }
 
 async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
@@ -311,26 +496,30 @@ async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
   }
 
   try {
-    const response = await fetch(sanitizedUrl, {
+    const response = await fetchWithRetry(sanitizedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
       },
     });
-    const html = await response.text();
+    const html = await readHtmlResponse(response);
+
+    // Share the structured price / OG image / title fallback used by guests.
+    // Modern Rakuten item_name spans can contain nested markup.
+    const metadata = parseProductHtml(html, sanitizedUrl);
 
     // 商品名
     const nameMatch = html.match(/<span[^>]*class="[^"]*item_name[^"]*"[^>]*>([^<]+)</) ||
                       html.match(/<h1[^>]*>([^<]+)</);
-    const name = nameMatch ? nameMatch[1].trim() : '不明な商品';
+    const name = nameMatch ? nameMatch[1].trim() : metadata.name;
 
     // 価格
     const priceMatch = html.match(/([\d,]+)円/) || html.match(/¥([\d,]+)/);
-    const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null;
+    const price = metadata.price ?? (priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : null);
 
     // 画像
     const imageMatch = html.match(/"image":\s*"([^"]+)"/) || html.match(/<img[^>]*class="[^"]*main[^"]*"[^>]*src="([^"]+)"/);
-    const imageUrl = imageMatch ? imageMatch[1] : null;
+    const imageUrl = metadata.imageUrl ?? (imageMatch ? imageMatch[1] : null);
 
     return {
       name,
@@ -351,7 +540,7 @@ async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
   }
 }
 
-async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<ScrapedItem> {
+async function scrapeGeneric(sanitizedUrl: string): Promise<ScrapedItem> {
   // SSRF対策: fetch直前にホスト名を再検証（ローカルIPをブロック）
   const actualHostname = getHostname(sanitizedUrl);
   if (!actualHostname ||
@@ -371,7 +560,7 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
   }
 
   try {
-    const response = await fetch(sanitizedUrl, {
+    const response = await fetchWithRetry(sanitizedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
@@ -379,236 +568,9 @@ async function scrapeGeneric(sanitizedUrl: string, hostname: string): Promise<Sc
         'Cookie': 'localization=JP; cart_currency=JPY',
       },
     });
-    const html = await response.text();
+    const html = await readHtmlResponse(response);
 
-    // タイトルから商品名
-    const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
-    let name = titleMatch ? titleMatch[1].trim() : '不明な商品';
-    // タイトルのクリーンアップ: 改行、HTMLエンティティ、サイト名の区切り文字などを除去
-    name = name
-      .replace(/\n/g, ' ')                    // 改行をスペースに
-      .replace(/&ndash;/g, '-')               // &ndash; を - に
-      .replace(/&mdash;/g, '-')               // &mdash; を - に
-      .replace(/&amp;/g, '&')                 // &amp; を & に
-      .replace(/&quot;/g, '"')                // &quot; を " に
-      .replace(/&#39;/g, "'")                 // &#39; を ' に
-      .replace(/\s*[-|–—]\s*[^-|–—]+$/g, '')  // 末尾のサイト名部分を除去 ("- SITE_NAME" など)
-      .replace(/\s+/g, ' ')                   // 連続スペースを単一に
-      .trim();
-
-    // JSON-LDから価格取得を試行
-    let price: number | null = null;
-    const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
-    if (jsonLdMatch) {
-      for (const match of jsonLdMatch) {
-        if (price) break;
-        try {
-          // scriptタグを完全に除去（ループで繰り返し置換）
-          let jsonContent = match;
-          let prevLength = 0;
-          while (jsonContent.length !== prevLength) {
-            prevLength = jsonContent.length;
-            jsonContent = jsonContent.replace(/<script[^>]*>/gi, '');
-            jsonContent = jsonContent.replace(/<\/script>/gi, '');
-          }
-          const data = JSON.parse(jsonContent);
-          
-          // hasVariant配列をチェック（Shopifyなど）- JPYを優先
-          if (data.hasVariant && Array.isArray(data.hasVariant)) {
-            for (const variant of data.hasVariant) {
-              if (variant.offers?.price && variant.offers?.priceCurrency === 'JPY') {
-                price = parseInt(String(variant.offers.price).replace(/[^0-9]/g, ''), 10);
-                break;
-              }
-            }
-          }
-          
-          // 直接のoffers（JPYを優先）
-          if (!price && data.offers) {
-            // offersが配列の場合
-            if (Array.isArray(data.offers)) {
-              for (const offer of data.offers) {
-                if (offer.price && (offer.priceCurrency === 'JPY' || !offer.priceCurrency)) {
-                  price = parseInt(String(offer.price).replace(/[^0-9]/g, ''), 10);
-                  break;
-                }
-              }
-            } else if (data.offers.price) {
-              // offersがオブジェクトの場合
-              if (data.offers.priceCurrency === 'JPY' || !data.offers.priceCurrency) {
-                price = parseInt(String(data.offers.price).replace(/[^0-9]/g, ''), 10);
-              }
-            }
-          }
-          
-          // @graphをチェック
-          if (!price && data['@graph']) {
-            for (const item of data['@graph']) {
-              if (item.offers?.price) {
-                if (item.offers.priceCurrency === 'JPY' || !item.offers.priceCurrency) {
-                  price = parseInt(String(item.offers.price).replace(/[^0-9]/g, ''), 10);
-                  break;
-                }
-              }
-            }
-          }
-        } catch {
-          // JSONパース失敗は無視
-        }
-      }
-    }
-
-    // Shopify/EC サイトのJSON価格取得（JPY通貨を優先）
-    if (!price) {
-      // "price":"NNNNN","priceCurrency":"JPY" パターン（引用符付き価格）
-      const jpyQuotedMatch = html.match(/"price"\s*:\s*"(\d+)"\s*,\s*"priceCurrency"\s*:\s*"JPY"/);
-      if (jpyQuotedMatch) {
-        price = parseInt(jpyQuotedMatch[1], 10);
-      }
-    }
-    
-    if (!price) {
-      // Shopifyサイトのセント単位価格（Shopifyかどうかを確認）
-      const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme');
-      if (isShopify) {
-        // Shopifyの場合、"price":NNNNNN (5桁以上、セント単位) をJPYとみなす
-        const shopifyPriceMatch = html.match(/"price":(\d{5,})/);
-        if (shopifyPriceMatch) {
-          // 100で割って円に変換
-          price = Math.round(parseInt(shopifyPriceMatch[1], 10) / 100);
-        }
-      }
-    }
-
-    // og:price:amount メタタグから価格取得（通貨がJPYの場合のみ）
-    if (!price) {
-      const ogCurrencyMatch = html.match(/<meta[^>]*property="og:price:currency"[^>]*content="([^"]+)"/);
-      const currency = ogCurrencyMatch ? ogCurrencyMatch[1] : null;
-      
-      if (currency === 'JPY') {
-        const ogPriceMatch = html.match(/<meta[^>]*property="og:price:amount"[^>]*content="([^"]+)"/) ||
-                             html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:price:amount"/);
-        if (ogPriceMatch) {
-          price = parseInt(ogPriceMatch[1].replace(/,/g, ''), 10);
-        }
-      }
-    }
-
-    // フォールバック: HTMLから価格パターンを検索
-    if (!price) {
-      // EC-CUBE系サイトの販売価格（price02_default）を優先
-      const eccubePriceMatch = html.match(/id="price02_default">([\d,]+)/);
-      if (eccubePriceMatch) {
-        price = parseInt(eccubePriceMatch[1].replace(/,/g, ''), 10);
-      }
-    }
-
-    if (!price) {
-      // 「販売価格」の近くにある価格を探す（より厳密なパターン）
-      // 「販売価格: 1,234円」や「販売価格：¥1,234」のような形式
-      const salePriceMatch = html.match(/販売価格[\s：:]*¥?\s*([\d,]+)/);
-      if (salePriceMatch) {
-        const extracted = parseInt(salePriceMatch[1].replace(/,/g, ''), 10);
-        if (extracted >= 100) { // 100円未満は除外
-          price = extracted;
-        }
-      }
-    }
-
-    if (!price) {
-      // まず価格用のクラス/ID内の価格を探す（0円を除外）
-      const structuredPriceMatches = html.matchAll(/<[^>]*(?:class|id)="[^"]*price[^"]*"[^>]*>\s*¥?\s*([\d,]+)/gi);
-      for (const match of structuredPriceMatches) {
-        const extracted = parseInt(match[1].replace(/,/g, ''), 10);
-        if (extracted > 0) {
-          price = extracted;
-          break;
-        }
-      }
-    }
-
-    if (!price) {
-      // data-price属性
-      const dataPriceMatch = html.match(/data-price="([\d,]+)"/);
-      if (dataPriceMatch) {
-        const extracted = parseInt(dataPriceMatch[1].replace(/,/g, ''), 10);
-        if (extracted > 0) {
-          price = extracted;
-        }
-      }
-    }
-    
-    if (!price) {
-      // 一般的な価格パターン（0円を除外）
-      const priceMatches = html.matchAll(/([\d,]+)円/g);
-      for (const match of priceMatches) {
-        const extracted = parseInt(match[1].replace(/,/g, ''), 10);
-        if (extracted > 0) {
-          price = extracted;
-          break;
-        }
-      }
-    }
-
-    if (!price) {
-      const yenMatch = html.match(/¥\s*([\d,]+)/) || html.match(/JPY\s*([\d,]+)/i);
-      if (yenMatch) {
-        const extracted = parseInt(yenMatch[1].replace(/,/g, ''), 10);
-        if (extracted > 0) {
-          price = extracted;
-        }
-      }
-    }
-
-    // OG画像
-    let imageUrl: string | null = null;
-    const ogImageMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/) ||
-                         html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:image"/);
-    if (ogImageMatch) {
-      imageUrl = ogImageMatch[1];
-    }
-
-    // OG画像がない場合のフォールバック
-    if (!imageUrl) {
-      // EC-CUBE系: class="picture" の画像
-      const pictureMatch = html.match(/<img[^>]*class="[^"]*picture[^"]*"[^>]*src="([^"]+)"/) ||
-                           html.match(/<img[^>]*src="([^"]+)"[^>]*class="[^"]*picture[^"]*"/);
-      if (pictureMatch) {
-        imageUrl = pictureMatch[1];
-      }
-    }
-
-    if (!imageUrl) {
-      // 商品画像っぽいパターン: product, main, item などを含むクラス/IDの画像
-      const productImageMatch = html.match(/<img[^>]*(?:class|id)="[^"]*(?:product|main|item)[^"]*"[^>]*src="([^"]+)"/) ||
-                                html.match(/<img[^>]*src="([^"]+)"[^>]*(?:class|id)="[^"]*(?:product|main|item)[^"]*"/);
-      if (productImageMatch) {
-        imageUrl = productImageMatch[1];
-      }
-    }
-
-    // 相対パスを絶対パスに変換
-    if (imageUrl && !imageUrl.startsWith('http')) {
-      try {
-        const urlObj = new URL(sanitizedUrl);
-        imageUrl = imageUrl.startsWith('/') 
-          ? `${urlObj.protocol}//${urlObj.host}${imageUrl}`
-          : `${urlObj.protocol}//${urlObj.host}/${imageUrl}`;
-      } catch {
-        // URL変換失敗時はそのまま
-      }
-    }
-
-    // ホスト名からソース名を生成
-    const sourceName = hostname.replace(/^www\./, '').split('.')[0];
-
-    return {
-      name,
-      price,
-      imageUrl,
-      source: 'other',
-      sourceName: sourceName.charAt(0).toUpperCase() + sourceName.slice(1),
-    };
+    return parseProductHtml(html, sanitizedUrl);
   } catch (error) {
     console.error('Generic scraping error:', error);
     return {

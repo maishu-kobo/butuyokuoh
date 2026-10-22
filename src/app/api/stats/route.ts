@@ -1,8 +1,9 @@
+import { withAccess } from '@/lib/api-access';
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 
-export async function GET() {
+async function handleGET() {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -12,12 +13,12 @@ export async function GET() {
 
   // 全体統計
   const overview = db.prepare(`
-    SELECT 
-      COUNT(*) as total_items,
+    SELECT
+      SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) as total_items,
       SUM(CASE WHEN is_purchased = 0 AND deleted_at IS NULL THEN 1 ELSE 0 END) as wishlist_count,
-      SUM(CASE WHEN is_purchased = 1 THEN 1 ELSE 0 END) as purchased_count,
+      SUM(CASE WHEN is_purchased = 1 AND deleted_at IS NULL THEN 1 ELSE 0 END) as purchased_count,
       SUM(CASE WHEN is_purchased = 0 AND deleted_at IS NULL THEN current_price ELSE 0 END) as wishlist_total,
-      SUM(CASE WHEN is_purchased = 1 THEN current_price ELSE 0 END) as purchased_total
+      SUM(CASE WHEN is_purchased = 1 AND deleted_at IS NULL THEN current_price ELSE 0 END) as purchased_total
     FROM items
     WHERE user_id = ?
   `).get(user.id) as {
@@ -61,7 +62,7 @@ export async function GET() {
       COUNT(*) as count,
       SUM(current_price) as total
     FROM items
-    WHERE user_id = ? AND is_purchased = 1 AND purchased_at IS NOT NULL
+    WHERE user_id = ? AND is_purchased = 1 AND purchased_at IS NOT NULL AND deleted_at IS NULL
     GROUP BY strftime('%Y-%m', purchased_at)
     ORDER BY month DESC
     LIMIT 12
@@ -111,3 +112,5 @@ export async function GET() {
     priceRanges,
   });
 }
+
+export const GET = withAccess(handleGET, true);

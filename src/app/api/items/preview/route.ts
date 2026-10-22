@@ -1,8 +1,11 @@
+import { scrapeGuestUrl } from '@/lib/guest-scraper';
+import { GuestError } from '@/lib/guest';
+import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   try {
     // 認証チェック
     const user = await getCurrentUser();
@@ -33,7 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     // スクレイピング
-    const result = await scrapeUrl(url);
+    const result = user.account_type === 'guest' ? await scrapeGuestUrl(url, user.id) : await scrapeUrl(url);
 
     return NextResponse.json({
       name: result.name,
@@ -41,8 +44,10 @@ export async function POST(request: NextRequest) {
       image_url: result.imageUrl,
       source: result.source,
       source_name: result.sourceName,
+      note: result.note,
     });
   } catch (error) {
+    if (error instanceof GuestError) throw error;
     console.error('Preview error:', error);
     return NextResponse.json(
       { error: '商品情報の取得に失敗しました' },
@@ -50,3 +55,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withAccess(handlePOST, true);

@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch } from '@/lib/api-fetch';
+
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
@@ -21,6 +23,7 @@ function AddPageContent() {
   const { user, loading: authLoading } = useAuth();
 
   const [url, setUrl] = useState('');
+  const [draftUrl, setDraftUrl] = useState('');
   const [safeUrl, setSafeUrl] = useState<string | null>(null);
   const [productInfo, setProductInfo] = useState<ProductInfo | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -66,6 +69,7 @@ function AddPageContent() {
 
     if (extractedUrl) {
       setUrl(extractedUrl);
+      setDraftUrl(extractedUrl);
       setSafeUrl(sanitizeUrlForLink(extractedUrl));
     }
   }, [searchParams]);
@@ -73,7 +77,7 @@ function AddPageContent() {
   // カテゴリ取得
   useEffect(() => {
     if (user) {
-      fetch('/api/categories')
+      apiFetch('/api/categories')
         .then(res => res.json())
         .then(data => setCategories(data))
         .catch(() => {});
@@ -94,7 +98,7 @@ function AddPageContent() {
     setError('');
 
     try {
-      const res = await fetch('/api/items/preview', {
+      const res = await apiFetch('/api/items/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
@@ -121,7 +125,7 @@ function AddPageContent() {
     setError('');
 
     try {
-      const res = await fetch('/api/items', {
+      const res = await apiFetch('/api/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -205,7 +209,7 @@ function AddPageContent() {
 
       <main className="p-4 max-w-lg mx-auto">
         {/* URL入力（パラメータがない場合） */}
-        {!url && (
+        {!productInfo && !loading && (
           <div className="bg-white rounded-lg shadow p-4 mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               商品URL
@@ -214,11 +218,16 @@ function AddPageContent() {
               type="url"
               placeholder="https://www.amazon.co.jp/..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-              onChange={(e) => setUrl(e.target.value)}
+              value={draftUrl}
+              onChange={(e) => setDraftUrl(e.target.value)}
             />
             <button
-              onClick={fetchProductInfo}
-              disabled={!url || loading}
+              onClick={() => {
+                setSafeUrl(sanitizeUrlForLink(draftUrl));
+                if (draftUrl === url) void fetchProductInfo();
+                else setUrl(draftUrl);
+              }}
+              disabled={!draftUrl || loading}
               className="mt-3 w-full py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
             >
               商品情報を取得

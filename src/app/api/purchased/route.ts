@@ -1,8 +1,9 @@
+import { withAccess } from '@/lib/api-access';
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 
-export async function GET() {
+async function handleGET() {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -18,7 +19,7 @@ export async function GET() {
       cat.color as category_color
     FROM items i
     LEFT JOIN categories cat ON i.category_id = cat.id
-    WHERE i.is_purchased = 1 AND i.user_id = ?
+    WHERE i.is_purchased = 1 AND i.user_id = ? AND i.deleted_at IS NULL
     ORDER BY i.purchased_at DESC
   `).all(user.id);
 
@@ -29,7 +30,7 @@ export async function GET() {
       COUNT(*) as count,
       SUM(current_price) as total
     FROM items
-    WHERE is_purchased = 1 AND user_id = ? AND purchased_at IS NOT NULL
+    WHERE is_purchased = 1 AND user_id = ? AND purchased_at IS NOT NULL AND deleted_at IS NULL
     GROUP BY strftime('%Y-%m', purchased_at)
     ORDER BY month DESC
     LIMIT 12
@@ -41,7 +42,7 @@ export async function GET() {
       COUNT(*) as count,
       SUM(current_price) as total
     FROM items
-    WHERE is_purchased = 1 AND user_id = ?
+    WHERE is_purchased = 1 AND user_id = ? AND deleted_at IS NULL
   `).get(user.id) as { count: number; total: number | null };
 
   return NextResponse.json({
@@ -53,3 +54,5 @@ export async function GET() {
     },
   });
 }
+
+export const GET = withAccess(handleGET, true);

@@ -1,4 +1,5 @@
 export interface Item {
+  is_demo_sample?: number;
   id: number;
   name: string;
   url: string;
@@ -21,6 +22,9 @@ export interface Item {
   target_currency: 'JPY' | 'USD' | null;
   quantity: number;
   sort_order?: number;
+  last_scraped_at?: string | null; // 最後にスクレイプを試みた日時
+  scrape_status?: 'success' | 'failed' | null; // 直近スクレイプの成否
+  scrape_error?: string | null; // 失敗理由（任意）
   deleted_at: string | null;
   created_at: string;
   updated_at: string;

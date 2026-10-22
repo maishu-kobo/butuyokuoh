@@ -1,3 +1,4 @@
+import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { scrapeWishlist } from '@/lib/wishlist-scraper';
@@ -27,7 +28,7 @@ interface SkippedItem {
   reason: string;
 }
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -172,3 +173,5 @@ export async function POST(request: NextRequest) {
     }, { status: 500 });
   }
 }
+
+export const POST = withAccess(handlePOST, false);

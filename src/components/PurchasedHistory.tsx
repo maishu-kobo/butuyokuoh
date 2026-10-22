@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch } from '@/lib/api-fetch';
+
 import { useEffect, useState } from 'react';
 import { Item } from '@/types';
 import { ShoppingBag, Calendar, ExternalLink, Undo2 } from 'lucide-react';
@@ -24,7 +26,7 @@ export default function PurchasedHistory() {
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
-    const res = await fetch('/api/purchased');
+    const res = await apiFetch('/api/purchased');
     const json = await res.json();
     setData(json);
     setLoading(false);
@@ -35,7 +37,7 @@ export default function PurchasedHistory() {
   }, []);
 
   const handleUndo = async (id: number) => {
-    await fetch(`/api/items/${id}`, {
+    await apiFetch(`/api/items/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_purchased: false, purchased_at: null }),
@@ -106,6 +108,8 @@ export default function PurchasedHistory() {
                     <img
                       src={item.image_url}
                       alt={item.name}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-contain rounded"
                     />
                   ) : (

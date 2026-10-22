@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch } from '@/lib/api-fetch';
+
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
@@ -9,7 +11,7 @@ import Link from 'next/link';
 import { Category, ComparisonGroup } from '@/types';
 
 export default function SettingsPage() {
-  const { user, token, loading } = useAuth();
+  const { user, isGuest, token, loading } = useAuth();
   const { theme, setTheme, colorScheme, setColorScheme } = useTheme();
   const router = useRouter();
   const [copied, setCopied] = useState(false);
@@ -58,7 +60,7 @@ export default function SettingsPage() {
     // トークンを取得
     const fetchToken = async () => {
       try {
-        const res = await fetch('/api/auth/token');
+        const res = await apiFetch('/api/auth/token');
         if (res.ok) {
           const data = await res.json();
           setDisplayToken(data.token);
@@ -71,7 +73,7 @@ export default function SettingsPage() {
     // 通知設定を取得
     const fetchNotifySettings = async () => {
       try {
-        const res = await fetch('/api/notification-settings');
+        const res = await apiFetch('/api/notification-settings');
         if (res.ok) {
           const data = await res.json();
           setNotifySettings({
@@ -87,27 +89,26 @@ export default function SettingsPage() {
     };
     
     if (user) {
-      fetchToken();
-      fetchNotifySettings();
+      if (!isGuest) { fetchToken(); fetchNotifySettings(); }
       fetchCategories();
       fetchGroups();
     }
   }, [user]);
 
   const fetchCategories = async () => {
-    const res = await fetch('/api/categories');
+    const res = await apiFetch('/api/categories');
     if (res.ok) setCategories(await res.json());
   };
 
   const fetchGroups = async () => {
-    const res = await fetch('/api/comparison-groups');
+    const res = await apiFetch('/api/comparison-groups');
     if (res.ok) setGroups(await res.json());
   };
 
   // カテゴリ操作
   const handleAddCategory = async () => {
     if (!newCategoryName.trim()) return;
-    await fetch('/api/categories', {
+    await apiFetch('/api/categories', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newCategoryName, color: newCategoryColor }),
@@ -119,7 +120,7 @@ export default function SettingsPage() {
 
   const handleUpdateCategory = async () => {
     if (!editingCategoryId || !editCategoryName.trim()) return;
-    await fetch(`/api/categories/${editingCategoryId}`, {
+    await apiFetch(`/api/categories/${editingCategoryId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: editCategoryName, color: editCategoryColor }),
@@ -130,14 +131,14 @@ export default function SettingsPage() {
 
   const handleDeleteCategory = async (id: number) => {
     if (!confirm('このカテゴリを削除しますか？')) return;
-    await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+    await apiFetch(`/api/categories/${id}`, { method: 'DELETE' });
     fetchCategories();
   };
 
   // 比較グループ操作
   const handleAddGroup = async () => {
     if (!newGroupName.trim()) return;
-    await fetch('/api/comparison-groups', {
+    await apiFetch('/api/comparison-groups', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newGroupName }),
@@ -148,7 +149,7 @@ export default function SettingsPage() {
 
   const handleUpdateGroup = async () => {
     if (!editingGroupId || !editGroupName.trim()) return;
-    await fetch(`/api/comparison-groups/${editingGroupId}`, {
+    await apiFetch(`/api/comparison-groups/${editingGroupId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: editGroupName }),
@@ -159,14 +160,14 @@ export default function SettingsPage() {
 
   const handleDeleteGroup = async (id: number) => {
     if (!confirm('この比較グループを削除しますか？')) return;
-    await fetch(`/api/comparison-groups/${id}`, { method: 'DELETE' });
+    await apiFetch(`/api/comparison-groups/${id}`, { method: 'DELETE' });
     fetchGroups();
   };
 
   const saveNotifySettings = async () => {
     setSavingNotify(true);
     try {
-      const res = await fetch('/api/notification-settings', {
+      const res = await apiFetch('/api/notification-settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(notifySettings),
@@ -228,7 +229,7 @@ export default function SettingsPage() {
             <div className="space-y-2 text-sm">
               <div className="flex">
                 <span className="text-[var(--color-muted)] w-32">メール:</span>
-                <span className="text-[var(--color-text)]">{user.email}</span>
+                <span className="text-[var(--color-text)]">{isGuest ? 'ゲスト（体験データは一時保存）' : user.email}</span>
               </div>
               {user.name && (
                 <div className="flex">
@@ -415,6 +416,8 @@ export default function SettingsPage() {
             )}
           </div>
 
+          {isGuest && <p className="p-4 rounded bg-amber-50 text-amber-900">通知設定と拡張機能はログイン後に利用できます。</p>}
+          {!isGuest && <>
           {/* 価格通知設定 */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
             <button onClick={() => toggleSection('notify')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
@@ -470,6 +473,7 @@ export default function SettingsPage() {
             )}
           </div>
 
+          </>}
           {/* データエクスポート */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
             <button onClick={() => toggleSection('export')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">

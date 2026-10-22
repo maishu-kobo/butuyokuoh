@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch } from '@/lib/api-fetch';
+
 import { useEffect, useState } from 'react';
 import { Item, ComparisonGroup, Category } from '@/types';
 import SortableItemCard from '@/components/SortableItemCard';
@@ -22,13 +24,14 @@ type Tab = 'list' | 'budget' | 'purchased' | 'stats' | 'trash';
 const TABS: Tab[] = ['list', 'budget', 'purchased', 'stats', 'trash'];
 
 export default function Home() {
-  const { user, loading: authLoading, logout } = useAuth();
+  const { user, isGuest, loading: authLoading, logout } = useAuth();
   const [items, setItems] = useState<Item[]>([]);
   const [groups, setGroups] = useState<ComparisonGroup[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>('list');
   const [animationClass, setAnimationClass] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
@@ -41,22 +44,52 @@ export default function Home() {
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
 
   const fetchItems = async () => {
-    const res = await fetch('/api/items');
-    const data = await res.json();
-    setItems(data);
-    setLoading(false);
+    try {
+      const res = await apiFetch('/api/items');
+      if (!res.ok) throw new Error(`Failed to fetch items: ${res.status}`);
+      const data = await res.json();
+      // 非配列レスポンス（エラーJSON等）を配列stateに入れない
+      if (!Array.isArray(data)) throw new Error('Unexpected response format');
+      setItems(data);
+      setLoadError(false);
+    } catch (error) {
+      console.error('Failed to fetch items:', error);
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  // 補助データ: 失敗しても空配列のままにしてクラッシュを防ぐ（エラーUIは出さない）
   const fetchGroups = async () => {
-    const res = await fetch('/api/comparison-groups');
-    const data = await res.json();
-    setGroups(data);
+    try {
+      const res = await apiFetch('/api/comparison-groups');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data)) setGroups(data);
+    } catch (error) {
+      console.error('Failed to fetch comparison groups:', error);
+    }
   };
 
   const fetchCategories = async () => {
-    const res = await fetch('/api/categories');
-    const data = await res.json();
-    setCategories(data);
+    try {
+      const res = await apiFetch('/api/categories');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data)) setCategories(data);
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+    }
+  };
+
+  // 読み込み失敗時の再試行（補助データも併せて再取得）
+  const handleRetry = () => {
+    setLoadError(false);
+    setLoading(true);
+    fetchItems();
+    fetchGroups();
+    fetchCategories();
   };
 
   useEffect(() => {
@@ -68,7 +101,7 @@ export default function Home() {
   }, [user]);
 
   const handleDelete = async (id: number) => {
-    await fetch(`/api/items/${id}`, { method: 'DELETE' });
+    await apiFetch(`/api/items/${id}`, { method: 'DELETE' });
     fetchItems();
   };
 
@@ -76,7 +109,7 @@ export default function Home() {
     setRefreshing(true);
     try {
       await Promise.all(items.map((item) => 
-        fetch(`/api/items/${item.id}/refresh`, { method: 'POST' })
+        apiFetch(`/api/items/${item.id}/refresh`, { method: 'POST' })
       ));
       fetchItems();
     } finally {
@@ -143,7 +176,7 @@ export default function Home() {
     try {
       await Promise.all(
         Array.from(newSortOrders.entries()).map(([id, sort_order]) =>
-          fetch(`/api/items/${id}`, {
+          apiFetch(`/api/items/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sort_order }),
@@ -191,7 +224,7 @@ export default function Home() {
     
     await Promise.all(
       Array.from(selectedItems).map(id =>
-        fetch(`/api/items/${id}`, { method: 'DELETE' })
+        apiFetch(`/api/items/${id}`, { method: 'DELETE' })
       )
     );
     setSelectedItems(new Set());
@@ -204,7 +237,7 @@ export default function Home() {
     
     await Promise.all(
       Array.from(selectedItems).map(id =>
-        fetch(`/api/items/${id}`, {
+        apiFetch(`/api/items/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ category_id: categoryId }),
@@ -221,7 +254,7 @@ export default function Home() {
     
     await Promise.all(
       Array.from(selectedItems).map(id =>
-        fetch(`/api/items/${id}`, {
+        apiFetch(`/api/items/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ comparison_group_id: groupId }),
@@ -240,7 +273,7 @@ export default function Home() {
     const today = new Date().toISOString().split('T')[0];
     await Promise.all(
       Array.from(selectedItems).map(id =>
-        fetch(`/api/items/${id}`, {
+        apiFetch(`/api/items/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ is_purchased: true, purchased_at: today }),
@@ -284,6 +317,18 @@ export default function Home() {
     touchEventOptions: { passive: false },
   });
 
+  // フィルター・検索・並び順をすべて初期値に戻す
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory(null);
+    setSelectedPriority(null);
+    setSelectedGroup(null);
+    setSortBy('priority');
+    // 選択モードを解除（クリア後に見えないアイテムへの一括操作を防ぐ）
+    setSelectionMode(false);
+    setSelectedItems(new Set());
+  };
+
   // フィルター適用（カテゴリ、検索、優先度、比較グループ）
   const filteredItems = items
     .filter(item => {
@@ -301,9 +346,15 @@ export default function Home() {
     .sort((a, b) => {
       switch (sortBy) {
         case 'price_asc':
-          return (a.current_price || 0) - (b.current_price || 0);
-        case 'price_desc':
-          return (b.current_price || 0) - (a.current_price || 0);
+        case 'price_desc': {
+          // 価格未取得(null/undefined)はasc/descいずれでも末尾に並べる
+          const av = a.current_price;
+          const bv = b.current_price;
+          if (av == null && bv == null) return 0;
+          if (av == null) return 1;
+          if (bv == null) return -1;
+          return sortBy === 'price_asc' ? av - bv : bv - av;
+        }
         case 'date_new':
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         case 'date_old':
@@ -634,15 +685,18 @@ export default function Home() {
                       選択
                     </button>
                     <button
+                      disabled={isGuest}
+                      title={isGuest ? "インポートはログイン後に利用できます" : undefined}
                       onClick={() => setShowImportModal(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
                     >
                       <Upload size={16} />
                       インポート
                     </button>
                     <button
                       onClick={handleRefreshAll}
-                      disabled={refreshing || items.length === 0}
+                      disabled={isGuest || refreshing || items.length === 0}
+                      title={isGuest ? "価格更新はログイン後に利用できます" : undefined}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
                     >
                       <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
@@ -657,9 +711,31 @@ export default function Home() {
 
             {loading ? (
               <div className="text-center py-12 text-slate-500 dark:text-slate-400">読み込み中...</div>
+            ) : loadError ? (
+              <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                <p>読み込みに失敗しました</p>
+                <button
+                  onClick={handleRetry}
+                  className="mt-3 px-4 py-2 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
+                >
+                  再試行
+                </button>
+              </div>
             ) : items.length === 0 ? (
               <div className="text-center py-12 text-slate-500 dark:text-slate-400">
                 まだアイテムがありません。上のフォームから追加してください。
+              </div>
+            ) : filteredItems.length === 0 ? (
+              /* アイテムはあるがフィルター/検索の結果が0件の場合 */
+              <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+                <p>条件に一致するアイテムがありません</p>
+                <button
+                  onClick={clearFilters}
+                  className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
+                >
+                  <X size={16} />
+                  条件をクリア
+                </button>
               </div>
             ) : (
               <DndContext
