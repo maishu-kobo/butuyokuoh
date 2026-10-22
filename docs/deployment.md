@@ -194,7 +194,12 @@ cd /home/exedev/butuyokuoh && git pull && npm install && npm run build && sudo s
 ### データベース
 
 ```bash
-# バックアップ
+# スキーマを変える前。手順の詳細は docs/database.md の「スキーマ変更の前のバックアップ」
+sudo systemctl stop butuyokuoh
+sqlite3 data/butuyokuoh.db ".backup 'data/butuyokuoh.db.pre-migrate.backup'"
+sqlite3 data/butuyokuoh.db.pre-migrate.backup "PRAGMA integrity_check;"
+
+# 停止中のファイルコピー。スキーマ変更の前のバックアップには使わない
 cp data/butuyokuoh.db data/butuyokuoh.db.backup.$(date +%Y%m%d)
 
 # 確認
