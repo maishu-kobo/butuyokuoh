@@ -428,6 +428,8 @@ test('real identification is used only when secrets exist and the fake scenario 
 test('the identify route keeps the kill switch and reads keys only through capture secrets', () => {
   const route = readFileSync(new URL('../src/app/api/capture/identify/route.ts', import.meta.url), 'utf8');
   assert.equal(route.includes('withCaptureAi'), true);
+  assert.equal(route.includes('readCapturePhoto'), true);
+  assert.equal(route.includes('formData'), false);
   assert.equal(route.includes('resolveProductIdentifier'), true);
   assert.equal(route.includes('readCaptureSecrets'), true);
   assert.equal(route.includes('identifyHttpBody'), true);
