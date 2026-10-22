@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { linkableHttpUrl } from '@/lib/http-url';
 
 import { useEffect, useState } from 'react';
 import { Item } from '@/types';
@@ -150,9 +151,9 @@ export default function TrashView() {
 
               {/* アクション */}
               <div className="flex items-center gap-1">
-                {item.url && !item.url.startsWith('manual://') && (
+                {linkableHttpUrl(item.url) && (
                   <a
-                    href={item.url}
+                    href={linkableHttpUrl(item.url)!}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-slate-400 hover:text-blue-500 p-2"

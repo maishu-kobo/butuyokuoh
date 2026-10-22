@@ -74,10 +74,14 @@ test('bounded guest transport decodes multi-byte characters split across chunks'
   } finally { server.closeAllConnections(); server.close(); }
 });
 
-test('member Rakuten and generic scraping use the same byte decoder and preserve metadata', async t => {
-  t.mock.method(globalThis, 'fetch', async () => new Response(page(eucName), {headers:{'Content-Type':'text/html;charset=EUC-JP'}}));
+test('member Rakuten and generic scraping use the same byte decoder and preserve metadata', async () => {
+  // 会員の取得は名前解決したアドレスへ固定する。文字コードの確認は、その経路に応答を渡して行う。
+  const deps = {
+    resolve: async () => [{ address: '1.1.1.1', family: 4 }],
+    request: async () => ({ status: 200, body: page(eucName), contentType: 'text/html;charset=EUC-JP' }),
+  };
   for (const url of [productUrl, 'https://example.com/products/shoes']) {
-    const product = await scrapeUrl(url);
+    const product = await scrapeUrl(url, deps);
     assert.equal(product.name, name);
     assert.equal(product.price, 107800); // Not the shipping charge in the body.
     assert.equal(product.imageUrl, 'https://shop.r10s.jp/example/shoes.jpg');
