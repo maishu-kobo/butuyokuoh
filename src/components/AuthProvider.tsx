@@ -69,7 +69,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (status !== 'loading') void refresh();
+    // refresh の setState は fetch のあと。直接呼ぶと新しい react-hooks が同期 setState と誤認する。revision の加算順は変えない。
+    if (status !== 'loading') void (async () => { await refresh(); })();
     // Invalidate the latest request, including refreshes triggered by tab focus.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { revision.current++; };
