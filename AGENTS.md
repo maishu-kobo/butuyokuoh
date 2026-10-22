@@ -22,7 +22,7 @@ Node.js 20 以上（`docs/development.md`）。`package.json` に `engines` は�
 | コマンド | 役割 | 2026-10-22、develop `f11349a` |
 | --- | --- | --- |
 | `npm run dev -- --port 3000` | 開発サーバ。既定ポートは 3000 | `GET /` が 200 |
-| `npm run start -- --port 3001` | 本番起動。`butuyokuoh.service` は `PORT=8000` | ビルド後に `GET /` が 200 |
+| `npm run start` | 本番起動。ポート未指定なら 3000。systemd は `PORT=8000` | 確認時は `--port 3001` で `GET /` が 200 |
 | `npm test` | `node --import tsx --test tests/*.test.ts`。e2e は含まない | 24 件成功 |
 | `npx tsc --noEmit` | 型検査。npm script ではない | 成功 |
 | `npm run build` | `next build`（Next.js 16.1.2） | 成功 |
