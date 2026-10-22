@@ -1,7 +1,8 @@
 'use client';
 
-import { classifyPickedPhotos } from '@/lib/capture/photo-pick';
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { CaptureMessages } from '@/lib/capture/contract';
+import { photoForUpload } from '@/lib/capture/photo-pick';
+import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 
 export type CapturePhotoPick = {
   enabled: boolean;
@@ -12,11 +13,19 @@ export type CapturePhotoPick = {
   onDrop: (event: DragEvent) => void;
 };
 
-export function useCapturePhotoPick(enabled: boolean, onAccepted?: (file: File) => void): CapturePhotoPick {
+export function useCapturePhotoPick(
+  enabled: boolean,
+  onAccepted?: (file: File) => void,
+  upload: typeof photoForUpload = photoForUpload,
+): CapturePhotoPick {
   const onAcceptedRef = useRef(onAccepted);
+  const requestRef = useRef(0);
   useEffect(() => {
     onAcceptedRef.current = onAccepted;
   });
+  useLayoutEffect(() => {
+    if (!enabled) requestRef.current += 1;
+  }, [enabled]);
   const [message, setMessage] = useState('');
   const [selected, setSelected] = useState(false);
   const [shown, setShown] = useState(enabled);
@@ -30,7 +39,10 @@ export function useCapturePhotoPick(enabled: boolean, onAccepted?: (file: File) 
 
   function acceptFiles(files: File[]) {
     if (!enabled) return;
-    void classifyPickedPhotos(files).then(result => {
+    const request = requestRef.current + 1;
+    requestRef.current = request;
+    void upload(files).then(result => {
+      if (requestRef.current !== request) return;
       if (!result.ok) {
         if (result.ignored) return;
         setSelected(false);
@@ -40,6 +52,10 @@ export function useCapturePhotoPick(enabled: boolean, onAccepted?: (file: File) 
       setMessage('');
       setSelected(true);
       onAcceptedRef.current?.(result.file);
+    }).catch(() => {
+      if (requestRef.current !== request) return;
+      setSelected(false);
+      setMessage(CaptureMessages.photoUnreadable);
     });
   }
 
