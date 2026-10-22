@@ -7,7 +7,7 @@ process.env.E2E_DB_PATH ||= join(mkdtempSync(join(tmpdir(), 'butuyokuoh-e2e-')),
 const port = 3107;
 export default defineConfig({
   testDir: './tests/e2e',
-  testMatch: process.env.E2E_GUEST_DISABLED ? 'disabled.spec.ts' : 'guest.spec.ts',
+  testMatch: process.env.E2E_GUEST_DISABLED ? 'disabled.spec.ts' : ['guest.spec.ts', 'capture.spec.ts'],
   fullyParallel: false,
   workers: 1,
   timeout: 60_000,
@@ -27,6 +27,9 @@ export default defineConfig({
       NEXTAUTH_SECRET: 'guest-e2e-only-auth-secret-not-for-production',
       JWT_SECRET: 'guest-e2e-only-jwt-secret-not-for-production',
       GOOGLE_CLIENT_ID: 'test-client', GOOGLE_CLIENT_SECRET: 'test-secret',
+      // 開発サーバのテストだけでシナリオを切り替える。本番の NODE_ENV ではヘッダーを無視する。
+      CAPTURE_TEST_HOOKS: '1',
+      AMAZON_ASSOCIATE_TAG: 'test-tag-22',
     },
   },
 });
