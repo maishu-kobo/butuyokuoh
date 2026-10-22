@@ -195,9 +195,64 @@ CREATE TABLE user_notification_settings (
 );
 ```
 
+## 写真から登録で足す列と表
+
+列と表は足すだけ。消したり、名前を変えたりはしない。起動時の `migrateDb` が既存のDBへ同じ追加を行う。写真のファイルは保存しない。
+
+### comparison_groups に足す列
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| origin | TEXT | 写真から作ったグループは `photo`。手で作ったグループは NULL のまま |
+| capture_id | INTEGER | どの撮影（`captures.id`）から作ったか。なければ NULL |
+| budget_item_id | INTEGER | 出費予定で選んだ候補の `items.id`。NULL は未選択。写真グループの数え方（購入済みがあれば残りは数えない。未選択なら未購入の最安1件）は別作業 |
+
+### items に足す列
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| source_item_code | TEXT | 取得元と商品コード。例: `yahoo:<商品コード>`、`rakuten:<itemCode>` |
+| price_fetched_at | TEXT | 価格を取った日時 |
+
+### captures
+
+撮影1回。推定した商品名、JAN、状態、作った比較グループ。写真の列は無い。
+
+### capture_candidates
+
+検索で見つけた候補。`expires_at` は作成から30分。毎時の後片付けは期限切れの行を消す。ゲストを消すときは、その利用者の撮影と候補も消す。登録する側は、この表のIDだけを受け取る。
+
+## スキーマ変更の前のバックアップ
+
+本番のスキーマを変えるコードを起動する前に、SQLite の `.backup` で一貫したコピーを取る。`data/butuyokuoh.db` を `cp` しただけでは、WAL の更新が別ファイルに残っていて、コピーが途中の状態になることがある。
+
+アプリは起動時に列と表を足す。バックアップは、新しいコードでプロセスを上げる前に取る。
+
+```bash
+# 書き込みを止めてから取る
+sudo systemctl stop butuyokuoh
+
+sqlite3 data/butuyokuoh.db ".backup 'data/butuyokuoh.db.pre-migrate.backup'"
+sqlite3 data/butuyokuoh.db.pre-migrate.backup "PRAGMA integrity_check;"
+
+# 新しいコードを配置してから起動する。起動時に列と表が足される
+sudo systemctl start butuyokuoh
+```
+
+戻すときもアプリを止める。`-wal` と `-shm` が残っていると、戻したファイルよりそちらが優先される。
+
+```bash
+sudo systemctl stop butuyokuoh
+rm -f data/butuyokuoh.db-wal data/butuyokuoh.db-shm
+sqlite3 data/butuyokuoh.db.pre-migrate.backup ".backup 'data/butuyokuoh.db'"
+sudo systemctl start butuyokuoh
+```
+
+`BUTUYOKUOH_DB_PATH` を変えている場合は、そのファイルを対象にする。
+
 ## バックアップ
 
-SQLiteファイルをコピーするだけでバックアップ可能。
+スキーマ変更の前は、上の `.backup` を使う。停止中のファイルをコピーする場合だけ、次でも戻せる。
 
 ```bash
 # バックアップ

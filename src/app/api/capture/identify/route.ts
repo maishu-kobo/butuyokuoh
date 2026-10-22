@@ -1,4 +1,5 @@
 import { requireSameOrigin, withAccess } from '@/lib/api-access';
+import { withCapture, withCaptureAi } from '@/lib/capture-flags';
 import { CAPTURE_PHOTO_MAX_BYTES, CaptureMessages, decodeCapturePhoto, type CaptureErrorBody } from '@/lib/capture/contract';
 import { portsForRequest } from '@/lib/capture/ports';
 import { NextRequest, NextResponse } from 'next/server';
@@ -29,4 +30,4 @@ async function handlePOST(request: NextRequest) {
   return NextResponse.json(result.value);
 }
 
-export const POST = withAccess(handlePOST);
+export const POST = withCapture(withCaptureAi(withAccess(handlePOST)));

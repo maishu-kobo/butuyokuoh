@@ -29,6 +29,8 @@ export default defineConfig({
       GOOGLE_CLIENT_ID: 'test-client', GOOGLE_CLIENT_SECRET: 'test-secret',
       // 開発サーバのテストだけでシナリオを切り替える。本番の NODE_ENV ではヘッダーを無視する。
       CAPTURE_TEST_HOOKS: '1',
+      CAPTURE_ENABLED: 'true',
+      CAPTURE_AI_ENABLED: 'true',
       AMAZON_ASSOCIATE_TAG: 'test-tag-22',
     },
   },
