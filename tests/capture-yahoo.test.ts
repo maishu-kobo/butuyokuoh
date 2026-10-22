@@ -366,3 +366,122 @@ test('yahoo search does not read the environment or the secrets loader', () => {
   assert.equal(/capture-secrets/.test(source), false);
   assert.equal(source.includes('https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch'), true);
 });
+
+test('a keyword with reserved characters stays inside the query parameter', async () => {
+  const { calls, search } = harness();
+  await search.search({ name: 'a&b=c\nペン', brand: null, model: null, jan: null });
+  const url = new URL(calls[0].url);
+  assert.equal(url.hostname, 'shopping.yahooapis.jp');
+  assert.equal(url.searchParams.get('query'), 'a&b=c\nペン');
+  assert.deepEqual([...url.searchParams.keys()], ['appid', 'results', 'query']);
+  assert.equal(calls[0].url.includes('\n'), false);
+  assert.equal(calls[0].url.includes('&b=c'), false);
+});
+
+test('an app id with a line break is not requested and is not logged', async () => {
+  const secret = 'super-secret-app-id';
+  const logs: unknown[] = [];
+  const methods = ['log', 'info', 'warn', 'error', 'debug'] as const;
+  const original = Object.fromEntries(methods.map(method => [method, console[method]]));
+  for (const method of methods) {
+    console[method] = (...args: unknown[]) => { logs.push(args); };
+  }
+  try {
+    const blocked = harness({ appId: `${secret}\r\nX-Injected: 1` });
+    const denied = await blocked.search.search(nameQuery);
+    assert.equal(blocked.calls.length, 0);
+    assert.equal(denied.ok, false);
+    assert.equal(JSON.stringify(denied).includes(secret), false);
+
+    const { calls, search } = harness({ appId: secret });
+    const result = await search.search(nameQuery);
+    assert.equal(result.ok, true);
+    assert.equal(calls[0].url.includes(secret), true);
+    assert.equal(JSON.stringify(result).includes(secret), false);
+    assert.equal(JSON.stringify(logs).includes(secret), false);
+  } finally {
+    for (const method of methods) console[method] = original[method];
+  }
+});
+
+test('yahoo returns only a rebuilt https url on the shopping hosts', async () => {
+  const { search } = harness({
+    body: {
+      hits: [
+        hit({ code: 'good_item', url: 'https://shopping.yahoo.co.jp/products/example?ref=1' }),
+        hit({ code: 'newline_item', url: 'https://store.shopping.yahoo.co.jp/example/pen\n@evil.example/' }),
+        hit({ code: 'port_item', url: 'https://store.shopping.yahoo.co.jp:8443/example/pen' }),
+        hit({
+          code: 'slash_item',
+          url: 'https://store.shopping.yahoo.co.jp\\@evil.example/x',
+          image: { medium: 'https://shopping.yahoo.co.jp/a.jpg\n@evil.example/x' },
+        }),
+      ],
+    },
+  });
+  const result = await search.search(nameQuery);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value.map(item => item.url), ['https://shopping.yahoo.co.jp/products/example?ref=1']);
+  assert.equal(JSON.stringify(result.value).includes('evil.example'), false);
+  assert.equal(JSON.stringify(result.value).includes(':8443'), false);
+  assert.equal(JSON.stringify(result.value).includes('\\'), false);
+  assert.equal('imageUrl' in result.value[0], false);
+});
+
+test('yahoo returns at most ten hits from one response', async () => {
+  const hits = Array.from({ length: 11 }, (_, index) => hit({
+    code: `item_${index}`,
+    name: `商品${index}`,
+    url: 'https://shopping.yahoo.co.jp/products/example',
+  }));
+  const { search } = harness({ body: { hits } });
+  const result = await search.search(nameQuery);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.length, 10);
+  assert.equal(result.value.some(item => item.id === 'yahoo:item-10'), false);
+});
+
+test('yahoo stops reading an oversized body even when content-length is small', async () => {
+  let pulled = 0;
+  const chunk = new Uint8Array(200_000);
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulled += 1;
+      if (pulled > 12) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+  });
+  const { search } = harness({
+    fetch: async () => new Response(stream, { status: 200, headers: { 'content-length': '10' } }),
+  });
+  const result = await search.search(nameQuery);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.error, CaptureMessages.searchFailed);
+  assert.equal(pulled <= 8, true, `pulled ${pulled}`);
+});
+
+test('yahoo stops even when fetch ignores the abort signal', async () => {
+  const { search } = harness({
+    schedule: (callback, delayMs) => {
+      assert.equal(delayMs, 6_000);
+      const timer = setTimeout(callback, 15);
+      return () => clearTimeout(timer);
+    },
+    fetch: () => new Promise(() => {}),
+  });
+  const result = await Promise.race([
+    search.search(nameQuery),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('hung')), 300)),
+  ]);
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, 'SEARCH_TIMEOUT');
+    assert.equal(result.status, 504);
+    assert.equal(result.error.error, TIMEOUT);
+  }
+});
