@@ -278,7 +278,7 @@ function toCandidate(item: Record<string, unknown> | null, index: number, used: 
 }
 
 // 衝突したら `-{index+1}` から順に空いている接尾辞を付ける。
-// 使用済みより多く、互いに違う id を試すので、64 文字に収まる限り空きが必ずある。
+// 試行は使用済みより 2 つ多い。接尾辞同士は違い、64 文字の base と重なるのは高々 1 回なので、配列の添字では空きがある。
 function makeId(itemCode: string, index: number, used: Set<string>): string | null {
   const slug = itemCode.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   const base = (slug || `item-${index + 1}`).slice(0, 64);
