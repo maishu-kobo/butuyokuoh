@@ -101,6 +101,8 @@ export function createRakutenSearch(options: {
     async search(query) {
       const credentials = normalizeCredentials(options.credentials);
       if (!credentials) return captureFailure('SEARCH_FAILED', RakutenMessages.unavailable, 503);
+      const referer = safeReferer(options.referer);
+      if (referer === false) return captureFailure('SEARCH_FAILED', RakutenMessages.unavailable, 503);
       const keyword = rakutenKeyword(query);
       if (!keyword) return captureFailure('SEARCH_FAILED', RakutenMessages.failed, 400);
       const slot = options.limiter.tryAcquire(userId, now().getTime());
@@ -112,7 +114,7 @@ export function createRakutenSearch(options: {
       url.searchParams.set('format', 'json');
       url.searchParams.set('formatVersion', '2');
       const headers: Record<string, string> = { accessKey: credentials.accessKey };
-      if (options.referer) headers.Referer = options.referer;
+      if (referer) headers.Referer = referer;
 
       const controller = new AbortController();
       let timedOut = false;
@@ -126,7 +128,7 @@ export function createRakutenSearch(options: {
           aborted(controller.signal),
         ]);
         if (timedOut || controller.signal.aborted) return captureFailure('SEARCH_TIMEOUT', RakutenMessages.timeout, 504);
-        return parseRakutenResponse(response, [credentials.accessKey, credentials.applicationId], now().toISOString());
+        return parseRakutenResponse(response, now().toISOString());
       } catch {
         if (timedOut || controller.signal.aborted) return captureFailure('SEARCH_TIMEOUT', RakutenMessages.timeout, 504);
         return captureFailure('SEARCH_FAILED', RakutenMessages.failed, 502);
@@ -142,12 +144,43 @@ function remember(users: Map<string, number[]>, id: string, stamps: number[]) {
   else users.set(id, stamps);
 }
 
+function hasHeaderBreak(value: string): boolean {
+  return /[\r\n\0]/.test(value);
+}
+
 function normalizeCredentials(value: RakutenCredentials | null): RakutenCredentials | null {
-  if (!value) return null;
-  const applicationId = typeof value.applicationId === 'string' ? value.applicationId.trim() : '';
-  const accessKey = typeof value.accessKey === 'string' ? value.accessKey.trim() : '';
+  if (!value || typeof value.applicationId !== 'string' || typeof value.accessKey !== 'string') return null;
+  if (hasHeaderBreak(value.accessKey)) return null;
+  const applicationId = value.applicationId.trim();
+  const accessKey = value.accessKey.trim();
   if (!applicationId || !accessKey) return null;
   return { applicationId, accessKey };
+}
+
+function safeReferer(value: string | null | undefined): string | null | false {
+  if (value == null || value === '') return null;
+  if (hasHeaderBreak(value)) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return false;
+  return value;
+}
+
+function canonicalItemUrl(raw: string): string | null {
+  if (/[\u0000-\u0020\\]/.test(raw)) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port) return null;
+  if (parsed.hostname !== 'item.rakuten.co.jp') return null;
+  return `${parsed.origin}${parsed.pathname}${parsed.search}`;
 }
 
 function rakutenKeyword(query: SearchQuery): string {
@@ -180,19 +213,16 @@ function aborted(signal: AbortSignal): Promise<never> {
   });
 }
 
-function parseRakutenResponse(response: RakutenHttpResponse, secrets: string[], fetchedAt: string): CaptureResult<CaptureCandidate[]> {
+function parseRakutenResponse(response: RakutenHttpResponse, fetchedAt: string): CaptureResult<CaptureCandidate[]> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(response.body);
   } catch {
     return captureFailure('SEARCH_FAILED', RakutenMessages.failed, 502);
   }
-  const apiError = readApiError(parsed);
-  if (response.status === 429) {
-    return captureFailure('SEARCH_FAILED', publicReason(apiError || RakutenMessages.upstreamRate, secrets), 429);
-  }
-  if (response.status < 200 || response.status >= 300 || apiError) {
-    return captureFailure('SEARCH_FAILED', publicReason(apiError || RakutenMessages.failed, secrets), 502);
+  if (response.status === 429) return captureFailure('SEARCH_FAILED', RakutenMessages.upstreamRate, 429);
+  if (response.status < 200 || response.status >= 300 || readApiError(parsed)) {
+    return captureFailure('SEARCH_FAILED', RakutenMessages.failed, 502);
   }
   const items = readItems(parsed);
   if (!items) return captureFailure('SEARCH_FAILED', RakutenMessages.failed, 502);
@@ -227,7 +257,7 @@ function toCandidate(item: Record<string, unknown> | null, index: number, used: 
   if (!item) return null;
   const title = text(item.itemName);
   const shopName = text(item.shopName);
-  const url = text(item.itemUrl);
+  const url = typeof item.itemUrl === 'string' ? canonicalItemUrl(item.itemUrl) : null;
   const price = integerPrice(item.itemPrice);
   const id = makeId(text(item.itemCode) ?? '', index, used);
   if (!title || !shopName || !url || price === null || !id) return null;
@@ -264,13 +294,14 @@ function makeId(itemCode: string, index: number, used: Set<string>): string | nu
 function firstImage(value: unknown): string | null {
   if (!Array.isArray(value)) return null;
   for (const entry of value) {
-    if (typeof entry === 'string') {
-      const image = entry.trim();
-      if (image) return image;
-    } else if (entry && typeof entry === 'object' && 'imageUrl' in entry) {
-      const image = text((entry as { imageUrl?: unknown }).imageUrl);
-      if (image) return image;
-    }
+    const raw = typeof entry === 'string'
+      ? entry
+      : entry && typeof entry === 'object' && 'imageUrl' in entry
+        ? (entry as { imageUrl?: unknown }).imageUrl
+        : null;
+    if (typeof raw !== 'string') continue;
+    const image = canonicalItemUrl(raw);
+    if (image) return image;
   }
   return null;
 }
@@ -313,10 +344,3 @@ function errorMessage(value: unknown): string | null {
   return null;
 }
 
-function publicReason(message: string, secrets: string[]): string {
-  let cleaned = message;
-  for (const secret of secrets) {
-    if (secret) cleaned = cleaned.split(secret).join('［非表示］');
-  }
-  return Array.from(cleaned).slice(0, 180).join('');
-}

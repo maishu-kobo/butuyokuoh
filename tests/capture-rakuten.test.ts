@@ -158,8 +158,9 @@ test('Rakuten answers are not retried, and an error is not an empty success', as
   assert.equal(failed.ok, false);
   if (!failed.ok) {
     assert.equal(failed.error.code, 'SEARCH_FAILED');
-    assert.equal(failed.error.error.includes('api logic error'), true);
-    assert.equal(failed.error.error.includes(SECRET), false);
+    assert.equal(failed.error.error, RakutenMessages.failed);
+    assert.equal(JSON.stringify(failed).includes('api logic error'), false);
+    assert.equal(JSON.stringify(failed).includes(SECRET), false);
     assert.equal(JSON.stringify(failed).includes('item.rakuten.co.jp'), false);
   }
 
@@ -169,7 +170,10 @@ test('Rakuten answers are not retried, and an error is not an empty success', as
   const invalid = await nested.search.search(query);
   assert.equal(nested.calls.length, 1);
   assert.equal(invalid.ok, false);
-  if (!invalid.ok) assert.equal(invalid.error.error.includes('keyword parameter is not valid'), true);
+  if (!invalid.ok) {
+    assert.equal(invalid.error.error, RakutenMessages.failed);
+    assert.equal(JSON.stringify(invalid).includes('keyword parameter is not valid'), false);
+  }
 
   const missing = harness({ http: async () => jsonResponse({ error: 'not_found', error_description: 'not found' }, 404) });
   const notFound = await missing.search.search(query);
@@ -295,7 +299,8 @@ test('a Rakuten timeout or failure still returns the other site, and Amazon stay
     assert.deepEqual(rakutenDown.value.candidates.map(candidate => candidate.site), ['yahoo']);
     assert.equal(rakutenDown.value.failures[0].site, 'rakuten');
     assert.equal(rakutenDown.value.failures[0].code, 'SEARCH_FAILED');
-    assert.equal(rakutenDown.value.failures[0].error.includes('api logic error'), true);
+    assert.equal(rakutenDown.value.failures[0].error, RakutenMessages.failed);
+    assert.equal(JSON.stringify(rakutenDown).includes('api logic error'), false);
   }
 
   const yahooDown = await searchWithPorts(
@@ -381,6 +386,64 @@ test('Rakuten search stops at the injected timeout and the default limit is 6 se
     assert.equal(RAKUTEN_SEARCH_TIMEOUT_MS, 6000);
   } finally {
     globalThis.setTimeout = original;
+  }
+});
+
+test('Rakuten returns a rebuilt item.rakuten.co.jp URL and drops anything else', async () => {
+  const upstream = 'https://user:secret@item.rakuten.co.jp:8443/example/pen?ref=1#section';
+  const { search } = harness({
+    http: okHttp({
+      items: [
+        item({ itemCode: 'example:good', itemUrl: 'https://ITEM.RAKUTEN.CO.JP/example/pen?ref=1#section' }),
+        item({ itemCode: 'example:user', itemUrl: upstream }),
+        item({ itemCode: 'example:port', itemUrl: 'https://item.rakuten.co.jp:8443/example/pen' }),
+        item({ itemCode: 'example:break', itemUrl: 'https://item.rakuten.co.jp/example/pen\r\n@evil.example/' }),
+        item({ itemCode: 'example:nul', itemUrl: 'https://item.rakuten.co.jp/example/pen\u0000@evil.example/' }),
+        item({ itemCode: 'example:slash', itemUrl: 'https://item.rakuten.co.jp\\@evil.example/x' }),
+        item({ itemCode: 'example:other', itemUrl: 'https://www.rakuten.co.jp/example/pen' }),
+      ],
+    }),
+  });
+  const result = await search.search(query);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value.map(candidate => candidate.url), ['https://item.rakuten.co.jp/example/pen?ref=1']);
+  assert.equal(result.value[0].url === 'https://ITEM.RAKUTEN.CO.JP/example/pen?ref=1#section', false);
+  const body = JSON.stringify(result.value);
+  assert.equal(body.includes('evil.example'), false);
+  assert.equal(body.includes('secret'), false);
+  assert.equal(body.includes(':8443'), false);
+  assert.equal(body.includes('#'), false);
+  assert.equal(body.includes('\\'), false);
+  assert.equal(body.includes('\n'), false);
+  assert.equal(body.includes('\u0000'), false);
+  assert.equal(body.includes(upstream), false);
+});
+
+test('Referer and accessKey with CR, LF, or NUL are not sent', async () => {
+  for (const bad of ['\r', '\n', '\0']) {
+    const keyed = harness({ credentials: { applicationId: APP_ID, accessKey: `${SECRET}${bad}X-Injected: 1` } });
+    const denied = await keyed.search.search(query);
+    assert.equal(keyed.calls.length, 0, JSON.stringify(bad));
+    assert.equal(denied.ok, false);
+    if (!denied.ok) assert.equal(denied.error.error, RakutenMessages.unavailable);
+    assert.equal(JSON.stringify(denied).includes(SECRET), false);
+    assert.equal(JSON.stringify(denied).includes('X-Injected'), false);
+
+    const referred = harness({ referer: `https://butsuyokuoh.exe.xyz/${bad}X-Injected: 1` });
+    const blocked = await referred.search.search(query);
+    assert.equal(referred.calls.length, 0, JSON.stringify(bad));
+    assert.equal(blocked.ok, false);
+    if (!blocked.ok) assert.equal(blocked.error.error, RakutenMessages.unavailable);
+    assert.equal(JSON.stringify(blocked).includes('X-Injected'), false);
+  }
+
+  for (const referer of ['http://butsuyokuoh.exe.xyz/', 'https://user:pw@butsuyokuoh.exe.xyz/', 'not-a-url']) {
+    const blocked = harness({ referer });
+    const denied = await blocked.search.search(query);
+    assert.equal(blocked.calls.length, 0, referer);
+    assert.equal(denied.ok, false);
+    if (!denied.ok) assert.equal(denied.error.error, RakutenMessages.unavailable);
   }
 });
 
