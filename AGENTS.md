@@ -75,11 +75,3 @@ CI が通り、作者とは別のエージェントかレビュアーがレビ�
 始める前に、このファイルと `docs/WORKLOG.md` を読み、`git log`、開いている PR、`npm test` で今の状態を確認する。
 
 終えるとき、同じ PR で `docs/WORKLOG.md` に日付のエントリを足す。決めたこと、結果、残件を書く。
-
-## 読み込み
-
-- Claude Code は `CLAUDE.md` の `@AGENTS.md` でこのファイルを読む。`CLAUDE.md` があると、import しない限り AGENTS.md は自動では読まれない。
-- Codex はルートのこのファイルを読む。ディレクトリごとに 1 ファイルで、cwd に近い方が後から結合される。既定の上限は `project_doc_max_bytes` = 32 KiB。ネストした `AGENTS.md` は置かない。
-- Cursor はルートのこのファイルを読む。`.cursor/rules` は足さない。
-- Copilot の coding agent、VS Code、CLI、code review は `AGENTS.md` を読む。GitHub.com の Copilot Chat は読まないので `.github/copilot-instructions.md` がポインタ。
-- Gemini CLI の既定名は `GEMINI.md`。`GEMINI.md` が `@./AGENTS.md` を import する。
