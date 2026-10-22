@@ -21,7 +21,10 @@ function git(args: string[]): string {
 }
 
 function fetchDevelop() {
-  const result = spawnSync('git', ['fetch', 'origin', 'develop'], { cwd: repoRoot, encoding: 'utf8' });
+  const shallow = spawnSync('git', ['rev-parse', '--is-shallow-repository'], { cwd: repoRoot, encoding: 'utf8' });
+  const args = ['fetch', '--no-tags', 'origin', 'develop:refs/remotes/origin/develop'];
+  if (shallow.stdout.trim() === 'true') args.splice(2, 0, '--depth=1');
+  const result = spawnSync('git', args, { cwd: repoRoot, encoding: 'utf8' });
   if (result.status === 0) return;
   const existing = spawnSync('git', ['rev-parse', '--verify', 'origin/develop'], { cwd: repoRoot, encoding: 'utf8' });
   if (existing.status !== 0) {
