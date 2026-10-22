@@ -1,4 +1,4 @@
-// 購入日は利用者の暦日。toISOString() は UTC なので、日本の 0:00〜8:59 は前日になる。
+// 暦日。timeZone を省略すると実行環境のタイムゾーン。toISOString() は UTC なので、日本の 0:00〜8:59 は前日になる。
 export function localCalendarDate(now = new Date(), timeZone?: string): string {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,

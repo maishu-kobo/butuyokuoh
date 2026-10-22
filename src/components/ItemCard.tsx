@@ -1,7 +1,6 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
-import { localCalendarDate } from '@/lib/local-date';
 import { linkableHttpUrl } from '@/lib/http-url';
 
 import { useState, useRef } from 'react';
@@ -166,10 +165,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     await apiFetch(`/api/items/${item.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        is_purchased: true,
-        purchased_at: localCalendarDate(),
-      }),
+      body: JSON.stringify({ is_purchased: true }),
     });
     onUpdate();
   };
