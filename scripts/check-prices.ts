@@ -2,6 +2,9 @@ import { priceCheckItems, priceDropNotification, recordPriceIfChanged } from '..
 import { getDb } from '../src/lib/db';
 import { scrapeUrl, deriveScrapeOutcome } from '../src/lib/scraper';
 import { sendSlackNotification, sendDiscordNotification, NotificationPayload } from '../src/lib/notifier';
+import { readCaptureSecrets } from '../src/lib/capture-secrets';
+import { createRakutenLimiter, type RakutenHttpRequest, type RakutenHttpResponse } from '../src/lib/capture/rakuten';
+import { refreshDueRakutenPrices } from '../src/lib/capture/rakuten-price';
 
 // getDb() 経由で取得することで initDb/migrateDb が実行され、
 // 新カラム（last_scraped_at/scrape_status/scrape_error）への UPDATE が
@@ -134,7 +137,26 @@ async function checkPrices() {
     }
   }
 
+  const secrets = readCaptureSecrets();
+  await refreshDueRakutenPrices(db, {
+    credentials: secrets.rakutenAppId && secrets.rakutenAccessKey
+      ? { applicationId: secrets.rakutenAppId, accessKey: secrets.rakutenAccessKey }
+      : null,
+    http: rakutenHttp,
+    limiter: createRakutenLimiter(),
+    pause: () => new Promise((resolve) => setTimeout(resolve, 1000)),
+  });
+
   console.log(`[${new Date().toISOString()}] Price check completed`);
+}
+
+async function rakutenHttp(request: RakutenHttpRequest): Promise<RakutenHttpResponse> {
+  const response = await fetch(request.url, {
+    method: 'GET',
+    headers: request.headers,
+    signal: request.signal,
+  });
+  return { status: response.status, body: await response.text() };
 }
 
 checkPrices().then(() => {
