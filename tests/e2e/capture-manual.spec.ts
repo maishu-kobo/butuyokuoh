@@ -1,7 +1,13 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import sharp from 'sharp';
 
-const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00]);
+const pixel = { create: { width: 8, height: 8, channels: 3 as const, background: { r: 20, g: 40, b: 60 } } };
+let jpeg: Buffer;
 const SURE_NAME = 'テスト用ゲルボールペン 0.5';
+
+test.beforeAll(async () => {
+  jpeg = await sharp(pixel).jpeg().toBuffer();
+});
 
 function json(route: Route, status: number, body: unknown) {
   return route.fulfill({
