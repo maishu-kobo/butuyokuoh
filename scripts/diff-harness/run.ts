@@ -162,7 +162,7 @@ function main() {
     baselineSanity(baseline);
     const report = compareSnapshots(baseline, candidate, loadApprovals(path.join(harnessDir, 'approved-changes.json')));
     const text = formatReport(report);
-    writeFileSync(path.join(tmpdir(), 'butuyokuoh-diff-report.txt'), text);
+    // 共有の一時ディレクトリへ固定名で書くと、他のユーザーから読める。結果は標準出力だけにする。
     console.log(text);
     process.exitCode = report.ok ? 0 : 1;
   } finally {
