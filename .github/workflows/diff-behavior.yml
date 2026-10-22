@@ -1,0 +1,69 @@
+# develop を正にした差分。必須チェックには入れない。
+# pull_request_target は使わない。権限はチェックアウトだけ。
+# paths は、ハーネスが比べる挙動とハーネス自身。ログインや価格取得だけを変えても起動する。
+name: Differential behavior
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - feature/photo-capture
+      - develop
+    paths:
+      - src/lib/db.ts
+      - src/auth.ts
+      - src/lib/auth.ts
+      - src/app/api/items/**
+      - src/app/api/auth/login/**
+      - src/lib/scraper.ts
+      - src/lib/member-fetch.ts
+      - src/lib/http-url.ts
+      - src/lib/photo-spend.ts
+      - src/lib/product-html.ts
+      - src/lib/amazon-product.ts
+      - src/lib/html-encoding.ts
+      - src/lib/url-validator.ts
+      - src/lib/email.ts
+      - src/lib/guest.ts
+      - src/lib/guest-scraper.ts
+      - src/lib/api-access.ts
+      - src/lib/price-check-items.ts
+      - src/lib/cookie-policy.ts
+      - scripts/diff-harness/**
+      - .github/workflows/diff-behavior.yml
+      - package.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diff-behavior-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diff:
+    name: develop diff
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      PUPPETEER_SKIP_CHROME_DOWNLOAD: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # develop の先端だけ後から取る。履歴全体は要らない。
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compare with develop
+        run: npm run test:diff

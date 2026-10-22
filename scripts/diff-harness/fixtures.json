@@ -1,0 +1,25 @@
+{
+  "routes": {
+    "https://amzn.to/keyboard": {
+      "status": 302,
+      "location": "https://www.amazon.co.jp/dp/B0TESTKEY1"
+    },
+    "https://www.amazon.co.jp/dp/B0TESTKEY1": {
+      "status": 200,
+      "body": "amazon"
+    },
+    "https://item.rakuten.co.jp/shop/mouse": {
+      "status": 200,
+      "body": "rakuten"
+    },
+    "https://shop.example.com/items/book": {
+      "status": 200,
+      "body": "generic"
+    }
+  },
+  "bodies": {
+    "amazon": "<!DOCTYPE html><html><head><title>テストキーボード</title></head><body><div id=\"corePriceDisplay_desktop_feature_div\"><span class=\"a-price\"><span class=\"a-offscreen\">¥1,280</span></span></div><span id=\"productTitle\">テストキーボード</span><img id=\"landingImage\" src=\"https://images.example.test/keyboard.jpg\" /></body></html>",
+    "rakuten": "<!DOCTYPE html><html><head><title>テストマウス</title></head><body><span class=\"item_name\">テストマウス</span><div>2,400円</div><img class=\"main\" src=\"https://images.example.test/mouse.jpg\" /></body></html>",
+    "generic": "<!DOCTYPE html><html><head><title>テスト本 - Example</title><meta property=\"og:image\" content=\"https://images.example.test/book.jpg\" /><script type=\"application/ld+json\">{\"@type\":\"Product\",\"offers\":{\"price\":\"3300\",\"priceCurrency\":\"JPY\"}}</script></head><body></body></html>"
+  }
+}

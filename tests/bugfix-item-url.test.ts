@@ -27,6 +27,18 @@ test('members can save http and https urls, and the manual placeholder', async (
   assert.equal((database.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id = ?').get(owner.id) as { n: number }).n, 3);
 });
 
+test('url registration rejects a non-http scheme and stores no row', async () => {
+  const owner = await createMember('url-scheme');
+  const database = await db();
+  for (const url of ['not-a-url', 'javascript:alert(1)']) {
+    const response = await call(items, 'POST', '/api/items', { url });
+    assert.equal(response.status, 400, url);
+    assert.deepEqual(response.json, { error: 'URLは http または https を指定してください' });
+  }
+  const count = database.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id = ?').get(owner.id) as { n: number };
+  assert.equal(count.n, 0);
+});
+
 test('members cannot save a javascript or other non-http url', async () => {
   const owner = await createMember('url-bad');
   const database = await db();
