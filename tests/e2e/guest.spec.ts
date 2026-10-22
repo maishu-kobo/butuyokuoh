@@ -334,6 +334,7 @@ test('live Amazon short link registers product metadata even without a published
   const items = await (await browser.request.get('/api/items')).json();
   const item = items.find((row:{url:string}) => row.url === url);
   expect(item).toMatchObject({source:'amazon',source_name:'Amazon'});
+  // codeql[js/incomplete-hostname-regexp] 本番のホスト検証ではない。任意の実店舗テストが画像 URL を緩く確認する
   expect(item.image_url).toMatch(/^https:\/\/.*media-amazon.com\//);
   expect(item.name).toContain('NIMASO');
   if (item.current_price === null) await expect(page.getByText(/商品を追加しました。価格は取得できませんでした/)).toBeVisible();

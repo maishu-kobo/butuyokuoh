@@ -1,6 +1,8 @@
 # pull_request だけ。
-# このリポジトリは CodeQL の default setup が有効で、advanced の SARIF は受け取らない。
-# 解析自体は行い、error があればジョブを落とす。warning はログに残す。アップロードはしない。
+# default setup が有効なため advanced の SARIF は拒否される。
+# アップロード失敗と解析失敗は黙って通さない。
+# security-severity が 7.0 以上（high）で、ソース上の個別抑制が無い結果は落とす。
+# default setup だけにすると feature/photo-capture 向け PR はスキャンされない。
 name: CodeQL
 
 on:
@@ -24,6 +26,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      security-events: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -37,11 +40,12 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
-          upload: never
+          upload: always
           upload-database: false
           output: ${{ github.workspace }}/codeql-results
 
-      - name: Fail on CodeQL findings
+      - name: Fail on high severity findings
+        if: ${{ !cancelled() }}
         run: |
           python3 - <<'PY'
           import json
@@ -49,26 +53,61 @@ jobs:
           import sys
           from pathlib import Path
 
+          HIGH = 7.0
           files = sorted(Path("codeql-results").rglob("*.sarif"))
           if not files:
-              print("CodeQL の SARIF が無い", file=sys.stderr)
+              print("CodeQL の SARIF が無い。解析に失敗している", file=sys.stderr)
               sys.exit(1)
+
+          def rules_of(run):
+              found = {}
+              tool = run.get("tool") or {}
+              chunks = [tool.get("driver") or {}]
+              chunks.extend(tool.get("extensions") or [])
+              for chunk in chunks:
+                  for rule in chunk.get("rules") or []:
+                      if rule.get("id"):
+                          found[rule["id"]] = rule
+              return found
+
+          def severity(result, rules):
+              props = result.get("properties") or {}
+              raw = props.get("security-severity")
+              if raw is None:
+                  rule = rules.get(result.get("ruleId") or "")
+                  raw = ((rule or {}).get("properties") or {}).get("security-severity")
+              if raw is None:
+                  return None
+              return float(raw)
+
+          def suppressed(result):
+              marks = result.get("suppressions") or []
+              return any((mark.get("status") or "accepted") != "rejected" for mark in marks)
+
           lines = []
           failed = False
           for path in files:
               data = json.loads(path.read_text())
               for run in data.get("runs", []):
-                  results = run.get("results", [])
+                  rules = rules_of(run)
+                  results = run.get("results") or []
                   lines.append(f"{path.name}: {len(results)} results")
                   for result in results:
+                      score = severity(result, rules)
                       level = result.get("level", "warning")
                       rule = result.get("ruleId", "")
-                      message = result.get("message", {}).get("text", "").split("\n", 1)[0]
-                      location = result.get("locations", [{}])[0].get("physicalLocation", {})
-                      uri = location.get("artifactLocation", {}).get("uri", "")
-                      line = location.get("region", {}).get("startLine", "")
-                      lines.append(f"- {level} {rule} {uri}:{line} {message}")
-                      if level == "error":
+                      message = (result.get("message") or {}).get("text", "").split("\n", 1)[0]
+                      location = (result.get("locations") or [{}])[0].get("physicalLocation") or {}
+                      uri = (location.get("artifactLocation") or {}).get("uri", "")
+                      line = (location.get("region") or {}).get("startLine", "")
+                      quiet = suppressed(result)
+                      score_text = "none" if score is None else f"{score:.1f}"
+                      lines.append(
+                          f"- {level} severity={score_text} suppressed={quiet} {rule} {uri}:{line} {message}"
+                      )
+                      if quiet:
+                          continue
+                      if score is None or score >= HIGH:
                           failed = True
           print("\n".join(lines))
           summary = os.environ.get("GITHUB_STEP_SUMMARY")
