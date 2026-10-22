@@ -1,6 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
+import sharp from 'sharp';
 
-const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00]);
+const pixel = { create: { width: 8, height: 8, channels: 3 as const, background: { r: 20, g: 40, b: 60 } } };
+let jpeg: Buffer;
+
+test.beforeAll(async () => {
+  jpeg = await sharp(pixel).jpeg().toBuffer();
+});
 
 async function member(page: Page) {
   const response = await page.request.post('/api/auth/register', {
