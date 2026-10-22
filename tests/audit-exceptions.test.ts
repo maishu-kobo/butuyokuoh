@@ -42,8 +42,7 @@ test('the braces exception has a reason, a real expiry, and no vendored copy', (
   assert.equal(packageJson.engines.node, '>=22.12.0');
   assert.equal(packageJson.dependencies.braces, undefined);
   assert.equal(packageJson.devDependencies.braces, undefined);
-  // sharp は Next が引き込む古い任意依存を 0.35.5 に固定する。braces の上書きは入れない。
-  assert.deepEqual(packageJson.overrides, { sharp: '0.35.5' });
+  assert.equal(packageJson.overrides, undefined);
 
   const [entry] = loadExceptions(exceptionPath);
   assert.equal(entry.name, 'braces');

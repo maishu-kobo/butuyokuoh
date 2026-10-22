@@ -4,6 +4,7 @@ import { apiFetch } from '@/lib/api-fetch';
 
 import { useEffect, useState } from 'react';
 import { Item } from '@/types';
+import { rakutenPriceCaption } from '@/lib/capture/rakuten-price-note';
 import { idsForSelectAll } from '@/lib/photo-spend';
 import { Calendar, Wallet, Check, Square, CheckSquare, Calculator } from 'lucide-react';
 
@@ -38,6 +39,20 @@ function priceText(item: Item): string {
   return (item.quantity || 1) > 1
     ? `¥${((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}`
     : `¥${item.current_price?.toLocaleString() || '---'}`;
+}
+
+function PriceWithNote({ item, className }: { item: Item; className: string }) {
+  const caption = rakutenPriceCaption(item);
+  return (
+    <span className={className}>
+      {priceText(item)}
+      {caption && (
+        <span className="block text-xs font-normal text-gray-400 dark:text-gray-500">
+          {caption.fetchedAt} {caption.note}
+        </span>
+      )}
+    </span>
+  );
 }
 
 interface BudgetData {
@@ -163,9 +178,10 @@ export default function BudgetView() {
               <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
             )}
           </span>
-          <span className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
-            {priceText(item)}
-          </span>
+          <PriceWithNote
+            item={item}
+            className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}
+          />
         </div>
       );
     }
@@ -209,9 +225,10 @@ export default function BudgetView() {
                 {item.countsInTotal === false && (
                   <span className="text-xs text-gray-400 whitespace-nowrap">合計に含まない</span>
                 )}
-                <span className={`whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
-                  {priceText(item)}
-                </span>
+                <PriceWithNote
+                  item={item}
+                  className={`whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}
+                />
               </div>
             );
           })}
