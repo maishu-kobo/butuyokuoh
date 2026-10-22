@@ -12,8 +12,6 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Vendored braces is third-party CJS. The app's TypeScript rules do not apply.
-    "vendor/**",
   ]),
 ]);
 

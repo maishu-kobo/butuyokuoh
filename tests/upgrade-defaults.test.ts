@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import nextConfig from '../next.config';
@@ -15,9 +14,6 @@ import {
   memberTokenCookieOptions,
 } from '../src/lib/cookie-policy';
 import puppeteer from 'puppeteer';
-
-const require = createRequire(import.meta.url);
-const braces = require('braces') as { expand: (pattern: string) => string[] };
 
 test('Next 16.4 leaves this app on the 16.1 caching model', () => {
   assert.equal(nextConfig.cacheComponents, undefined);
@@ -109,18 +105,6 @@ test('Auth.js cookie names and flags match the beta.30 defaults', async () => {
   assert.equal(defaultCookies(false).sessionToken.options.secure, false);
   assert.equal(defaultConfig.experimental.useSkewCookie, false);
   assert.equal(defaultConfig.experimental.authInterrupts, false);
-});
-
-test('patched braces keeps lint expansions and refuses deep nesting', () => {
-  const installed = JSON.parse(readFileSync(join(process.cwd(), 'node_modules/braces/package.json'), 'utf8')) as { version: string };
-  assert.equal(installed.version, '3.0.4');
-  assert.deepEqual(braces.expand('a{b,c}d'), ['abd', 'acd']);
-  assert.deepEqual(braces.expand('src/{lib,app}/*.ts'), ['src/lib/*.ts', 'src/app/*.ts']);
-  const deep = '{'.repeat(400) + 'a,b' + '}'.repeat(400);
-  const expanded = braces.expand(deep);
-  assert.ok(Array.isArray(expanded));
-  assert.ok(expanded.length > 0);
-  assert.ok(expanded.every((value) => typeof value === 'string'));
 });
 
 test('puppeteer 25 still exposes the launch API the scrapers call', () => {

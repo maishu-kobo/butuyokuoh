@@ -93,11 +93,12 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (user) {
-      fetchItems();
-      fetchGroups();
-      fetchCategories();
-    }
+    if (!user) return;
+    // 取得関数の中の setState は await のあと。effect から直接呼ぶと新しい react-hooks が同期 setState と誤認する。
+    // 各関数は今までどおり同時に始める。
+    void (async () => { await fetchItems(); })();
+    void (async () => { await fetchGroups(); })();
+    void (async () => { await fetchCategories(); })();
   }, [user]);
 
   const handleDelete = async (id: number) => {
