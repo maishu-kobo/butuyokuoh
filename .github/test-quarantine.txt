@@ -1,0 +1,17 @@
+# フレークしたテストの隔離リスト。1行にリポジトリルートからのパスを1つ。
+# 空行と # で始まる行は無視する。
+#
+# ここに書いたテストは、必須の単体テストと playwright から外し、
+# 「quarantined tests」ジョブで別に実行する。失敗するとそのチェックは赤になる。
+# チェック名は必須の名前ではない。直したらこのリストから消す。
+#
+# 次は書けない。必須レーンが拒否する。
+# tests/test-lanes.test.ts
+# tests/bugfix-ssrf.test.ts
+# tests/regression-auth.test.ts
+# tests/capture-secrets.test.ts
+#
+# 単体: tests/example.test.ts
+# e2e:  tests/e2e/example.spec.ts
+#
+# 最初は 0 件。失敗を隠すために足さない。
