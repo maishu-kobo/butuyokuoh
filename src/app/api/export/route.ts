@@ -2,6 +2,7 @@ import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
+import { escapeCsvCell } from '@/lib/csv';
 
 interface ExportItem {
   name: string;
@@ -96,17 +97,9 @@ async function handleGET(request: NextRequest) {
     item.purchased_at || '',
   ]);
 
-  // CSVエスケープ処理
-  const escapeCSV = (value: string): string => {
-    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-      return `"${value.replace(/"/g, '""')}"`;
-    }
-    return value;
-  };
-
   const csvContent = [
-    headers.map(escapeCSV).join(','),
-    ...rows.map((row) => row.map(escapeCSV).join(',')),
+    headers.map(escapeCsvCell).join(','),
+    ...rows.map((row) => row.map(escapeCsvCell).join(',')),
   ].join('\n');
 
   // BOM付きUTF-8でExcel対応
