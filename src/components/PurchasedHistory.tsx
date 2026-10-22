@@ -21,19 +21,30 @@ interface PurchasedData {
   };
 }
 
+async function requestPurchased(): Promise<PurchasedData> {
+  const res = await apiFetch('/api/purchased');
+  return res.json();
+}
+
 export default function PurchasedHistory() {
   const [data, setData] = useState<PurchasedData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
-    const res = await apiFetch('/api/purchased');
-    const json = await res.json();
-    setData(json);
+    setData(await requestPurchased());
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchData();
+    let cancelled = false;
+    requestPurchased().then((json) => {
+      if (cancelled) return;
+      setData(json);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleUndo = async (id: number) => {

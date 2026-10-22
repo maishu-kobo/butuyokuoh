@@ -22,15 +22,18 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
     const storedTheme = localStorage.getItem('theme') as Theme | null;
     const storedColorScheme = localStorage.getItem('colorScheme') as ColorScheme | null;
-    if (storedTheme) {
-      setThemeState(storedTheme);
-    }
-    if (storedColorScheme) {
-      setColorSchemeState(storedColorScheme);
-    }
+    // マウント前の描画はサーバと揃える。保存値の反映は effect の外のコールバックに置く。
+    queueMicrotask(() => {
+      setMounted(true);
+      if (storedTheme) {
+        setThemeState(storedTheme);
+      }
+      if (storedColorScheme) {
+        setColorSchemeState(storedColorScheme);
+      }
+    });
   }, []);
 
   useEffect(() => {
