@@ -1,6 +1,6 @@
 import { requireSameOrigin, withAccess } from '@/lib/api-access';
 import { CAPTURE_PHOTO_MAX_BYTES, CaptureMessages, decodeCapturePhoto, type CaptureErrorBody } from '@/lib/capture/contract';
-import { getCapturePorts } from '@/lib/capture/ports';
+import { portsForRequest } from '@/lib/capture/ports';
 import { NextRequest, NextResponse } from 'next/server';
 
 function errorResponse(error: CaptureErrorBody, status: number) {
@@ -16,7 +16,7 @@ async function handlePOST(request: NextRequest) {
   } catch {
     return errorResponse({ code: 'INVALID_INPUT', error: CaptureMessages.onePhoto }, 400);
   }
-  const files = form.getAll('photo').filter((part): part is File => part instanceof File);
+  const files = form.getAll('photo').filter((part): part is File => typeof part !== 'string');
   if (files.length !== 1) return errorResponse({ code: 'INVALID_INPUT', error: CaptureMessages.onePhoto }, 400);
   const file = files[0];
   if (file.size > CAPTURE_PHOTO_MAX_BYTES) {
@@ -24,7 +24,7 @@ async function handlePOST(request: NextRequest) {
   }
   const photo = decodeCapturePhoto([{ mediaType: file.type, bytes: new Uint8Array(await file.arrayBuffer()) }]);
   if (!photo.ok) return errorResponse(photo.error, photo.status);
-  const result = await getCapturePorts().identifier.identify(photo.value);
+  const result = await portsForRequest(request.headers.get('x-capture-fake-scenario')).identifier.identify(photo.value);
   if (!result.ok) return errorResponse(result.error, result.status);
   return NextResponse.json(result.value);
 }
