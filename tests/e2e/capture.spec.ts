@@ -192,3 +192,47 @@ test('chosen candidates register once, and another member cannot use them', asyn
     await stranger.dispose();
   }
 });
+
+test('photo group spending counts one candidate on the list and budget screens', async ({ page }) => {
+  const db = new Database(process.env.E2E_DB_PATH!);
+  db.pragma('busy_timeout = 5000');
+  try {
+    const registered = await page.request.post('/api/auth/register', {
+      headers: { Origin: origin },
+      data: { email: `spend-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`, password: 'test-password' },
+    });
+    expect(registered.ok()).toBeTruthy();
+    const userId = (await (await page.request.get('/api/auth/me')).json()).user.id as number;
+    const groupId = Number(db.prepare(
+      `INSERT INTO comparison_groups (user_id, name, origin) VALUES (?, '牛乳', 'photo')`,
+    ).run(userId).lastInsertRowid);
+    const insert = db.prepare(`
+      INSERT INTO items (user_id, name, url, current_price, source, source_name, planned_purchase_date, comparison_group_id, priority)
+      VALUES (?, ?, ?, ?, ?, ?, '2026-10-02', ?, 3)
+    `);
+    insert.run(userId, '高い牛乳', `manual://${userId}-dear`, 900, 'rakuten', '楽天', groupId);
+    insert.run(userId, '安い牛乳', `manual://${userId}-cheap`, 100, 'yahoo', 'Yahoo!ショッピング', groupId);
+    db.prepare(`
+      INSERT INTO items (user_id, name, url, current_price, planned_purchase_date, priority)
+      VALUES (?, '鉛筆', ?, 50, '2026-10-01', 3)
+    `).run(userId, `manual://${userId}-pencil`);
+
+    await page.goto('/');
+    await expect(page.locator('.text-orange-500')).toHaveText('¥150');
+    await expect(page.getByText('合計に含まない')).toBeVisible();
+
+    await page.getByRole('button', { name: '出費予定' }).click();
+    await expect(page.locator('.text-3xl').first()).toHaveText('¥150');
+    await expect(page.getByText('牛乳', { exact: true })).toBeVisible();
+    await expect(page.getByText('楽天', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '全て選択' }).click();
+    await expect(page.getByText('2件選択中')).toBeVisible();
+
+    const dear = page.locator('div').filter({ hasText: '高い牛乳' }).last();
+    await dear.getByRole('button', { name: '合計に数える' }).click();
+    await expect(page.locator('.text-3xl').first()).toHaveText('¥950');
+    await expect(page.getByText('合計に含まない')).toBeVisible();
+  } finally {
+    db.close();
+  }
+});

@@ -4,7 +4,41 @@ import { apiFetch } from '@/lib/api-fetch';
 
 import { useEffect, useState } from 'react';
 import { Item } from '@/types';
+import { idsForSelectAll } from '@/lib/photo-spend';
 import { Calendar, Wallet, Check, Square, CheckSquare, Calculator } from 'lucide-react';
+
+const sourceNames: Record<string, string> = {
+  amazon: 'Amazon',
+  rakuten: '楽天',
+  yahoo: 'Yahoo!ショッピング',
+  other: 'その他',
+};
+
+function presentBudget(items: Item[]): Array<{ kind: 'item'; item: Item } | { kind: 'photo'; id: number; name: string; items: Item[] }> {
+  const seen = new Set<number>();
+  const rows: Array<{ kind: 'item'; item: Item } | { kind: 'photo'; id: number; name: string; items: Item[] }> = [];
+  for (const item of items) {
+    if (item.group_origin !== 'photo' || item.comparison_group_id == null) {
+      rows.push({ kind: 'item', item });
+      continue;
+    }
+    if (seen.has(item.comparison_group_id)) continue;
+    seen.add(item.comparison_group_id);
+    rows.push({
+      kind: 'photo',
+      id: item.comparison_group_id,
+      name: item.comparison_group_name || item.name,
+      items: items.filter((row) => row.comparison_group_id === item.comparison_group_id && row.group_origin === 'photo'),
+    });
+  }
+  return rows;
+}
+
+function priceText(item: Item): string {
+  return (item.quantity || 1) > 1
+    ? `¥${((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}`
+    : `¥${item.current_price?.toLocaleString() || '---'}`;
+}
 
 interface BudgetData {
   [month: string]: {
@@ -72,16 +106,22 @@ export default function BudgetView() {
     setSelectedIds(newSet);
   };
 
+  const selectableIds = idsForSelectAll(allItems);
+  const allSelectableChosen = selectableIds.length > 0
+    && selectableIds.every((id) => selectedIds.has(id))
+    && selectedIds.size === selectableIds.length;
+
   const toggleSelectAll = () => {
-    if (selectedIds.size === allItems.length) {
+    if (allSelectableChosen) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(allItems.map(i => i.id)));
+      setSelectedIds(new Set(selectableIds));
     }
   };
 
   const toggleSelectMonth = (monthItems: Item[]) => {
-    const monthIds = monthItems.map(i => i.id);
+    const monthIds = idsForSelectAll(monthItems);
+    if (monthIds.length === 0) return;
     const allSelected = monthIds.every(id => selectedIds.has(id));
     const newSet = new Set(selectedIds);
     
@@ -92,6 +132,93 @@ export default function BudgetView() {
     }
     setSelectedIds(newSet);
   };
+
+  const chooseCandidate = async (groupId: number, itemId: number) => {
+    const response = await apiFetch(`/api/comparison-groups/${groupId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ budgetItemId: itemId }),
+    });
+    if (response.ok) await fetchBudget();
+  };
+
+  const renderBudgetItems = (entries: Item[]) => presentBudget(entries).map((row) => {
+    if (row.kind === 'item') {
+      const item = row.item;
+      const isSelected = selectedIds.has(item.id);
+      return (
+        <div
+          key={item.id}
+          onClick={() => toggleSelect(item.id)}
+          className={`flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
+            isSelected ? 'bg-blue-50' : 'hover:bg-gray-50 dark:bg-slate-700'
+          }`}
+        >
+          <span className={isSelected ? 'text-blue-600' : 'text-gray-300'}>
+            {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+          </span>
+          <span className={`flex-1 truncate ${isSelected ? 'text-blue-700' : 'text-gray-700 dark:text-gray-200'}`}>
+            {item.name}
+            {(item.quantity || 1) > 1 && (
+              <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
+            )}
+          </span>
+          <span className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
+            {priceText(item)}
+          </span>
+        </div>
+      );
+    }
+    return (
+      <div key={`photo-${row.id}`} className="py-1">
+        <div className="px-2 text-sm font-medium text-gray-800 dark:text-gray-100">{row.name}</div>
+        <div className="space-y-1 pl-4">
+          {row.items.map((item) => {
+            const isSelected = selectedIds.has(item.id);
+            return (
+              <div
+                key={item.id}
+                onClick={() => toggleSelect(item.id)}
+                className={`flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
+                  isSelected ? 'bg-blue-50' : 'hover:bg-gray-50 dark:bg-slate-700'
+                }`}
+              >
+                <span className={isSelected ? 'text-blue-600' : 'text-gray-300'}>
+                  {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                </span>
+                <button
+                  type="button"
+                  aria-label="合計に数える"
+                  aria-pressed={item.countsInTotal === true}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void chooseCandidate(row.id, item.id);
+                  }}
+                  className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${
+                    item.countsInTotal ? 'border-orange-500 bg-orange-500 text-white' : 'border-gray-300 text-transparent'
+                  }`}
+                >
+                  <Check size={10} />
+                </button>
+                <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {item.source_name || sourceNames[item.source] || 'その他'}
+                </span>
+                <span className={`flex-1 truncate ${isSelected ? 'text-blue-700' : 'text-gray-700 dark:text-gray-200'}`}>
+                  {item.name}
+                </span>
+                {item.countsInTotal === false && (
+                  <span className="text-xs text-gray-400 whitespace-nowrap">合計に含まない</span>
+                )}
+                <span className={`whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
+                  {priceText(item)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  });
 
   if (loading) {
     return <div className="text-gray-500 dark:text-gray-400">読み込み中...</div>;
@@ -175,7 +302,7 @@ export default function BudgetView() {
               onClick={toggleSelectAll}
               className="text-sm text-gray-600 dark:text-gray-300 hover:text-blue-600 flex items-center gap-1"
             >
-              {selectedIds.size === allItems.length ? (
+              {allSelectableChosen ? (
                 <><CheckSquare size={16} /> 全て解除</>
               ) : (
                 <><Square size={16} /> 全て選択</>
@@ -187,8 +314,8 @@ export default function BudgetView() {
             const data = budget[month];
             const [year, monthNum] = month.split('-');
             const monthName = `${year}年${parseInt(monthNum)}月`;
-            const monthIds = data.items.map(i => i.id);
-            const allMonthSelected = monthIds.every(id => selectedIds.has(id));
+            const monthIds = idsForSelectAll(data.items);
+            const allMonthSelected = monthIds.length > 0 && monthIds.every(id => selectedIds.has(id));
             const someMonthSelected = monthIds.some(id => selectedIds.has(id));
             const monthNoPriceCount = countNoPriceItems(data.items);
 
@@ -217,34 +344,7 @@ export default function BudgetView() {
                   </div>
                 )}
                 <div className="space-y-1">
-                  {data.items.map((item) => {
-                    const isSelected = selectedIds.has(item.id);
-                    return (
-                      <div
-                        key={item.id}
-                        onClick={() => toggleSelect(item.id)}
-                        className={`flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
-                          isSelected ? 'bg-blue-50' : 'hover:bg-gray-50 dark:bg-slate-700'
-                        }`}
-                      >
-                        <span className={isSelected ? 'text-blue-600' : 'text-gray-300'}>
-                          {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-                        </span>
-                        <span className={`flex-1 truncate ${isSelected ? 'text-blue-700' : 'text-gray-700 dark:text-gray-200'}`}>
-                          {item.name}
-                          {(item.quantity || 1) > 1 && (
-                            <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
-                          )}
-                        </span>
-                        <span className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
-                          {(item.quantity || 1) > 1 
-                            ? `¥${((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}`
-                            : `¥${item.current_price?.toLocaleString() || '---'}`
-                          }
-                        </span>
-                      </div>
-                    );
-                  })}
+                  {renderBudgetItems(data.items)}
                 </div>
               </div>
             );
@@ -258,11 +358,11 @@ export default function BudgetView() {
                   <button
                     onClick={() => toggleSelectMonth(undatedData.items)}
                     className={`p-1 rounded hover:bg-gray-100 ${
-                      undatedData.items.every(i => selectedIds.has(i.id)) ? 'text-blue-600' : 
-                      undatedData.items.some(i => selectedIds.has(i.id)) ? 'text-blue-400' : 'text-gray-300'
+                      idsForSelectAll(undatedData.items).length > 0 && idsForSelectAll(undatedData.items).every(i => selectedIds.has(i)) ? 'text-blue-600' : 
+                      idsForSelectAll(undatedData.items).some(i => selectedIds.has(i)) ? 'text-blue-400' : 'text-gray-300'
                     }`}
                   >
-                    {undatedData.items.every(i => selectedIds.has(i.id)) ? <CheckSquare size={18} /> : <Square size={18} />}
+                    {idsForSelectAll(undatedData.items).length > 0 && idsForSelectAll(undatedData.items).every(i => selectedIds.has(i)) ? <CheckSquare size={18} /> : <Square size={18} />}
                   </button>
                   <Calendar size={18} className="text-gray-400" />
                   <span className="font-semibold text-gray-500">購入時期未定</span>
@@ -277,34 +377,7 @@ export default function BudgetView() {
                 </div>
               )}
               <div className="space-y-1">
-                {undatedData.items.map((item) => {
-                  const isSelected = selectedIds.has(item.id);
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => toggleSelect(item.id)}
-                      className={`flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
-                        isSelected ? 'bg-blue-50' : 'hover:bg-gray-50 dark:bg-slate-700'
-                      }`}
-                    >
-                      <span className={isSelected ? 'text-blue-600' : 'text-gray-300'}>
-                        {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-                      </span>
-                      <span className={`flex-1 truncate ${isSelected ? 'text-blue-700' : 'text-gray-700 dark:text-gray-200'}`}>
-                        {item.name}
-                        {(item.quantity || 1) > 1 && (
-                          <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
-                        )}
-                      </span>
-                      <span className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
-                        {(item.quantity || 1) > 1 
-                          ? `¥${((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}`
-                          : `¥${item.current_price?.toLocaleString() || '---'}`
-                        }
-                      </span>
-                    </div>
-                  );
-                })}
+                {renderBudgetItems(undatedData.items)}
               </div>
             </div>
           )}
