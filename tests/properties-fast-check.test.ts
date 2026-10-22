@@ -530,7 +530,7 @@ test('Yahoo! の候補整理は冪等で、妥当な商品を増やしも減ら�
 test('楽天の候補整理は、別商品の id が衝突しない範囲では冪等で、候補を足しも消しもしない', async () => {
   // 性質: 商品コードの slug がすべて異なるとき、createRakutenSearch は候補を増やさない。
   // 妥当な商品は残る。id は重複しない。同じ応答を二度読むと結果は同じ。
-  // slug が衝突して代替 id まで塞がるケースは、下の skip に反例を残してある。
+  // 商品コードが重なって代替 id まで塞がる並びは、直下の回帰で残ることを見ている。
   await withNetworkBlocked(() => fc.assert(fc.asyncProperty(
     fc.array(shopHitArb, { minLength: 1, maxLength: 6 }).map((items) => {
       const seen = new Set<string>();
@@ -556,11 +556,10 @@ test('楽天の候補整理は、別商品の id が衝突しない範囲では�
   ), FAST));
 });
 
-test('楽天は代替の候補 id が既に使われていると妥当な商品を落とす', { skip: '実バグ。fast-check seed 20261022 path 0:0:0 が 2 回縮めた反例。修正は bugfix ブランチへ。この PR では直さない。' }, async () => {
-  // 性質（満たしていない）: 妥当な楽天商品は、商品コードの slug が重なっても消えない。
-  // createRakutenSearch の makeId は、最初の id が使われていると `-{index+1}` を一度だけ試す。
-  // その代替が先の商品で埋まっていると null になり、商品を捨てる。
-  // Yahoo! の yahooId は空いている接尾辞を探すので、同じ並びでも 3 件残る。
+test('楽天は代替の候補 id が既に使われていても妥当な商品を残す', async () => {
+  // 性質: 妥当な楽天商品は、商品コードの slug が重なっても消えない。
+  // fast-check seed 20261022 path 0:0:0 を 2 回縮約した反例。
+  // 以前の makeId は `-{index+1}` を一度だけ試し、その代替が先の商品で埋まっていると商品を捨てていた。
   const items: ShopHit[] = [
     { code: 'a-3', shop: 'shop0', name: 'first', price: 10 },
     { code: 'a', shop: 'shop1', name: 'second', price: 20 },
