@@ -1,7 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
+import sharp from 'sharp';
 
 const jpeg = [0xff, 0xd8, 0xff, 0x00];
 const heic = Buffer.concat([Buffer.of(0, 0, 0, 0x18), Buffer.from('ftypheic'), Buffer.alloc(4)]);
+const pixel = { create: { width: 8, height: 8, channels: 3 as const, background: { r: 20, g: 40, b: 60 } } };
+let readableJpeg: number[] = [];
+
+test.beforeAll(async () => {
+  readableJpeg = [...await sharp(pixel).jpeg().toBuffer()];
+});
 
 async function member(page: Page) {
   const response = await page.request.post('/api/auth/register', {
@@ -47,7 +54,7 @@ test('a member chooses one readable photo and is guided away from files we canno
   ]);
   await expect(page.getByRole('alert').filter({ hasText: '写真は1枚だけ選べます' })).toBeVisible();
 
-  await dropFiles(page, [{ name: 'a.jpg', type: 'image/jpeg', bytes: jpeg }]);
+  await dropFiles(page, [{ name: 'a.jpg', type: 'image/jpeg', bytes: readableJpeg }]);
   await expect(page.getByRole('status').filter({ hasText: '1枚の写真を選びました' })).toBeVisible();
   // 4バイトの JPEG はここで通る。識別 API はあとから同じ文を status に出す。
   // ページ全体を数えると、返答の速さで成功したり失敗したりする。

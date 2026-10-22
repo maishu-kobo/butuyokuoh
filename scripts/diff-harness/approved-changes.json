@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "changes": [
+    {
+      "id": "capture-tables",
+      "reason": "写真取り込みの作業用テーブル。URL登録・一覧・価格再取得・ログインでは行を作らない。",
+      "tablesAdded": ["captures", "capture_candidates", "capture_ai_usage"],
+      "requireEmpty": true
+    },
+    {
+      "id": "capture-columns",
+      "reason": "写真候補の店舗コードと価格取得時刻、比較グループの写真由来。URLから登録した行ではNULLのまま。",
+      "columnsAdded": [
+        { "table": "items", "column": "source_item_code", "value": null },
+        { "table": "items", "column": "price_fetched_at", "value": null },
+        { "table": "comparison_groups", "column": "origin", "value": null },
+        { "table": "comparison_groups", "column": "capture_id", "value": null },
+        { "table": "comparison_groups", "column": "budget_item_id", "value": null }
+      ]
+    },
+    {
+      "id": "capture-indexes",
+      "reason": "写真取り込みテーブルの索引。既存テーブルの索引定義は比べたままにする。",
+      "indexesAdded": [
+        "idx_captures_user",
+        "idx_captures_group",
+        "idx_capture_candidates_user",
+        "idx_capture_candidates_capture",
+        "idx_capture_candidates_expires",
+        "idx_capture_ai_usage_day",
+        "idx_capture_ai_usage_user"
+      ]
+    },
+    {
+      "id": "list-photo-annotations",
+      "reason": "一覧は写真グループの出費の数え方を足す。写真以外の商品は合計に含め、由来ラベルは付かない。URL登録の応答に乗る新しい列はNULL。",
+      "responseFieldsAdded": [
+        { "field": "countsInTotal", "equals": true },
+        { "field": "totalLabel", "equals": null },
+        { "field": "comparison_group_origin", "equals": null },
+        { "field": "group_origin", "equals": null },
+        { "field": "source_item_code", "equals": null },
+        { "field": "price_fetched_at", "equals": null }
+      ]
+    },
+    {
+      "id": "url-scheme-validation",
+      "reason": "security, approved by Sota 2026-10-22",
+      "rejectedUrls": [
+        {
+          "step": "items.create.not-a-url",
+          "url": "not-a-url",
+          "status": 400,
+          "error": "URLは http または https を指定してください"
+        },
+        {
+          "step": "items.create.javascript-url",
+          "url": "javascript:alert(1)",
+          "status": 400,
+          "error": "URLは http または https を指定してください"
+        }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,6 @@
-// 「写真を選ぶ」で受け取る1枚を、送る前に振り分ける。元の写真は保存しない。
+// 「写真を選ぶ」で受け取る1枚を、縮小してから送る。元の写真は保存しない。
 import { CaptureMessages, sniffImage } from './contract';
+import { preparePhotoUpload, type ShrinkDeps } from './photo-client';
 
 const HEIC_TYPES = new Set(['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence']);
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/octet-stream']);
@@ -24,4 +25,25 @@ export async function classifyPickedPhotos(files: readonly File[]): Promise<Phot
   if (sniffed === 'heif' || sniffed === null) return { ok: false, ignored: false, message: CaptureMessages.photoUnreadable };
   if (declared && !ALLOWED_TYPES.has(declared)) return { ok: false, ignored: false, message: CaptureMessages.photoUnreadable };
   return { ok: true, file };
+}
+
+export async function photoForUpload(files: readonly File[], deps?: ShrinkDeps): Promise<PhotoPick> {
+  const picked = await classifyPickedPhotos(files);
+  if (picked.ok) return finishPhotoUpload(picked.file, deps);
+  if (picked.ignored || files.length !== 1 || picked.message !== CaptureMessages.photoUnreadable) return picked;
+  if (!(await fileLooksLikeHeic(files[0]))) return picked;
+  return finishPhotoUpload(files[0], deps);
+}
+
+async function finishPhotoUpload(file: File, deps?: ShrinkDeps): Promise<PhotoPick> {
+  const prepared = await preparePhotoUpload(file, deps);
+  if (!prepared.ok) return { ok: false, ignored: false, message: prepared.error.error };
+  return { ok: true, file: prepared.value.file };
+}
+
+async function fileLooksLikeHeic(file: File): Promise<boolean> {
+  const declared = file.type.split(';')[0].trim().toLowerCase();
+  if (HEIC_TYPES.has(declared)) return true;
+  const header = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+  return sniffImage(header) === 'heif';
 }
