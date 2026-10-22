@@ -1,5 +1,7 @@
 // 写真の見た目から商品を推定する。モデルは docs/capture-ai.md。
 // キーは呼び出し側が渡す。ここは環境変数を読まず、トークンも写真もログに出さない。
+import type Database from 'better-sqlite3';
+import { getDb } from '../db';
 import {
   CaptureMessages,
   captureFailure,
@@ -115,6 +117,7 @@ export function createWorkersAiIdentifier(options: WorkersAiIdentifierOptions): 
 
       const started = now();
       let slot: number | null = null;
+      let hitUpstreamCap = false;
       const meter = createUsageMeter();
       let outcome: CaptureResult<IdentifyResponse> = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
       try {
@@ -139,33 +142,16 @@ export function createWorkersAiIdentifier(options: WorkersAiIdentifierOptions): 
           const apply = (response: WorkersAiHttpResponse): CaptureResult<IdentifyResponse> => {
             meter.note(response);
             if (isDailyCap(response)) {
-              budget.trip(started);
+              hitUpstreamCap = true;
               return captureFailure('AI_LIMIT', AI_LIMIT_MESSAGE, 429);
             }
             return interpret(response);
           };
-          let called = await callModel(http, url, apiToken, imageBody, timeoutMs);
+          const called = await callModel(http, url, apiToken, imageBody, timeoutMs);
           if (called.kind === 'timeout') {
             outcome = captureFailure('AI_TIMEOUT', CaptureMessages.aiTimeout, 504);
           } else if (called.kind === 'failed') {
             outcome = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
-          } else if (isLicenseGate(called.response)) {
-            meter.note(called.response);
-            const agreed = await callModel(http, url, apiToken, '{"prompt":"agree"}', timeoutMs);
-            if (agreed.kind === 'timeout') {
-              outcome = captureFailure('AI_TIMEOUT', CaptureMessages.aiTimeout, 504);
-            } else if (agreed.kind !== 'response' || isLicenseGate(agreed.response) || agreed.response.status >= 300) {
-              if (agreed.kind === 'response') meter.note(agreed.response);
-              outcome = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
-            } else {
-              meter.note(agreed.response);
-              called = await callModel(http, url, apiToken, imageBody, timeoutMs);
-              outcome = called.kind === 'timeout'
-                ? captureFailure('AI_TIMEOUT', CaptureMessages.aiTimeout, 504)
-                : called.kind === 'response' && !isLicenseGate(called.response)
-                  ? apply(called.response)
-                  : captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
-            }
           } else {
             outcome = apply(called.response);
           }
@@ -174,6 +160,7 @@ export function createWorkersAiIdentifier(options: WorkersAiIdentifierOptions): 
         outcome = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
       } finally {
         if (slot != null) budget.settle(slot, meter.neurons());
+        if (hitUpstreamCap) budget.trip(started);
         options.onTiming?.({ elapsedMs: Math.max(0, now() - started) });
       }
       return outcome;
@@ -228,7 +215,74 @@ export function createAiBudget(): AiBudget {
   };
 }
 
-export const sharedAiBudget = createAiBudget();
+type UsageCount = { n: number };
+
+function finiteNeuronCount(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > Number.MAX_SAFE_INTEGER) return null;
+  return value;
+}
+
+function storedNeuronCount(neurons: number): number {
+  return finiteNeuronCount(neurons) ?? AI_NEURONS_WHEN_USAGE_MISSING;
+}
+
+export function createSqliteAiBudget(db: Database.Database): AiBudget {
+  const countMinute = db.prepare(
+    `SELECT COUNT(*) AS n FROM capture_ai_usage
+     WHERE user_key = ? AND day = ? AND at_ms > ? AND at_ms <= ?`,
+  );
+  const countDay = db.prepare(
+    'SELECT COUNT(*) AS n FROM capture_ai_usage WHERE user_key = ? AND day = ?',
+  );
+  const sumDay = db.prepare(
+    'SELECT COALESCE(SUM(neurons), 0) AS n FROM capture_ai_usage WHERE day = ?',
+  );
+  const insert = db.prepare(
+    'INSERT INTO capture_ai_usage (user_key, day, at_ms, neurons) VALUES (?, ?, ?, ?)',
+  );
+  const update = db.prepare('UPDATE capture_ai_usage SET neurons = ? WHERE id = ?');
+
+  const begin = db.transaction((userId: string, now: number) => {
+    const day = utcDay(now);
+    const minute = countMinute.get(userId, day, now - MINUTE_MS, now) as UsageCount;
+    if (Number(minute.n) >= AI_USER_PER_MINUTE) return { ok: false as const, reason: 'minute' as const };
+    const daily = countDay.get(userId, day) as UsageCount;
+    if (Number(daily.n) >= AI_USER_PER_DAY) return { ok: false as const, reason: 'day' as const };
+    const used = sumDay.get(day) as UsageCount;
+    if (Number(used.n) >= AI_NEURON_DAILY_CAP) return { ok: false as const, reason: 'neurons' as const };
+    const row = insert.run(userId, day, now, AI_NEURONS_WHEN_USAGE_MISSING);
+    return { ok: true as const, token: Number(row.lastInsertRowid) };
+  });
+
+  const fillCap = db.transaction((now: number) => {
+    const day = utcDay(now);
+    const used = Number((sumDay.get(day) as UsageCount).n);
+    if (used >= AI_NEURON_DAILY_CAP) return;
+    insert.run(CAP_USER, day, now, AI_NEURON_DAILY_CAP - used);
+  });
+
+  return {
+    tryBegin(userId, now) {
+      return begin.immediate(userId, now);
+    },
+    settle(token, neurons) {
+      update.run(storedNeuronCount(neurons), token);
+    },
+    trip(now) {
+      fillCap.immediate(now);
+    },
+    usedNeurons(now) {
+      return Number((sumDay.get(utcDay(now)) as UsageCount).n);
+    },
+  };
+}
+
+let appBudget: AiBudget | null = null;
+
+export function appAiBudget(): AiBudget {
+  if (!appBudget) appBudget = createSqliteAiBudget(getDb());
+  return appBudget;
+}
 
 export function neuronsFromTokenUsage(usage: unknown): number | null {
   if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return null;
@@ -269,7 +323,7 @@ export function resolveProductIdentifier(input: {
     accountId: input.accountId,
     apiToken: input.apiToken,
     userId: input.userId,
-    budget: input.budget ?? sharedAiBudget,
+    budget: input.budget ?? appAiBudget(),
     http: input.http,
     now: input.now,
     timeoutMs: input.timeoutMs,
@@ -279,6 +333,10 @@ export function resolveProductIdentifier(input: {
 function utcDayStart(now: number): number {
   const date = new Date(now);
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+function utcDay(now: number): string {
+  return new Date(now).toISOString().slice(0, 10);
 }
 
 function finiteToken(value: unknown): number | null {
@@ -309,13 +367,11 @@ function createUsageMeter(): UsageMeter {
 function neuronsIn(response: WorkersAiHttpResponse): number | null {
   const parsed = parseJson(response.body);
   if (!parsed || typeof parsed !== 'object') return null;
-  const record = parsed as Record<string, unknown>;
-  const result = record.result;
-  if (result && typeof result === 'object') {
-    const nested = neuronsFromTokenUsage((result as { usage?: unknown }).usage);
-    if (nested != null) return nested;
-  }
-  return neuronsFromTokenUsage(record.usage);
+  const result = (parsed as { result?: unknown }).result;
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
+  const usage = (result as { usage?: unknown }).usage;
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return null;
+  return finiteNeuronCount((usage as { neurons?: unknown }).neurons);
 }
 
 function isDailyCap(response: WorkersAiHttpResponse): boolean {
@@ -398,15 +454,6 @@ function whenAborted(signal: AbortSignal): Promise<never> {
   return new Promise((_, reject) => {
     signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
   });
-}
-
-function isLicenseGate(response: WorkersAiHttpResponse): boolean {
-  if (response.status !== 403) return false;
-  const parsed = parseJson(response.body);
-  if (!parsed || typeof parsed !== 'object') return false;
-  const errors = (parsed as { errors?: unknown }).errors;
-  if (!Array.isArray(errors)) return false;
-  return errors.some((error) => Boolean(error) && typeof error === 'object' && (error as { code?: unknown }).code === 5016);
 }
 
 function interpret(response: WorkersAiHttpResponse): CaptureResult<IdentifyResponse> {
