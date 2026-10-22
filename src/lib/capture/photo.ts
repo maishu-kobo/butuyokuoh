@@ -1,10 +1,13 @@
 // サーバーはブラウザの縮小を信用しない。本文は上限で切り、再エンコードして位置情報を落とす。元の写真は保存しない。
+// sharp 同梱の libheif は HEVC を解けない。HEIC は heic-decode（libde265）で画素にしてから JPEG にする。
+import { createRequire } from 'node:module';
 import sharp from 'sharp';
 import {
   CAPTURE_PHOTO_MAX_BYTES,
   CaptureMessages,
   captureFailure,
   decodeCapturePhoto,
+  sniffImage,
   type CaptureResult,
 } from './contract';
 import { CAPTURE_PHOTO_MAX_EDGE } from './photo-client';
@@ -118,16 +121,56 @@ function declaredType(value: string): string {
   return value.split(';')[0].trim().toLowerCase();
 }
 
+const require = createRequire(import.meta.url);
+
+function withinPixelBudget(width: number, height: number): boolean {
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height)) return false;
+  if (width < 1 || height < 1) return false;
+  if (width > CAPTURE_PHOTO_MAX_PIXELS || height > CAPTURE_PHOTO_MAX_PIXELS) return false;
+  return width * height <= CAPTURE_PHOTO_MAX_PIXELS;
+}
+
+async function decodeHeicPixels(bytes: Uint8Array): Promise<{ width: number; height: number; data: Uint8ClampedArray } | null> {
+  const decode = require('heic-decode') as typeof import('heic-decode');
+  const images = await decode.all({ buffer: Buffer.from(bytes) });
+  try {
+    const first = images[0];
+    if (!first || !withinPixelBudget(first.width, first.height)) return null;
+    const rendered = await first.decode();
+    const pixels = rendered.width * rendered.height;
+    if (!withinPixelBudget(rendered.width, rendered.height) || rendered.data.length !== pixels * 4) return null;
+    return rendered;
+  } finally {
+    images.dispose();
+  }
+}
+
 export async function prepareCapturePhoto(
   bytes: Uint8Array,
   mediaType = '',
 ): Promise<CaptureResult<{ mediaType: 'image/jpeg'; bytes: Uint8Array }>> {
-  const decoded = decodeCapturePhoto([{ mediaType, bytes }]);
-  if (!decoded.ok) return decoded;
-  const input = Buffer.from(decoded.value.bytes);
+  if (bytes.byteLength > CAPTURE_PHOTO_MAX_BYTES) {
+    return captureFailure('PHOTO_TOO_LARGE', CaptureMessages.photoTooLarge, 413);
+  }
+  const heif = sniffImage(bytes) === 'heif';
+  if (!heif) {
+    const decoded = decodeCapturePhoto([{ mediaType, bytes }]);
+    if (!decoded.ok) return decoded;
+  }
   try {
     const encoded = await withPhotoSlot(() => runBoundedPhotoTask(async () => {
+      let input: Buffer;
+      let raw: { width: number; height: number; channels: 4 } | undefined;
+      if (heif) {
+        const rendered = await decodeHeicPixels(bytes);
+        if (!rendered) return null;
+        input = Buffer.from(rendered.data);
+        raw = { width: rendered.width, height: rendered.height, channels: 4 };
+      } else {
+        input = Buffer.from(bytes);
+      }
       const image = sharp(input, {
+        ...(raw ? { raw } : {}),
         limitInputPixels: CAPTURE_PHOTO_MAX_PIXELS,
         failOn: 'warning',
         animated: false,
@@ -136,13 +179,15 @@ export async function prepareCapturePhoto(
         image.destroy();
       }, CAPTURE_PHOTO_TIMEOUT_MS);
       try {
-        const meta = await image.metadata();
-        const pixels = (meta.width ?? 0) * (meta.height ?? 0);
-        if (
-          (meta.format !== 'jpeg' && meta.format !== 'png' && meta.format !== 'webp') ||
-          !meta.width || !meta.height || pixels < 1 || pixels > CAPTURE_PHOTO_MAX_PIXELS
-        ) {
-          return null;
+        if (!raw) {
+          const meta = await image.metadata();
+          const pixels = (meta.width ?? 0) * (meta.height ?? 0);
+          if (
+            (meta.format !== 'jpeg' && meta.format !== 'png' && meta.format !== 'webp') ||
+            !meta.width || !meta.height || pixels < 1 || pixels > CAPTURE_PHOTO_MAX_PIXELS
+          ) {
+            return null;
+          }
         }
         return await image
           .rotate()

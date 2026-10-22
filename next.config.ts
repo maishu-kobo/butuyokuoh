@@ -5,6 +5,8 @@ const allowedDevOrigins = parseDevAllowedOrigins(process.env.DEV_ALLOWED_ORIGINS
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  // heic-decode は wasm を node_modules から読む。バンドルすると経路が壊れる。
+  serverExternalPackages: ['heic-decode', 'libheif-js'],
   ...(allowedDevOrigins ? { allowedDevOrigins } : {}),
 };
 

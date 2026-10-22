@@ -92,7 +92,7 @@ export function CapturePhotoControls({ pick }: { pick: CapturePhotoPick }) {
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
         aria-label="写真ファイル"
         className="hidden"
         onChange={onChange}

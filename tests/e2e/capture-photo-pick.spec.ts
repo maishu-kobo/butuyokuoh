@@ -41,12 +41,12 @@ test('a member chooses one readable photo and is guided away from files we canno
   const choose = page.getByRole('button', { name: '写真を選ぶ' });
   await expect(choose).toBeVisible();
   const input = page.getByLabel('写真ファイル');
-  await expect(input).toHaveAttribute('accept', 'image/jpeg,image/png,image/webp');
+  await expect(input).toHaveAttribute('accept', 'image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif');
   await expect(input).toHaveJSProperty('multiple', false);
   expect(await input.evaluate((node: HTMLInputElement) => node.hasAttribute('capture'))).toBe(false);
 
   await input.setInputFiles({ name: 'a.heic', mimeType: 'image/heic', buffer: heic });
-  await expect(page.getByRole('alert').filter({ hasText: 'この写真は読めません' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'この写真は読めません' })).toBeVisible();
 
   await dropFiles(page, [
     { name: 'a.jpg', type: 'image/jpeg', bytes: jpeg },
