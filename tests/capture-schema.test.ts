@@ -418,6 +418,15 @@ test('hourly cleanup deletes expired candidates, and guest removal deletes the n
   }
 });
 
+test('the deployment backup snippet starts the service it stops', () => {
+  const doc = readFileSync(join(process.cwd(), 'docs/deployment.md'), 'utf8');
+  const section = doc.split('### データベース')[1]?.split('### ')[0] ?? '';
+  const stop = section.indexOf('systemctl stop butuyokuoh');
+  const start = section.indexOf('systemctl start butuyokuoh');
+  assert.equal(stop >= 0, true);
+  assert.equal(start > stop, true);
+});
+
 test('schema migration does not drop or rename tables', () => {
   const source = readFileSync(join(process.cwd(), 'src/lib/db.ts'), 'utf8');
   assert.doesNotMatch(source, /\bDROP\b/i);
