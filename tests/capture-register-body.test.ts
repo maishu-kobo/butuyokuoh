@@ -71,7 +71,8 @@ test('register stops reading an oversized body when content-length is missing', 
       code: 'INVALID_INPUT',
       error: CaptureMessages.registerInput,
     });
-    assert.equal(pulled() <= LIMIT + CHUNK, true, `pulled ${pulled()}`);
+    // 超えた分の1チャンクと、キャンセル前に先読みされた1チャンクまで。
+    assert.equal(pulled() <= LIMIT + CHUNK * 2, true, `pulled ${pulled()}`);
   });
 });
 
@@ -82,7 +83,7 @@ test('register stops reading when content-length understates the body', async ()
     const response = await registerPost(request);
     assert.equal(response.status, 400);
     assert.equal((await response.json()).error, CaptureMessages.registerInput);
-    assert.equal(pulled() <= LIMIT + CHUNK, true, `pulled ${pulled()}`);
+    assert.equal(pulled() <= LIMIT + CHUNK * 2, true, `pulled ${pulled()}`);
   });
 });
 
