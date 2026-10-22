@@ -36,6 +36,12 @@ CI は `feature/photo-capture` と `develop` 向けの PR で、テスト、型�
 
 PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し、新しい lint 違反を足さない。実行したコマンドと主な結果を PR の説明に書く。確認していないことは「未確認」と書く。
 
+## レビュー
+
+レビューは `REVIEW.md` に従う。本文はここへ複製しない。
+
+作者のエージェントは、`.github/pull_request_template.md` の証拠を PR に書く。「終わった」だけでは完了にしない。`npm test`、`npx tsc --noEmit`、`npm run lint`、`npm run build` は、そのセッションの中で自分で実行し、結果を PR に書く。CI を待つためだけに、実行を終わらせない。
+
 ## 開発の進め方
 
 - 作業は GitHub Issue に載せる。1 Issue につき 1 ブランチ、意味のある単位で小さい PR。
