@@ -31,3 +31,14 @@
 - 実行結果: `npm ci` 成功。`npm test` 24 件成功。`npx tsc --noEmit` 成功。`npm run build` 成功。`npm run dev -- --port 3000` と `npm run start -- --port 3001` は起動を確認。`npm run lint` は既存 error 4 / warning 22 で exit 1。`npm run test:e2e -- --list` は 13 件。ブラウザでの e2e は未実行。
 - looper の実装はこのリポジトリに無い。`looper/state.md` の常設指示は、溜まったマージ候補を Codex レビューのあとマージしてよい、というもの。ラベルやタイトルで除外する仕組みは無い。この PR は draft のままにし、マージしない。
 - 各エージェントからこのファイルを読ませるファイルは、別 PR に分けた。
+
+### 2026-10-22 — ルールを各エージェントから読めるようにする
+
+- `CLAUDE.md` は `@AGENTS.md` だけ。`.claude/settings.json` は `.env` と `.env.*` の Read を拒否する。フックは置かない。
+- `GEMINI.md` は `@./AGENTS.md` だけ。`context.fileName` を変える設定は置かない。既定の GEMINI.md と二重に読ませないため。
+- `.github/copilot-instructions.md` はポインタだけ。GitHub.com の Copilot Chat は `AGENTS.md` を読まない。
+- Codex と Cursor はルートの `AGENTS.md` を読むので、追加ファイルは置かない。
+- Codex CLI 0.163.0 の `codex debug prompt-input` は、分割後の `AGENTS.md` 全文を `# AGENTS.md instructions for /workspace` に入れた。5084 bytes で、既定の 32 KiB には収まる。
+- Claude Code 2.1.308 の `claude -p` は未ログインでモデル応答の前に止まった。セッションのプロジェクト指示には `CLAUDE.md` と import 先の `AGENTS.md` が載り、deny 2 件は projectSettings に適用された。
+- Gemini CLI は起動していない。
+- この PR も draft。looper に、ラベルやタイトルで PR を除外する仕組みは無い。
