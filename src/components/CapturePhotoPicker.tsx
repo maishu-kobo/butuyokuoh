@@ -1,7 +1,7 @@
 'use client';
 
 import { classifyPickedPhotos } from '@/lib/capture/photo-pick';
-import { useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 
 export type CapturePhotoPick = {
   enabled: boolean;
@@ -12,7 +12,11 @@ export type CapturePhotoPick = {
   onDrop: (event: DragEvent) => void;
 };
 
-export function useCapturePhotoPick(enabled: boolean): CapturePhotoPick {
+export function useCapturePhotoPick(enabled: boolean, onAccepted?: (file: File) => void): CapturePhotoPick {
+  const onAcceptedRef = useRef(onAccepted);
+  useEffect(() => {
+    onAcceptedRef.current = onAccepted;
+  });
   const [message, setMessage] = useState('');
   const [selected, setSelected] = useState(false);
   const [shown, setShown] = useState(enabled);
@@ -35,6 +39,7 @@ export function useCapturePhotoPick(enabled: boolean): CapturePhotoPick {
       }
       setMessage('');
       setSelected(true);
+      onAcceptedRef.current?.(result.file);
     });
   }
 
@@ -57,6 +62,7 @@ export function useCapturePhotoPick(enabled: boolean): CapturePhotoPick {
 
 export function CapturePhotoControls({ pick }: { pick: CapturePhotoPick }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   if (!pick.enabled) return null;
 
   function onChange(event: ChangeEvent<HTMLInputElement>) {
@@ -75,13 +81,31 @@ export function CapturePhotoControls({ pick }: { pick: CapturePhotoPick }) {
         className="hidden"
         onChange={onChange}
       />
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm text-gray-700 dark:text-gray-200"
-      >
-        写真を選ぶ
-      </button>
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        capture="environment"
+        aria-label="写真を撮る"
+        className="hidden"
+        onChange={onChange}
+      />
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => cameraRef.current?.click()}
+          className="min-h-[24px] min-w-[24px] flex-1 px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm text-gray-700 dark:text-gray-200"
+        >
+          撮る
+        </button>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="min-h-[24px] min-w-[24px] flex-1 px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm text-gray-700 dark:text-gray-200"
+        >
+          写真を選ぶ
+        </button>
+      </div>
       <div aria-live="polite">
         {pick.message && (
           <p role="alert" className="mt-2 rounded-md bg-red-50 dark:bg-red-950/40 p-3 text-red-700 dark:text-red-300 text-sm">
