@@ -49,14 +49,15 @@ test('a repeated price is not stored again, and the newest row wins when the tim
   }));
 });
 
-test('price drop notifications choose target reached only when that switch is on', () => {
+test('a price that reaches the target keeps the target_reached type when only price-drop alerts are on', () => {
   const both = { notify_on_price_drop: 1, notify_on_target_price: 1 };
   const dropOnly = { notify_on_price_drop: 1, notify_on_target_price: 0 };
   const targetOnly = { notify_on_price_drop: 0, notify_on_target_price: 1 };
   const off = { notify_on_price_drop: 0, notify_on_target_price: 0 };
   assert.equal(priceDropNotification(1000, 700, 800, both), 'target_reached');
   assert.equal(priceDropNotification(1000, 900, 800, both), 'price_drop');
-  assert.equal(priceDropNotification(1000, 700, 800, dropOnly), 'price_drop');
+  // 目標に届いた payload の type は、目標通知がオフでも値下げ通知で送るとき target_reached のまま。
+  assert.equal(priceDropNotification(1000, 700, 800, dropOnly), 'target_reached');
   assert.equal(priceDropNotification(1000, 700, 800, targetOnly), 'target_reached');
   assert.equal(priceDropNotification(1000, 900, 800, targetOnly), null);
   assert.equal(priceDropNotification(1000, 700, 800, off), null);
