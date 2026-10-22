@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { getDb } from './db';
+import { deleteExpiredCaptureCandidates, getDb } from './db';
 import { seedDemoData } from './demo-data';
 
 export const GUEST_COOKIE = 'butuyokuoh_guest';
@@ -86,6 +86,8 @@ export function startGuest(existingToken?: string, db = getDb(), now = Date.now(
 export function deleteGuestUser(id: number, db = getDb()): boolean {
   return db.transaction(() => {
     if (!db.prepare("SELECT id FROM users WHERE id = ? AND account_type = 'guest'").get(id)) return false;
+    db.prepare('DELETE FROM capture_candidates WHERE user_id = ?').run(id);
+    db.prepare('DELETE FROM captures WHERE user_id = ?').run(id);
     for (const table of ['price_history', 'notification_settings']) {
       db.prepare(`DELETE FROM ${table} WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)`).run(id);
     }
@@ -112,6 +114,7 @@ export function cleanupGuests(db = getDb(), now = Date.now(), batchSize = 100) {
     .all(now, now - guestLimit('TTL_HOURS', 24) * 3_600_000, batchSize) as { id: number }[];
   let deleted = 0;
   for (const { id } of candidates) if (deleteGuestUser(id, db)) deleted++;
+  deleteExpiredCaptureCandidates(db, now);
   db.prepare('DELETE FROM guest_rate_limits WHERE resets_at <= ?').run(now);
   return { deleted, remainingBatch: candidates.length === batchSize };
 }
