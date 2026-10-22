@@ -3,9 +3,11 @@
 import { apiFetch } from '@/lib/api-fetch';
 
 import { useAuth } from './AuthProvider';
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Plus, X, Upload, Link, Edit3 } from 'lucide-react';
 import { ComparisonGroup, Category } from '@/types';
+import { showPhotoPicker } from '@/lib/capture/photo-pick';
+import { CapturePhotoControls, useCapturePhotoPick } from './CapturePhotoPicker';
 
 interface AddItemFormProps {
   onAdd: () => void;
@@ -16,6 +18,8 @@ interface AddItemFormProps {
 export default function AddItemForm({ onAdd, comparisonGroups, categories }: AddItemFormProps) {
   const { isGuest } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+  const [captureEnabled, setCaptureEnabled] = useState(false);
+  const photoPick = useCapturePhotoPick(showPhotoPicker({ enabled: captureEnabled }, isGuest));
   const [isManualMode, setIsManualMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -37,6 +41,25 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
     price: '',
     image_url: '',
   });
+
+  useEffect(() => {
+    if (!isOpen || isGuest) {
+      setCaptureEnabled(false);
+      return;
+    }
+    let cancelled = false;
+    apiFetch('/api/capture', undefined, { notifyError: false })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {
+        if (!cancelled) setCaptureEnabled(data?.enabled === true);
+      })
+      .catch(() => {
+        if (!cancelled) setCaptureEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isGuest]);
 
   const resetForm = () => {
     setFormData({
@@ -181,7 +204,13 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
   }
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md p-4">
+    <div
+      data-testid="capture-photo-card"
+      onDragOver={photoPick.onDragOver}
+      onDrop={photoPick.onDrop}
+      className="bg-white dark:bg-slate-800 rounded-lg shadow-md p-4"
+    >
+      <CapturePhotoControls pick={photoPick} />
       <div className="flex justify-between items-center mb-4">
         <h3 className="font-semibold text-lg">新しいアイテムを追加</h3>
         <button onClick={() => { setIsOpen(false); resetForm(); }} className="text-gray- dark:text-gray-400 hover:text-gray- dark:text-gray-600">

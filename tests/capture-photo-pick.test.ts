@@ -9,7 +9,7 @@ const webp = Uint8Array.of(...Buffer.from('RIFF'), 0, 0, 0, 0, ...Buffer.from('W
 const heic = Uint8Array.of(0, 0, 0, 0x18, ...Buffer.from('ftypheic'), 0, 0, 0, 0);
 
 function file(name: string, type: string, bytes: Uint8Array): File {
-  return new File([bytes], name, { type });
+  return new File([new Uint8Array(bytes)], name, { type });
 }
 
 test('the photo picker is shown only to a member while capture is enabled', () => {
