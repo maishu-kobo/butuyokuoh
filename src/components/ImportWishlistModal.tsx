@@ -2,7 +2,7 @@
 
 import { apiFetch } from '@/lib/api-fetch';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Upload, AlertCircle, CheckCircle, Loader2, Info, ExternalLink } from 'lucide-react';
 
 interface ImportWishlistModalProps {
@@ -31,25 +31,19 @@ interface ImportResult {
 
 type ValidationState = 'idle' | 'valid' | 'invalid';
 
+function validationForWishlistUrl(url: string): ValidationState {
+  if (!url.trim()) return 'idle';
+  const isAmazon = /amazon\.(co\.jp|jp|com)\/.*wishlist/i.test(url);
+  const isRakuten = /rakuten\.co\.jp/i.test(url);
+  return isAmazon || isRakuten ? 'valid' : 'invalid';
+}
+
 export default function ImportWishlistModal({ isOpen, onClose, onImported }: ImportWishlistModalProps) {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
-  const [validation, setValidation] = useState<ValidationState>('idle');
   const [showSkippedDetails, setShowSkippedDetails] = useState(false);
-
-  // URLバリデーション
-  useEffect(() => {
-    if (!url.trim()) {
-      setValidation('idle');
-      return;
-    }
-    
-    const isAmazon = /amazon\.(co\.jp|jp|com)\/.*wishlist/i.test(url);
-    const isRakuten = /rakuten\.co\.jp/i.test(url);
-    
-    setValidation(isAmazon || isRakuten ? 'valid' : 'invalid');
-  }, [url]);
+  const validation = validationForWishlistUrl(url);
 
   const handleImport = async () => {
     if (!url.trim() || validation !== 'valid') return;

@@ -4,6 +4,7 @@ import { apiFetch } from '@/lib/api-fetch';
 
 import { useEffect, useState } from 'react';
 import { Item, ComparisonGroup, Category } from '@/types';
+import { sumCountedPrices } from '@/lib/photo-spend';
 import SortableItemCard from '@/components/SortableItemCard';
 import AddItemForm from '@/components/AddItemForm';
 import BudgetView from '@/components/BudgetView';
@@ -93,11 +94,12 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (user) {
-      fetchItems();
-      fetchGroups();
-      fetchCategories();
-    }
+    if (!user) return;
+    // 取得関数の中の setState は await のあと。effect から直接呼ぶと新しい react-hooks が同期 setState と誤認する。
+    // 各関数は今までどおり同時に始める。
+    void (async () => { await fetchItems(); })();
+    void (async () => { await fetchGroups(); })();
+    void (async () => { await fetchCategories(); })();
   }, [user]);
 
   const handleDelete = async (id: number) => {
@@ -270,13 +272,12 @@ export default function Home() {
     if (selectedItems.size === 0) return;
     if (!confirm(`${selectedItems.size}件のアイテムを購入済みにしますか？`)) return;
     
-    const today = new Date().toISOString().split('T')[0];
     await Promise.all(
       Array.from(selectedItems).map(id =>
         apiFetch(`/api/items/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ is_purchased: true, purchased_at: today }),
+          body: JSON.stringify({ is_purchased: true }),
         })
       )
     );
@@ -371,12 +372,8 @@ export default function Home() {
       }
     });
 
-  // 合計金額計算
-  const totalAmount = items.reduce((sum, item) => {
-    const price = item.current_price || 0;
-    const quantity = item.quantity || 1;
-    return sum + (price * quantity);
-  }, 0);
+  // 合計金額計算。写真グループはサーバーが付けた印の付いた1件だけを足す。
+  const totalAmount = sumCountedPrices(items);
 
   // 比較グループフィルター時の最安価格を計算
   const lowestPriceInGroup = selectedGroup

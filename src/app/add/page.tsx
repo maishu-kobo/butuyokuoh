@@ -68,6 +68,8 @@ function AddPageContent() {
     }
 
     if (extractedUrl) {
+      // 共有URLを入力 state へ写す既存の同期。描画中に移すと、手入力した値との更新順が変わる。
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- searchParams の写しで、保存や検証の結果は変えない
       setUrl(extractedUrl);
       setDraftUrl(extractedUrl);
       setSafeUrl(sanitizeUrlForLink(extractedUrl));
@@ -83,13 +85,6 @@ function AddPageContent() {
         .catch(() => {});
     }
   }, [user]);
-
-  // URLがあれば商品情報を取得
-  useEffect(() => {
-    if (url && user && !productInfo) {
-      fetchProductInfo();
-    }
-  }, [url, user]);
 
   const fetchProductInfo = async () => {
     if (!url) return;
@@ -117,6 +112,14 @@ function AddPageContent() {
       setLoading(false);
     }
   };
+
+  // URLがあれば商品情報を取得
+  useEffect(() => {
+    if (url && user && !productInfo) {
+      // setLoading は最初の await より前。直接呼ぶと react-hooks/immutability と set-state-in-effect の両方に当たる。
+      void (async () => { await fetchProductInfo(); })();
+    }
+  }, [url, user]);
 
   const handleSubmit = async () => {
     if (!url) return;

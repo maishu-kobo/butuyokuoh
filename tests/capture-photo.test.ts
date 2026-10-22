@@ -4,6 +4,7 @@ import { deflateSync } from 'node:zlib';
 import sharp from 'sharp';
 import { CAPTURE_PHOTO_MAX_BYTES, CaptureMessages } from '../src/lib/capture/contract';
 import { CAPTURE_BITMAP_OPTIONS, fitPhotoEdge, shrinkPhotoForUpload } from '../src/lib/capture/photo-client';
+import { createWorkersAiIdentifier, type WorkersAiHttpRequest } from '../src/lib/capture/workers-ai';
 import {
   CAPTURE_PHOTO_CONCURRENCY,
   CAPTURE_PHOTO_MAX_EDGE,
@@ -190,6 +191,73 @@ test('re-encoded photos drop EXIF and GPS, fix orientation, and cap the long edg
   if (!fromWebp.ok) return;
   assert.equal(fromWebp.value.bytes[0], 0xff);
   assert.equal(fromWebp.value.bytes[1], 0xd8);
+});
+
+test('Workers AI is sent the shrunk JPEG and not the original photo or its GPS', async () => {
+  const wide = await sharp({
+    create: { width: 3200, height: 1000, channels: 3, background: { r: 9, g: 8, b: 7 } },
+  }).jpeg().toBuffer();
+  const original = await sharp(wide).withExif({
+    IFD0: { ImageDescription: GPS_DESCRIPTION },
+    IFD3: {
+      GPSLatitudeRef: 'N',
+      GPSLatitude: '35/1 41/1 2299/100',
+      GPSLongitudeRef: 'E',
+      GPSLongitude: '139/1 41/1 3077/100',
+    },
+  }).jpeg().toBuffer();
+  assert.equal(original.includes(GPS_LATITUDE), true);
+  assert.equal(original.includes(GPS_DESCRIPTION), true);
+
+  const packed = multipart([{ name: 'photo', filename: 'where.jpg', type: 'image/jpeg', bytes: original }]);
+  const prepared = await readCapturePhoto(new Request('http://localhost/api/capture/identify', {
+    method: 'POST',
+    headers: { 'content-type': packed.contentType },
+    body: packed.body,
+  }));
+  assert.equal(prepared.ok, true);
+  if (!prepared.ok) return;
+
+  const calls: WorkersAiHttpRequest[] = [];
+  const identifier = createWorkersAiIdentifier({
+    accountId: 'a'.repeat(32),
+    apiToken: 'test-cloudflare-token',
+    userId: '7',
+    http: async (request) => {
+      calls.push(request);
+      return {
+        status: 200,
+        body: JSON.stringify({
+          success: true,
+          result: {
+            response: JSON.stringify({
+              confidence: 'sure',
+              products: [{ name: 'テスト用ゲルボールペン 0.5', brand: '物欲文具', model: 'BY-05', jan: '4900000000009' }],
+            }),
+          },
+          errors: [],
+          messages: [],
+        }),
+      };
+    },
+  });
+  const result = await identifier.identify(prepared.value);
+  assert.equal(result.ok, true);
+  assert.equal(calls.length, 1);
+  const payload = JSON.parse(calls[0].body) as { image?: string };
+  const prefix = 'data:image/jpeg;base64,';
+  assert.equal(payload.image?.startsWith(prefix), true);
+  const sent = Buffer.from(payload.image!.slice(prefix.length), 'base64');
+  assert.equal(sent.equals(Buffer.from(prepared.value.bytes)), true);
+  assert.equal(sent.includes(GPS_LATITUDE), false);
+  assert.equal(sent.includes(GPS_DESCRIPTION), false);
+  assert.equal(calls[0].body.includes(original.toString('base64')), false);
+  assert.equal(calls[0].body.includes(GPS_DESCRIPTION), false);
+  const meta = await sharp(sent).metadata();
+  assert.equal(meta.width, 1600);
+  assert.equal(meta.height, 500);
+  assert.equal(meta.exif, undefined);
+  assert.equal(meta.orientation, undefined);
 });
 
 test('the server rejects HEIC and a pixel bomb without keeping the original', async () => {
