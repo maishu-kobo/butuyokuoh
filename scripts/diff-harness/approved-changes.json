@@ -60,6 +60,62 @@
           "error": "URLは http または https を指定してください"
         }
       ]
+    },
+    {
+      "id": "verified-link-retires-password",
+      "required": true,
+      "reason": "確認済みの Google を、先にパスワード登録されていた同じメールの会員へ結ぶ。その行の password_hash を消し、session_generation を 1 進めて発行済みトークンを落とす。パスワードが無い行は進めない。",
+      "passwordRetired": [
+        { "email": "linked@example.test", "generation": 1 }
+      ]
+    },
+    {
+      "id": "unverified-existing-rejected",
+      "required": true,
+      "reason": "確認済みでない Google は、既にパスワードがある会員も奪わない。google_id は付かないし、password_hash も session_generation もそのまま。develop はプロフィールを見ずに google_id だけ付ける。",
+      "rejectedUnverifiedExisting": [
+        {
+          "step": "auth.google.unverified-existing",
+          "email": "taken@example.test",
+          "googleId": "sub-taken"
+        }
+      ]
+    },
+    {
+      "id": "session-generation-column",
+      "required": true,
+      "reason": "users.session_generation を INTEGER NOT NULL DEFAULT 0 で足す。連携で 1 進んだ行は直前の承認で比べる前に 0 へ戻すので、この手順に残る会員はすべて 0。",
+      "columnsAdded": [
+        { "table": "users", "column": "session_generation", "value": 0 }
+      ]
+    },
+    {
+      "id": "credentials-session-generation",
+      "required": true,
+      "reason": "Credentials の成功は、パスワード確認と同じ読み取りの sessionGeneration を返す。この手順では連携前なので 0。省略したり別の数だと比べたまま残す。",
+      "credentialsGeneration": [
+        { "step": "auth.credentials.success", "generation": 0 }
+      ]
+    },
+    {
+      "id": "session-generation-token",
+      "required": true,
+      "reason": "ログイン成功の自前 JWT に、パスワード確認と同じ読み取りの sessionGeneration を載せる。この手順では連携前なので 0。",
+      "responseFieldsAdded": [
+        { "field": "sessionGeneration", "equals": 0 }
+      ]
+    },
+    {
+      "id": "unverified-google-rejected",
+      "required": true,
+      "reason": "profile.email_verified が true でない Google は会員を作らない。develop はプロフィールを見ずに作る。既存会員がいないメールで拒否を固定する。",
+      "rejectedUnverifiedGoogle": [
+        {
+          "step": "auth.google.unverified",
+          "email": "unverified@example.test",
+          "googleId": "sub-unverified"
+        }
+      ]
     }
   ]
 }

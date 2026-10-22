@@ -2,7 +2,7 @@
 // このファイルより前に block-network.cjs と register-hooks.mjs を入れること。
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 type Row = Record<string, unknown>;
 type Fixtures = {
@@ -11,11 +11,17 @@ type Fixtures = {
 };
 type CookieEvent = { op: string; name: string; value?: string; options?: unknown };
 type CookieJar = { events: CookieEvent[] };
-type Authorize = (credentials: { email?: string; password?: string }) => Promise<{ id?: string; email?: string | null; name?: string | null } | null>;
+type Authorize = (credentials: { email?: string; password?: string }) => Promise<{
+  id?: string;
+  email?: string | null;
+  name?: string | null;
+  sessionGeneration?: number;
+} | null>;
 type SignInUser = { id?: string; email?: string | null; name?: string | null };
 type SignIn = (args: {
   user: SignInUser;
   account?: { provider?: string; providerAccountId?: string } | null;
+  profile?: { email?: string; email_verified?: boolean };
 }) => Promise<boolean | string>;
 type CapturedAuth = {
   callbacks?: { signIn?: SignIn };
@@ -35,6 +41,20 @@ declare global {
 
 const harnessDir = path.dirname(fileURLToPath(import.meta.url));
 const PASSWORD = 'secret1';
+const OWNER_EMAIL = 'owner@example.test';
+
+// 確認済みの新規・連携・再ログインは email_verified: true。
+// 未確認は、まだ居ないメールと、パスワードがある会員の両方で拒否される。
+export const googleScenarios = [
+  ['auth.google.new', 'Fresh@Example.TEST', 'フレッシュ', 'sub-fresh', true],
+  ['auth.google.link', 'Linked@Example.TEST', '別名', 'sub-linked', true],
+  ['auth.google.existing', 'already@example.test', '既存', 'sub-already', true],
+  ['auth.google.guest-email', 'Bot@guest.invalid', 'bot', 'sub-guest', true],
+  ['auth.google.blank-email', '  ', 'blank', 'sub-blank', true],
+  ['auth.google.unverified', 'Unverified@Example.TEST', '未確認', 'sub-unverified', false],
+  ['auth.google.unverified-existing', 'Taken@Example.TEST', '別名', 'sub-taken', false],
+  ['auth.google.repeat', 'fresh@example.test', 'フレッシュ', 'sub-fresh', true],
+] as const;
 const AMAZON = 'https://www.amazon.co.jp/dp/B0TESTKEY1';
 const RAKUTEN = 'https://item.rakuten.co.jp/shop/mouse';
 const GENERIC = 'https://shop.example.com/items/book';
@@ -74,6 +94,9 @@ async function main() {
   database.prepare(
     'INSERT INTO users (email, name, password_hash, account_type, google_id) VALUES (?, ?, ?, ?, ?)',
   ).run('already@example.test', '既存', null, 'member', 'sub-already');
+  database.prepare(
+    'INSERT INTO users (email, name, password_hash, account_type, google_id) VALUES (?, ?, ?, ?, ?)',
+  ).run('taken@example.test', '先取り', hash, 'member', null);
 
   await import('../../src/auth');
   const steps: Record<string, Step> = {};
@@ -120,12 +143,9 @@ async function main() {
   await step(steps, 'items.create.javascript-url', () => call(itemsPath, 'POST', '/api/items', { url: 'javascript:alert(1)' }));
   await step(steps, 'items.list.after-invalid', () => call(itemsPath, 'GET', '/api/items'));
 
-  await step(steps, 'auth.google.new', () => google('Fresh@Example.TEST', 'フレッシュ', 'sub-fresh'));
-  await step(steps, 'auth.google.link', () => google('Linked@Example.TEST', '別名', 'sub-linked'));
-  await step(steps, 'auth.google.existing', () => google('already@example.test', '既存', 'sub-already'));
-  await step(steps, 'auth.google.guest-email', () => google('Bot@guest.invalid', 'bot', 'sub-guest'));
-  await step(steps, 'auth.google.blank-email', () => google('  ', 'blank', 'sub-blank'));
-  await step(steps, 'auth.google.repeat', () => google('fresh@example.test', 'フレッシュ', 'sub-fresh'));
+  for (const [id, email, name, providerAccountId, emailVerified] of googleScenarios) {
+    await step(steps, id, () => google(email, name, providerAccountId, emailVerified));
+  }
 
   const snapshot = {
     side,
@@ -215,38 +235,88 @@ async function refresh(id: number | null): Promise<Step> {
 }
 
 async function credentials(input: { email: string; password: string }): Promise<Step> {
-  const authorize = findAuthorize(globalThis.__DIFF_NEXTAUTH_CONFIG);
+  const authorize = await findAuthorize(globalThis.__DIFF_NEXTAUTH_CONFIG);
   if (!authorize) return { available: false };
   const user = await authorize(input);
   return {
     available: true,
-    user: user ? { id: user.id ?? null, email: user.email ?? null, name: user.name ?? null } : null,
+    user: user ? {
+      id: user.id ?? null,
+      email: user.email ?? null,
+      name: user.name ?? null,
+      ...(typeof user.sessionGeneration === 'number' ? { sessionGeneration: user.sessionGeneration } : {}),
+    } : null,
   };
 }
 
-async function google(email: string, name: string, providerAccountId: string): Promise<Step> {
+export async function google(
+  email: string,
+  name: string,
+  providerAccountId: string,
+  emailVerified = true,
+): Promise<Step> {
   const signIn = globalThis.__DIFF_NEXTAUTH_CONFIG?.callbacks?.signIn;
   if (!signIn) return { available: false };
   const user: SignInUser = { email, name };
-  const allowed = await signIn({ user, account: { provider: 'google', providerAccountId } });
+  const allowed = await signIn({
+    user,
+    account: { provider: 'google', providerAccountId },
+    profile: { email, email_verified: emailVerified },
+  });
   return { allowed, assignedUserId: user.id ?? null };
 }
 
-function findAuthorize(config: CapturedAuth | undefined): Authorize | null {
-  const stack: unknown[] = [...(config?.providers || [])];
+// provider.authorize は常に null を返す入れ物で、実装は options の中にある。
+// 関数ソースの verifyPassword では confirmVerifiedPassword を見つけられない。
+// 用意したオーナーの正しいパスワードだけ会員を返し、違うパスワードと空入力は null の関数を authorize とする。
+const authorizeCache = new WeakMap<object, Authorize | null>();
+
+export async function findAuthorize(config: CapturedAuth | undefined): Promise<Authorize | null> {
+  if (!config) return null;
+  const cached = authorizeCache.get(config);
+  if (cached !== undefined) return cached;
+  const matches: Authorize[] = [];
+  for (const fn of collectFunctions(config.providers || [])) {
+    if (await acceptsOwnerPassword(fn)) matches.push(fn);
+  }
+  // 同じ戻り値の関数が二つあると、wrong-case や google-only を別の関数で見てしまう。
+  const found = matches.length === 1 ? matches[0] : null;
+  authorizeCache.set(config, found);
+  return found;
+}
+
+function collectFunctions(roots: unknown[]): Authorize[] {
+  const found: Authorize[] = [];
   const seen = new Set<unknown>();
+  const stack = [...roots];
   while (stack.length) {
     const current = stack.pop();
-    if (!current || typeof current !== 'object' || seen.has(current)) continue;
+    if (current == null || seen.has(current)) continue;
+    if (typeof current === 'function') {
+      seen.add(current);
+      found.push(current as Authorize);
+      continue;
+    }
+    if (typeof current !== 'object') continue;
     seen.add(current);
     for (const value of Object.values(current as Row)) {
-      if (typeof value === 'function' && /verifyPassword/.test(Function.prototype.toString.call(value))) {
-        return value as Authorize;
-      }
-      if (value && typeof value === 'object') stack.push(value);
+      if (typeof value === 'function' || (value && typeof value === 'object')) stack.push(value);
     }
   }
-  return null;
+  return found;
+}
+
+async function acceptsOwnerPassword(fn: Authorize): Promise<boolean> {
+  try {
+    const ok = await fn({ email: OWNER_EMAIL, password: PASSWORD });
+    const wrong = await fn({ email: OWNER_EMAIL, password: 'nope12' });
+    const empty = await fn({});
+    if (!ok || typeof ok !== 'object') return false;
+    if (ok.email !== OWNER_EMAIL || ok.id == null || ok.id === '') return false;
+    return wrong === null && empty === null;
+  } catch {
+    return false;
+  }
 }
 
 function dump(database: { prepare: (sql: string) => { all: () => unknown[] } }) {
@@ -275,7 +345,15 @@ function identifier(name: string): string {
   return `"${name}"`;
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+function ranAsScript(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  return import.meta.url === pathToFileURL(path.resolve(entry)).href;
+}
+
+if (ranAsScript()) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

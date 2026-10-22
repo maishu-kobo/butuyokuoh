@@ -13,7 +13,7 @@ export type Step = {
   allowed?: boolean | string | null;
   assignedUserId?: string | null;
   available?: boolean;
-  user?: { id?: string | null; email?: string | null; name?: string | null } | null;
+  user?: { id?: string | null; email?: string | null; name?: string | null; sessionGeneration?: number } | null;
 };
 
 export type Snapshot = {
@@ -36,15 +36,24 @@ export type Snapshot = {
 type ColumnRule = { table: string; column: string; value: unknown };
 type FieldRule = { field: string; equals: unknown };
 type RejectedUrl = { step: string; url: string; status: number; error: string };
+type PasswordRetired = { email: string; generation: number };
+type RejectedUnverifiedGoogle = { step: string; email: string; googleId: string };
+type RejectedUnverifiedExisting = { step: string; email: string; googleId: string };
+type CredentialsGeneration = { step: string; generation: number };
 type ChangeRule = {
   id: string;
   reason: string;
+  required?: boolean;
   tablesAdded?: string[];
   requireEmpty?: boolean;
   columnsAdded?: ColumnRule[];
   indexesAdded?: string[];
   responseFieldsAdded?: FieldRule[];
   rejectedUrls?: RejectedUrl[];
+  passwordRetired?: PasswordRetired[];
+  rejectedUnverifiedGoogle?: RejectedUnverifiedGoogle[];
+  rejectedUnverifiedExisting?: RejectedUnverifiedExisting[];
+  credentialsGeneration?: CredentialsGeneration[];
 };
 
 export type Approval = {
@@ -88,6 +97,15 @@ export function compareSnapshots(baseline: Snapshot, candidate: Snapshot, rules:
   const approvals = applyApprovals(left, right, rules);
   const unexpected: Difference[] = [];
   collect(left, right, '', unexpected);
+  for (const approval of approvals) {
+    const rule = rules.find((item) => item.id === approval.id);
+    if (!rule?.required || approval.applied > 0) continue;
+    unexpected.push({
+      path: `approvals.${approval.id}.required`,
+      kind: 'removed',
+      baseline: 'この差分は候補に残っている必要がある',
+    });
+  }
   const noise = new Set(['side', 'sha']);
   return {
     ok: unexpected.filter((entry) => !noise.has(entry.path)).length === 0,
@@ -268,6 +286,10 @@ function applyApprovals(baseline: Snapshot, candidate: Snapshot, rules: ChangeRu
         details.push(`table ${table}`);
       }
     }
+    // 列を消す前に、先取り会員の世代が 0 のままかを見る。トークン全体を消す前に Credentials の世代を見る。
+    applied += approvePasswordRetired(baseline, candidate, rule.passwordRetired || [], details);
+    applied += approveRejectedUnverifiedExisting(baseline, candidate, rule.rejectedUnverifiedExisting || [], details);
+    applied += approveCredentialsGeneration(baseline, candidate, rule.credentialsGeneration || [], details);
     for (const column of rule.columnsAdded || []) {
       const baseColumns = new Set(baseline.db.columns[column.table] || []);
       const candidateColumns = candidate.db.columns[column.table];
@@ -291,6 +313,7 @@ function applyApprovals(baseline: Snapshot, candidate: Snapshot, rules: ChangeRu
     });
     applied += stripFields(baseline, candidate, rule.responseFieldsAdded || [], details);
     applied += approveRejectedUrls(baseline, candidate, rule.rejectedUrls || [], details);
+    applied += approveRejectedUnverifiedGoogle(baseline, candidate, rule.rejectedUnverifiedGoogle || [], details);
     return {
       id: rule.id,
       reason: rule.reason,
@@ -298,6 +321,117 @@ function applyApprovals(baseline: Snapshot, candidate: Snapshot, rules: ChangeRu
       detail: details.length ? details.join(', ') : '差分に現れなかった',
     };
   });
+}
+
+const PASSWORD_HASH = '<password-hash>';
+
+function approvePasswordRetired(baseline: Snapshot, candidate: Snapshot, rules: PasswordRetired[], details: string[]): number {
+  let applied = 0;
+  for (const rule of rules) {
+    const base = onlyUser(baseline.db.rows.users || [], rule.email);
+    const cand = onlyUser(candidate.db.rows.users || [], rule.email);
+    if (!base || !cand) continue;
+    if (base.password_hash !== PASSWORD_HASH || cand.password_hash !== null) continue;
+    if (cand.session_generation !== rule.generation) continue;
+    if (!sameExcept(base, cand, ['password_hash', 'session_generation'])) continue;
+    cand.password_hash = base.password_hash;
+    cand.session_generation = 0;
+    applied += 1;
+    details.push(rule.email);
+  }
+  return applied;
+}
+
+function approveRejectedUnverifiedExisting(
+  baseline: Snapshot,
+  candidate: Snapshot,
+  rules: RejectedUnverifiedExisting[],
+  details: string[],
+): number {
+  let applied = 0;
+  for (const rule of rules) {
+    const baseStep = baseline.steps[rule.step];
+    const candStep = candidate.steps[rule.step];
+    if (!baseStep || !candStep) continue;
+    if (baseStep.allowed !== true || candStep.allowed !== false || candStep.assignedUserId != null) continue;
+    if (baseStep.assignedUserId !== `user:${rule.email}`) continue;
+    const base = onlyUser(baseline.db.rows.users || [], rule.email);
+    const cand = onlyUser(candidate.db.rows.users || [], rule.email);
+    if (!base || !cand) continue;
+    if (cand.google_id !== null || base.google_id !== rule.googleId) continue;
+    if (base.password_hash !== PASSWORD_HASH || cand.password_hash !== PASSWORD_HASH) continue;
+    if (cand.session_generation !== 0) continue;
+    if (!sameExcept(base, cand, ['google_id', 'session_generation'])) continue;
+    base.google_id = null;
+    baseStep.allowed = false;
+    baseStep.assignedUserId = null;
+    applied += 1;
+    details.push(rule.email);
+  }
+  return applied;
+}
+
+function approveCredentialsGeneration(
+  baseline: Snapshot,
+  candidate: Snapshot,
+  rules: CredentialsGeneration[],
+  details: string[],
+): number {
+  let applied = 0;
+  for (const rule of rules) {
+    const baseStep = baseline.steps[rule.step];
+    const candStep = candidate.steps[rule.step];
+    if (!baseStep || !candStep || baseStep.available !== true || candStep.available !== true) continue;
+    if (!isPlain(baseStep.user) || !isPlain(candStep.user)) continue;
+    if ('sessionGeneration' in baseStep.user || candStep.user.sessionGeneration !== rule.generation) continue;
+    if (!sameExcept(baseStep.user, candStep.user, ['sessionGeneration'])) continue;
+    delete candStep.user.sessionGeneration;
+    applied += 1;
+    details.push(rule.step);
+  }
+  return applied;
+}
+
+function approveRejectedUnverifiedGoogle(
+  baseline: Snapshot,
+  candidate: Snapshot,
+  rules: RejectedUnverifiedGoogle[],
+  details: string[],
+): number {
+  let applied = 0;
+  for (const rule of rules) {
+    const baseStep = baseline.steps[rule.step];
+    const candStep = candidate.steps[rule.step];
+    if (!baseStep || !candStep) continue;
+    if (baseStep.allowed !== true || candStep.allowed !== false || candStep.assignedUserId != null) continue;
+    const baseUsers = baseline.db.rows.users || [];
+    const candUsers = candidate.db.rows.users || [];
+    const created = onlyUser(baseUsers, rule.email);
+    if (!created || created.google_id !== rule.googleId || created.password_hash != null) continue;
+    if (candUsers.some((row) => row.email === rule.email || row.google_id === rule.googleId)) continue;
+    if (baseStep.assignedUserId !== `user:${rule.email}`) continue;
+    baseline.db.rows.users = baseUsers.filter((row) => row.email !== rule.email);
+    baseStep.allowed = false;
+    baseStep.assignedUserId = null;
+    applied += 1;
+    details.push(rule.email);
+  }
+  return applied;
+}
+
+function onlyUser(rows: Row[], email: string): Row | undefined {
+  const matches = rows.filter((row) => row.email === email);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+function sameExcept(left: Row, right: Row, ignore: string[]): boolean {
+  const skip = new Set(ignore);
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  for (const key of keys) {
+    if (skip.has(key)) continue;
+    if (!same(left[key], right[key])) return false;
+  }
+  return true;
 }
 
 function approveRejectedUrls(baseline: Snapshot, candidate: Snapshot, rules: RejectedUrl[], details: string[]): number {
