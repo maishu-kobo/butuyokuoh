@@ -4,8 +4,7 @@ import { cookies } from 'next/headers';
 import { getDb } from './db';
 import { auth } from '@/auth';
 import { findGuest, guestEnabled, GUEST_COOKIE, type GuestUser } from './guest';
-
-const TOKEN_COOKIE_NAME = 'butuyokuoh_token';
+import { MEMBER_TOKEN_COOKIE, memberTokenCookieOptions } from './cookie-policy';
 
 // 開発モード専用のフォールバック鍵。リポジトリに公開されている値のため、
 // 本番でこの鍵を使うとトークンを偽造される。本番では JWT_SECRET の設定を必須とする。
@@ -83,7 +82,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     if (user) return user;
   }
   const cookieStore = await cookies();
-  const token = cookieStore.get(TOKEN_COOKIE_NAME)?.value;
+  const token = cookieStore.get(MEMBER_TOKEN_COOKIE)?.value;
   if (token) {
     const payload = verifyToken(token);
     const user = payload && member(payload.userId);
@@ -94,18 +93,12 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 
 export async function setAuthCookie(token: string): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.set(TOKEN_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60, // 7 days
-    path: '/',
-  });
+  cookieStore.set(MEMBER_TOKEN_COOKIE, token, memberTokenCookieOptions());
 }
 
 export async function clearAuthCookie(): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.delete(TOKEN_COOKIE_NAME);
+  cookieStore.delete(MEMBER_TOKEN_COOKIE);
 }
 
 export function getUserIdFromToken(token: string): number | null {

@@ -1,0 +1,19 @@
+{
+  "name": "braces",
+  "version": "3.0.4",
+  "description": "braces 3.0.3 plus the unmerged nesting-depth guard from micromatch/braces#79. Version 3.0.4 is outside GHSA-vfj7-8cjw-p6xm (<=3.0.3). There is no patched release on npm.",
+  "license": "MIT",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "lib",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=8"
+  },
+  "dependencies": {
+    "fill-range": "^7.1.1"
+  }
+}
