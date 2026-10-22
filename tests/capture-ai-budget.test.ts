@@ -372,7 +372,7 @@ test('AI failures tell the client to enter the product name, and photo errors do
   assert.deepEqual(ok.body, SURE);
 });
 
-test('real identification is used only when secrets exist and the fake scenario is not hooked', async () => {
+test('real identification is used only when secrets exist outside the explicit test hook', async () => {
   const calls: string[] = [];
   const http = async (request: WorkersAiHttpRequest): Promise<WorkersAiHttpResponse> => {
     calls.push(request.url);
@@ -393,6 +393,7 @@ test('real identification is used only when secrets exist and the fake scenario 
     budget,
     http,
     now: () => Date.UTC(2026, 9, 22, 9, 0, 0),
+    env: { NODE_ENV: 'development', CAPTURE_TEST_HOOKS: '1' },
   });
   assert.equal(hooked, fake);
 
@@ -404,8 +405,16 @@ test('real identification is used only when secrets exist and the fake scenario 
     fake,
     budget,
     http,
+    env: { NODE_ENV: 'development' },
   });
-  assert.equal(missing, fake);
+  assert.notEqual(missing, fake);
+  const missingResult = await missing.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(missingResult.ok, false);
+  if (!missingResult.ok) {
+    assert.equal(missingResult.error.code, 'AI_UNAVAILABLE');
+    assert.equal(missingResult.status, 503);
+  }
+  assert.equal(calls.length, 0);
 
   const real = resolveProductIdentifier({
     hooked: false,
@@ -416,6 +425,7 @@ test('real identification is used only when secrets exist and the fake scenario 
     budget,
     http,
     now: () => Date.UTC(2026, 9, 22, 9, 0, 0),
+    env: { NODE_ENV: 'production', CAPTURE_TEST_HOOKS: '1' },
   });
   assert.notEqual(real, fake);
   const result = await real.identify({ mediaType: 'image/jpeg', bytes: jpeg });
@@ -431,6 +441,7 @@ test('the identify route keeps the kill switch and reads keys only through captu
   assert.equal(route.includes('readCapturePhoto'), true);
   assert.equal(route.includes('formData'), false);
   assert.equal(route.includes('resolveProductIdentifier'), true);
+  assert.equal(route.includes('captureTestEnv'), true);
   assert.equal(route.includes('readCaptureSecrets'), true);
   assert.equal(route.includes('identifyHttpBody'), true);
   assert.equal(/process\.env/.test(route), false);

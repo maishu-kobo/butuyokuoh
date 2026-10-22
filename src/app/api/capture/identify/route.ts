@@ -4,7 +4,7 @@ import { withCapture, withCaptureAi } from '@/lib/capture-flags';
 import { readCaptureSecrets } from '@/lib/capture-secrets';
 import { type CaptureErrorBody } from '@/lib/capture/contract';
 import { readCapturePhoto } from '@/lib/capture/photo';
-import { getCapturePorts, portsForRequest } from '@/lib/capture/ports';
+import { captureTestEnv, getCapturePorts, portsForRequest } from '@/lib/capture/ports';
 import { identifyHttpBody, resolveProductIdentifier } from '@/lib/capture/workers-ai';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -32,6 +32,7 @@ async function handlePOST(request: NextRequest) {
     apiToken: secrets.cloudflareApiToken,
     userId,
     fake: ports.identifier,
+    env: captureTestEnv(),
   });
   const http = identifyHttpBody(await identifier.identify(photo.value));
   return NextResponse.json(http.body, { status: http.status });

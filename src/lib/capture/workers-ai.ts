@@ -313,21 +313,39 @@ export function resolveProductIdentifier(input: {
   apiToken: string | null;
   userId: string;
   fake: ProductIdentifier;
+  // 呼び出し側が captureTestEnv() で渡す。省略はテストモードではない。
+  env?: { NODE_ENV?: string; CAPTURE_TEST_HOOKS?: string };
   budget?: AiBudget;
   http?: WorkersAiHttp;
   now?: () => number;
   timeoutMs?: number;
 }): ProductIdentifier {
-  if (input.hooked || !input.accountId || !input.apiToken) return input.fake;
+  // 偽物は、本番以外かつ CAPTURE_TEST_HOOKS=1 のときだけ返す。
+  const testMode = input.env?.NODE_ENV !== 'production' && input.env?.CAPTURE_TEST_HOOKS === '1';
+  if (testMode && (input.hooked || !input.accountId || !input.apiToken)) return input.fake;
+  if (!input.accountId || !input.apiToken) return unavailableIdentifier();
+  const accountId = normalizeAccount(input.accountId);
+  const apiToken = normalizeToken(input.apiToken);
+  if (!accountId || !apiToken) return unavailableIdentifier();
   return createWorkersAiIdentifier({
-    accountId: input.accountId,
-    apiToken: input.apiToken,
+    accountId,
+    apiToken,
     userId: input.userId,
     budget: input.budget ?? appAiBudget(),
     http: input.http,
     now: input.now,
     timeoutMs: input.timeoutMs,
   });
+}
+
+function unavailableIdentifier(): ProductIdentifier {
+  return {
+    async identify(input) {
+      const photo = decodeCapturePhoto([{ mediaType: input.mediaType, bytes: input.bytes }]);
+      if (!photo.ok) return photo;
+      return captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
+    },
+  };
 }
 
 function utcDayStart(now: number): number {
