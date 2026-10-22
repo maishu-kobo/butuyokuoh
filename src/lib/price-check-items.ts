@@ -1,11 +1,33 @@
 import type Database from 'better-sqlite3';
 
+// 写真から登録した商品は、ページを取りに行く価格チェックに載せない。
+// 商品コードがあるか、本人の比較グループが origin = 'photo' のときが対象。
+// 機能を止めていても、この除外は残す。
 export function priceCheckItems(db: Database.Database) {
   return db.prepare(`
     SELECT i.id, i.user_id, i.name, i.url, i.image_url, i.current_price, i.target_price
     FROM items i JOIN users u ON u.id = i.user_id
     WHERE u.account_type = 'member' AND i.is_purchased = 0 AND i.deleted_at IS NULL
+      AND (i.source_item_code IS NULL OR i.source_item_code = '')
+      AND NOT EXISTS (
+        SELECT 1 FROM comparison_groups g
+        WHERE g.id = i.comparison_group_id
+          AND g.user_id = i.user_id
+          AND g.origin = 'photo'
+      )
   `).all();
+}
+
+export function excludesPagePriceCheck(
+  db: Database.Database,
+  item: { source_item_code?: string | null; comparison_group_id?: number | null; user_id?: number | null },
+): boolean {
+  if (item.source_item_code) return true;
+  if (item.comparison_group_id == null || item.user_id == null) return false;
+  const group = db.prepare(
+    'SELECT origin FROM comparison_groups WHERE id = ? AND user_id = ?',
+  ).get(item.comparison_group_id, item.user_id) as { origin: string | null } | undefined;
+  return group?.origin === 'photo';
 }
 
 // 直近の履歴と同じ価格なら足さない。recorded_at が同じ秒でも id が大きい方を直近とする。

@@ -173,9 +173,9 @@ test('refresh skips photo items and still refreshes hand-added items', async () 
 
 test('refresh checks the photo exclusion before scraping, and the price script keeps using priceCheckItems', () => {
   const route = readFileSync(new URL('../src/app/api/items/[id]/refresh/route.ts', import.meta.url), 'utf8');
-  const exclusion = route.indexOf('excludesPagePriceCheck');
-  const scrape = route.indexOf('scrapeUrl');
-  const guestScrape = route.indexOf('scrapeGuestUrl');
+  const exclusion = route.indexOf('excludesPagePriceCheck(');
+  const scrape = route.indexOf('scrapeUrl(');
+  const guestScrape = route.indexOf('scrapeGuestUrl(');
   assert.ok(exclusion >= 0);
   assert.ok(exclusion < scrape);
   assert.ok(exclusion < guestScrape);
