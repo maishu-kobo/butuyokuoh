@@ -1,4 +1,5 @@
 import { requireSameOrigin, withAccess } from '@/lib/api-access';
+import { withCapture } from '@/lib/capture-flags';
 import { CaptureMessages, parseSearchQuery, type CaptureErrorBody } from '@/lib/capture/contract';
 import { searchWithPorts } from '@/lib/capture/fakes';
 import { portsForRequest } from '@/lib/capture/ports';
@@ -28,4 +29,4 @@ async function handlePOST(request: NextRequest) {
   return NextResponse.json(result.value);
 }
 
-export const POST = withAccess(handlePOST);
+export const POST = withCapture(withAccess(handlePOST));
