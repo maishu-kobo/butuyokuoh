@@ -9,3 +9,7 @@
 - 選んだ写真の候補を、1つの比較グループとしてリストに登録できるようにした。
 - エージェント共通の開発ルール `AGENTS.md`。
 - Claude Code、Gemini CLI、GitHub.com の Copilot Chat が `AGENTS.md` を読むためのポインタ。Claude Code の共有設定で `.env` と `.env.*` の読み取りを拒否する。
+
+### Changed
+
+- 写真から登録した商品を、6時間ごとの価格チェックと再取得の対象から外した。
