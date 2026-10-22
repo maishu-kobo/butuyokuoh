@@ -2,7 +2,7 @@
 
 物欲王（butuyokuoh）のエージェント向けルール。正本はこのファイルだけで、他の指示ファイルはここを指す。本文を複製しない。
 
-複数の EC のほしいものリストをまとめる Next.js アプリ。本番は https://butsuyokuoh.exe.xyz/ 。作業の起点は `develop`。`main` は昇格用で、ここへ直接作業しない。
+複数の EC のほしいものリストをまとめる Next.js アプリ。本番は https://butsuyokuoh.exe.xyz/ 。作業は `feature/<名前>` へ向ける。`develop` へ入れるのは Sota（sota009）の承認があるときだけ。`main` は昇格用で、ここへ直接作業しない。
 
 Next.js 16 / React 19 は、古い学習データと違うことがある。迷ったら https://nextjs.org/docs の該当ページを見る。Markdown が要るときは URL の末尾に `.md` を足す。
 
@@ -28,7 +28,7 @@ Next.js 16 / React 19 は、古い学習データと違うことがある。迷�
 | `npm run lint` | ESLint。既存の違反は残る。新しい違反を足さない |
 | `npm run test:e2e` | Playwright。ブラウザが必要 |
 
-CI はまだ無い（Issue #79）。
+CI は `feature/photo-capture` と `develop` 向けの PR で、テスト、型検査、ビルドを流す（`.github/workflows/ci.yml`）。e2e と、マージを CI の成功で止める設定はまだ無い（Issue #79）。
 
 `npm run check-prices` は外部サイトを取得し DB を更新する。`npm run cleanup-guests` はゲストを削除する。エージェントはどちらも実行しない。
 
@@ -47,7 +47,7 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 
 ## マージ
 
-完了の条件を満たし、作者とは別のエージェントか人がレビューした PR は自動マージしてよい。CI ができたら CI の結果で判断する。次に触る PR は人間の承認が必要。
+作業ブランチは `feature/<名前>` から切り、PR も `feature/<名前>` へ向ける。`feature/<名前>` は `develop` から切る。完了の条件を満たし、作者とは別のエージェントか人がレビューした PR は、`feature/<名前>` へのものに限ってマージしてよい。`develop` へのマージは Sota（sota009）の承認があるときだけ行う。CI の結果も見る。次に触る PR は、それに加えて人間の承認が必要。
 
 - AI / API キーや秘密情報の扱い
 - 利用量・費用の上限
@@ -57,7 +57,7 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 
 エージェントはデプロイしない。`develop` と `main` へ直接 push しない。リポジトリ設定を変えない。データを削除しない。
 
-大きい機能は `feature/<名前>` の統合ブランチを `develop` から切って進める。その機能の Issue はラベル `feature:<名前>` とまとめの Issue で束ね、どの統合ブランチかはラベルかまとめの Issue に書く。各タスクのブランチは統合ブランチから切り、PR もそこへ向ける。自動マージは統合ブランチへの PR だけ（人の承認が要る変更は除く）。`develop` への統合は、機能全体を確かめたあとの1回で、必ず人が承認する。統合ブランチへの `develop` の取り込みは merge で行い、rebase と force-push はしない。小さい修正は `develop` への PR でよく、上のマージ規則に従う。
+その機能の Issue はラベル `feature:<名前>` とまとめの Issue で束ね、どの統合ブランチかはラベルかまとめの Issue に書く。統合ブランチへの `develop` の取り込みは merge で行い、rebase と force-push はしない。小さい修正も `feature/<名前>` への PR にする。
 
 ## Code Review Rules
 
