@@ -1,6 +1,7 @@
 # フレークしたテストの隔離レーン。リストは .github/test-quarantine.txt。最初は 0 件。
-# 毎回報告する。失敗してもマージは止めない（continue-on-error）。
-# 必須の単体テストと playwright からは外れる。path フィルタは付けない。
+# 失敗するとこのチェックは赤になる。チェック名は必須の名前ではない。
+# 保護したテスト（セキュリティと回帰）はリストに書けない。必須レーンが拒否する。
+# path フィルタは付けない。
 # ローカルの npm test と npm run test:e2e はこのリストを見ない。
 name: quarantined tests
 
@@ -26,7 +27,6 @@ jobs:
     name: quarantined tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -88,9 +88,7 @@ jobs:
         run: |
           {
             echo "## 隔離レーン"
-            echo "失敗してもマージは止めない。リストは \`.github/test-quarantine.txt\`。"
+            echo "失敗するとこのチェックは赤になる。チェック名は必須の名前ではない。"
+            echo "リストは \`.github/test-quarantine.txt\`。"
             echo "件数: ${{ steps.count.outputs.count }}"
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.run.outcome }}" = "failure" ] || [ "${{ steps.count.outcome }}" = "failure" ]; then
-            echo "::warning::隔離したテストが失敗した。マージは止めない。ログを見て直す。"
-          fi

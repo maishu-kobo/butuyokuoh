@@ -7,7 +7,8 @@
 # - dependency-review.yml
 # - gitleaks.yml
 #
-# フレークの隔離は quarantine.yml。失敗しても止めない。リストは .github/test-quarantine.txt。
+# フレークの隔離は quarantine.yml。失敗すると赤になる。チェック名は必須の名前ではない。
+# 保護したテストは .github/test-quarantine.txt に書けない。このレーンが拒否する。
 # 実店舗の e2e（E2E_LIVE_SCRAPE / E2E_LIVE_AMAZON / E2E_LIVE_RAKUTEN）は環境変数を付けない。
 # develop への push と、マージ条件への組み込みはここではしない。
 # path フィルタは付けない。必須ジョブが skip になると、その SHA のチェックが pending のままマージを止める。

@@ -40,7 +40,7 @@
 - `INSTALLATION_COMPLETE` がある
 - linux の実行ファイルがある（chromium、chromium-headless-shell、ffmpeg）
 - 実行ファイルが極端に小さくない
-- sha256 をログに出す
+- sha256 をログに出す。Playwright 同梱の `browsers.json` には実行ファイルのダイジェストが無いので、期待値とは比べない
 - chromium は `--version`、ffmpeg は `-version` が成功する
 
 ## フレークしたテストの隔離
@@ -54,15 +54,22 @@ tests/example.test.ts
 tests/e2e/guest.spec.ts
 ```
 
-単体は `tests/*.test.ts` だけ。e2e は `playwright.config.ts` が選ぶファイル（`disabled.spec.ts` を含む）。それ以外のパスは隔離ジョブが失敗する。必須レーンはそのパスを外さない。
+単体は `tests/*.test.ts` だけ。e2e は `playwright test --list` が `playwright.config.ts` から見つけたファイル。リストが空でも、1 件でも、必須レーンはその発見結果から隔離分だけを引いて同じコマンドで実行する。発見結果に無いパスは隔離ジョブが失敗する。必須レーンはそのパスを外さない。
+
+次のファイルは隔離リストに書けない。必須の `blocking-unit` と `blocking-e2e` が、テストを始める前に拒否する。
+
+- `tests/test-lanes.test.ts`
+- `tests/bugfix-ssrf.test.ts`
+- `tests/regression-auth.test.ts`
+- `tests/capture-secrets.test.ts`
 
 | コマンド | どこで使う |
 | --- | --- |
-| `node scripts/test-lanes.mjs blocking-unit` | 必須の単体テスト。リストにあるものだけ外す。0 件になると失敗する |
-| `node scripts/test-lanes.mjs blocking-e2e` | 必須の e2e。リストが空なら `npx playwright test`。全部外すと失敗する |
-| `node scripts/test-lanes.mjs quarantine` | 隔離したテストだけ。0 件なら何も実行せず成功する |
+| `node scripts/test-lanes.mjs blocking-unit` | 必須の単体テスト。リストにあるものだけ外す。保護したテストがあると失敗する。0 件になると失敗する |
+| `node scripts/test-lanes.mjs blocking-e2e` | 必須の e2e。`playwright test --list` から隔離分を引く。全部外すと失敗する |
+| `node scripts/test-lanes.mjs quarantine` | 隔離したテストだけ。0 件なら何も実行せず成功する。保護したテストがあると失敗する |
 | `node scripts/test-lanes.mjs count` | 「単体の件数 e2e の件数」を出す。0 件なら依存を入れない |
 
-隔離ジョブのチェック名は `quarantined tests`（`.github/workflows/quarantine.yml`）。毎回報告する。`continue-on-error` なので失敗してもマージは止めない。0 件のときは `npm ci` しない。e2e が 1 件でもあるときだけ、必須レーンと同じブラウザキャッシュを使い、ヒットでも実体を検査してから実行する。
+隔離ジョブのチェック名は `quarantined tests`（`.github/workflows/quarantine.yml`）。毎回実行する。失敗するとそのチェックは赤になる。この名前は `test, types, build`、`npm audit`、`playwright`、`analyze`、`dependency review`、`gitleaks` ではない。0 件のときは `npm ci` しない。e2e が 1 件でもあるときだけ、必須レーンと同じブラウザキャッシュを使い、ヒットでも実体を検査してから実行する。
 
 ローカルの `npm test` と `npm run test:e2e` はリストを見ない。手元では全部走る。
