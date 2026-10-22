@@ -10,6 +10,7 @@
     "check-prices": "npx tsx scripts/check-prices.ts",
     "cleanup-guests": "node --import tsx scripts/cleanup-guests.ts",
     "test": "node --import tsx --test tests/*.test.ts",
+    "test:diff": "node --import tsx scripts/diff-harness/run.ts",
     "test:e2e": "playwright test",
     "audit:high": "node scripts/audit-high.mjs"
   },
