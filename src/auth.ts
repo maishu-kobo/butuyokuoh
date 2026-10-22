@@ -2,7 +2,7 @@ import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import Credentials from 'next-auth/providers/credentials';
 import { getDb } from '@/lib/db';
-import { sessionGenerationMatches, verifyPassword, User } from '@/lib/auth';
+import { confirmVerifiedPassword, sessionGenerationMatches, User } from '@/lib/auth';
 import { linkGoogleAccount } from '@/lib/link-google-account';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -31,19 +31,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return null;
         }
 
-        const isValid = await verifyPassword(
+        const sessionGeneration = await confirmVerifiedPassword(
+          user.id,
           credentials.password as string,
           user.password_hash
         );
-
-        if (!isValid) {
-          return null;
-        }
+        if (sessionGeneration == null) return null;
 
         return {
           id: String(user.id),
           email: user.email,
           name: user.name,
+          sessionGeneration,
         };
       },
     }),
@@ -70,7 +69,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return true;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
+      // Credentials はパスワード確認と同じ読み取りの世代だけを載せる。
+      // ここで DB を読み直すと、確認のあと進んだ世代で署名できる。
+      if (user?.id && account?.provider === 'credentials') {
+        const pinned = user.sessionGeneration;
+        if (typeof pinned !== 'number' || !Number.isInteger(pinned) || pinned < 0) {
+          delete token.userId;
+          delete token.sessionGeneration;
+          return token;
+        }
+        token.userId = String(user.id);
+        token.sessionGeneration = pinned;
+        return token;
+      }
       const userId = user?.id ?? token.userId;
       if (!userId) return token;
       const row = getDb().prepare(

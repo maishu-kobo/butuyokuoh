@@ -53,16 +53,47 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash);
 }
 
-export function generateToken(user: User): string {
-  if (user.account_type !== 'member') throw new Error('Member account required');
+// bcrypt の await 中に Google 連携が確定すると、検証に使った hash はもうその会員のものではない。
+// パスワードが合ったあとに hash と世代を一度だけ読み、hash が消えているか変わっていれば拒否する。
+// 署名に使ってよいのは、その同じ読み取りの世代だけ。
+let afterPasswordConfirmed: (() => void) | undefined;
+
+export async function confirmVerifiedPassword(
+  userId: number,
+  password: string,
+  passwordHash: string,
+): Promise<number | null> {
+  const valid = await verifyPassword(password, passwordHash);
+  if (!valid) return null;
+  const row = getDb().prepare(
+    `SELECT password_hash, session_generation
+     FROM users
+     WHERE id = ? AND account_type = 'member'`
+  ).get(userId) as { password_hash: string | null; session_generation: number } | undefined;
+  if (!row || row.password_hash == null || row.password_hash !== passwordHash) return null;
+  const sessionGeneration = row.session_generation ?? 0;
+  if (process.env.NODE_ENV !== 'production') afterPasswordConfirmed?.();
+  return sessionGeneration;
+}
+
+function currentSessionGeneration(userId: number): number {
   const row = getDb().prepare(
     "SELECT session_generation FROM users WHERE id = ? AND account_type = 'member'"
-  ).get(user.id) as { session_generation: number } | undefined;
+  ).get(userId) as { session_generation: number } | undefined;
+  return row?.session_generation ?? 0;
+}
+
+export function generateToken(user: User, sessionGeneration?: number): string {
+  if (user.account_type !== 'member') throw new Error('Member account required');
+  const generation = sessionGeneration ?? currentSessionGeneration(user.id);
+  if (!Number.isInteger(generation) || generation < 0) {
+    throw new Error('Invalid session generation');
+  }
   return jwt.sign(
     {
       userId: user.id,
       email: user.email,
-      sessionGeneration: row?.session_generation ?? 0,
+      sessionGeneration: generation,
     } as JWTPayload,
     getJwtSecret(),
     { expiresIn: '7d' }
@@ -102,6 +133,7 @@ export function installAuthTestHooks(hooks: null | {
   user?: CurrentUser | null;
   cookies?: TestCookieWriter | null;
   session?: TestSession;
+  afterPasswordConfirmed?: () => void;
 }): void {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('Auth test hooks are unavailable in production');
@@ -110,11 +142,13 @@ export function installAuthTestHooks(hooks: null | {
     testCurrentUser = undefined;
     testCookies = null;
     testSession = undefined;
+    afterPasswordConfirmed = undefined;
     return;
   }
   if ('user' in hooks) testCurrentUser = { user: hooks.user ?? null };
   if ('cookies' in hooks) testCookies = hooks.cookies ?? null;
   if ('session' in hooks) testSession = hooks.session ?? null;
+  if ('afterPasswordConfirmed' in hooks) afterPasswordConfirmed = hooks.afterPasswordConfirmed;
 }
 
 export async function getCurrentUser(): Promise<CurrentUser | null> {

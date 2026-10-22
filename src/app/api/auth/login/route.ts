@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { verifyPassword, generateToken, setAuthCookie, User } from '@/lib/auth';
+import { confirmVerifiedPassword, generateToken, setAuthCookie, User } from '@/lib/auth';
 import { normalizeEmail, isValidEmail } from '@/lib/email';
 
 interface DbUser extends User {
@@ -50,8 +50,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const isValid = await verifyPassword(password, dbUser.password_hash);
-    if (!isValid) {
+    const sessionGeneration = await confirmVerifiedPassword(dbUser.id, password, dbUser.password_hash);
+    if (sessionGeneration == null) {
       return NextResponse.json(
         { error: 'メールアドレスまたはパスワードが正しくありません' },
         { status: 401 }
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       created_at: dbUser.created_at,
     };
 
-    const token = generateToken(user);
+    const token = generateToken(user, sessionGeneration);
     await setAuthCookie(token);
 
     return NextResponse.json({ user, token });

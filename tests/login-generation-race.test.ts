@@ -25,14 +25,19 @@ type Compare = typeof bcrypt.compare;
 async function duringPasswordCheck(action: () => Promise<void> | void, run: () => Promise<void>) {
   const original = bcrypt.compare;
   let started = false;
-  const wrapped: Compare = async (password, hash, callback, progress) => {
+  const wrapped = async (
+    password: string,
+    hash: string,
+    callback?: Parameters<Compare>[2],
+    progress?: Parameters<Compare>[3],
+  ) => {
     if (!started && callback === undefined) {
       started = true;
       await action();
     }
     return original(password, hash, callback, progress);
   };
-  bcrypt.compare = wrapped;
+  bcrypt.compare = wrapped as unknown as Compare;
   try {
     await run();
   } finally {
@@ -179,5 +184,40 @@ test('競合が無いパスワードログインは従来どおりトークン�
     const signedIn = await credentialsSignIn(email, 'secret1');
     assert.equal(signedIn.userId, String(member.id));
     assert.equal(signedIn.sessionGeneration, 0);
+  });
+});
+
+test('確認したあと世代が進んでも、署名はその読み取りの世代のまま', async () => {
+  await serial(async () => {
+    const email = 'pin-generation@example.test';
+    await registerMember(email, 'secret1');
+    const database = await db();
+    const { installAuthTestHooks, getUserIdFromToken, verifyToken } = await import('../src/lib/auth');
+    installAuthTestHooks({
+      afterPasswordConfirmed() {
+        database.prepare(
+          'UPDATE users SET session_generation = session_generation + 5 WHERE email = ?'
+        ).run(email);
+      },
+    });
+    try {
+      const loggedIn = await call(loginPath, 'POST', '/api/auth/login', { email, password: 'secret1' });
+      assert.equal(loggedIn.status, 200);
+      const token = (loggedIn.json as { token: string }).token;
+      assert.equal(verifyToken(token)?.sessionGeneration, 0);
+      assert.equal(getUserIdFromToken(token), null);
+
+      const signedIn = await credentialsSignIn(email, 'secret1');
+      assert.equal(signedIn.userId, String(
+        (database.prepare('SELECT id FROM users WHERE email = ?').get(email) as { id: number }).id
+      ));
+      assert.equal(signedIn.sessionGeneration, 5);
+      const stored = database.prepare(
+        'SELECT session_generation FROM users WHERE email = ?'
+      ).get(email) as { session_generation: number };
+      assert.equal(stored.session_generation, 10);
+    } finally {
+      installAuthTestHooks(null);
+    }
   });
 });
