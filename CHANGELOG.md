@@ -7,4 +7,3 @@
 ### Added
 
 - エージェント共通の開発ルール `AGENTS.md`。
-- 作業ログの雛形 `docs/WORKLOG.md`。
