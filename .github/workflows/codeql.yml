@@ -1,4 +1,6 @@
-# pull_request だけ。結果のアップロードに security-events: write が要る。
+# pull_request だけ。
+# このリポジトリは CodeQL の default setup が有効で、advanced の SARIF は受け取らない。
+# 解析自体は行い、結果が warning / error ならジョブを落とす。アップロードはしない。
 name: CodeQL
 
 on:
@@ -22,7 +24,6 @@ jobs:
     permissions:
       actions: read
       contents: read
-      security-events: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -35,3 +36,38 @@ jobs:
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          upload: never
+          upload-database: false
+          output: ${{ github.workspace }}/codeql-results
+
+      - name: Fail on CodeQL findings
+        run: |
+          python3 - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          files = sorted(Path("codeql-results").rglob("*.sarif"))
+          if not files:
+              print("CodeQL の SARIF が無い", file=sys.stderr)
+              sys.exit(1)
+          failed = False
+          for path in files:
+              data = json.loads(path.read_text())
+              for run in data.get("runs", []):
+                  results = run.get("results", [])
+                  print(f"{path.name}: {len(results)} results")
+                  for result in results:
+                      level = result.get("level", "warning")
+                      rule = result.get("ruleId", "")
+                      message = result.get("message", {}).get("text", "").split("\n", 1)[0]
+                      location = result.get("locations", [{}])[0].get("physicalLocation", {})
+                      uri = location.get("artifactLocation", {}).get("uri", "")
+                      line = location.get("region", {}).get("startLine", "")
+                      print(f"- {level} {rule} {uri}:{line} {message}")
+                      if level in ("error", "warning"):
+                          failed = True
+          if failed:
+              sys.exit(1)
+          PY
