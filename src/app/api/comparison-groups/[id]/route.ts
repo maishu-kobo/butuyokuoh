@@ -75,10 +75,11 @@ async function handleDELETE(
     return NextResponse.json({ error: '比較グループが見つかりません' }, { status: 404 });
   }
 
-  // 紐づくアイテムのcomparison_group_idのnull化とグループ削除を
-  // 1トランザクションにまとめ、途中失敗による不整合を防ぐ
+  // 紐づくアイテムとキャプチャの comparison_group_id を null にしてからグループを消す。
+  // 1トランザクションにまとめ、途中失敗による不整合を防ぐ。キャプチャ行は残す。
   const deleteGroup = db.transaction(() => {
     db.prepare('UPDATE items SET comparison_group_id = NULL WHERE comparison_group_id = ? AND user_id = ?').run(id, user.id);
+    db.prepare('UPDATE captures SET comparison_group_id = NULL WHERE comparison_group_id = ? AND user_id = ?').run(id, user.id);
     db.prepare('DELETE FROM comparison_groups WHERE id = ? AND user_id = ?').run(id, user.id);
   });
   deleteGroup();
