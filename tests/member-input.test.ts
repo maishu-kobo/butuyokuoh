@@ -51,7 +51,7 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
   assert.equal(itemCount(), 0);
 
   const { NextRequest } = await import('next/server');
-  const { POST } = await import('../src/app/api/items/route.ts');
+  const { POST } = await import('../src/app/api/items/route');
   for (const raw of ['[]', '{', 'null']) {
     const response = await POST(new NextRequest('http://127.0.0.1/api/items', {
       method: 'POST',
