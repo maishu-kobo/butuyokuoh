@@ -51,6 +51,11 @@ test('a photo group is one list card, and hand-added items stay separate', async
   await expect(milk.getByTestId('photo-group-low')).toHaveText('最安 ¥500');
   await expect(milk.getByTestId('photo-group-range')).toHaveText('¥500〜¥1,200');
   await expect(milk.getByText('3件')).toBeVisible();
+  const lowBox = await milk.getByTestId('photo-group-low').boundingBox();
+  const milkAction = await milk.getByRole('button', { name: '価格推移' }).boundingBox();
+  expect(lowBox).not.toBeNull();
+  expect(milkAction).not.toBeNull();
+  expect(lowBox!.y + lowBox!.height).toBeLessThanOrEqual(milkAction!.y + 1);
 
   const one = page.locator('.space-y-3 > div').filter({ has: page.getByRole('heading', { name: '単品ショップ', exact: true }) });
   await expect(one.getByTestId('photo-group-card')).toHaveCount(0);
@@ -136,6 +141,16 @@ test('a photo group uses the same card as a url item on a phone and a desktop', 
   await expect(photo.getByTestId('photo-group-low')).toHaveText('最安 ¥1,338');
   await expect(photo.getByTestId('photo-group-range')).toHaveText('¥1,338〜¥2,000');
   await expect(photo.getByText('2件')).toBeVisible();
+  const photoBox = await photo.boundingBox();
+  const urlBox = await urlCard.boundingBox();
+  const photoAction = await photo.getByRole('button', { name: '価格推移' }).boundingBox();
+  const urlAction = await urlCard.getByRole('button', { name: '価格推移' }).boundingBox();
+  const low = await photo.getByTestId('photo-group-low').boundingBox();
+  expect(photoBox && urlBox && photoAction && urlAction && low).toBeTruthy();
+  expect(low!.y + low!.height).toBeLessThanOrEqual(photoAction!.y + 1);
+  const photoTail = photoBox!.y + photoBox!.height - (photoAction!.y + photoAction!.height);
+  const urlTail = urlBox!.y + urlBox!.height - (urlAction!.y + urlAction!.height);
+  expect(photoTail).toBeLessThanOrEqual(urlTail + 4);
   for (const name of ['価格推移', '編集', '購入済みにする', '削除', 'ドラッグして並び替え']) {
     await expect(photo.getByRole('button', { name })).toBeVisible();
     await expect(urlCard.getByRole('button', { name })).toBeVisible();

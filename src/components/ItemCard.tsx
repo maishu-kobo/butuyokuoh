@@ -33,12 +33,13 @@ interface ItemCardProps {
   isLowestPrice?: boolean;
   heading?: string;
   extra?: ReactNode;
+  info?: ReactNode;
   displayImageUrl?: string | null;
   groupMemberIds?: readonly number[];
   offerPriceRefresh?: boolean;
 }
 
-export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, displayImageUrl, groupMemberIds, offerPriceRefresh = true }: ItemCardProps) {
+export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, info, displayImageUrl, groupMemberIds, offerPriceRefresh = true }: ItemCardProps) {
   const { isGuest } = useAuth();
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -353,6 +354,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           {item.notes && (
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-1">{item.notes}</p>
           )}
+          {info}
         </div>
       </div>
 

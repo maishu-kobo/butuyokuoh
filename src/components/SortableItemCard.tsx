@@ -20,6 +20,7 @@ interface SortableItemCardProps {
   onToggleSelect?: (id: number) => void;
   heading?: string;
   extra?: ReactNode;
+  info?: ReactNode;
   displayImageUrl?: string | null;
   groupMemberIds?: readonly number[];
   offerPriceRefresh?: boolean;
@@ -38,6 +39,7 @@ export default function SortableItemCard({
   onToggleSelect,
   heading,
   extra,
+  info,
   displayImageUrl,
   groupMemberIds,
   offerPriceRefresh,
@@ -112,6 +114,7 @@ export default function SortableItemCard({
           isLowestPrice={isLowestPrice}
           heading={heading}
           extra={extra}
+          info={info}
           displayImageUrl={displayImageUrl}
           groupMemberIds={groupMemberIds}
           offerPriceRefresh={offerPriceRefresh}
