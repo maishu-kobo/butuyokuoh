@@ -133,3 +133,43 @@ test('a member can take or choose a photo, edit the name, and register a candida
   await page.getByRole('button', { name: '選んだ候補を登録' }).click();
   await expect(page.getByRole('heading', { name: '別のペン' })).toBeVisible();
 });
+
+
+test('search credits remain visible for empty and partial results; untagged links have no affiliate claim', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.request.post('/api/auth/register', { data: { email: 'attribution@example.test', password: 'test-password' } });
+  await page.route('https://item-shopping.c.yimg.jp/**', (route) => route.abort());
+  await page.route('https://thumbnail.image.rakuten.co.jp/**', (route) => route.abort());
+  let scenario = 'default';
+  let untagged = false;
+  await page.route('**/api/capture/search', async (route) => {
+    const response = await route.fetch({ headers: { ...route.request().headers(), 'x-capture-fake-scenario': scenario } });
+    const data = await response.json();
+    expect(data.attribution).toEqual({ yahoo: true, rakuten: true });
+    // Only this UI case substitutes the optional link configuration. The search
+    // itself, including empty/failed providers and attribution, uses the server.
+    if (untagged) data.amazonUrl = 'https://www.amazon.co.jp/s?k=pen';
+    await route.fulfill({ response, json: data });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
+  await page.getByLabel('写真を撮る').setInputFiles({ name: 'credit.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+  const credit = page.getByRole('link', { name: 'Webサービス by Yahoo! JAPAN' });
+  await expect(credit).toHaveAttribute('href', 'https://developer.yahoo.co.jp/sitemap/');
+  await expect(page.getByText('Amazonのアソシエイトとして', { exact: false })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('attribution-mobile.png'), fullPage: true });
+  for (const next of ['empty', 'yahoo-down', 'rakuten-down', 'both-down']) {
+    scenario = next;
+    await page.getByLabel('探す商品名').fill(`ペン ${next}`);
+    const searched = page.waitForResponse('**/api/capture/search');
+    await page.getByRole('button', { name: 'この名前で探す' }).click();
+    await searched;
+    await expect(credit).toBeVisible();
+    if (next !== 'both-down') await expect(page.getByRole('link', { name: 'Amazonで探す' })).toBeVisible();
+  }
+  scenario = 'default'; untagged = true;
+  await page.getByRole('button', { name: 'この名前で探す' }).click();
+  await expect(page.getByRole('link', { name: 'Amazonで探す' })).toHaveAttribute('href', 'https://www.amazon.co.jp/s?k=pen');
+  await expect(page.getByText('Amazonのアソシエイトとして', { exact: false })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});
