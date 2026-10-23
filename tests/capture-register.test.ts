@@ -639,3 +639,146 @@ test('one fresh candidate is a plain item, and a replay after expiry does not cr
     db.close();
   }
 });
+
+test('replaying one registered candidate returns that item, not every item matching a candidate url', () => {
+  const db = openDatabase(':memory:');
+  try {
+    const userId = member(db, 'replay-one@example.com');
+    const otherUrl = 'https://store.shopping.yahoo.co.jp/shop/already';
+    const otherItemId = Number(db.prepare(
+      'INSERT INTO items (user_id, name, url, current_price, source) VALUES (?, ?, ?, ?, ?)',
+    ).run(userId, '先にある商品', otherUrl, 500, 'yahoo').lastInsertRowid);
+    const captureId = capture(db, userId, '単品のやり直し');
+    const chosen = candidate(db, userId, captureId, {
+      name: '選んだ牛乳',
+      url: 'https://store.shopping.yahoo.co.jp/shop/chosen',
+      source_item_code: 'yahoo:chosen',
+      price: 180,
+    });
+    const other = candidate(db, userId, captureId, {
+      name: '先にある候補',
+      url: otherUrl,
+      source_item_code: 'yahoo:already',
+      price: 500,
+    });
+
+    const saved = registerCapturedCandidates(db, userId, [chosen], NOW);
+    assert.equal(saved.ok, true);
+    if (!saved.ok) return;
+    assert.equal(saved.created, true);
+    assert.equal(saved.comparisonGroupId, null);
+    assert.equal(saved.itemIds.length, 1);
+    assert.equal(saved.itemIds.includes(otherItemId), false);
+    assert.equal(count(db, 'items'), 2);
+    assert.equal(count(db, 'comparison_groups'), 0);
+
+    const replay = registerCapturedCandidates(db, userId, [chosen, other], NOW);
+    assert.equal(replay.ok, true);
+    if (!replay.ok) return;
+    assert.equal(replay.created, false);
+    assert.equal(replay.comparisonGroupId, null);
+    assert.deepEqual(replay.itemIds, saved.itemIds);
+    assert.equal(count(db, 'items'), 2);
+    assert.equal(count(db, 'comparison_groups'), 0);
+    const otherItem = db.prepare(
+      'SELECT name, url, current_price, comparison_group_id FROM items WHERE id = ?',
+    ).get(otherItemId) as { name: string; url: string; current_price: number; comparison_group_id: number | null };
+    assert.equal(otherItem.name, '先にある商品');
+    assert.equal(otherItem.url, otherUrl);
+    assert.equal(otherItem.current_price, 500);
+    assert.equal(otherItem.comparison_group_id, null);
+
+    db.prepare('UPDATE capture_candidates SET expires_at = ? WHERE capture_id = ?').run(NOW - 1, captureId);
+    const expired = registerCapturedCandidates(db, userId, [chosen], NOW);
+    assert.equal(expired.ok, true);
+    if (!expired.ok) return;
+    assert.equal(expired.created, false);
+    assert.deepEqual(expired.itemIds, saved.itemIds);
+    assert.equal(count(db, 'items'), 2);
+
+    db.prepare('DELETE FROM items WHERE id = ?').run(saved.itemIds[0]);
+    const missing = registerCapturedCandidates(db, userId, [chosen, other], NOW);
+    assert.equal(missing.ok, true);
+    if (!missing.ok) return;
+    assert.equal(missing.created, false);
+    assert.deepEqual(missing.itemIds, []);
+    assert.equal(count(db, 'items'), 1);
+    assert.equal((db.prepare('SELECT id FROM items').get() as { id: number }).id, otherItemId);
+  } finally {
+    db.close();
+  }
+});
+
+test('a registered capture without a recorded item returns that item only when one url matches', () => {
+  const db = openDatabase(':memory:');
+  try {
+    const userId = member(db, 'legacy-one@example.com');
+    const url = 'https://store.shopping.yahoo.co.jp/shop/legacy-one';
+    const itemId = Number(db.prepare(
+      'INSERT INTO items (user_id, name, url) VALUES (?, ?, ?)',
+    ).run(userId, '記録の無い1件', url).lastInsertRowid);
+    const captureId = capture(db, userId, '記録の無い単品');
+    db.prepare("UPDATE captures SET status = 'registered' WHERE id = ?").run(captureId);
+    const only = candidate(db, userId, captureId, {
+      url,
+      source_item_code: 'yahoo:legacy-one',
+      name: '記録の無い候補',
+    });
+    const extra = candidate(db, userId, captureId, {
+      url: 'https://store.shopping.yahoo.co.jp/shop/legacy-unused',
+      source_item_code: 'yahoo:legacy-unused',
+      name: '商品の無い候補',
+    });
+
+    const replay = registerCapturedCandidates(db, userId, [only, extra], NOW);
+    assert.equal(replay.ok, true);
+    if (!replay.ok) return;
+    assert.equal(replay.created, false);
+    assert.equal(replay.comparisonGroupId, null);
+    assert.deepEqual(replay.itemIds, [itemId]);
+    assert.equal(count(db, 'items'), 1);
+    assert.equal(count(db, 'comparison_groups'), 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('a registered capture without a recorded item does not return every item matching a candidate url', () => {
+  const db = openDatabase(':memory:');
+  try {
+    const userId = member(db, 'legacy-many@example.com');
+    const firstUrl = 'https://store.shopping.yahoo.co.jp/shop/legacy-a';
+    const secondUrl = 'https://store.shopping.yahoo.co.jp/shop/legacy-b';
+    const firstItem = Number(db.prepare(
+      'INSERT INTO items (user_id, name, url) VALUES (?, ?, ?)',
+    ).run(userId, '候補Aの商品', firstUrl).lastInsertRowid);
+    const secondItem = Number(db.prepare(
+      'INSERT INTO items (user_id, name, url) VALUES (?, ?, ?)',
+    ).run(userId, '候補Bの商品', secondUrl).lastInsertRowid);
+    const captureId = capture(db, userId, '記録の無い複数');
+    db.prepare("UPDATE captures SET status = 'registered' WHERE id = ?").run(captureId);
+    const first = candidate(db, userId, captureId, {
+      url: firstUrl,
+      source_item_code: 'yahoo:legacy-a',
+      name: '候補A',
+    });
+    const second = candidate(db, userId, captureId, {
+      url: secondUrl,
+      source_item_code: 'yahoo:legacy-b',
+      name: '候補B',
+    });
+
+    const replay = registerCapturedCandidates(db, userId, [first, second], NOW);
+    assert.equal(replay.ok, true);
+    if (!replay.ok) return;
+    assert.equal(replay.created, false);
+    assert.equal(replay.comparisonGroupId, null);
+    assert.deepEqual(replay.itemIds, []);
+    assert.equal(count(db, 'items'), 2);
+    assert.equal((db.prepare('SELECT name FROM items WHERE id = ?').get(firstItem) as { name: string }).name, '候補Aの商品');
+    assert.equal((db.prepare('SELECT name FROM items WHERE id = ?').get(secondItem) as { name: string }).name, '候補Bの商品');
+    assert.equal(count(db, 'comparison_groups'), 0);
+  } finally {
+    db.close();
+  }
+});
