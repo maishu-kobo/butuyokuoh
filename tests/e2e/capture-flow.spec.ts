@@ -8,6 +8,14 @@ test.beforeAll(async () => {
   jpeg = await sharp(pixel).jpeg().toBuffer();
 });
 
+async function expectRegisterSpacing(page: Page) {
+  const amazon = await page.getByRole('link', { name: 'Amazonで探す' }).boundingBox();
+  const register = await page.getByRole('button', { name: '選んだ候補を登録' }).boundingBox();
+  expect(amazon).toBeTruthy();
+  expect(register).toBeTruthy();
+  expect(register!.y - (amazon!.y + amazon!.height)).toBeGreaterThanOrEqual(40);
+}
+
 async function member(page: Page) {
   const response = await page.request.post('/api/auth/register', {
     data: { email: `flow-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`, password: 'test-password' },
@@ -61,6 +69,7 @@ test('a member can take or choose a photo, edit the name, and register a candida
   expect(thumbBox!.width).toBeLessThanOrEqual(68);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
+  await expectRegisterSpacing(page);
   await expect(page.locator('time').first()).toHaveText(/\d{4}\/\d{1,2}\/\d{1,2}/);
   await expect(page.locator('time').first()).not.toHaveText(/T\d{2}:\d{2}:\d{2}/);
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -68,6 +77,7 @@ test('a member can take or choose a photo, edit the name, and register a candida
   const desktopThumb = await thumb.boundingBox();
   expect(desktopThumb).toBeTruthy();
   expect(desktopThumb!.width).toBeLessThanOrEqual(68);
+  await expectRegisterSpacing(page);
   const chooseBox = await page.getByRole('checkbox', { name: '候補を選ぶ テスト用ゲルボールペン 0.5' }).first().boundingBox();
   expect(chooseBox).toBeTruthy();
   expect(chooseBox!.width).toBeGreaterThanOrEqual(24);

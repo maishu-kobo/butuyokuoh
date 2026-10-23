@@ -302,22 +302,24 @@ export function CaptureSearchPanel({
               );
             })}
           </ul>
-          {amazonUrl && (
-            <a href={amazonUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[24px] min-w-[24px] items-center text-sm underline">Amazonで探す</a>
-          )}
-          {showRakutenCredit && (
-            <p className="text-xs text-gray-400">
-              <a href={RAKUTEN_CREDIT.url} target="_blank" rel="noopener noreferrer" className="underline">{RAKUTEN_CREDIT.label}</a>
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={() => void registerSelected()}
-            disabled={selected.length === 0}
-            className="min-h-[24px] min-w-[24px] px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
-          >
-            選んだ候補を登録
-          </button>
+          <div className="flex flex-col items-start gap-4">
+            {amazonUrl && (
+              <a href={amazonUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[24px] min-w-[24px] items-center text-sm underline">Amazonで探す</a>
+            )}
+            {showRakutenCredit && (
+              <p className="text-xs text-gray-400">
+                <a href={RAKUTEN_CREDIT.url} target="_blank" rel="noopener noreferrer" className="underline">{RAKUTEN_CREDIT.label}</a>
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => void registerSelected()}
+              disabled={selected.length === 0}
+              className="min-h-[24px] min-w-[24px] px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
+            >
+              選んだ候補を登録
+            </button>
+          </div>
         </div>
       )}
       {slow && busy && (
