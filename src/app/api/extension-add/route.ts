@@ -1,4 +1,4 @@
-import { assertOwnedRelations, guestErrorResponse } from '@/lib/api-access';
+import { assertOwnedRelations, guestErrorResponse, validateMemberInput } from '@/lib/api-access';
 import { GuestError } from '@/lib/guest';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
@@ -58,6 +58,12 @@ export async function POST(request: NextRequest) {
         { status: 400, headers: corsHeaders }
       );
     }
+
+    const fields: Record<string, unknown> = { name: item.name, url: item.url };
+    if (item.price !== undefined) fields.price = item.price;
+    if (item.imageUrl !== undefined) fields.image_url = item.imageUrl;
+    if (item.priority !== undefined) fields.priority = item.priority;
+    validateMemberInput(fields, 'POST');
 
     const db = getDb();
     assertOwnedRelations(db, userId, { category_id: item.categoryId ? Number(item.categoryId) : null });

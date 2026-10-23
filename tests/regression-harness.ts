@@ -89,6 +89,8 @@ export async function call(
   path: string,
   body?: unknown,
   params?: Record<string, string>,
+  headers?: Record<string, string>,
+  requestUrl?: string,
 ): Promise<ApiResult> {
   const { NextRequest } = await import('next/server');
   const loaded = await import(modulePath) as Record<string, (
@@ -97,9 +99,11 @@ export async function call(
   ) => Promise<Response>>;
   const handler = loaded[method];
   if (!handler) throw new Error(`${method} is not exported from ${modulePath}`);
-  const request = new NextRequest(`http://127.0.0.1${path}`, {
+  const requestHeaders = new Headers(body === undefined ? undefined : { 'content-type': 'application/json' });
+  for (const [key, value] of Object.entries(headers ?? {})) requestHeaders.set(key, value);
+  const request = new NextRequest(requestUrl ?? `http://127.0.0.1${path}`, {
     method,
-    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    headers: requestHeaders,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const response = await handler(request, params ? { params: Promise.resolve(params) } : undefined);

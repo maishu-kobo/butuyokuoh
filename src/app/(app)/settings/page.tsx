@@ -8,10 +8,11 @@ import { useRouter } from 'next/navigation';
 import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2, Download, Tag, Layers, Plus, Pencil, X, ChevronDown, ChevronUp, Sun, Moon, Monitor, Palette } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import Link from 'next/link';
+import LegalLinks from '@/components/LegalLinks';
 import { Category, ComparisonGroup } from '@/types';
 
 export default function SettingsPage() {
-  const { user, isGuest, token, loading } = useAuth();
+  const { user, isGuest, token, loading, logout } = useAuth();
   const { theme, setTheme, colorScheme, setColorScheme } = useTheme();
   const router = useRouter();
   const [copied, setCopied] = useState(false);
@@ -24,6 +25,8 @@ export default function SettingsPage() {
   });
   const [savingNotify, setSavingNotify] = useState(false);
   const [notifySaved, setNotifySaved] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [accountError, setAccountError] = useState('');
   
   // カテゴリ管理
   const [categories, setCategories] = useState<Category[]>([]);
@@ -187,6 +190,25 @@ export default function SettingsPage() {
     }
   };
 
+  const deleteAccount = async () => {
+    if (isGuest || deletingAccount) return;
+    if (!window.confirm('退会すると、アカウントと登録したデータが削除されます。元に戻せません。退会しますか？')) return;
+    setDeletingAccount(true);
+    setAccountError('');
+    try {
+      const res = await fetch('/api/auth/account', { method: 'DELETE' });
+      if (!res.ok) {
+        setAccountError('退会できませんでした。もう一度お試しください。');
+        return;
+      }
+      await logout();
+    } catch {
+      setAccountError('通信に失敗しました。もう一度お試しください。');
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   const copyToken = async () => {
     if (displayToken) {
       await navigator.clipboard.writeText(displayToken);
@@ -242,6 +264,12 @@ export default function SettingsPage() {
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="bg-[var(--color-card)] rounded-lg shadow p-6">
+            <h3 className="font-semibold text-[var(--color-text)] mb-2">方針（下書き）</h3>
+            <p className="text-sm text-[var(--color-muted)] mb-3">Sota の確認待ちです。確定した文面ではありません。</p>
+            <LegalLinks />
           </div>
 
           {/* カテゴリ管理 */}
@@ -475,6 +503,20 @@ export default function SettingsPage() {
                 <p className="text-xs text-[var(--color-muted)] mt-2">※ このトークンは他人に共有しないでください</p>
               </div>
             )}
+          </div>
+
+          <div className="bg-[var(--color-card)] rounded-lg shadow p-6">
+            <h3 className="font-semibold text-[var(--color-text)] mb-2">退会</h3>
+            <p className="text-sm text-[var(--color-muted)] mb-4">アカウントと登録したデータを削除します。元に戻せません。</p>
+            {accountError && <p className="text-sm text-red-600 mb-3">{accountError}</p>}
+            <button
+              type="button"
+              onClick={deleteAccount}
+              disabled={deletingAccount}
+              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+            >
+              {deletingAccount ? '退会しています...' : '退会する'}
+            </button>
           </div>
 
           </>}

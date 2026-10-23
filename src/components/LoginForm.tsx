@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAuth } from './AuthProvider';
 import { signIn } from 'next-auth/react';
 import { Crown, Mail, Lock, User, Loader2 } from 'lucide-react';
+import LegalLinks from './LegalLinks';
 
 export default function LoginForm() {
   const { login, register, startGuest, guestEnabled, ttlHours, googleLogin } = useAuth();
@@ -204,6 +205,9 @@ export default function LoginForm() {
               )}
             </button>
           </form>
+        </div>
+        <div className="mt-6 flex justify-center">
+          <LegalLinks />
         </div>
       </div>
     </div>

@@ -1,9 +1,11 @@
+import { randomBytes } from 'node:crypto';
 import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 import { existsSync } from 'fs';
+import sharp from 'sharp';
 
 // 許可する拡張子と MIME タイプの対応表（svg は XSS 対策のため明示的に除外）
 const ALLOWED_EXTENSIONS: Record<string, string[]> = {
@@ -22,6 +24,78 @@ const ALLOWED_MIME_TYPES = new Set(
 
 // 拡張子の正規パターン（英数字 1〜5 文字のみ。/ や .. や空文字を弾く）
 const EXT_PATTERN = /^[a-z0-9]{1,5}$/;
+
+// ファイル自体は 5MB まで。multipart の境界分だけ本文の上限を広げる。
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+const MAX_BODY_BYTES = MAX_FILE_BYTES + 8 * 1024;
+const FILE_TOO_LARGE = 'ファイルサイズは5MB以下にしてください';
+
+function contentLengthOverLimit(header: string | null): boolean {
+  if (header === null) return false;
+  const value = header.trim();
+  if (!value) return false;
+  if (!/^\d+$/.test(value)) return true;
+  const length = Number(value);
+  return !Number.isSafeInteger(length) || length > MAX_BODY_BYTES;
+}
+
+// 上限を超えたチャンクの時点で読み取りをやめる。超えた分は保持しない。
+async function readBoundedBody(
+  stream: ReadableStream<Uint8Array> | null,
+  maxBytes: number,
+): Promise<Uint8Array | null> {
+  if (!stream) return new Uint8Array();
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        chunks.length = 0;
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+// 向きを画素に焼き、EXIF と GPS と末尾の注記を残さない。GIF はフレームを保つ。
+async function withoutLocation(buffer: Buffer, ext: string): Promise<Buffer | null> {
+  const format = ext === 'jpg' || ext === 'jpeg' ? 'jpeg' : ext;
+  if (format !== 'jpeg' && format !== 'png' && format !== 'webp' && format !== 'gif' && format !== 'avif') {
+    return null;
+  }
+  try {
+    // 位置情報を落とすために画素へ戻す。極端に大きい画像はここで止める。
+    const image = sharp(buffer, {
+      animated: format === 'gif',
+      failOn: 'none',
+      limitInputPixels: 80_000_000,
+    });
+    const pipeline = format === 'gif' ? image : image.rotate();
+    if (format === 'jpeg') return await pipeline.jpeg().toBuffer();
+    if (format === 'png') return await pipeline.png().toBuffer();
+    if (format === 'webp') return await pipeline.webp().toBuffer();
+    if (format === 'gif') return await pipeline.gif().toBuffer();
+    return await pipeline.avif().toBuffer();
+  } catch {
+    return null;
+  }
+}
 
 /**
  * バッファの先頭バイト（マジックバイト）から実体が画像かを簡易判定する。
@@ -90,12 +164,32 @@ async function handlePOST(request: NextRequest) {
   }
 
   try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File | null;
+    if (contentLengthOverLimit(request.headers.get('content-length'))) {
+      await request.body?.cancel().catch(() => undefined);
+      return NextResponse.json({ error: FILE_TOO_LARGE }, { status: 400 });
+    }
 
-    if (!file) {
+    const bounded = await readBoundedBody(request.body, MAX_BODY_BYTES);
+    if (!bounded) {
+      return NextResponse.json({ error: FILE_TOO_LARGE }, { status: 400 });
+    }
+
+    const contentType = request.headers.get('content-type') || '';
+    let formData: FormData;
+    try {
+      const copy = new Uint8Array(bounded.byteLength);
+      copy.set(bounded);
+      formData = await new Response(copy, {
+        headers: { 'content-type': contentType },
+      }).formData();
+    } catch {
       return NextResponse.json({ error: 'ファイルがありません' }, { status: 400 });
     }
+    const entry = formData.get('file');
+    if (!entry || typeof entry === 'string') {
+      return NextResponse.json({ error: 'ファイルがありません' }, { status: 400 });
+    }
+    const file = entry;
 
     // 拡張子をファイル名から取得し、サニタイズ・検証する
     // （/ や .. の混入によるパストラバーサル、許可外拡張子を弾く）
@@ -115,8 +209,8 @@ async function handlePOST(request: NextRequest) {
     }
 
     // ファイルサイズチェック (5MB以下)
-    if (file.size > 5 * 1024 * 1024) {
-      return NextResponse.json({ error: 'ファイルサイズは5MB以下にしてください' }, { status: 400 });
+    if (file.size > MAX_FILE_BYTES) {
+      return NextResponse.json({ error: FILE_TOO_LARGE }, { status: 400 });
     }
 
     const bytes = await file.arrayBuffer();
@@ -136,9 +230,13 @@ async function handlePOST(request: NextRequest) {
     }
     // 保存に使う拡張子は検証済みのもののみ（ユーザー入力のファイル名本体は使わない）
     const ext = rawExt;
+    const stored = await withoutLocation(buffer, ext);
+    if (!stored) {
+      return NextResponse.json({ error: '画像ファイルとして認識できません' }, { status: 400 });
+    }
 
-    // ユニークなファイル名をサーバ側で生成（ユーザー入力のファイル名本体は保存パスに使わない）
-    const filename = `${user.id}_${Date.now()}.${ext}`;
+    // ユーザー ID と時刻からは推測できない名前にする。元のファイル名は使わない。
+    const filename = `${randomBytes(32).toString('hex')}.${ext}`;
 
     // アップロードディレクトリの確認/作成
     const uploadDir = path.join(process.cwd(), 'public', 'uploads');
@@ -147,7 +245,7 @@ async function handlePOST(request: NextRequest) {
     }
 
     const filepath = path.join(uploadDir, filename);
-    await writeFile(filepath, buffer);
+    await writeFile(filepath, stored);
 
     const imageUrl = `/uploads/${filename}`;
     return NextResponse.json({ url: imageUrl });

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -131,6 +131,44 @@ function names(db: Database.Database, table: string): string[] {
 function tempFile(): { directory: string; filename: string } {
   const directory = mkdtempSync(join(tmpdir(), 'capture-schema-'));
   return { directory, filename: join(directory, 'butuyokuoh.db') };
+}
+
+function userVersion(db: Database.Database): number {
+  return Number(db.pragma('user_version', { simple: true }));
+}
+
+function foreignKeysEnabled(db: Database.Database): number {
+  return Number(db.pragma('foreign_keys', { simple: true }));
+}
+
+function rejectDanglingPrice(db: Database.Database) {
+  assert.throws(
+    () => db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(9_999_999, 100),
+    (error: unknown) => (error as { code?: string }).code === 'SQLITE_CONSTRAINT_FOREIGNKEY',
+  );
+}
+
+function writeOldDatabase(filename: string) {
+  const created = new Database(filename);
+  // 外部キーが効いていなかった頃のファイル。孤立した参照は残したまま移行できる。
+  created.pragma('foreign_keys = OFF');
+  created.exec(OLD_SCHEMA);
+  created.prepare(
+    "INSERT INTO users (email, name, account_type) VALUES ('keep@example.com', '残す人', 'member')"
+  ).run();
+  created.prepare(
+    "INSERT INTO comparison_groups (user_id, name, priority) VALUES (1, '手動グループ', 2)"
+  ).run();
+  created.prepare(
+    `INSERT INTO items (user_id, name, url, current_price, quantity, sort_order, comparison_group_id, source)
+     VALUES (1, '残る商品', 'https://example.com/kept', 4200, 2, 7, 1, 'rakuten')`
+  ).run();
+  created.prepare('INSERT INTO price_history (item_id, price) VALUES (1, 4200)').run();
+  created.prepare(
+    `INSERT INTO items (user_id, name, url, comparison_group_id, source)
+     VALUES (1, '孤立した商品', 'https://example.com/orphan', 999, 'other')`
+  ).run();
+  created.close();
 }
 
 function openOldDatabase(filename: string): Database.Database {
@@ -476,6 +514,130 @@ test('the deployment backup snippet starts the service it stops', () => {
   const start = section.indexOf('systemctl start butuyokuoh');
   assert.equal(stop >= 0, true);
   assert.equal(start > stop, true);
+});
+
+test('a new database records a schema version and rejects a dangling price', () => {
+  const { directory, filename } = tempFile();
+  try {
+    const created = openDatabase(filename);
+    const schemaVersion = userVersion(created);
+    try {
+      assert.equal(schemaVersion >= 1, true);
+      assert.equal(foreignKeysEnabled(created), 1);
+      rejectDanglingPrice(created);
+      const userId = Number(
+        created.prepare("INSERT INTO users (email, name) VALUES ('fresh@example.com', 'fresh')").run().lastInsertRowid
+      );
+      const itemId = Number(
+        created.prepare("INSERT INTO items (user_id, name, url) VALUES (?, '新品', 'https://example.com/fresh')").run(userId)
+          .lastInsertRowid
+      );
+      created.prepare('INSERT INTO price_history (item_id, price) VALUES (?, 100)').run(itemId);
+      assert.deepEqual(created.prepare('SELECT price FROM price_history').get(), { price: 100 });
+    } finally {
+      created.close();
+    }
+
+    const again = openDatabase(filename);
+    try {
+      assert.equal(userVersion(again), schemaVersion);
+      assert.equal(foreignKeysEnabled(again), 1);
+      assert.deepEqual(again.prepare('SELECT price FROM price_history').get(), { price: 100 });
+      rejectDanglingPrice(again);
+    } finally {
+      again.close();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('migrating a copy of an old database sets the same version and foreign keys without changing rows', () => {
+  const { directory, filename } = tempFile();
+  const original = join(directory, 'original.db');
+  try {
+    writeOldDatabase(original);
+    copyFileSync(original, filename);
+
+    const fresh = openDatabase(':memory:');
+    const migrated = openDatabase(filename);
+    let schemaVersion = 0;
+    try {
+      schemaVersion = userVersion(fresh);
+      assert.equal(schemaVersion >= 1, true);
+      assert.equal(userVersion(migrated), schemaVersion);
+      assert.equal(foreignKeysEnabled(migrated), 1);
+      assert.deepEqual(
+        migrated.prepare(
+          `SELECT u.email, u.name, i.name AS item_name, i.current_price, i.quantity, h.price AS history_price
+           FROM items i
+           JOIN users u ON u.id = i.user_id
+           JOIN price_history h ON h.item_id = i.id
+           WHERE i.name = '残る商品'`
+        ).get(),
+        {
+          email: 'keep@example.com',
+          name: '残す人',
+          item_name: '残る商品',
+          current_price: 4200,
+          quantity: 2,
+          history_price: 4200,
+        },
+      );
+      assert.deepEqual(
+        migrated.prepare("SELECT name, comparison_group_id FROM items WHERE name = '孤立した商品'").get(),
+        { name: '孤立した商品', comparison_group_id: 999 },
+      );
+      assert.equal(
+        (migrated.prepare('SELECT session_generation FROM users WHERE email = ?').get('keep@example.com') as {
+          session_generation: number;
+        }).session_generation,
+        0,
+      );
+      rejectDanglingPrice(migrated);
+      const keptId = (migrated.prepare("SELECT id FROM items WHERE name = '残る商品'").get() as { id: number }).id;
+      migrated.prepare('INSERT INTO price_history (item_id, price) VALUES (?, 4100)').run(keptId);
+    } finally {
+      fresh.close();
+      migrated.close();
+    }
+
+    const again = openDatabase(filename);
+    try {
+      assert.equal(userVersion(again), schemaVersion);
+      assert.equal(foreignKeysEnabled(again), 1);
+      assert.deepEqual(again.prepare('SELECT COUNT(*) AS n FROM users').get(), { n: 1 });
+      assert.deepEqual(again.prepare('SELECT COUNT(*) AS n FROM items').get(), { n: 2 });
+      assert.deepEqual(again.prepare('SELECT COUNT(*) AS n FROM price_history').get(), { n: 2 });
+      assert.deepEqual(
+        again.prepare("SELECT email, name FROM users").get(),
+        { email: 'keep@example.com', name: '残す人' },
+      );
+      assert.deepEqual(
+        again.prepare("SELECT name, comparison_group_id FROM items WHERE name = '孤立した商品'").get(),
+        { name: '孤立した商品', comparison_group_id: 999 },
+      );
+      rejectDanglingPrice(again);
+    } finally {
+      again.close();
+    }
+
+    const untouched = new Database(original);
+    try {
+      assert.equal(userVersion(untouched), 0);
+      assert.equal(untouched.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'captures'").get(), undefined);
+      assert.deepEqual(
+        untouched.prepare('SELECT email, name FROM users').get(),
+        { email: 'keep@example.com', name: '残す人' },
+      );
+      assert.deepEqual(untouched.prepare('SELECT COUNT(*) AS n FROM items').get(), { n: 2 });
+      assert.deepEqual(untouched.prepare('SELECT COUNT(*) AS n FROM price_history').get(), { n: 1 });
+    } finally {
+      untouched.close();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('schema migration does not drop or rename tables', () => {

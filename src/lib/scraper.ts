@@ -1,7 +1,7 @@
 import { extractAmazonProduct } from './amazon-product';
 import { parseProductHtml } from './product-html';
 import { readHtmlResponse } from './html-encoding';
-import puppeteer from 'puppeteer';
+import { launchPageBrowser } from './page-browser';
 import { validateAndSanitizeUrl, sanitizeGenericUrl } from './url-validator';
 import { canonicalRakutenAffiliateUrl, rakutenProductIdentity } from './capture/rakuten-link';
 import { BlockedTargetError, fetchPublicMember, HttpError, resolvedPublicAddress, type MemberFetchDeps } from './member-fetch';
@@ -287,10 +287,7 @@ function isAmazonBlockedHtml(html: string): boolean {
  * @returns 取得したScrapedItem（ボット検知された場合はnull）
  */
 async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: MemberFetchDeps): Promise<ScrapedItem | null> {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+  const browser = await launchPageBrowser();
 
   try {
     const page = await browser.newPage();

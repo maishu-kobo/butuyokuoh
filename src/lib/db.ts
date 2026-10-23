@@ -73,6 +73,10 @@ export function deleteExpiredCaptureCandidates(db: Database.Database, now = Date
 
 let db: Database.Database | null = null;
 
+// いまの migrateDb を適用し終えた版。手順は足すだけで、開くたびに同じ結果になる。
+// user_version はその結果の記録で、今より小さいときだけ上げる。
+const SCHEMA_VERSION = 1;
+
 export function getDb(): Database.Database {
   if (!db) {
     db = openDatabase(dbPath);
@@ -83,6 +87,8 @@ export function getDb(): Database.Database {
 export function openDatabase(filename: string): Database.Database {
   fs.mkdirSync(path.dirname(filename), { recursive: true });
   const connection = new Database(filename);
+  // 外部キーは接続ごとの設定で、ファイルには残らない。
+  connection.pragma('foreign_keys = ON');
   connection.pragma('journal_mode = WAL');
   connection.pragma('busy_timeout = 5000');
   connection.transaction(() => initDb(connection)).immediate();
@@ -247,6 +253,14 @@ function migrateDb(db: Database.Database) {
   addColumnIfNotExists(db, 'items', 'source_item_code', 'TEXT');
   addColumnIfNotExists(db, 'items', 'price_fetched_at', 'TEXT');
   db.exec(CAPTURE_SCHEMA_SQL);
+  recordSchemaVersion(db);
+}
+
+function recordSchemaVersion(db: Database.Database) {
+  const current = Number(db.pragma('user_version', { simple: true }));
+  if (current < SCHEMA_VERSION) {
+    db.pragma(`user_version = ${SCHEMA_VERSION}`);
+  }
 }
 
 // 既存ユーザーのメールアドレスを LOWER(TRIM()) に正規化する
