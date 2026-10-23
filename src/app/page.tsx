@@ -8,6 +8,8 @@ import { sumCountedPrices } from '@/lib/photo-spend';
 import SortableItemCard from '@/components/SortableItemCard';
 import PhotoGroupCard from '@/components/PhotoGroupCard';
 import { wishlistRows } from '@/lib/capture/list-card';
+import { nextSortOrders } from '@/lib/capture/list-order';
+import { photoFaceItemId } from '@/lib/capture/photo-card-view';
 import AddItemForm from '@/components/AddItemForm';
 import BudgetView from '@/components/BudgetView';
 import PurchasedHistory from '@/components/PurchasedHistory';
@@ -156,31 +158,8 @@ export default function Home() {
     
     if (!over || active.id === over.id) return;
 
-    const activeItem = filteredItems.find(item => item.id === active.id);
-    const overItem = filteredItems.find(item => item.id === over.id);
-    
-    if (!activeItem || !overItem) return;
-    
-    // 同一優先度内でのみ並び替えを許可
-    if (activeItem.priority !== overItem.priority) return;
-    
-    // 同じ優先度のアイテムのみを抽出
-    const samePriorityItems = filteredItems.filter(item => item.priority === activeItem.priority);
-    const oldIndex = samePriorityItems.findIndex(item => item.id === active.id);
-    const newIndex = samePriorityItems.findIndex(item => item.id === over.id);
-    
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    // 新しい順序で配列を作成
-    const reorderedItems = [...samePriorityItems];
-    const [movedItem] = reorderedItems.splice(oldIndex, 1);
-    reorderedItems.splice(newIndex, 0, movedItem);
-    
-    // 同一優先度内のsort_orderを計算
-    const newSortOrders = new Map<number, number>();
-    reorderedItems.forEach((item, index) => {
-      newSortOrders.set(item.id, index);
-    });
+    const newSortOrders = nextSortOrders(filteredItems, Number(active.id), Number(over.id));
+    if (!newSortOrders) return;
     
     // 楽観的更新: 即座にローカル状態を更新
     setItems(prevItems => 
@@ -762,7 +741,7 @@ export default function Home() {
                 onDragEnd={handleDragEnd}
               >
                 <SortableContext
-                  items={wishlist.flatMap(row => row.kind === 'item' ? [row.item.id] : [])}
+                  items={wishlist.flatMap(row => row.kind === 'item' ? [row.item.id] : [photoFaceItemId(row)])}
                   strategy={verticalListSortingStrategy}
                 >
                   <div className="space-y-3">
@@ -781,7 +760,19 @@ export default function Home() {
                         onToggleSelect={toggleItemSelection}
                       />
                     ) : (
-                      <PhotoGroupCard key={`photo-${row.groupId}`} card={row} onUpdate={refreshPhotoCard} />
+                      <PhotoGroupCard
+                        key={`photo-${row.groupId}`}
+                        card={row}
+                        item={filteredItems.find((entry) => entry.id === photoFaceItemId(row))!}
+                        onUpdate={refreshPhotoCard}
+                        onDelete={handleDelete}
+                        categories={categories}
+                        comparisonGroups={groups}
+                        isDragEnabled={isDragEnabled && !selectionMode}
+                        selectionMode={selectionMode}
+                        isSelected={selectedItems.has(photoFaceItemId(row))}
+                        onToggleSelect={toggleItemSelection}
+                      />
                     ))}
                   </div>
                 </SortableContext>

@@ -113,8 +113,7 @@ test('JAN search calls itemSearch with jan_code and keeps an allowed candidate',
     assert.equal(item.shopName, 'テストショップ');
     assert.equal(item.jan, janQuery.jan);
     assert.equal(item.fetchedAt, '2026-10-22T00:00:00.000Z');
-    assert.equal(item.imageUrl, undefined);
-    assert.equal(JSON.stringify(item).includes('yimg.jp'), false);
+    assert.equal(item.imageUrl, 'https://item-shopping.c.yimg.jp/i/g/example_pen');
   } finally {
     globalThis.fetch = original;
   }
@@ -426,7 +425,7 @@ test('yahoo returns only a rebuilt https url on the shopping hosts', async () =>
   assert.equal(JSON.stringify(result.value).includes('evil.example'), false);
   assert.equal(JSON.stringify(result.value).includes(':8443'), false);
   assert.equal(JSON.stringify(result.value).includes('\\'), false);
-  assert.equal('imageUrl' in result.value[0], false);
+  assert.equal(result.value[0].imageUrl, 'https://item-shopping.c.yimg.jp/i/g/example_pen');
 });
 
 test('yahoo returns at most ten hits from one response', async () => {

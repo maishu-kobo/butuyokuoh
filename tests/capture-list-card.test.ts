@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatYenSpan, wishlistRows, type ListItem } from '../src/lib/capture/list-card';
+import { wishlistRows, type ListItem } from '../src/lib/capture/list-card';
 
 function item(overrides: Partial<ListItem> & Pick<ListItem, 'id' | 'name'>): ListItem {
   return {
@@ -31,7 +31,7 @@ test('a manual item and a hand-made group stay as separate cards in the same ord
   assert.deepEqual(labeled.map((row) => row.kind), ['item', 'item']);
 });
 
-test('one photo candidate is a single card with that price as the range', () => {
+test('one photo candidate renders as the item itself, not a one-member group card', () => {
   const only = item({
     id: 4,
     name: '単品ショップ',
@@ -43,20 +43,7 @@ test('one photo candidate is a single card with that price as the range', () => 
     url: 'https://item.rakuten.co.jp/shop/one',
   });
   const rows = wishlistRows([only], [{ id: 2, origin: 'photo', name: '単品' }]);
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].kind, 'photo');
-  if (rows[0].kind !== 'photo') return;
-  assert.equal(rows[0].name, '単品');
-  assert.equal(rows[0].minPrice, 300);
-  assert.equal(rows[0].maxPrice, 300);
-  assert.equal(rows[0].rangeText, formatYenSpan(300, 300));
-  assert.equal(rows[0].shops.length, 1);
-  assert.equal(rows[0].shops[0].site, '楽天');
-  assert.equal(rows[0].shops[0].shopName, '楽天');
-  assert.equal(rows[0].shops[0].purchased, false);
-  assert.equal(rows[0].shops[0].url, 'https://item.rakuten.co.jp/shop/one');
-  assert.equal(rows[0].shops[0].fetchedAt, '2026-10-22 01:02:03');
-  assert.deepEqual(rows[0].itemIds, [4]);
+  assert.deepEqual(rows, [{ kind: 'item', item: only }]);
 });
 
 test('several photo candidates collapse into one card with the cheapest and the span', () => {

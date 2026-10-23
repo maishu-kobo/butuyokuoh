@@ -207,6 +207,49 @@ test('chosen candidates register once, and another member cannot use them', asyn
   }
 });
 
+test('one chosen candidate is stored as a plain item and replay does not make a group', async () => {
+  const owner = await context();
+  const db = new Database(process.env.E2E_DB_PATH!);
+  db.pragma('busy_timeout = 5000');
+  try {
+    await member(owner);
+    const ownerId = (await (await owner.get('/api/auth/me')).json()).user.id as number;
+    const captureId = Number(db.prepare(
+      "INSERT INTO captures (user_id, estimated_name, status) VALUES (?, '単品の牛乳', 'ready')",
+    ).run(ownerId).lastInsertRowid);
+    const expires = Date.now() + 60_000;
+    const insert = db.prepare(
+      `INSERT INTO capture_candidates (user_id, capture_id, source, name, url, price, source_item_code, expires_at)
+       VALUES (?, ?, 'rakuten', ?, ?, 300, ?, ?)`,
+    );
+    const only = Number(insert.run(ownerId, captureId, '単品ショップ', 'https://item.rakuten.co.jp/shop/e2e-one', 'rakuten:e2e-one', expires).lastInsertRowid);
+    const extra = Number(insert.run(ownerId, captureId, '足さない候補', 'https://item.rakuten.co.jp/shop/e2e-extra', 'rakuten:e2e-extra', expires).lastInsertRowid);
+
+    const created = await owner.post('/api/capture/register', { data: { candidateIds: [only] } });
+    expect(created.status()).toBe(201);
+    const body = await created.json();
+    expect(body.comparisonGroupId).toBeNull();
+    expect(body.itemIds).toHaveLength(1);
+    expect(db.prepare('SELECT name, comparison_group_id FROM items WHERE id = ?').get(body.itemIds[0])).toEqual({
+      name: '単品ショップ',
+      comparison_group_id: null,
+    });
+    expect(db.prepare('SELECT status, comparison_group_id FROM captures WHERE id = ?').get(captureId)).toEqual({
+      status: 'registered',
+      comparison_group_id: null,
+    });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM comparison_groups WHERE user_id = ?').get(ownerId)).toEqual({ n: 0 });
+
+    const replay = await owner.post('/api/capture/register', { data: { candidateIds: [only, extra] } });
+    expect(replay.status()).toBe(200);
+    expect(await replay.json()).toMatchObject({ comparisonGroupId: null, itemIds: body.itemIds });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id = ?').get(ownerId)).toEqual({ n: 1 });
+  } finally {
+    db.close();
+    await owner.dispose();
+  }
+});
+
 test('a Rakuten item code shows the fetched time and price note, and Yahoo does not', async ({ page }) => {
   const db = new Database(process.env.E2E_DB_PATH!);
   db.pragma('busy_timeout = 5000');
@@ -275,8 +318,11 @@ test('photo group spending counts one candidate on the list and budget screens',
 
     await page.getByRole('button', { name: '出費予定' }).click();
     await expect(page.locator('.text-3xl').first()).toHaveText('¥150');
-    await expect(page.getByText('牛乳', { exact: true })).toBeVisible();
-    await expect(page.getByText('楽天', { exact: true })).toBeVisible();
+    await expect(page.getByText('高い牛乳', { exact: true })).toBeVisible();
+    await expect(page.getByText('安い牛乳', { exact: true })).toBeVisible();
+    await expect(page.getByText('鉛筆', { exact: true })).toBeVisible();
+    await expect(page.getByText('牛乳', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('楽天', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '全て選択' }).click();
     await expect(page.getByText('2件選択中')).toBeVisible();
 

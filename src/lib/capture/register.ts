@@ -1,7 +1,8 @@
-// 選んだ候補の表のIDだけを受け取り、1つの比較グループとして登録する。
-// 商品の中身は保存済みの行から読む。ページは取りに行かない。
+// 選んだ候補の表のIDだけを受け取り、保存済みの行から登録する。ページは取りに行かない。
+// 新しい候補が1件のときは比較グループを作らない。2件以上のときだけ1つの比較グループにする。
 import type Database from 'better-sqlite3';
 import { CaptureMessages, isAllowedCandidateUrl, type CaptureSite } from './contract';
+import { canonicalCandidateImageUrl } from './image-hosts';
 
 export const ALREADY_REGISTERED_LABEL = '登録済み' as const;
 
@@ -29,7 +30,7 @@ export type RegisterCaptureResult =
   | {
       ok: true;
       created: boolean;
-      comparisonGroupId: number;
+      comparisonGroupId: number | null;
       itemIds: number[];
       skipped: SkippedCandidate[];
     }
@@ -102,8 +103,8 @@ function registerLocked(db: Database.Database, userId: number, ids: number[], no
 
   const captureId = loaded.rows[0].capture_id;
   const capture = db.prepare(
-    'SELECT id, estimated_name, comparison_group_id FROM captures WHERE id = ? AND user_id = ?',
-  ).get(captureId, userId) as { id: number; estimated_name: string | null; comparison_group_id: number | null } | undefined;
+    'SELECT id, estimated_name, comparison_group_id, status FROM captures WHERE id = ? AND user_id = ?',
+  ).get(captureId, userId) as { id: number; estimated_name: string | null; comparison_group_id: number | null; status: string } | undefined;
   if (!capture) return missing();
   if (capture.comparison_group_id != null) {
     return {
@@ -111,6 +112,15 @@ function registerLocked(db: Database.Database, userId: number, ids: number[], no
       created: false,
       comparisonGroupId: capture.comparison_group_id,
       itemIds: groupItemIds(db, userId, capture.comparison_group_id),
+      skipped: [],
+    };
+  }
+  if (capture.status === 'registered') {
+    return {
+      ok: true,
+      created: false,
+      comparisonGroupId: null,
+      itemIds: plainItemIds(db, userId, capture.id),
       skipped: [],
     };
   }
@@ -138,40 +148,26 @@ function registerLocked(db: Database.Database, userId: number, ids: number[], no
     };
   }
 
+  if (fresh.length === 1) {
+    const itemId = insertCandidate(db, userId, fresh[0], null, 0);
+    const linked = db.prepare(
+      `UPDATE captures
+       SET status = 'registered'
+       WHERE id = ? AND user_id = ? AND comparison_group_id IS NULL AND status != 'registered'`,
+    ).run(capture.id, userId);
+    if (linked.changes !== 1) {
+      throw new Error('capture was already registered');
+    }
+    return { ok: true, created: true, comparisonGroupId: null, itemIds: [itemId], skipped };
+  }
+
   const groupName = plainName(capture.estimated_name, plainName(fresh[0].name, '商品'));
   const groupId = Number(db.prepare(
     `INSERT INTO comparison_groups (user_id, name, priority, origin, capture_id, budget_item_id)
      VALUES (?, ?, 3, 'photo', ?, NULL)`,
   ).run(userId, groupName, capture.id).lastInsertRowid);
 
-  const itemIds: number[] = [];
-  fresh.forEach((row, index) => {
-    const site = row.source as CaptureSite;
-    const price = usablePrice(row.price);
-    const itemId = Number(db.prepare(
-      `INSERT INTO items (
-        user_id, name, url, image_url, current_price, original_price, source, source_name,
-        source_item_code, price_fetched_at, priority, quantity, comparison_group_id, sort_order
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 3, 1, ?, ?)`,
-    ).run(
-      userId,
-      plainName(row.name, '商品'),
-      row.url,
-      storedImage(site, row.image_url),
-      price,
-      price,
-      site,
-      SOURCE_LABEL[site],
-      itemCode(site, row.id, row.source_item_code),
-      storedFetchedAt(row.price_fetched_at),
-      groupId,
-      index,
-    ).lastInsertRowid);
-    if (price != null) {
-      db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(itemId, price);
-    }
-    itemIds.push(itemId);
-  });
+  const itemIds = fresh.map((row, index) => insertCandidate(db, userId, row, groupId, index));
 
   const linked = db.prepare(
     `UPDATE captures
@@ -200,6 +196,49 @@ function loadOwnedCandidates(
     rows.push(row);
   }
   return { ok: true, rows };
+}
+
+function insertCandidate(
+  db: Database.Database,
+  userId: number,
+  row: CandidateRow,
+  groupId: number | null,
+  sortOrder: number,
+): number {
+  const site = row.source as CaptureSite;
+  const price = usablePrice(row.price);
+  const itemId = Number(db.prepare(
+    `INSERT INTO items (
+      user_id, name, url, image_url, current_price, original_price, source, source_name,
+      source_item_code, price_fetched_at, priority, quantity, comparison_group_id, sort_order
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 3, 1, ?, ?)`,
+  ).run(
+    userId,
+    plainName(row.name, '商品'),
+    row.url,
+    storedImage(site, row.image_url),
+    price,
+    price,
+    site,
+    SOURCE_LABEL[site],
+    itemCode(site, row.id, row.source_item_code),
+    storedFetchedAt(row.price_fetched_at),
+    groupId,
+    sortOrder,
+  ).lastInsertRowid);
+  if (price != null) {
+    db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(itemId, price);
+  }
+  return itemId;
+}
+
+function plainItemIds(db: Database.Database, userId: number, captureId: number): number[] {
+  return (db.prepare(
+    `SELECT id FROM items
+     WHERE user_id = ?
+       AND url IN (SELECT url FROM capture_candidates WHERE user_id = ? AND capture_id = ?)
+     ORDER BY id`,
+  ).all(userId, userId, captureId) as { id: number }[]).map((row) => row.id);
 }
 
 function groupItemIds(db: Database.Database, userId: number, groupId: number): number[] {
@@ -237,8 +276,8 @@ function usablePrice(price: number | null): number | null {
 }
 
 function storedImage(site: CaptureSite, image: string | null): string | null {
-  if (!image || !isAllowedCandidateUrl(site, image)) return null;
-  return image;
+  if (!image) return null;
+  return canonicalCandidateImageUrl(site, image);
 }
 
 function itemCode(site: CaptureSite, id: number, stored: string | null): string {

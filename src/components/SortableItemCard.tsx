@@ -3,6 +3,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Check } from 'lucide-react';
+import { type ReactNode } from 'react';
 import ItemCard from './ItemCard';
 import { Item, Category, ComparisonGroup } from '@/types';
 
@@ -17,6 +18,9 @@ interface SortableItemCardProps {
   selectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (id: number) => void;
+  heading?: string;
+  extra?: ReactNode;
+  displayImageUrl?: string | null;
 }
 
 export default function SortableItemCard({
@@ -30,6 +34,9 @@ export default function SortableItemCard({
   selectionMode = false,
   isSelected = false,
   onToggleSelect,
+  heading,
+  extra,
+  displayImageUrl,
 }: SortableItemCardProps) {
   const {
     attributes,
@@ -85,6 +92,7 @@ export default function SortableItemCard({
           {...attributes}
           {...listeners}
           className="absolute left-0 top-0 bottom-0 w-8 flex items-center justify-center bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 cursor-grab active:cursor-grabbing rounded-l-lg z-10 touch-none"
+          aria-label="ドラッグして並び替え"
           title="ドラッグして並び替え"
         >
           <GripVertical size={18} className="text-slate-400" />
@@ -98,6 +106,9 @@ export default function SortableItemCard({
           categories={categories}
           comparisonGroups={comparisonGroups}
           isLowestPrice={isLowestPrice}
+          heading={heading}
+          extra={extra}
+          displayImageUrl={displayImageUrl}
         />
       </div>
     </div>

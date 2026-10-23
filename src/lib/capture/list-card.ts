@@ -1,4 +1,5 @@
-// 写真から作った比較グループだけを、リストの1枚のカードにまとめる。
+// 写真から作った比較グループで、ショップが2件以上のときだけリストの1枚にまとめる。
+// 1件だけのグループは、URLから登録した商品と同じ1件として出す。データベースは書き換えない。
 // 手で作ったグループと、グループに入っていないアイテムは1件ずつそのまま返す。
 import { linkableHttpUrl } from '@/lib/http-url';
 
@@ -130,6 +131,12 @@ export function wishlistRows<T extends ListItem>(visible: readonly T[], groups: 
       if (extra.deleted_at || !purchased(extra) || photoGroupId(extra, groupById) !== groupId) continue;
       if (members.some((member) => member.id === extra.id)) continue;
       members.push(extra);
+    }
+
+    if (members.length < 2) {
+      const face = members.find((member) => activeIds.has(member.id));
+      if (face) rows.push({ kind: 'item', item: face });
+      continue;
     }
 
     const prices = members.map(priceOf).filter((price): price is number => price != null);

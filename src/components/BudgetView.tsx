@@ -4,36 +4,10 @@ import { apiFetch } from '@/lib/api-fetch';
 
 import { useEffect, useState } from 'react';
 import { Item } from '@/types';
+import { budgetRows } from '@/lib/capture/budget-rows';
 import { rakutenPriceCaption } from '@/lib/capture/rakuten-price-note';
 import { idsForSelectAll } from '@/lib/photo-spend';
 import { Calendar, Wallet, Check, Square, CheckSquare, Calculator } from 'lucide-react';
-
-const sourceNames: Record<string, string> = {
-  amazon: 'Amazon',
-  rakuten: '楽天',
-  yahoo: 'Yahoo!ショッピング',
-  other: 'その他',
-};
-
-function presentBudget(items: Item[]): Array<{ kind: 'item'; item: Item } | { kind: 'photo'; id: number; name: string; items: Item[] }> {
-  const seen = new Set<number>();
-  const rows: Array<{ kind: 'item'; item: Item } | { kind: 'photo'; id: number; name: string; items: Item[] }> = [];
-  for (const item of items) {
-    if (item.group_origin !== 'photo' || item.comparison_group_id == null) {
-      rows.push({ kind: 'item', item });
-      continue;
-    }
-    if (seen.has(item.comparison_group_id)) continue;
-    seen.add(item.comparison_group_id);
-    rows.push({
-      kind: 'photo',
-      id: item.comparison_group_id,
-      name: item.comparison_group_name || item.name,
-      items: items.filter((row) => row.comparison_group_id === item.comparison_group_id && row.group_origin === 'photo'),
-    });
-  }
-  return rows;
-}
 
 function priceText(item: Item): string {
   return (item.quantity || 1) > 1
@@ -157,82 +131,48 @@ export default function BudgetView() {
     if (response.ok) await fetchBudget();
   };
 
-  const renderBudgetItems = (entries: Item[]) => presentBudget(entries).map((row) => {
-    if (row.kind === 'item') {
-      const item = row.item;
-      const isSelected = selectedIds.has(item.id);
-      return (
-        <div
-          key={item.id}
-          onClick={() => toggleSelect(item.id)}
-          className={`flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
-            isSelected ? 'bg-blue-50' : 'hover:bg-gray-50 dark:bg-slate-700'
-          }`}
-        >
-          <span className={isSelected ? 'text-blue-600' : 'text-gray-300'}>
-            {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-          </span>
-          <span className={`flex-1 truncate ${isSelected ? 'text-blue-700' : 'text-gray-700 dark:text-gray-200'}`}>
-            {item.name}
-            {(item.quantity || 1) > 1 && (
-              <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
-            )}
-          </span>
-          <PriceWithNote
-            item={item}
-            className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}
-          />
-        </div>
-      );
-    }
+  const renderBudgetItems = (entries: Item[]) => budgetRows(entries, allItems).map(({ item, chooseGroupId }) => {
+    const isSelected = selectedIds.has(item.id);
     return (
-      <div key={`photo-${row.id}`} className="py-1">
-        <div className="px-2 text-sm font-medium text-gray-800 dark:text-gray-100">{row.name}</div>
-        <div className="space-y-1 pl-4">
-          {row.items.map((item) => {
-            const isSelected = selectedIds.has(item.id);
-            return (
-              <div
-                key={item.id}
-                onClick={() => toggleSelect(item.id)}
-                className={`flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
-                  isSelected ? 'bg-blue-50' : 'hover:bg-gray-50 dark:bg-slate-700'
-                }`}
-              >
-                <span className={isSelected ? 'text-blue-600' : 'text-gray-300'}>
-                  {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-                </span>
-                <button
-                  type="button"
-                  aria-label="合計に数える"
-                  aria-pressed={item.countsInTotal === true}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void chooseCandidate(row.id, item.id);
-                  }}
-                  className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${
-                    item.countsInTotal ? 'border-orange-500 bg-orange-500 text-white' : 'border-gray-300 text-transparent'
-                  }`}
-                >
-                  <Check size={10} />
-                </button>
-                <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                  {item.source_name || sourceNames[item.source] || 'その他'}
-                </span>
-                <span className={`flex-1 truncate ${isSelected ? 'text-blue-700' : 'text-gray-700 dark:text-gray-200'}`}>
-                  {item.name}
-                </span>
-                {item.countsInTotal === false && (
-                  <span className="text-xs text-gray-400 whitespace-nowrap">合計に含まない</span>
-                )}
-                <PriceWithNote
-                  item={item}
-                  className={`whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}
-                />
-              </div>
-            );
-          })}
-        </div>
+      <div
+        key={item.id}
+        onClick={() => toggleSelect(item.id)}
+        className={`flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
+          isSelected ? 'bg-blue-50' : 'hover:bg-gray-50 dark:bg-slate-700'
+        }`}
+      >
+        <span className={isSelected ? 'text-blue-600' : 'text-gray-300'}>
+          {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+        </span>
+        {chooseGroupId != null && (
+          <button
+            type="button"
+            aria-label="合計に数える"
+            aria-pressed={item.countsInTotal === true}
+            onClick={(event) => {
+              event.stopPropagation();
+              void chooseCandidate(chooseGroupId, item.id);
+            }}
+            className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${
+              item.countsInTotal ? 'border-orange-500 bg-orange-500 text-white' : 'border-gray-300 text-transparent'
+            }`}
+          >
+            <Check size={10} />
+          </button>
+        )}
+        <span className={`flex-1 truncate ${isSelected ? 'text-blue-700' : 'text-gray-700 dark:text-gray-200'}`}>
+          {item.name}
+          {(item.quantity || 1) > 1 && (
+            <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
+          )}
+        </span>
+        {item.countsInTotal === false && (
+          <span className="text-xs text-gray-400 whitespace-nowrap">合計に含まない</span>
+        )}
+        <PriceWithNote
+          item={item}
+          className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}
+        />
       </div>
     );
   });
