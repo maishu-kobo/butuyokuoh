@@ -53,6 +53,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Chrome のサンドボックスは非特権 user namespace を使う。
+      # Ubuntu 23.10 以降は AppArmor がそれを止め、No usable sandbox! で起動前に死ぬ。
+      # --no-sandbox は付けない。この捨てるランナーで、その制限だけを外す。
+      - name: Allow the Chrome sandbox user namespace
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       # 隔離リストに入った単体テストだけ外す。0 件のときは npm test と同じファイル。
       # ローカルの npm test はリストを見ない。
       - name: Unit tests

@@ -57,29 +57,38 @@ function portAccepts(port: number): Promise<boolean> {
   });
 }
 
+// exit はパイプの最後の出力より先に届く。close のあとで stdout と stderr を読む。
+async function exitedChild(child: ChildProcess, waitMs: number): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const stdout = child.stdout;
+  const stderr = child.stderr;
+  if (stdout === null || stderr === null) throw new Error('child stdio is not a pipe');
+  let out = '';
+  let err = '';
+  stdout.setEncoding('utf8');
+  stderr.setEncoding('utf8');
+  stdout.on('data', (chunk: string) => { out += chunk; });
+  stderr.on('data', (chunk: string) => { err += chunk; });
+  const streamsClosed = Promise.all([once(stdout, 'close'), once(stderr, 'close')]);
+  const code = await Promise.race([
+    once(child, 'exit').then(([status]) => status),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), waitMs)),
+  ]);
+  if (code === null) {
+    child.kill('SIGKILL');
+    await once(child, 'exit');
+  }
+  await streamsClosed;
+  return { code, stdout: out, stderr: err };
+}
+
 test('起動に失敗してもサーバを閉じてプロセスが終わる', { timeout: 10_000 }, async () => {
   const sessionFile = fileURLToPath(new URL('./page-browser-session.ts', import.meta.url));
   const child = spawn(process.execPath, ['--import', 'tsx', sessionFile], {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  let stdout = '';
-  let stderr = '';
-  child.stdout.setEncoding('utf8');
-  child.stderr.setEncoding('utf8');
-  child.stdout.on('data', (chunk) => { stdout += chunk; });
-  child.stderr.on('data', (chunk) => { stderr += chunk; });
-
-  const exitCode = await Promise.race([
-    once(child, 'exit').then(([code]) => code),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 3_000)),
-  ]);
-  if (exitCode === null) {
-    child.kill('SIGKILL');
-    await once(child, 'exit');
-  }
-
+  const { code, stdout, stderr } = await exitedChild(child, 3_000);
   const port = Number(stdout.match(/listening (\d+)/)?.[1]);
-  assert.equal(exitCode, 1, `process left running\nstdout=${stdout}\nstderr=${stderr}`);
+  assert.equal(code, 1, `process left running\nstdout=${stdout}\nstderr=${stderr}`);
   assert.match(`${stdout}\n${stderr}`, /launch failed/);
   assert.equal(Number.isInteger(port) && port > 0, true, stdout);
   assert.equal(await portAccepts(port), false);
