@@ -312,7 +312,7 @@ test('the three screens use the server decision and the budget screen saves one 
   const budget = readFileSync(join(root, 'src/app/api/budget/route.ts'), 'utf8');
   const stats = readFileSync(join(root, 'src/app/api/stats/route.ts'), 'utf8');
   const items = readFileSync(join(root, 'src/app/api/items/route.ts'), 'utf8');
-  const page = readFileSync(join(root, 'src/app/page.tsx'), 'utf8');
+  const page = readFileSync(join(root, 'src/app/(app)/page.tsx'), 'utf8');
   const card = readFileSync(join(root, 'src/components/ItemCard.tsx'), 'utf8');
   const view = readFileSync(join(root, 'src/components/BudgetView.tsx'), 'utf8');
   for (const source of [budget, stats, items]) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import * as pageModule from '../src/app/capture-hydration/page';
+import * as pageModule from '../src/app/(app)/capture-hydration/page';
 
 const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
 
