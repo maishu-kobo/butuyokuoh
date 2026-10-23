@@ -83,6 +83,18 @@ function currentSessionGeneration(userId: number): number {
   return row?.session_generation ?? 0;
 }
 
+// ログアウトは、その会員の発行済みログインをまとめて失効させる。
+// Cookie を消したあとに残った自前 JWT と NextAuth のセッションも、世代が合わないので拒否される。
+export function revokeMemberSessions(userId: number): boolean {
+  const result = getDb().prepare(
+    `UPDATE users
+     SET session_generation = session_generation + 1,
+         updated_at = datetime('now')
+     WHERE id = ? AND account_type = 'member'`
+  ).run(userId);
+  return result.changes === 1;
+}
+
 export function generateToken(user: User, sessionGeneration?: number): string {
   if (user.account_type !== 'member') throw new Error('Member account required');
   const generation = sessionGeneration ?? currentSessionGeneration(user.id);

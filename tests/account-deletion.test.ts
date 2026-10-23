@@ -1,8 +1,7 @@
 import './regression-harness';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { NextRequest } from 'next/server';
 import { encode } from 'next-auth/jwt';
@@ -287,20 +286,23 @@ test('退会すると本人のデータだけ消え、古いログイン情報�
   seedOwned(database, owner.user.id, ownerWebhook);
   seedOwned(database, other.user.id, otherWebhook);
 
-  const uploadDir = mkdtempSync(join(tmpdir(), 'butuyokuoh-account-uploads-'));
-  const previousUploadDir = process.env.BUTUYOKUOH_UPLOAD_DIR;
-  process.env.BUTUYOKUOH_UPLOAD_DIR = uploadDir;
+  const uploadDir = join(process.cwd(), 'public', 'uploads');
+  mkdirSync(uploadDir, { recursive: true });
   const ownerFile = join(uploadDir, `${owner.user.id}_1710000000000.jpg`);
   const otherFile = join(uploadDir, `${other.user.id}_1710000000000.png`);
   const lookalike = join(uploadDir, `${owner.user.id}9_1710000000000.jpg`);
   const note = join(uploadDir, 'readme.txt');
+  const ownerLink = join(uploadDir, `${owner.user.id}_1710000000001.jpg`);
   writeFileSync(ownerFile, 'owner-image');
   writeFileSync(otherFile, 'other-image');
   writeFileSync(lookalike, 'not-this-user');
   writeFileSync(note, 'keep');
+  symlinkSync(otherFile, ownerLink);
 
   try {
     present(jar, owner.token);
+    const previousSession = await sessionToken(owner.user.id, owner.user.email);
+    assert.equal(await sessionUserId(previousSession), String(owner.user.id));
     const removed = await call(accountPath, 'DELETE', '/api/auth/account', { userId: other.user.id });
     assert.equal(removed.status, 200, removed.text);
     assert.equal((removed.json as { success?: boolean }).success, true);
@@ -319,6 +321,7 @@ test('退会すると本人のデータだけ消え、古いログイン情報�
       otherWebhook,
     );
     assert.equal(existsSync(ownerFile), false);
+    assert.equal(existsSync(ownerLink), false);
     assert.equal(existsSync(otherFile), true);
     assert.equal(existsSync(lookalike), true);
     assert.equal(existsSync(note), true);
@@ -326,6 +329,7 @@ test('退会すると本人のデータだけ消え、古いログイン情報�
     const { getUserIdFromToken } = await import('../src/lib/auth');
     assert.equal(getUserIdFromToken(owner.token), null);
     assert.equal(getUserIdFromToken(other.token), other.user.id);
+    assert.equal(await sessionUserId(previousSession), undefined);
     present(jar, owner.token);
     assert.equal((await call(mePath, 'GET', '/api/auth/me')).status, 401);
     assert.equal((await call(itemsPath, 'GET', '/api/items')).status, 401);
@@ -338,16 +342,20 @@ test('退会すると本人のデータだけ消え、古いログイン情報�
 
     const recreated = await register('delete-owner@example.test');
     assert.notEqual(recreated.user.id, owner.user.id);
-    assert.deepEqual(ownedCounts(database, recreated.user.id), empty);
+    const recreatedCounts = ownedCounts(database, recreated.user.id);
+    assert.equal(recreatedCounts.users, 1);
+    assert.deepEqual({ ...recreatedCounts, users: 0 }, empty);
 
     present(jar, owner.token);
     const again = await call(accountPath, 'DELETE', '/api/auth/account');
     assert.equal(again.status, 401);
+    assert.equal(ownedCounts(database, recreated.user.id).users, 1);
     assert.deepEqual(ownedCounts(database, other.user.id), full);
     assert.equal(existsSync(otherFile), true);
   } finally {
-    if (previousUploadDir === undefined) delete process.env.BUTUYOKUOH_UPLOAD_DIR;
-    else process.env.BUTUYOKUOH_UPLOAD_DIR = previousUploadDir;
+    for (const file of [ownerFile, ownerLink, otherFile, lookalike, note]) {
+      try { unlinkSync(file); } catch { /* 退会が消したファイルや、最初から無いファイル */ }
+    }
   }
 }));
 
