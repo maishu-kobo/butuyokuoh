@@ -1,5 +1,6 @@
 // 写真から登録のAPIの形。画面とサーバーが同じ型を使う。
 // 登録の保存は候補の表ができてから（#90、#96）。ここではリクエストの形だけを確かめる。
+import { canonicalCandidateImageUrl } from './image-hosts';
 
 export const CAPTURE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -103,7 +104,7 @@ export interface RegisterRequest {
 }
 
 export interface RegisterResponse {
-  comparisonGroupId: number;
+  comparisonGroupId: number | null;
   itemIds: number[];
 }
 
@@ -273,6 +274,9 @@ export function acceptCandidate(item: CaptureCandidate): CaptureCandidate | null
     shopName: item.shopName,
   };
   if (item.jan) accepted.jan = item.jan;
-  if (item.imageUrl && isAllowedCandidateUrl(item.site, item.imageUrl)) accepted.imageUrl = item.imageUrl;
+  if (typeof item.imageUrl === 'string') {
+    const image = canonicalCandidateImageUrl(item.site, item.imageUrl);
+    if (image) accepted.imageUrl = image;
+  }
   return accepted;
 }

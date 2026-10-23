@@ -33,7 +33,7 @@ function yahooHit() {
     code: 'example_pen',
     price: 980,
     janCode: JAN,
-    image: { medium: 'https://store.shopping.yahoo.co.jp/example/pen.jpg' },
+    image: { medium: 'https://item-shopping.c.yimg.jp/i/g/example_pen' },
     seller: { name: 'テストショップ' },
   };
 }
@@ -46,7 +46,7 @@ function rakutenItem() {
     itemCode: 'example:pen',
     shopName: 'テスト楽天店',
     janCode: JAN,
-    mediumImageUrls: ['https://item.rakuten.co.jp/example/pen.jpg'],
+    mediumImageUrls: ['https://thumbnail.image.rakuten.co.jp/pen.jpg'],
   };
 }
 
@@ -192,7 +192,7 @@ test('search calls Yahoo and Rakuten, keeps the Amazon link, and stores the cand
       assert.equal(rows[0].shop_name, 'テストショップ');
       assert.equal(rows[0].price, 980);
       assert.equal(rows[0].url, 'https://store.shopping.yahoo.co.jp/example/pen');
-      assert.equal(rows[0].image_url, 'https://store.shopping.yahoo.co.jp/example/pen.jpg');
+      assert.equal(rows[0].image_url, 'https://item-shopping.c.yimg.jp/i/g/example_pen');
       assert.equal(rows[0].price_fetched_at, new Date(NOW).toISOString());
       assert.equal(rows[0].jan, JAN);
       assert.equal(rows[0].capture_id, body.captureId);
@@ -202,13 +202,21 @@ test('search calls Yahoo and Rakuten, keeps the Amazon link, and stores the cand
       assert.equal(rows[1].shop_name, 'テスト楽天店');
       assert.equal(rows[1].price, 1200);
       assert.equal(rows[1].url, 'https://item.rakuten.co.jp/example/pen');
-      assert.equal(rows[1].image_url, 'https://item.rakuten.co.jp/example/pen.jpg');
+      assert.equal(rows[1].image_url, 'https://thumbnail.image.rakuten.co.jp/pen.jpg');
       assert.deepEqual(body.candidates.map((item) => item.candidateId), rows.map((row) => Number(row.id)));
       assert.equal(candidateRows(database, other.id).length, 0);
 
       const registered = registerCapturedCandidates(database, owner.id, body.candidates.map((item) => item.candidateId));
       assert.equal(registered.ok, true);
-      if (registered.ok) assert.equal(registered.itemIds.length, 2);
+      if (!registered.ok) return;
+      assert.equal(registered.itemIds.length, 2);
+      const stored = database.prepare(
+        'SELECT source, image_url FROM items WHERE user_id = ? ORDER BY source',
+      ).all(owner.id) as { source: string; image_url: string | null }[];
+      assert.deepEqual(stored, [
+        { source: 'rakuten', image_url: 'https://thumbnail.image.rakuten.co.jp/pen.jpg' },
+        { source: 'yahoo', image_url: 'https://item-shopping.c.yimg.jp/i/g/example_pen' },
+      ]);
 
       const leaked = JSON.stringify({ body, logs });
       assert.equal(leaked.includes(ACCESS_KEY), false);
@@ -357,12 +365,23 @@ test('the test scenario still uses fakes and does not call the shop transports',
     });
     const response = await searchPost(searchRequest({ name: 'ペン', jan: JAN }));
     assert.equal(response.status, 200);
-    const body = await response.json() as { candidates: { id: string; candidateId: number }[]; amazonUrl: string };
+    const body = await response.json() as {
+      candidates: { id: string; candidateId: number; imageUrl?: string }[];
+      amazonUrl: string;
+    };
     assert.equal(called, 0);
     assert.deepEqual(body.candidates.map((item) => item.id), ['yahoo:fake-pen', 'rakuten:fake-pen']);
+    assert.deepEqual(body.candidates.map((item) => item.imageUrl), [
+      'https://item-shopping.c.yimg.jp/i/g/fake-pen',
+      'https://thumbnail.image.rakuten.co.jp/fake-pen.jpg',
+    ]);
     assert.equal(new URL(body.amazonUrl).hostname, 'www.amazon.co.jp');
     const rows = candidateRows(database, owner.id);
     assert.deepEqual(rows.map((row) => row.source_item_code), ['yahoo:fake-pen', 'rakuten:fake-pen']);
+    assert.deepEqual(rows.map((row) => row.image_url), [
+      'https://item-shopping.c.yimg.jp/i/g/fake-pen',
+      'https://thumbnail.image.rakuten.co.jp/fake-pen.jpg',
+    ]);
     assert.deepEqual(body.candidates.map((item) => item.candidateId), rows.map((row) => Number(row.id)));
   });
 });
