@@ -774,9 +774,9 @@ test('a registered capture without a recorded item does not return every item ma
     assert.equal(replay.created, false);
     assert.equal(replay.comparisonGroupId, null);
     assert.deepEqual(replay.itemIds, []);
-    assert.equal(replay.itemIds.includes(firstItem), false);
-    assert.equal(replay.itemIds.includes(secondItem), false);
     assert.equal(count(db, 'items'), 2);
+    assert.equal((db.prepare('SELECT name FROM items WHERE id = ?').get(firstItem) as { name: string }).name, '候補Aの商品');
+    assert.equal((db.prepare('SELECT name FROM items WHERE id = ?').get(secondItem) as { name: string }).name, '候補Bの商品');
     assert.equal(count(db, 'comparison_groups'), 0);
   } finally {
     db.close();

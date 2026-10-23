@@ -185,6 +185,7 @@ test('fresh database has photo-capture columns and tables and does not store pho
     assert.equal(names(db, 'captures').includes('jan'), true);
     assert.equal(names(db, 'captures').includes('status'), true);
     assert.equal(names(db, 'captures').includes('comparison_group_id'), true);
+    assert.equal(names(db, 'captures').includes('registered_item_id'), true);
     assert.equal(names(db, 'capture_candidates').includes('expires_at'), true);
 
     const userId = Number(
@@ -239,6 +240,45 @@ test('fresh database has photo-capture columns and tables and does not store pho
     ).run(userId, captureId);
   } finally {
     db.close();
+  }
+});
+
+test('an existing captures table gains registered_item_id and keeps the row', () => {
+  const { directory, filename } = tempFile();
+  try {
+    const created = new Database(filename);
+    created.exec(`
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL UNIQUE,
+        name TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE captures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        estimated_name TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        comparison_group_id INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    created.prepare("INSERT INTO users (email, name) VALUES ('old-capture@example.com', '残す')").run();
+    created.prepare("INSERT INTO captures (user_id, estimated_name, status) VALUES (1, '残る単品', 'registered')").run();
+    created.close();
+    const db = openDatabase(filename);
+    try {
+      assert.equal(names(db, 'captures').includes('registered_item_id'), true);
+      assert.deepEqual(
+        db.prepare('SELECT user_id, estimated_name, status, registered_item_id FROM captures').get(),
+        { user_id: 1, estimated_name: '残る単品', status: 'registered', registered_item_id: null },
+      );
+    } finally {
+      db.close();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 
