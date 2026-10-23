@@ -12,6 +12,7 @@ import {
   statusAfterSearch,
   thrownCaptureRetry,
 } from '@/lib/capture/capture-flow';
+import { candidateThumbnail, formatCandidateFetchedAt } from '@/lib/capture/candidate-view';
 import { type CaptureCandidate, type ProductGuess } from '@/lib/capture/contract';
 import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
 import { useEffect, useRef, useState } from 'react';
@@ -259,7 +260,10 @@ export function CaptureSearchPanel({
             <button type="button" aria-pressed={sort === 'price'} onClick={() => setSort('price')} className="min-h-[24px] min-w-[24px] px-3 py-2 border rounded-md text-sm">安い順</button>
           </div>
           <ul className="space-y-2">
-            {listed.map((item) => (
+            {listed.map((item) => {
+              const thumb = candidateThumbnail(item);
+              const fetchedLabel = formatCandidateFetchedAt(item.fetchedAt);
+              return (
               <li key={item.candidateId ?? item.id} className="flex items-start gap-2 rounded-md border border-gray-200 dark:border-slate-600 p-2">
                 <input
                   type="checkbox"
@@ -272,19 +276,31 @@ export function CaptureSearchPanel({
                     setSelected((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
                   }}
                   style={{ width: 24, height: 24 }}
-                  className="mt-1 h-6 w-6 min-h-[24px] min-w-[24px]"
+                  className="mt-1 h-6 w-6 min-h-[24px] min-w-[24px] shrink-0"
                 />
-                {item.imageUrl && (
-                  <img src={item.imageUrl} alt={item.title} className="h-16 w-16 object-contain" />
+                {thumb && (
+                  <img
+                    src={thumb.src}
+                    alt={thumb.alt}
+                    width={64}
+                    height={64}
+                    loading="lazy"
+                    decoding="async"
+                    className="h-16 w-16 shrink-0 object-contain"
+                  />
                 )}
-                <div className="min-w-0 flex-1 text-sm">
+                <div className="min-w-0 flex-1 break-words text-sm">
                   <p className="text-gray-500 dark:text-gray-400">{item.shopName}</p>
                   <p className="font-medium text-gray-900 dark:text-gray-100">{item.title}</p>
-                  <p>¥{item.price.toLocaleString('ja-JP')} <time dateTime={item.fetchedAt}>{item.fetchedAt}</time></p>
+                  <p>
+                    ¥{item.price.toLocaleString('ja-JP')}
+                    {fetchedLabel ? <> <time dateTime={item.fetchedAt}>{fetchedLabel}</time></> : null}
+                  </p>
                   <a href={item.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[24px] min-w-[24px] items-center underline">商品ページ</a>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
           {amazonUrl && (
             <a href={amazonUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[24px] min-w-[24px] items-center text-sm underline">Amazonで探す</a>

@@ -1,5 +1,6 @@
 // Yahoo!ショッピング商品検索API v3。
 // アプリIDと通信は呼び出し側が渡す。キーの読み込みは #87。無いときはこの店だけ利用不可。
+import { preferMainProduct, preferMainProducts, yahooQueryWithExclusions } from './accessory';
 import {
   CaptureMessages,
   acceptCandidate,
@@ -10,6 +11,7 @@ import {
   type SearchQuery,
   type SiteSearch,
 } from './contract';
+import { canonicalCandidateImageUrl } from './image-hosts';
 
 const YAHOO_ITEM_SEARCH = 'https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch';
 const TIMEOUT_MS = 6_000;
@@ -115,10 +117,10 @@ function requestUrl(appId: string, query: SearchQuery): string | null {
       .filter((part): part is string => typeof part === 'string')
       .map(part => part.trim())
       .filter(part => part.length > 0)
-      .join(' ')
-      .slice(0, 400);
+      .join(' ');
     if (!keyword) return null;
-    url.searchParams.set('query', keyword);
+    const prefer = preferMainProduct(query, false);
+    url.searchParams.set('query', yahooQueryWithExclusions(keyword, prefer));
   }
   if (url.protocol !== 'https:' || url.hostname !== 'shopping.yahooapis.jp') return null;
   return url.toString();
@@ -179,7 +181,7 @@ function imageUrl(hit: Record<string, unknown>): string | undefined {
   const record = image as { medium?: unknown; small?: unknown };
   for (const candidate of [record.medium, record.small]) {
     if (typeof candidate !== 'string') continue;
-    const safe = canonicalProductUrl(candidate);
+    const safe = canonicalCandidateImageUrl('yahoo', candidate);
     if (safe) return safe;
   }
   return undefined;
@@ -220,7 +222,7 @@ function toCandidate(value: unknown, fetchedAt: string, used: Set<string>): Capt
   return accepted;
 }
 
-function mapHits(body: unknown, fetchedAt: string): CaptureResult<CaptureCandidate[]> {
+function mapHits(body: unknown, fetchedAt: string, preferMain: boolean): CaptureResult<CaptureCandidate[]> {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return failed();
   const hits = (body as { hits?: unknown }).hits;
   if (!Array.isArray(hits)) return failed();
@@ -230,7 +232,7 @@ function mapHits(body: unknown, fetchedAt: string): CaptureResult<CaptureCandida
     .map(hit => toCandidate(hit, fetchedAt, used))
     .filter((item): item is CaptureCandidate => item !== null);
   if (limited.length > 0 && candidates.length === 0) return failed();
-  return { ok: true, value: candidates };
+  return { ok: true, value: preferMainProducts(candidates, preferMain) };
 }
 
 async function discard(response: Response): Promise<void> {
@@ -352,7 +354,8 @@ export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
         } catch {
           return failed();
         }
-        return mapHits(parsed, new Date(at).toISOString());
+        const preferMain = preferMainProduct(query, Boolean(query.jan && isValidJan(query.jan)));
+        return mapHits(parsed, new Date(at).toISOString(), preferMain);
       } catch (error) {
         if (isAbort(error, controller.signal)) return captureFailure('SEARCH_TIMEOUT', TIMEOUT, 504);
         return failed();

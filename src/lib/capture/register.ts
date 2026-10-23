@@ -2,6 +2,7 @@
 // 商品の中身は保存済みの行から読む。ページは取りに行かない。
 import type Database from 'better-sqlite3';
 import { CaptureMessages, isAllowedCandidateUrl, type CaptureSite } from './contract';
+import { canonicalCandidateImageUrl } from './image-hosts';
 
 export const ALREADY_REGISTERED_LABEL = '登録済み' as const;
 
@@ -237,8 +238,8 @@ function usablePrice(price: number | null): number | null {
 }
 
 function storedImage(site: CaptureSite, image: string | null): string | null {
-  if (!image || !isAllowedCandidateUrl(site, image)) return null;
-  return image;
+  if (!image) return null;
+  return canonicalCandidateImageUrl(site, image);
 }
 
 function itemCode(site: CaptureSite, id: number, stored: string | null): string {

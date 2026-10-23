@@ -1,4 +1,5 @@
 // 楽天市場の商品検索。通信とキーは外から渡し、キーが無い店は利用不可にする。
+import { preferMainProduct, preferMainProducts, rakutenNgKeyword } from './accessory';
 import {
   acceptCandidate,
   captureFailure,
@@ -8,6 +9,7 @@ import {
   type SearchQuery,
   type SiteSearch,
 } from './contract';
+import { canonicalCandidateImageUrl } from './image-hosts';
 
 export const RAKUTEN_SEARCH_TIMEOUT_MS = 6000;
 export const RAKUTEN_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701';
@@ -105,6 +107,7 @@ export function createRakutenSearch(options: {
       if (referer === false) return captureFailure('SEARCH_FAILED', RakutenMessages.unavailable, 503);
       const keyword = rakutenKeyword(query);
       if (!keyword) return captureFailure('SEARCH_FAILED', RakutenMessages.failed, 400);
+      const preferMain = preferMainProduct(query, Boolean(query.jan && isValidJan(query.jan)));
       const slot = options.limiter.tryAcquire(userId, now().getTime());
       if (!slot.ok) return captureFailure('SEARCH_FAILED', slot.reason, 429);
 
@@ -113,6 +116,8 @@ export function createRakutenSearch(options: {
       url.searchParams.set('keyword', keyword);
       url.searchParams.set('format', 'json');
       url.searchParams.set('formatVersion', '2');
+      const excluded = rakutenNgKeyword(preferMain);
+      if (excluded) url.searchParams.set('NGKeyword', excluded);
       const headers: Record<string, string> = { accessKey: credentials.accessKey };
       if (referer) headers.Referer = referer;
 
@@ -128,7 +133,7 @@ export function createRakutenSearch(options: {
           aborted(controller.signal),
         ]);
         if (timedOut || controller.signal.aborted) return captureFailure('SEARCH_TIMEOUT', RakutenMessages.timeout, 504);
-        return parseRakutenResponse(response, now().toISOString());
+        return parseRakutenResponse(response, now().toISOString(), preferMain);
       } catch {
         if (timedOut || controller.signal.aborted) return captureFailure('SEARCH_TIMEOUT', RakutenMessages.timeout, 504);
         return captureFailure('SEARCH_FAILED', RakutenMessages.failed, 502);
@@ -213,7 +218,7 @@ function aborted(signal: AbortSignal): Promise<never> {
   });
 }
 
-function parseRakutenResponse(response: RakutenHttpResponse, fetchedAt: string): CaptureResult<CaptureCandidate[]> {
+function parseRakutenResponse(response: RakutenHttpResponse, fetchedAt: string, preferMain: boolean): CaptureResult<CaptureCandidate[]> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(response.body);
@@ -235,7 +240,7 @@ function parseRakutenResponse(response: RakutenHttpResponse, fetchedAt: string):
     if (accepted) candidates.push(accepted);
   });
   if (items.length > 0 && candidates.length === 0) return captureFailure('SEARCH_FAILED', RakutenMessages.unusable, 502);
-  return { ok: true, value: candidates };
+  return { ok: true, value: preferMainProducts(candidates, preferMain) };
 }
 
 function readItems(body: unknown): unknown[] | null {
@@ -305,7 +310,7 @@ function firstImage(value: unknown): string | null {
         ? (entry as { imageUrl?: unknown }).imageUrl
         : null;
     if (typeof raw !== 'string') continue;
-    const image = canonicalItemUrl(raw);
+    const image = canonicalCandidateImageUrl('rakuten', raw);
     if (image) return image;
   }
   return null;

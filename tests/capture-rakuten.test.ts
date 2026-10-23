@@ -205,9 +205,8 @@ test('Rakuten drops unsafe item URLs and keeps a formatVersion 1 item', async ()
   if (!result.ok) return;
   assert.deepEqual(result.value.map(candidate => candidate.id), ['rakuten:example-safe', 'rakuten:example-safe-3']);
   assert.equal(JSON.stringify(result.value).includes('evil.example'), false);
-  assert.equal(JSON.stringify(result.value).includes('thumbnail.image.rakuten.co.jp'), false);
+  assert.equal(result.value[0].imageUrl, 'https://thumbnail.image.rakuten.co.jp/pen.jpg');
   assert.equal(result.value[0].price, 1200);
-  assert.equal('imageUrl' in result.value[0], false);
 });
 
 test('Rakuten rate limits are one per second, five per minute, and fifty per day, with no automatic retry', async () => {

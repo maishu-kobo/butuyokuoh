@@ -33,7 +33,7 @@ function yahooHit() {
     code: 'example_pen',
     price: 980,
     janCode: JAN,
-    image: { medium: 'https://store.shopping.yahoo.co.jp/example/pen.jpg' },
+    image: { medium: 'https://item-shopping.c.yimg.jp/i/g/example_pen' },
     seller: { name: 'テストショップ' },
   };
 }
@@ -46,7 +46,7 @@ function rakutenItem() {
     itemCode: 'example:pen',
     shopName: 'テスト楽天店',
     janCode: JAN,
-    mediumImageUrls: ['https://item.rakuten.co.jp/example/pen.jpg'],
+    mediumImageUrls: ['https://thumbnail.image.rakuten.co.jp/@0_mall/example/cabinet/pen.jpg'],
   };
 }
 
@@ -192,7 +192,7 @@ test('search calls Yahoo and Rakuten, keeps the Amazon link, and stores the cand
       assert.equal(rows[0].shop_name, 'テストショップ');
       assert.equal(rows[0].price, 980);
       assert.equal(rows[0].url, 'https://store.shopping.yahoo.co.jp/example/pen');
-      assert.equal(rows[0].image_url, 'https://store.shopping.yahoo.co.jp/example/pen.jpg');
+      assert.equal(rows[0].image_url, 'https://item-shopping.c.yimg.jp/i/g/example_pen');
       assert.equal(rows[0].price_fetched_at, new Date(NOW).toISOString());
       assert.equal(rows[0].jan, JAN);
       assert.equal(rows[0].capture_id, body.captureId);
@@ -202,7 +202,7 @@ test('search calls Yahoo and Rakuten, keeps the Amazon link, and stores the cand
       assert.equal(rows[1].shop_name, 'テスト楽天店');
       assert.equal(rows[1].price, 1200);
       assert.equal(rows[1].url, 'https://item.rakuten.co.jp/example/pen');
-      assert.equal(rows[1].image_url, 'https://item.rakuten.co.jp/example/pen.jpg');
+      assert.equal(rows[1].image_url, 'https://thumbnail.image.rakuten.co.jp/@0_mall/example/cabinet/pen.jpg');
       assert.deepEqual(body.candidates.map((item) => item.candidateId), rows.map((row) => Number(row.id)));
       assert.equal(candidateRows(database, other.id).length, 0);
 

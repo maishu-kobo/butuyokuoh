@@ -102,6 +102,9 @@ function fakeCandidate(site: CaptureSite, query: SearchQuery, fetchedAt: string)
       : 'https://item.rakuten.co.jp/example/pen',
     fetchedAt,
     shopName: site === 'yahoo' ? 'テストショップ' : 'テスト楽天店',
+    imageUrl: site === 'yahoo'
+      ? 'https://item-shopping.c.yimg.jp/i/g/example_pen'
+      : 'https://thumbnail.image.rakuten.co.jp/@0_mall/example/cabinet/pen.jpg',
   };
   if (query.jan) item.jan = query.jan;
   return item;

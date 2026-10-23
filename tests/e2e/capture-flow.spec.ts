@@ -17,6 +17,9 @@ async function member(page: Page) {
 }
 
 test('a member can take or choose a photo, edit the name, and register a candidate', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('https://item-shopping.c.yimg.jp/**', (route) => route.abort());
+  await page.route('https://thumbnail.image.rakuten.co.jp/**', (route) => route.abort());
   const calls: string[] = [];
   page.on('request', (request) => {
     if (request.method() !== 'POST') return;
@@ -44,6 +47,22 @@ test('a member can take or choose a photo, edit the name, and register a candida
   await expect(page.getByText('テストショップ')).toBeVisible();
   await expect(page.getByText('¥980')).toBeVisible();
   await expect(page.getByRole('link', { name: '商品ページ' }).first()).toHaveAttribute('href', /store\.shopping\.yahoo\.co\.jp/);
+  const thumb = page.getByRole('img', { name: 'テスト用ゲルボールペン 0.5' }).first();
+  await expect(thumb).toBeVisible();
+  await expect(thumb).toHaveAttribute('src', /^https:\/\/item-shopping\.c\.yimg\.jp\//);
+  const thumbBox = await thumb.boundingBox();
+  expect(thumbBox).toBeTruthy();
+  expect(thumbBox!.width).toBeGreaterThanOrEqual(60);
+  expect(thumbBox!.width).toBeLessThanOrEqual(68);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  await expect(page.locator('time').first()).toHaveText(/\d{4}\/\d{1,2}\/\d{1,2}/);
+  await expect(page.locator('time').first()).not.toHaveText(/T\d{2}:\d{2}:\d{2}/);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(thumb).toBeVisible();
+  const desktopThumb = await thumb.boundingBox();
+  expect(desktopThumb).toBeTruthy();
+  expect(desktopThumb!.width).toBeLessThanOrEqual(68);
   const chooseBox = await page.getByRole('checkbox', { name: '候補を選ぶ テスト用ゲルボールペン 0.5' }).first().boundingBox();
   expect(chooseBox).toBeTruthy();
   expect(chooseBox!.width).toBeGreaterThanOrEqual(24);
