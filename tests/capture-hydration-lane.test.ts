@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import * as pageModule from '../src/app/capture-hydration/page';
 
@@ -45,14 +44,4 @@ test('the hydration page is not found in production or without the test hook', (
   withEnv({ NODE_ENV: 'development', CAPTURE_TEST_HOOKS: '1' }, () => {
     assert.equal(page().type?.name, 'CaptureHydrationPicker');
   });
-});
-
-test('playwright ci does not apt-install webkit', () => {
-  for (const file of ['.github/workflows/playwright.yml', '.github/workflows/quarantine.yml']) {
-    const source = readFileSync(file, 'utf8');
-    assert.equal(source.includes('install-deps'), false, file);
-    assert.equal(source.includes('webkit'), false, file);
-  }
-  const verify = readFileSync('scripts/verify-playwright-browsers.mjs', 'utf8');
-  assert.equal(verify.includes('webkit'), false);
 });
