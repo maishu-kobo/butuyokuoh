@@ -20,6 +20,8 @@ function registerButton(html: string) {
 }
 
 test('desktop load does not hydrate mismatched photo-button attributes', async ({ page }) => {
+  // 本番ビルドは検証ページを出さない。開発の e2e だけでサーバ HTML を見る。
+  test.skip(Boolean(process.env.E2E_PRODUCTION), '本番ビルドには検証ページが無い');
   const errors = watchHydration(page);
   const response = await page.goto('/capture-hydration');
   expect(response?.ok()).toBeTruthy();
@@ -33,6 +35,7 @@ test('desktop load does not hydrate mismatched photo-button attributes', async (
 });
 
 test('a coarse pointer load does not hydrate mismatched photo-button attributes', async () => {
+  test.skip(Boolean(process.env.E2E_PRODUCTION), '本番ビルドには検証ページが無い');
   const browser = await webkit.launch();
   const context = await browser.newContext({
     ...devices['iPhone 13'],
@@ -81,7 +84,7 @@ test('the home page has no hydration mismatch on a coarse pointer or on desktop'
   const desktopErrors = watchHydration(page);
   const home = await page.goto('/');
   expect(home?.ok()).toBeTruthy();
-  await expect(page.getByRole('status').filter({ hasText: '読み込み中' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '物欲王' })).toBeVisible();
   expect(desktopErrors).toEqual([]);
 
   const webkitBrowser = await webkit.launch();
@@ -114,7 +117,7 @@ test('the home page has no hydration mismatch on a coarse pointer or on desktop'
   const mobileErrors = watchHydration(mobile);
   const response = await mobile.goto('/');
   expect(response?.ok()).toBeTruthy();
-  await expect(mobile.getByRole('status').filter({ hasText: '読み込み中' })).toBeVisible();
+  await expect(mobile.getByRole('heading', { name: '物欲王' })).toBeVisible();
   expect(mobileErrors).toEqual([]);
   await webkitBrowser.close();
 });
