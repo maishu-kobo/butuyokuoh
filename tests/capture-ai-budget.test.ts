@@ -108,25 +108,25 @@ test('one person gets 3 calls a minute and 10 a UTC day, and failures count', as
   const failed = harness({
     budget: failing,
     clock: failClock,
-    responses: [
-      { status: 500, body: JSON.stringify({ success: false, errors: [{ code: 1, message: `boom ${TOKEN}` }], messages: [] }) },
-      { status: 500, body: '{"success":false,"errors":[{"code":1,"message":"boom"}],"messages":[]}' },
-      { status: 500, body: '{"success":false,"errors":[{"code":1,"message":"boom"}],"messages":[]}' },
-      textResult({ neurons: 0 }),
-    ],
+    responses: Array.from({ length: 6 }, () => ({
+      status: 500,
+      body: JSON.stringify({ success: false, errors: [{ code: 1, message: `boom ${TOKEN}` }], messages: [] }),
+    })),
   });
   for (let index = 0; index < 3; index += 1) {
     const result = await failed.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
     assert.equal(result.ok, false);
     if (!result.ok) {
-      assert.equal(result.error.error, CaptureMessages.aiFailed);
+      assert.equal(result.error.error, CaptureMessages.aiRetryable);
+      assert.equal(result.error.retryable, true);
       assert.equal(JSON.stringify(result).includes('boom'), false);
+      assert.equal(JSON.stringify(result).includes(TOKEN), false);
     }
   }
   const fourth = await failed.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
   assert.equal(fourth.ok, false);
   if (!fourth.ok) assert.equal(fourth.error.error, AI_MINUTE_LIMIT_MESSAGE);
-  assert.equal(failed.calls.length, 3);
+  assert.equal(failed.calls.length, 6);
 
   const day = createAiBudget();
   const dayClock = { t: Date.UTC(2026, 9, 22, 0, 0, 0) };

@@ -123,7 +123,7 @@ test('without a JAN the keyword is the name, brand, and model, and a missing key
     const denied = await blocked.search.search(query);
     assert.equal(denied.ok, false);
     if (!denied.ok) {
-      assert.equal(denied.error.code, 'SEARCH_FAILED');
+      assert.equal(denied.error.code, 'SEARCH_NOT_CONFIGURED');
       assert.equal(denied.error.error, RakutenMessages.unavailable);
       assert.equal(denied.status, 503);
       assert.equal(denied.error.error.includes(SECRET), false);

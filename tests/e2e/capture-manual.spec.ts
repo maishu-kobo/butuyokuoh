@@ -77,6 +77,79 @@ test('the daily identify limit opens the manual form with the estimated name', a
   await expectManual(page, '上限のペン');
 });
 
+test('an identify parse failure is retryable and is not shown as an unreadable photo', async ({ page }) => {
+  let identifies = 0;
+  await page.route('**/api/capture/identify', (route) => {
+    identifies += 1;
+    return json(route, 502, {
+      code: 'AI_INVALID_RESPONSE',
+      error: '写真の判定に失敗しました。もう一度試すか、商品名を入れてください',
+      retryable: true,
+      fallback: 'manual-entry',
+    });
+  });
+  await member(page);
+  await shoot(page);
+  await expect(page.getByRole('status').filter({ hasText: '写真の判定に失敗しました' })).toBeVisible();
+  await expect(page.getByText('この写真からは商品が読み取れません')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'もう一度判定する' })).toBeVisible();
+  const before = identifies;
+  await page.getByRole('button', { name: 'もう一度判定する' }).click();
+  await expect.poll(() => identifies).toBeGreaterThan(before);
+});
+
+test('an unreadable photo does not offer another identify attempt', async ({ page }) => {
+  await page.route('**/api/capture/identify', (route) => json(route, 200, {
+    confidence: 'unreadable',
+    products: [],
+  }));
+  await member(page);
+  await shoot(page);
+  await expect(page.getByRole('status').filter({ hasText: 'この写真からは商品が読み取れません。もう一度撮ってください' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'もう一度判定する' })).toHaveCount(0);
+});
+
+test('missing store keys disable another search instead of asking for a retry', async ({ page }) => {
+  await page.route('**/api/capture/search', (route) => json(route, 503, {
+    code: 'SEARCH_NOT_CONFIGURED',
+    error: 'ストア検索のキーが未設定のため候補を出せません。商品名を確認して登録してください',
+  }));
+  await member(page);
+  await shoot(page);
+  await expect(page.getByRole('status').filter({ hasText: 'ストア検索のキーが未設定のため候補を出せません' })).toBeVisible();
+  await expect(page.getByText('もう一度試すか、商品名を入れて登録してください')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'この名前で探す' })).toBeDisabled();
+  await expectManual(page, SURE_NAME);
+});
+
+test('a thrown shop search retries the same name and does not identify again', async ({ page }) => {
+  let identifies = 0;
+  let searches = 0;
+  await page.route('**/api/capture/identify', async (route) => {
+    identifies += 1;
+    await route.continue();
+  });
+  await page.route('**/api/capture/search', async (route) => {
+    searches += 1;
+    if (searches === 1) {
+      await route.abort('failed');
+      return;
+    }
+    await route.continue();
+  });
+  await member(page);
+  await shoot(page);
+  await expect(page.getByRole('status').filter({ hasText: '候補を取得できませんでした' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'もう一度判定する' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'もう一度探す' })).toBeVisible();
+  await expectManual(page, SURE_NAME);
+  const identifiesBefore = identifies;
+  await page.getByRole('button', { name: 'もう一度探す' }).click();
+  await expect.poll(() => searches).toBe(2);
+  expect(identifies).toBe(identifiesBefore);
+  await expect(page.getByRole('status').filter({ hasText: '候補が' })).toBeVisible();
+});
+
 test('a failed shop search opens the manual form with the estimated name and no photo image', async ({ page }) => {
   await page.route('**/api/capture/search', (route) => json(route, 502, {
     code: 'SEARCH_FAILED',

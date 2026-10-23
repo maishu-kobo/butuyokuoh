@@ -9,7 +9,9 @@ export const CaptureMessages = {
   photoTooLarge: '写真は5MBまでです',
   searchInput: '商品名を入れて探してください',
   searchFailed: '候補を取得できませんでした。もう一度試すか、商品名を入れて登録してください',
+  searchUnconfigured: 'ストア検索のキーが未設定のため候補を出せません。商品名を確認して登録してください',
   aiFailed: '写真から商品を判定できませんでした。商品名を入れて探してください',
+  aiRetryable: '写真の判定に失敗しました。もう一度試すか、商品名を入れてください',
   aiTimeout: '写真からの判定が時間内に終わりませんでした。商品名を入れて探してください',
   registerInput: '登録する候補を確認してください',
 } as const;
@@ -29,6 +31,7 @@ export type CaptureErrorCode =
   | 'AI_INVALID_RESPONSE'
   | 'AI_LIMIT'
   | 'SEARCH_FAILED'
+  | 'SEARCH_NOT_CONFIGURED'
   | 'SEARCH_TIMEOUT'
   | 'NO_CANDIDATES'
   | 'CANDIDATE_NOT_FOUND'
@@ -44,6 +47,7 @@ export interface CaptureErrorBody {
   code: CaptureErrorCode;
   error: string;
   failures?: SiteFailure[];
+  retryable?: boolean;
 }
 
 export type CaptureResult<T> =

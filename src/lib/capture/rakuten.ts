@@ -100,7 +100,7 @@ export function createRakutenSearch(options: {
   return {
     async search(query) {
       const credentials = normalizeCredentials(options.credentials);
-      if (!credentials) return captureFailure('SEARCH_FAILED', RakutenMessages.unavailable, 503);
+      if (!credentials) return captureFailure('SEARCH_NOT_CONFIGURED', RakutenMessages.unavailable, 503);
       const referer = safeReferer(options.referer);
       if (referer === false) return captureFailure('SEARCH_FAILED', RakutenMessages.unavailable, 503);
       const keyword = rakutenKeyword(query);

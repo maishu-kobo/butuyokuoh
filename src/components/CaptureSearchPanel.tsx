@@ -3,17 +3,18 @@
 import { apiFetch } from '@/lib/api-fetch';
 import {
   FLOW_STATUS,
-  RETAKE_MESSAGE,
   SLOW_MS,
   candidateCountStatus,
   fallbackFromIdentify,
-  fallbackFromSearch,
   orderCandidates,
   productsToShow,
+  statusAfterIdentify,
+  statusAfterSearch,
+  thrownCaptureRetry,
 } from '@/lib/capture/capture-flow';
-import { CaptureMessages, type CaptureCandidate, type ProductGuess } from '@/lib/capture/contract';
+import { type CaptureCandidate, type ProductGuess } from '@/lib/capture/contract';
 import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 type ListedCandidate = CaptureCandidate & { candidateId?: number };
 
@@ -38,6 +39,11 @@ export function CaptureSearchPanel({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [attempt, setAttempt] = useState(0);
+  const [identifyRetryable, setIdentifyRetryable] = useState(false);
+  const [searchRetryable, setSearchRetryable] = useState(false);
+  const [searchBlocked, setSearchBlocked] = useState(false);
+  const searchBlockedRef = useRef(false);
+  const searchRetryRef = useRef<{ product: ProductGuess | null; name: string } | null>(null);
 
   useEffect(() => {
     if (!file) return;
@@ -58,26 +64,27 @@ export function CaptureSearchPanel({
       setSelected([]);
       setAmazonUrl('');
       setStatus(FLOW_STATUS.identifying);
+      setIdentifyRetryable(false);
+      setSearchRetryable(false);
+      searchRetryRef.current = null;
+      searchBlockedRef.current = false;
+      setSearchBlocked(false);
       const body = new FormData();
       body.append('photo', current);
       const response = await apiFetch('/api/capture/identify', { method: 'POST', body }, { notifyError: false });
       const data = await response.json().catch(() => null);
       if (cancelled) return;
       const fallback = fallbackFromIdentify(data, response.ok);
-      if (fallback.enter || !data || !Array.isArray(data.products)) {
+      const failure = statusAfterIdentify(data, response.ok);
+      if (failure) {
         setBusy(false);
-        setStatus(response.ok ? RETAKE_MESSAGE : (typeof data?.error === 'string' ? data.error : RETAKE_MESSAGE));
+        setStatus(failure.message);
+        setIdentifyRetryable(failure.retryable);
         if (fallback.enter) onManual(fallback.name);
         return;
       }
       const shown = productsToShow(data.confidence, data.products);
       setProducts(shown);
-      if (shown.length === 0) {
-        setBusy(false);
-        setStatus(RETAKE_MESSAGE);
-        onManual('');
-        return;
-      }
       const first = shown[0];
       setChosen(first);
       setName(first.name);
@@ -88,11 +95,13 @@ export function CaptureSearchPanel({
         setStatus(FLOW_STATUS.choose);
       }
     })().catch(() => {
-      if (!cancelled) {
-        setBusy(false);
-        setStatus(RETAKE_MESSAGE);
-        onManual('');
-      }
+      if (cancelled) return;
+      const retry = thrownCaptureRetry(false);
+      setBusy(false);
+      setSearchRetryable(false);
+      setIdentifyRetryable(retry.kind === 'identify');
+      setStatus(retry.message);
+      onManual('');
     });
 
     return () => {
@@ -102,33 +111,52 @@ export function CaptureSearchPanel({
   }, [file, attempt]);
 
   async function runSearch(product: ProductGuess | null, queryName: string, cancelled: () => boolean = () => false) {
+    if (searchBlockedRef.current) return;
     const trimmed = queryName.trim();
     if (!trimmed) return;
     setBusy(true);
     setSlow(false);
     setNotice('');
+    setSearchRetryable(false);
     setStatus(FLOW_STATUS.searching);
     const same = product !== null && trimmed === product.name;
-    const response = await apiFetch('/api/capture/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: trimmed,
-        brand: same ? product.brand : null,
-        model: same ? product.model : null,
-        jan: same ? product.jan : null,
-      }),
-    }, { notifyError: false });
+    let response: Response;
+    try {
+      response = await apiFetch('/api/capture/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: trimmed,
+          brand: same ? product.brand : null,
+          model: same ? product.model : null,
+          jan: same ? product.jan : null,
+        }),
+      }, { notifyError: false });
+    } catch {
+      if (cancelled()) return;
+      const retry = thrownCaptureRetry(true);
+      searchRetryRef.current = { product, name: trimmed };
+      setBusy(false);
+      setIdentifyRetryable(false);
+      setSearchRetryable(retry.kind === 'search');
+      setStatus(retry.message);
+      onManual(trimmed);
+      return;
+    }
     const data = await response.json().catch(() => null);
     if (cancelled()) return;
     setBusy(false);
-    const fallback = fallbackFromSearch(data, response.ok, trimmed);
-    if (fallback.enter) {
+    const decision = statusAfterSearch(data, response.ok, trimmed);
+    if (decision.manual.enter) {
       setCandidates([]);
-      setStatus(typeof data?.error === 'string' ? data.error : CaptureMessages.searchFailed);
-      onManual(fallback.name);
+      searchBlockedRef.current = decision.blocked;
+      setSearchBlocked(decision.blocked);
+      setStatus(decision.message);
+      onManual(decision.manual.name);
       return;
     }
+    searchBlockedRef.current = false;
+    setSearchBlocked(false);
     setCandidates(data.candidates);
     setAmazonUrl(typeof data.amazonUrl === 'string' ? data.amazonUrl : '');
     setSelected([]);
@@ -160,12 +188,35 @@ export function CaptureSearchPanel({
   return (
     <div className="mb-4 space-y-3">
       <p role="status" aria-live="polite" className="text-sm text-gray-600 dark:text-gray-300">{status}</p>
+      {identifyRetryable && !busy && (
+        <button
+          type="button"
+          onClick={() => setAttempt((value) => value + 1)}
+          className="min-h-[24px] min-w-[24px] px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+        >
+          もう一度判定する
+        </button>
+      )}
+      {searchRetryable && !busy && !searchBlocked && (
+        <button
+          type="button"
+          onClick={() => {
+            const retry = searchRetryRef.current;
+            if (!retry) return;
+            void runSearch(retry.product, retry.name);
+          }}
+          className="min-h-[24px] min-w-[24px] px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+        >
+          もう一度探す
+        </button>
+      )}
       {products.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {products.map((product) => (
             <button
               key={product.name}
               type="button"
+              disabled={searchBlocked}
               onClick={() => {
                 setChosen(product);
                 setName(product.name);
@@ -192,8 +243,9 @@ export function CaptureSearchPanel({
             />
             <button
               type="button"
+              disabled={searchBlocked}
               onClick={() => void runSearch(chosen, name)}
-              className="min-h-[24px] min-w-[24px] px-3 py-2 bg-slate-800 text-white rounded-md text-sm"
+              className="min-h-[24px] min-w-[24px] px-3 py-2 bg-slate-800 text-white rounded-md text-sm disabled:opacity-50"
             >
               この名前で探す
             </button>

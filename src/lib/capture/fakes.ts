@@ -127,6 +127,9 @@ export async function searchWithPorts(query: SearchQuery, ports: CapturePorts, a
     candidates.push(...accepted);
   }
   if (failures.length === 2) {
+    if (failures.every(failure => failure.code === 'SEARCH_NOT_CONFIGURED')) {
+      return captureFailure('SEARCH_NOT_CONFIGURED', CaptureMessages.searchUnconfigured, 503, failures);
+    }
     const timedOut = failures.every(failure => failure.code === 'SEARCH_TIMEOUT');
     return captureFailure(
       timedOut ? 'SEARCH_TIMEOUT' : 'SEARCH_FAILED',

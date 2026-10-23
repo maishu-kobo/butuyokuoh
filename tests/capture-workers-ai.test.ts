@@ -170,7 +170,8 @@ test('a bad shape, a check-digit failure alone, and a URL name do not leak the m
     if (!bad.ok) {
       assert.equal(bad.status, 502);
       assert.equal(bad.error.code, 'AI_INVALID_RESPONSE');
-      assert.equal(bad.error.error, CaptureMessages.aiFailed);
+      assert.equal(bad.error.error, CaptureMessages.aiRetryable);
+      assert.equal(bad.error.retryable, true);
       assert.equal(JSON.stringify(bad).includes(TOKEN), false);
       assert.equal(JSON.stringify(bad).includes('evil.example'), false);
       assert.equal(JSON.stringify(bad).includes('not-json'), false);
@@ -183,11 +184,11 @@ test('a bad shape, a check-digit failure alone, and a URL name do not leak the m
       }))],
     });
     const dropped = await urlName.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
-    assert.equal(dropped.ok, true);
-    if (dropped.ok) {
-      assert.equal(dropped.value.confidence, 'unreadable');
-      assert.deepEqual(dropped.value.products, []);
-      assert.equal(JSON.stringify(dropped.value).includes('evil.example'), false);
+    assert.equal(dropped.ok, false);
+    if (!dropped.ok) {
+      assert.equal(dropped.error.code, 'AI_INVALID_RESPONSE');
+      assert.equal(dropped.error.error, CaptureMessages.aiRetryable);
+      assert.equal(JSON.stringify(dropped).includes('evil.example'), false);
     }
 
     const huge = harness({ responses: [{ status: 200, body: `{"response":"${'x'.repeat(70_000)}"}` }] });
@@ -195,7 +196,7 @@ test('a bad shape, a check-digit failure alone, and a URL name do not leak the m
     assert.equal(oversized.ok, false);
     if (!oversized.ok) {
       assert.equal(oversized.error.code, 'AI_INVALID_RESPONSE');
-      assert.equal(oversized.error.error, CaptureMessages.aiFailed);
+      assert.equal(oversized.error.error, CaptureMessages.aiRetryable);
     }
   });
 });
@@ -256,7 +257,7 @@ test('timeouts and upstream failures use fixed messages and do not follow redire
       assert.equal(JSON.stringify(timedOut).includes(TOKEN), false);
       assert.equal(JSON.stringify(timedOut).includes('/9j/'), false);
     }
-    assert.equal(timings[0].elapsedMs, 20);
+    assert.equal(timings[0].elapsedMs, 40);
 
     const redirected = harness({
       responses: [{ status: 302, body: `Location: https://evil.example/steal?token=${TOKEN}` }],
@@ -282,7 +283,8 @@ test('timeouts and upstream failures use fixed messages and do not follow redire
     if (!failed.ok) {
       assert.equal(failed.status, 503);
       assert.equal(failed.error.code, 'AI_UNAVAILABLE');
-      assert.equal(failed.error.error, CaptureMessages.aiFailed);
+      assert.equal(failed.error.error, CaptureMessages.aiRetryable);
+      assert.equal(failed.error.retryable, true);
       assert.equal(JSON.stringify(failed).includes('boom'), false);
       assert.equal(JSON.stringify(failed).includes(TOKEN), false);
     }
