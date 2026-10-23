@@ -1,6 +1,6 @@
 // Yahoo!ショッピング商品検索API v3。
 // アプリIDと通信は呼び出し側が渡す。キーの読み込みは #87。無いときはこの店だけ利用不可。
-import { preferMainProduct, preferMainProducts, yahooQueryWithExclusions } from './accessory';
+import { preferMainProduct, preferMainProducts } from './accessory';
 import {
   CaptureMessages,
   acceptCandidate,
@@ -119,8 +119,8 @@ function requestUrl(appId: string, query: SearchQuery): string | null {
       .filter(part => part.length > 0)
       .join(' ');
     if (!keyword) return null;
-    const prefer = preferMainProduct(query, false);
-    url.searchParams.set('query', yahooQueryWithExclusions(keyword, prefer));
+    // 付属品の除外は付けない。`-ケース` は「充電ケース付き」の本体まで消す。
+    url.searchParams.set('query', keyword.slice(0, 400));
   }
   if (url.protocol !== 'https:' || url.hostname !== 'shopping.yahooapis.jp') return null;
   return url.toString();

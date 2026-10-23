@@ -1,9 +1,11 @@
 // 写真の商品名から Yahoo! のジャンルIDや、本体らしい価格の下限は決められない。
 // 安いケースが上に来るので、価格では絞らない。店への検索は1回だけで、やり直しはしない。
-// 除外は1回のクエリに載せ、返った候補に本体が残るときだけ付属品を落とす。
-// 本体が一件も無いときは、取れた候補をそのまま出す。
+// 検索語へ `-ケース` を足すと、「充電ケース付き」のように本体の名前まで店の結果から消える。
+// その除外は候補が返る前に起きるので、本体が一件も無いときの戻しが効かない。
+// クエリと楽天の NGKeyword には除外語を足さない。
+// 返った候補から落とすのは強い付属品の名詞だけ。本体が一件も無いときは、取れた候補をそのまま出す。
 // 「対応」「用」「保護」「ガラス」と、「【機種用】」のような括弧は本体の商品名にも出る。
-// 検索語の除外には入れず、並びの点数にだけ使う。候補を落とすのは強い付属品の名詞だけ。
+// それだけでは候補を落とさず、並びの点数にだけ使う。
 // 本体が消える誤除外は、付属品が後ろに残るより悪い。
 
 const STRONG_ACCESSORY_TERMS = ['ケース', 'カバー', 'フィルム', '充電器', 'ケーブル', 'ストラップ'] as const;
@@ -40,19 +42,4 @@ export function preferMainProducts<T extends { title: string }>(items: readonly 
   if (!prefer) return [...items];
   const main = items.filter((item) => !accessoryListing(item.title));
   return main.length > 0 ? main : [...items];
-}
-
-export function yahooQueryWithExclusions(keyword: string, prefer: boolean): string {
-  const trimmed = keyword.trim();
-  if (!trimmed) return '';
-  if (!prefer) return trimmed.slice(0, 400);
-  const suffix = STRONG_ACCESSORY_TERMS.map((term) => ` -${term}`).join('');
-  const base = trimmed.slice(0, Math.max(0, 400 - suffix.length)).trimEnd();
-  if (!base) return trimmed.slice(0, 400);
-  return `${base}${suffix}`;
-}
-
-export function rakutenNgKeyword(prefer: boolean): string | null {
-  if (!prefer) return null;
-  return STRONG_ACCESSORY_TERMS.join(' ');
 }

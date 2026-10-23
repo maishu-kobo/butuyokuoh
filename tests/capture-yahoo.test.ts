@@ -126,7 +126,7 @@ test('name search sends the escaped keyword and does not send jan_code', async (
   const result = await search.search(nameQuery);
   assert.equal(calls.length, 1);
   const url = new URL(calls[0].url);
-  assert.equal(url.searchParams.get('query'), 'ペン <太> 物欲文具 BY-05 -ケース -カバー -フィルム -充電器 -ケーブル -ストラップ');
+  assert.equal(url.searchParams.get('query'), 'ペン <太> 物欲文具 BY-05');
   assert.equal(url.searchParams.has('jan_code'), false);
   assert.equal(calls[0].url.includes('<'), false);
   assert.equal(result.ok, true);
@@ -146,7 +146,7 @@ test('an invalid JAN falls back to the name, and an empty query does not call', 
   const { calls, search } = harness();
   const fallback = await search.search({ name: 'ペン', brand: null, model: null, jan: '4900000000008' });
   assert.equal(fallback.ok, true);
-  assert.equal(new URL(calls[0].url).searchParams.get('query'), 'ペン -ケース -カバー -フィルム -充電器 -ケーブル -ストラップ');
+  assert.equal(new URL(calls[0].url).searchParams.get('query'), 'ペン');
   assert.equal(new URL(calls[0].url).searchParams.has('jan_code'), false);
 
   const empty = await search.search({ name: '  ', brand: null, model: null, jan: null });
@@ -371,7 +371,7 @@ test('a keyword with reserved characters stays inside the query parameter', asyn
   await search.search({ name: 'a&b=c\nペン', brand: null, model: null, jan: null });
   const url = new URL(calls[0].url);
   assert.equal(url.hostname, 'shopping.yahooapis.jp');
-  assert.equal(url.searchParams.get('query'), 'a&b=c\nペン -ケース -カバー -フィルム -充電器 -ケーブル -ストラップ');
+  assert.equal(url.searchParams.get('query'), 'a&b=c\nペン');
   assert.deepEqual([...url.searchParams.keys()], ['appid', 'results', 'query']);
   assert.equal(calls[0].url.includes('\n'), false);
   assert.equal(calls[0].url.includes('&b=c'), false);
