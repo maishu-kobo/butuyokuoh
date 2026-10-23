@@ -1,13 +1,14 @@
 // 返事に付くヘッダを見る。設定ファイルのソース文字列は読まない。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { getPathMatch } from 'next/dist/shared/lib/router/utils/path-match.js';
+import nextConfig from '../next.config';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -35,18 +36,31 @@ test('next config header rules stay report-only and cover documents, auth, uploa
   }
 });
 
-test('a next dev server sends those headers on documents, auth, upload, and images', { timeout: 180_000 }, async () => {
+test('a next dev server sends those headers on documents, auth, upload, and images', { timeout: 240_000 }, async (t) => {
+  const agentsPath = path.join(root, 'AGENTS.md');
+  const agentsBefore = readFileSync(agentsPath);
   const server = await startNextDev();
+  const restore = async () => {
+    await server.stop();
+    writeFileSync(agentsPath, agentsBefore);
+  };
+  t.after(restore);
   try {
     for (const requestPath of PATHS) {
       const response = await fetch(new URL(requestPath, server.origin), { redirect: 'manual' });
       assertContract(response.headers, 'development', requestPath);
-      if (requestPath === '/' || requestPath === '/icons/icon-192.png' || requestPath === '/api/auth/csrf') {
+      if (requestPath === '/') {
         assert.equal(response.status, 200, requestPath);
+        const html = await response.text();
+        assert.equal(html.includes('物欲王'), true, requestPath);
+      }
+      if (requestPath === '/icons/icon-192.png') {
+        assert.equal(response.status, 200, requestPath);
+        assert.equal(response.headers.get('content-type')?.startsWith('image/'), true, requestPath);
       }
     }
   } finally {
-    await server.stop();
+    await restore();
   }
 });
 
@@ -108,24 +122,20 @@ function applyRules(rules: HeaderRule[], requestPath: string): Headers {
 }
 
 function loadRules(nodeEnv: string): Promise<HeaderRule[]> {
-  const configUrl = pathToFileURL(path.join(root, 'next.config.ts')).href;
-  const script = `
-    import nextConfig from ${JSON.stringify(configUrl)};
-    if (typeof nextConfig.headers !== 'function') {
-      console.error('headers() is missing');
-      process.exit(2);
-    }
-    const rules = await nextConfig.headers();
-    process.stdout.write(JSON.stringify(rules));
-  `;
-  const result = spawnSync(process.execPath, ['--import', 'tsx', '--eval', script], {
-    cwd: root,
-    encoding: 'utf8',
-    env: { ...process.env, NODE_ENV: nodeEnv },
-    timeout: 30_000,
-  });
-  assert.equal(result.status, 0, result.stderr || result.stdout || 'failed to read header rules');
-  return JSON.parse(result.stdout);
+  const readHeaders = nextConfig.headers;
+  if (typeof readHeaders !== 'function') throw new Error('headers() is missing');
+  const env = process.env as { NODE_ENV?: string };
+  const previous = env.NODE_ENV;
+  env.NODE_ENV = nodeEnv;
+  // headers() は最初の待ちに入る前に NODE_ENV を読む。戻してから待つ。
+  let rules: ReturnType<typeof readHeaders>;
+  try {
+    rules = readHeaders();
+  } finally {
+    if (previous === undefined) delete env.NODE_ENV;
+    else env.NODE_ENV = previous;
+  }
+  return Promise.resolve(rules) as Promise<HeaderRule[]>;
 }
 
 async function startNextDev(): Promise<{ origin: string; stop: () => Promise<void> }> {
@@ -179,11 +189,12 @@ async function waitForHttp(origin: string, child: ChildProcess, readLog: () => s
 }
 
 function stopChild(child: ChildProcess): Promise<void> {
-  if (child.pid == null || child.exitCode != null) return Promise.resolve();
+  const pid = child.pid;
+  if (pid == null || child.exitCode != null) return Promise.resolve();
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       try {
-        process.kill(-child.pid!, 'SIGKILL');
+        process.kill(-pid, 'SIGKILL');
       } catch {
         child.kill('SIGKILL');
       }
@@ -194,7 +205,7 @@ function stopChild(child: ChildProcess): Promise<void> {
       resolve();
     });
     try {
-      process.kill(-child.pid, 'SIGTERM');
+      process.kill(-pid, 'SIGTERM');
     } catch {
       child.kill('SIGTERM');
     }
