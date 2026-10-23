@@ -4,14 +4,14 @@ import Credentials from 'next-auth/providers/credentials';
 import { getDb } from '@/lib/db';
 import { confirmVerifiedPassword, sessionGenerationMatches, User } from '@/lib/auth';
 import { linkGoogleAccount } from '@/lib/link-google-account';
+import { googleClientConfig } from '@/lib/google-login';
+
+const google = googleClientConfig();
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
   providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
+    ...(google ? [Google({ clientId: google.clientId, clientSecret: google.clientSecret })] : []),
     Credentials({
       credentials: {
         email: { label: 'Email', type: 'email' },
