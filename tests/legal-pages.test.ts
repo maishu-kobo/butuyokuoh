@@ -7,6 +7,7 @@ import { PathnameContext } from 'next/dist/shared/lib/hooks-client-context.share
 import { SessionContext } from 'next-auth/react';
 import PrivacyPage from '../src/app/privacy/page';
 import TermsPage from '../src/app/terms/page';
+import { RootProviders } from '../src/components/RootProviders';
 import LoginForm from '../src/components/LoginForm';
 import { AuthContext, AuthProvider } from '../src/components/AuthProvider';
 
@@ -102,17 +103,27 @@ function authShell(pathname: string, child: ReactNode): string {
   ));
 }
 
-test('認証の確認が終わる前でも下書きの本文が残る', () => {
-  const privacy = authShell('/privacy', createElement(PrivacyPage));
-  const terms = authShell('/terms', createElement(TermsPage));
+test('直接開いた最初の描画でも下書きの本文が出る', () => {
+  const privacy = renderToStaticMarkup(createElement(RootProviders, null, createElement(PrivacyPage)));
+  const terms = renderToStaticMarkup(createElement(RootProviders, null, createElement(TermsPage)));
   assert.match(privacy, /下書き。Sota の確認待ち。確定したプライバシーポリシーではありません。/);
   assert.match(terms, /下書き。Sota の確認待ち。確定した利用規約ではありません。/);
   assert.equal(privacy.includes('読み込み中...'), false);
   assert.equal(terms.includes('読み込み中...'), false);
+});
 
+test('認証待ちのあいだ、ほかの画面は隠れ、水和ページだけは出る', () => {
   const home = authShell('/', createElement('p', null, '会員の一覧'));
   assert.match(home, /読み込み中/);
   assert.equal(home.includes('会員の一覧'), false);
+
+  const firstPaint = renderToStaticMarkup(createElement(
+    SessionContext.Provider,
+    { value: { data: null, status: 'loading', update: async () => null } },
+    createElement(AuthProvider, null, createElement('p', null, '会員の一覧')),
+  ));
+  assert.match(firstPaint, /読み込み中/);
+  assert.equal(firstPaint.includes('会員の一覧'), false);
 
   const hydration = authShell('/capture-hydration', createElement('p', null, '水和のピッカー'));
   assert.match(hydration, /水和のピッカー/);
