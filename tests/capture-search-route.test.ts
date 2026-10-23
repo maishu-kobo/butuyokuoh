@@ -7,7 +7,7 @@ import { CaptureMessages } from '../src/lib/capture/contract';
 import { installSearchTransportForTests } from '../src/lib/capture/live-search';
 import { createYahooRateGate, type YahooFetch } from '../src/lib/capture/yahoo';
 import { RAKUTEN_ENDPOINT, createRakutenLimiter, type RakutenHttp, type RakutenHttpRequest } from '../src/lib/capture/rakuten';
-import { registerCapturedCandidates } from '../src/lib/capture/register';
+import { candidateRegistration, registerCapturedCandidates } from '../src/lib/capture/register';
 import { POST as searchPost } from '../src/app/api/capture/search/route';
 
 const YAHOO_APP_ID = 'test-app-id';
@@ -266,6 +266,74 @@ test('a Rakuten affiliate id is sent only to Rakuten and stays out of the client
         assert.equal(JSON.stringify({ body, logs }).includes(affiliateId), false);
       });
     }
+  } finally {
+    for (const method of methods) console[method] = original[method];
+  }
+});
+
+test('searching again with an affiliate id does not register a second Rakuten item for the same product', async () => {
+  const database = await db();
+  const owner = await createMember('search-affiliate-same');
+  const affiliateId = 'example-rakuten-affiliate';
+  const product = 'https://item.rakuten.co.jp/example/pen';
+  const wrapper = `https://hb.afl.rakuten.co.jp/hgc/${affiliateId}/?pc=${encodeURIComponent(product)}&m=${encodeURIComponent(product)}`;
+  const evilMobile = `https://hb.afl.rakuten.co.jp/hgc/${affiliateId}/?pc=${encodeURIComponent(product)}&m=${encodeURIComponent('https://evil.example/phish')}`;
+  const logs: unknown[][] = [];
+  const methods = ['log', 'info', 'warn', 'error', 'debug'] as const;
+  const original = Object.fromEntries(methods.map((method) => [method, console[method]])) as Record<(typeof methods)[number], (...args: unknown[]) => void>;
+  for (const method of methods) {
+    console[method] = (...args: unknown[]) => { logs.push(args); };
+  }
+  try {
+    await withEnv(liveEnv(), async () => {
+      await setTestUser(owner);
+      install();
+      const response = await searchPost(searchRequest({ name: 'ペン', jan: JAN }));
+      assert.equal(response.status, 200);
+      const body = await response.json() as { candidates: { candidateId: number; site: string; url: string }[] };
+      const rakuten = body.candidates.find((item) => item.site === 'rakuten');
+      assert.equal(rakuten?.url, product);
+      const registered = registerCapturedCandidates(database, owner.id, [rakuten?.candidateId]);
+      assert.equal(registered.ok, true);
+    });
+
+    await withEnv(liveEnv({ RAKUTEN_AFFILIATE_ID: affiliateId }), async () => {
+      await setTestUser(owner);
+      install({
+        rakuten: async () => ({
+          status: 200,
+          body: JSON.stringify({
+            items: [
+              { ...rakutenItem(), itemUrl: wrapper },
+              { ...rakutenItem(), itemCode: 'example:evil', itemUrl: evilMobile },
+            ],
+          }),
+        }),
+      });
+      const response = await searchPost(searchRequest({ name: 'ペン', jan: JAN }));
+      assert.equal(response.status, 200);
+      const body = await response.json() as { candidates: { candidateId: number; site: string; url: string }[] };
+      const rakuten = body.candidates.filter((item) => item.site === 'rakuten');
+      assert.deepEqual(rakuten.map((item) => item.url), [wrapper]);
+      assert.equal(wrapper.includes(`/hgc/${affiliateId}/`), true);
+      const withoutUrls = {
+        ...body,
+        candidates: body.candidates.map((item) => ({ ...item, url: '' })),
+      };
+      assert.equal(JSON.stringify({ body: withoutUrls, logs }).includes(affiliateId), false);
+      assert.equal(JSON.stringify({ body, logs }).includes('evil.example'), false);
+      assert.deepEqual(candidateRegistration(database, owner.id, wrapper), { selectable: false, label: '登録済み' });
+      const again = registerCapturedCandidates(database, owner.id, [rakuten[0].candidateId]);
+      assert.equal(again.ok, false);
+      if (!again.ok) {
+        assert.equal(again.status, 409);
+        assert.equal(again.error.code, 'ALREADY_REGISTERED');
+      }
+      const stored = database.prepare(
+        "SELECT url FROM items WHERE user_id = ? AND source = 'rakuten'",
+      ).all(owner.id) as { url: string }[];
+      assert.deepEqual(stored, [{ url: product }]);
+    });
   } finally {
     for (const method of methods) console[method] = original[method];
   }

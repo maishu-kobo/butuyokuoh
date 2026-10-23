@@ -412,6 +412,122 @@ test('the same url on another account stays selectable', () => {
   }
 });
 
+test('an affiliate wrapper and its product page are the same registered Rakuten item', () => {
+  const db = openDatabase(':memory:');
+  try {
+    const product = 'https://item.rakuten.co.jp/example/pen';
+    const notebook = 'https://item.rakuten.co.jp/example/notebook';
+    const wrapper = `https://hb.afl.rakuten.co.jp/hgc/example-rakuten-affiliate/?pc=${encodeURIComponent(product)}&m=${encodeURIComponent(product)}`;
+    const otherWrapper = `https://hb.afl.rakuten.co.jp/hgc/other-affiliate/?pc=${encodeURIComponent(product)}`;
+    const userId = member(db, 'rakuten-same@example.com');
+    const other = member(db, 'rakuten-other@example.com');
+    db.prepare('INSERT INTO items (user_id, name, url) VALUES (?, ?, ?)').run(other, '他人のペン', product);
+    assert.deepEqual(candidateRegistration(db, userId, wrapper), { selectable: true, label: null });
+
+    db.prepare('INSERT INTO items (user_id, name, url) VALUES (?, ?, ?)').run(userId, '既存のペン', product);
+    const captureId = capture(db, userId);
+    const wrappedId = candidate(db, userId, captureId, {
+      source: 'rakuten',
+      source_name: '楽天',
+      url: wrapper,
+      image_url: null,
+      source_item_code: 'rakuten:pen-wrapped',
+    });
+    assert.deepEqual(candidateRegistration(db, userId, wrapper), { selectable: false, label: '登録済み' });
+    assert.deepEqual(listCaptureCandidateChoices(db, userId, captureId, NOW), [
+      { id: wrappedId, selectable: false, label: '登録済み' },
+    ]);
+    const blocked = registerCapturedCandidates(db, userId, [wrappedId], NOW);
+    assert.equal(blocked.ok, false);
+    if (!blocked.ok) {
+      assert.equal(blocked.status, 409);
+      assert.equal(blocked.error.code, 'ALREADY_REGISTERED');
+      assert.equal(blocked.error.error, '登録済み');
+    }
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id = ?').get(userId) as { n: number }).n, 1);
+
+    const reverseUser = member(db, 'rakuten-reverse@example.com');
+    db.prepare('INSERT INTO items (user_id, name, url) VALUES (?, ?, ?)').run(reverseUser, '包装済み', otherWrapper);
+    const reverseCapture = capture(db, reverseUser);
+    const bareId = candidate(db, reverseUser, reverseCapture, {
+      source: 'rakuten',
+      source_name: '楽天',
+      url: product,
+      image_url: null,
+      source_item_code: 'rakuten:pen-bare',
+    });
+    assert.deepEqual(candidateRegistration(db, reverseUser, product), { selectable: false, label: '登録済み' });
+    const reverse = registerCapturedCandidates(db, reverseUser, [bareId], NOW);
+    assert.equal(reverse.ok, false);
+    if (!reverse.ok) assert.equal(reverse.status, 409);
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id = ?').get(reverseUser) as { n: number }).n, 1);
+
+    const batchUser = member(db, 'rakuten-batch@example.com');
+    const batchCapture = capture(db, batchUser);
+    const batchWrapped = candidate(db, batchUser, batchCapture, {
+      source: 'rakuten',
+      source_name: '楽天',
+      url: wrapper,
+      image_url: null,
+      source_item_code: 'rakuten:batch-wrapped',
+    });
+    const batchBare = candidate(db, batchUser, batchCapture, {
+      source: 'rakuten',
+      source_name: '楽天',
+      url: product,
+      image_url: null,
+      source_item_code: 'rakuten:batch-bare',
+    });
+    const batchNotebook = candidate(db, batchUser, batchCapture, {
+      source: 'rakuten',
+      source_name: '楽天',
+      url: notebook,
+      image_url: null,
+      source_item_code: 'rakuten:batch-notebook',
+    });
+    const saved = registerCapturedCandidates(db, batchUser, [batchWrapped, batchBare, batchNotebook], NOW);
+    assert.equal(saved.ok, true);
+    if (!saved.ok) return;
+    assert.deepEqual(saved.itemIds.length, 2);
+    assert.deepEqual(saved.skipped, [{ candidateId: batchBare, code: 'ALREADY_REGISTERED', error: '登録済み' }]);
+    assert.equal(saved.comparisonGroupId == null, false);
+    const stored = db.prepare(
+      'SELECT url FROM items WHERE user_id = ? ORDER BY id',
+    ).all(batchUser) as { url: string }[];
+    assert.deepEqual(stored.map((row) => row.url), [wrapper, notebook]);
+  } finally {
+    db.close();
+  }
+});
+
+test('an affiliate wrapper with a disallowed destination is not registered', () => {
+  const db = openDatabase(':memory:');
+  try {
+    const userId = member(db, 'rakuten-unsafe@example.com');
+    const product = 'https://item.rakuten.co.jp/example/pen';
+    const captureId = capture(db, userId);
+    const urls = [
+      'https://hb.afl.rakuten.co.jp/hgc/x/?pc=https%3A%2F%2Fevil.example%2Fphish',
+      `https://hb.afl.rakuten.co.jp/hgc/x/?pc=${encodeURIComponent(product)}&m=${encodeURIComponent('https://evil.example/phish')}`,
+    ];
+    const ids = urls.map((url, index) => candidate(db, userId, captureId, {
+      source: 'rakuten',
+      source_name: '楽天',
+      url,
+      image_url: null,
+      source_item_code: `rakuten:unsafe-${index}`,
+    }));
+    for (const id of ids) {
+      const rejected = registerCapturedCandidates(db, userId, [id], NOW);
+      assert.equal(rejected.ok, false);
+      if (!rejected.ok) assert.equal(rejected.status, 404);
+    }
+    assert.equal(count(db, 'items'), 0);
+  } finally {
+    db.close();
+  }
+});
+
 test('two chosen candidates with one url create a single item', () => {
   const db = openDatabase(':memory:');
   try {

@@ -84,6 +84,8 @@ test('a Rakuten affiliate link is priced from its item page, and a bad target is
     'https://hb.afl.rakuten.co.jp/hgc/link/?pc=http://169.254.169.254/',
     `https://user:pw@hb.afl.rakuten.co.jp/hgc/link/?pc=${encodeURIComponent(product)}`,
     'https://hb.afl.rakuten.co.jp/hgc/link/',
+    `https://hb.afl.rakuten.co.jp/hgc/link/?pc=${encodeURIComponent(product)}&m=${encodeURIComponent('https://evil.example/phish')}`,
+    `https://hb.afl.rakuten.co.jp/hgc/link/?pc=${encodeURIComponent(product)}&m=`,
   ]) {
     const blocked = await scrape(bad, deps);
     assert.equal(blocked.name, '無効なURL', bad);
