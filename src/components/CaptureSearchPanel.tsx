@@ -235,18 +235,18 @@ export function CaptureSearchPanel({
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1" htmlFor="capture-search-name">
             探す商品名
           </label>
-          <div className="flex gap-2">
+          <div className="flex items-stretch gap-2">
             <input
               id="capture-search-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md"
+              className="min-w-0 flex-1 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md"
             />
             <button
               type="button"
               disabled={searchBlocked}
               onClick={() => void runSearch(chosen, name)}
-              className="min-h-[24px] min-w-[24px] px-3 py-2 bg-slate-800 text-white rounded-md text-sm disabled:opacity-50"
+              className="inline-flex shrink-0 items-center whitespace-nowrap min-h-[24px] min-w-[24px] px-3 py-2 border rounded-md text-sm disabled:opacity-50"
             >
               この名前で探す
             </button>
