@@ -39,6 +39,7 @@ async function handlePOST(request: NextRequest) {
         yahooAppId: secrets.yahooAppId,
         rakutenAppId: secrets.rakutenAppId,
         rakutenAccessKey: secrets.rakutenAccessKey,
+        rakutenAffiliateId: secrets.rakutenAffiliateId,
         userId: String(user.id),
         referer: httpsReferer(request.headers.get('origin')),
       });

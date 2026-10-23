@@ -5,6 +5,7 @@ import { assertOwnedRelations } from '@/lib/api-access';
 import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { itemUrlTaken } from '@/lib/capture/register';
 import { scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
@@ -126,9 +127,8 @@ async function handlePOST(request: NextRequest) {
     return NextResponse.json({ error: 'URL is required' }, { status: 400 });
   }
 
-  // 重複チェック（同じユーザー内で）
-  const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(user.id, url);
-  if (existing) {
+  // 重複チェック（同じユーザー内で）。楽天は包装を解いた商品ページが同じなら登録済み。
+  if (itemUrlTaken(db, user.id, url)) {
     return NextResponse.json({ error: 'このURLは既に登録されています' }, { status: 400 });
   }
 

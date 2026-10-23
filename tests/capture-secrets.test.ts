@@ -19,6 +19,7 @@ const ENV_NAMES = [
   CAPTURE_SECRET_NAMES.rakutenAppId,
   CAPTURE_SECRET_NAMES.rakutenAccessKey,
   CAPTURE_SECRET_NAMES.amazonAssociateTag,
+  'RAKUTEN_AFFILIATE_ID',
   'CAPTURE_SECRETS_FILE',
 ] as const;
 
@@ -29,6 +30,7 @@ const FAKE = {
   RAKUTEN_APP_ID: 'example-rakuten-app-id',
   RAKUTEN_ACCESS_KEY: 'example-rakuten-access-key',
   AMAZON_ASSOCIATE_TAG: 'example-associate-tag',
+  RAKUTEN_AFFILIATE_ID: 'example-rakuten-affiliate',
 } as const;
 
 function withEnv(values: Partial<Record<(typeof ENV_NAMES)[number], string>>, fn: () => void) {
@@ -105,6 +107,7 @@ test('missing keys report AI and search unavailable and do not throw', () => {
       rakutenAppId: null,
       rakutenAccessKey: null,
       amazonAssociateTag: null,
+      rakutenAffiliateId: null,
     });
     assert.equal(amazonAssociateTag(), null);
     assert.deepEqual(captureAvailability(), {
@@ -196,6 +199,35 @@ test('server-only guard throws before exposing keys when imported for the browse
   } finally {
     if (previous === undefined) delete globalWithWindow.window;
     else globalWithWindow.window = previous;
+  }
+});
+
+test('the Rakuten affiliate id is optional, and a secrets file can supply it without publishing it', () => {
+  withEnv({ RAKUTEN_AFFILIATE_ID: '   ' }, () => {
+    assert.equal(readCaptureSecrets().rakutenAffiliateId, null);
+    assert.equal(captureAvailability().search.rakuten.available, false);
+  });
+
+  const dir = mkdtempSync(join(tmpdir(), 'capture-secrets-affiliate-'));
+  const file = join(dir, 'capture.env');
+  const fromFile = 'example-file-affiliate';
+  try {
+    writeFileSync(file, `RAKUTEN_AFFILIATE_ID=${fromFile}\nOTHER_SECRET=example-other-secret\n`, { mode: 0o600 });
+    chmodSync(file, 0o600);
+    withEnv({ CAPTURE_SECRETS_FILE: file, RAKUTEN_APP_ID: FAKE.RAKUTEN_APP_ID, RAKUTEN_ACCESS_KEY: FAKE.RAKUTEN_ACCESS_KEY }, () => {
+      const logged = captureLogs(() => {
+        assert.equal(readCaptureSecrets().rakutenAffiliateId, fromFile);
+        assert.equal(captureAvailability().search.rakuten.available, true);
+        assert.equal(JSON.stringify(captureAvailability()).includes(fromFile), false);
+        assert.equal(JSON.stringify(readCaptureSecrets()).includes('example-other-secret'), false);
+      });
+      assert.equal(logged.includes(fromFile), false);
+    });
+    withEnv({ CAPTURE_SECRETS_FILE: file, RAKUTEN_AFFILIATE_ID: `  ${FAKE.RAKUTEN_AFFILIATE_ID}  ` }, () => {
+      assert.equal(readCaptureSecrets().rakutenAffiliateId, FAKE.RAKUTEN_AFFILIATE_ID);
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

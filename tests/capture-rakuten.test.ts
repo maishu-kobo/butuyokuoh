@@ -58,6 +58,7 @@ function harness(options: {
   now?: () => Date;
   timeoutMs?: number;
   referer?: string | null;
+  affiliateId?: string | null;
 } = {}) {
   const calls: RakutenHttpRequest[] = [];
   const http = options.http ?? okHttp();
@@ -72,8 +73,23 @@ function harness(options: {
     now: options.now,
     timeoutMs: options.timeoutMs,
     referer: options.referer,
+    affiliateId: options.affiliateId,
   });
   return { search, calls };
+}
+
+function captureLogs(fn: () => Promise<void>): Promise<string> {
+  const chunks: string[] = [];
+  const methods = ['log', 'info', 'warn', 'error', 'debug'] as const;
+  const saved = methods.map(name => [name, console[name]] as const);
+  for (const name of methods) {
+    console[name] = (...args: unknown[]) => {
+      chunks.push(args.map(value => String(value)).join(' '));
+    };
+  }
+  return fn().finally(() => {
+    for (const [name, original] of saved) console[name] = original;
+  }).then(() => chunks.join('\n'));
 }
 
 test('Rakuten search sends the JAN as the only keyword and keeps the access key out of the URL', async () => {
@@ -103,6 +119,101 @@ test('Rakuten search sends the JAN as the only keyword and keeps the access key 
   assert.equal(result.value[0].shopName, 'テスト楽天店');
   assert.equal(new URL(result.value[0].url).hostname, 'item.rakuten.co.jp');
   assert.equal(JSON.stringify(result).includes(SECRET), false);
+});
+
+test('Rakuten search adds affiliateId only when it is set, and keeps that value out of the result and logs', async () => {
+  const affiliateId = 'example-rakuten-affiliate';
+  const affiliateUrl = 'https://hb.afl.rakuten.co.jp/hgc/link/?pc=https%3A%2F%2Fitem.rakuten.co.jp%2Fexample%2Fpen';
+  const logged = await captureLogs(async () => {
+    const { search, calls } = harness({
+      affiliateId: `  ${affiliateId}  `,
+      http: okHttp({ items: [item({ itemUrl: affiliateUrl })] }),
+    });
+    const result = await search.search(query);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(calls.length, 1);
+    const url = new URL(calls[0].url);
+    assert.equal(url.searchParams.get('affiliateId'), affiliateId);
+    assert.equal(url.searchParams.get('accessKey'), null);
+    assert.equal(calls[0].url.includes(SECRET), false);
+    assert.equal(result.value[0].url, affiliateUrl);
+    assert.equal(JSON.stringify(result).includes(affiliateId), false);
+  });
+  assert.equal(logged.includes(affiliateId), false);
+
+  for (const missing of [undefined, null, '', '   ', 'bad\nid', 'bad\rid']) {
+    const plain = harness({ affiliateId: missing });
+    const result = await plain.search.search(query);
+    assert.equal(result.ok, true);
+    assert.equal(plain.calls.length, 1);
+    const url = new URL(plain.calls[0].url);
+    assert.equal(url.searchParams.get('affiliateId'), null);
+    assert.equal(plain.calls[0].url.includes('affiliateId'), false);
+    assert.equal(plain.calls[0].url.includes('bad'), false);
+  }
+});
+
+test('a Rakuten affiliate link is a candidate only when pc and any m stay on the product host, and the id stays in that url', async () => {
+  const affiliateId = 'example-rakuten-affiliate';
+  const product = 'https://item.rakuten.co.jp/example/pen';
+  const wrap = (pc: string, mobile?: string) => {
+    const url = new URL(`https://hb.afl.rakuten.co.jp/hgc/${affiliateId}/`);
+    url.searchParams.set('pc', pc);
+    if (mobile !== undefined) url.searchParams.append('m', mobile);
+    return url.toString();
+  };
+  const good = wrap(product, product);
+  const noMobile = wrap(product);
+  const evilPc = wrap('https://evil.example/phish');
+  const evilMobile = wrap(product, 'https://evil.example/phish');
+  const secondMobile = (() => {
+    const url = new URL(wrap(product, product));
+    url.searchParams.append('m', 'https://evil.example/phish');
+    return url.toString();
+  })();
+  const emptyMobile = wrap(product, '');
+  const logged = await captureLogs(async () => {
+    const { search } = harness({
+      affiliateId,
+      http: okHttp({
+        items: [
+          item({ itemUrl: good, itemCode: 'example:pen' }),
+          item({ itemUrl: noMobile, itemCode: 'example:plain' }),
+          item({ itemUrl: evilPc, itemCode: 'example:evil-pc' }),
+          item({ itemUrl: evilMobile, itemCode: 'example:evil-m' }),
+          item({ itemUrl: secondMobile, itemCode: 'example:second-m' }),
+          item({ itemUrl: emptyMobile, itemCode: 'example:empty-m' }),
+        ],
+      }),
+    });
+    const result = await search.search(query);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.value.map((entry) => entry.url), [good, noMobile]);
+    for (const entry of result.value) assert.equal(entry.url.includes(`/hgc/${affiliateId}/`), true);
+    const withoutUrls = {
+      ...result,
+      value: result.value.map((entry) => ({ ...entry, url: '' })),
+    };
+    assert.equal(JSON.stringify(withoutUrls).includes(affiliateId), false);
+  });
+  assert.equal(logged.includes(affiliateId), false);
+
+  const rejected = harness({
+    affiliateId,
+    http: okHttp({
+      items: [
+        item({ itemUrl: evilPc, itemCode: 'example:evil-pc' }),
+        item({ itemUrl: evilMobile, itemCode: 'example:evil-m' }),
+      ],
+    }),
+  });
+  const dropped = await rejected.search.search(query);
+  assert.equal(dropped.ok, false);
+  if (!dropped.ok) assert.equal(dropped.error.code, 'SEARCH_FAILED');
+  assert.equal(JSON.stringify(dropped).includes('evil.example'), false);
+  assert.equal(JSON.stringify(dropped).includes(affiliateId), false);
 });
 
 test('without a JAN the keyword is the name, brand, and model, and a missing key does not call Rakuten', async () => {

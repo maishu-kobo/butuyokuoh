@@ -2,6 +2,7 @@
 // 登録の保存は候補の表ができてから（#90、#96）。ここではリクエストの形だけを確かめる。
 import { accessoryScore, preferMainProduct } from './accessory';
 import { canonicalCandidateImageUrl } from './image-hosts';
+import { canonicalRakutenAffiliateUrl } from './rakuten-link';
 
 export const CAPTURE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -199,10 +200,11 @@ export function isAllowedCandidateUrl(site: CaptureSite, url: string): boolean {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return false;
-    const hosts = site === 'yahoo'
-      ? ['shopping.yahoo.co.jp', 'store.shopping.yahoo.co.jp']
-      : ['item.rakuten.co.jp'];
-    return hosts.includes(parsed.hostname);
+    if (site === 'yahoo') {
+      return parsed.hostname === 'shopping.yahoo.co.jp' || parsed.hostname === 'store.shopping.yahoo.co.jp';
+    }
+    if (parsed.hostname === 'hb.afl.rakuten.co.jp') return canonicalRakutenAffiliateUrl(url) != null;
+    return parsed.hostname === 'item.rakuten.co.jp';
   } catch {
     return false;
   }
