@@ -1,5 +1,5 @@
 // 楽天市場の商品検索。通信とキーは外から渡し、キーが無い店は利用不可にする。
-import { preferMainProduct, preferMainProducts, rakutenNgKeyword } from './accessory';
+import { preferMainProduct, preferMainProducts } from './accessory';
 import {
   acceptCandidate,
   captureFailure,
@@ -116,8 +116,6 @@ export function createRakutenSearch(options: {
       url.searchParams.set('keyword', keyword);
       url.searchParams.set('format', 'json');
       url.searchParams.set('formatVersion', '2');
-      const excluded = rakutenNgKeyword(preferMain);
-      if (excluded) url.searchParams.set('NGKeyword', excluded);
       const headers: Record<string, string> = { accessKey: credentials.accessKey };
       if (referer) headers.Referer = referer;
 

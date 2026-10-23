@@ -9,8 +9,7 @@ const NOW = Date.parse('2026-10-23T00:26:39.608Z');
 const PHONE = 'Google Pixel 9 128GB グレー';
 const PHONE_QUERY: SearchQuery = { name: 'Google Pixel グレー', brand: null, model: null, jan: null };
 const CASE_QUERY: SearchQuery = { name: 'Google Pixel ケース', brand: null, model: null, jan: null };
-const YAHOO_EXCLUSION = 'Google Pixel グレー -ケース -カバー -フィルム -充電器 -ケーブル -ストラップ';
-const RAKUTEN_EXCLUSION = 'ケース カバー フィルム 充電器 ケーブル ストラップ';
+const YAHOO_QUERY = 'Google Pixel グレー';
 
 // 候補がケースばかりだった画面の商品名。
 const SCREENSHOT_CASES = [
@@ -111,7 +110,7 @@ test('a charging-case AirPods stays, and the store query does not minus out ケ�
   assert.equal(rakutenFound.value.some((item) => item.title === airpods), true);
 });
 
-test('a phone name asks Yahoo and Rakuten to drop accessory words and keeps the phone', async () => {
+test('a phone name keeps the phone and does not ask the store to minus out accessories', async () => {
   const hits = [
     ...SCREENSHOT_CASES.map((title, index) => yahooHit(title, index, 699 + index)),
     yahooHit(PHONE, 9, 89800),
@@ -119,7 +118,7 @@ test('a phone name asks Yahoo and Rakuten to drop accessory words and keeps the 
   const yahoo = yahooHarness(hits);
   const found = await yahoo.search.search(PHONE_QUERY);
   assert.equal(yahoo.calls.length, 1);
-  assert.equal(new URL(yahoo.calls[0].url).searchParams.get('query'), YAHOO_EXCLUSION);
+  assert.equal(new URL(yahoo.calls[0].url).searchParams.get('query'), YAHOO_QUERY);
   assert.equal(new URL(yahoo.calls[0].url).searchParams.get('results'), '10');
   assert.equal(found.ok, true);
   if (!found.ok) return;
@@ -133,7 +132,7 @@ test('a phone name asks Yahoo and Rakuten to drop accessory words and keeps the 
   assert.equal(rakuten.calls.length, 1);
   const rakutenUrl = new URL(rakuten.calls[0].url);
   assert.equal(rakutenUrl.searchParams.get('keyword'), 'Google Pixel グレー');
-  assert.equal(rakutenUrl.searchParams.get('NGKeyword'), RAKUTEN_EXCLUSION);
+  assert.equal(rakutenUrl.searchParams.has('NGKeyword'), false);
   assert.equal(rakutenFound.ok, true);
   if (!rakutenFound.ok) return;
   assert.deepEqual(rakutenFound.value.map((item) => item.title), [PHONE]);
@@ -179,13 +178,12 @@ test('a JAN search does not add accessory exclusions', async () => {
   assert.equal(rakutenUrl.searchParams.has('NGKeyword'), false);
 });
 
-test('a long name keeps the Yahoo exclusion inside 400 characters', async () => {
+test('a long name stays inside 400 characters and does not add accessory exclusions', async () => {
   const yahoo = yahooHarness([yahooHit(PHONE, 1, 89800)]);
-  await yahoo.search.search({ name: 'あ'.repeat(400), brand: null, model: null, jan: null });
+  await yahoo.search.search({ name: 'あ'.repeat(500), brand: null, model: null, jan: null });
   const query = new URL(yahoo.calls[0].url).searchParams.get('query') ?? '';
-  assert.equal(query.length <= 400, true);
-  assert.equal(query.endsWith(' -ストラップ'), true);
-  assert.equal(query.includes('あ'), true);
+  assert.equal(query, 'あ'.repeat(400));
+  assert.equal(query.includes('-'), false);
 });
 
 test('weak words and brackets stay, and only strong accessory nouns drop', async () => {
