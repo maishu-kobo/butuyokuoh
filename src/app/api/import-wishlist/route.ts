@@ -1,4 +1,4 @@
-import { withAccess } from '@/lib/api-access';
+import { validateMemberInput, withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { scrapeWishlist } from '@/lib/wishlist-scraper';
@@ -36,6 +36,7 @@ async function handlePOST(request: NextRequest) {
   }
 
   const body = await request.json();
+  validateMemberInput(body, 'POST');
   const { url } = body;
 
   if (!url) {

@@ -58,8 +58,14 @@ async function readGuestBody(request: NextRequest): Promise<Record<string, unkno
   }
 }
 
-export function validateGuestInput(body: Record<string, unknown>, method?: string) {
+// 会員は画像を保存できる。商品URLの形式は各ルートの既存メッセージを残す。
+export function validateMemberInput(body: Record<string, unknown>, method?: string) {
+  validateGuestInput(body, method, { allowImages: true, checkUrlScheme: false });
+}
+
+export function validateGuestInput(body: Record<string, unknown>, method?: string, rules?: { allowImages?: boolean; checkUrlScheme?: boolean }) {
   const invalid = () => { throw new GuestError(400, 'INVALID_INPUT', '入力内容・文字数・数値を確認してください'); };
+  if (!body || typeof body !== 'object' || Array.isArray(body)) invalid();
   const lengths: Record<string, number> = { name: 200, notes: 2000, url: 2048, image_url: 2048, color: 7, icon: 32, planned_purchase_date: 10, purchased_at: 32, target_currency: 3 };
   for (const [key, value] of Object.entries(body)) {
     if (value === null) {
@@ -79,8 +85,8 @@ export function validateGuestInput(body: Record<string, unknown>, method?: strin
   if (body.name !== undefined && (typeof body.name !== 'string' || !body.name.trim())) invalid();
   if (body.color && !/^#[0-9a-fA-F]{6}$/.test(String(body.color))) invalid();
   if (body.planned_purchase_date && !/^\d{4}-\d{2}-\d{2}$/.test(String(body.planned_purchase_date))) invalid();
-  if (body.url && !/^(https?:\/\/|manual:\/\/)/i.test(String(body.url))) invalid();
-  if (body.image_url && body.image_url !== DEMO_IMAGE) {
+  if (rules?.checkUrlScheme !== false && body.url && !/^(https?:\/\/|manual:\/\/)/i.test(String(body.url))) invalid();
+  if (!rules?.allowImages && body.image_url && body.image_url !== DEMO_IMAGE) {
     throw new GuestError(403, 'MEMBER_REQUIRED', '画像の追加はログイン後に利用できます');
   }
 }
@@ -102,14 +108,19 @@ export function withAccess<Args extends unknown[]>(handler: (request: NextReques
     try {
       const user = await getCurrentUser();
       if (!user) throw new GuestError(401, 'SESSION_REQUIRED', 'セッションが終了しました。ログイン画面から入り直してください');
-      if (user.account_type === 'guest') {
-        if (!allowGuest) throw new GuestError(403, 'MEMBER_REQUIRED', 'この機能はログイン後に利用できます');
-        if (!['GET', 'HEAD'].includes(request.method)) {
+      if (!['GET', 'HEAD'].includes(request.method)) {
+        if (user.account_type === 'guest') {
+          if (!allowGuest) throw new GuestError(403, 'MEMBER_REQUIRED', 'この機能はログイン後に利用できます');
           requireSameOrigin(request);
           consumeGuestRate(`write:${user.id}`, guestLimit('WRITES_PER_MINUTE', 60));
           const body = await readGuestBody(request);
           validateGuestInput(body, request.method);
+        } else if (allowGuest) {
+          const body = await readGuestBody(request);
+          validateMemberInput(body, request.method);
         }
+      } else if (user.account_type === 'guest' && !allowGuest) {
+        throw new GuestError(403, 'MEMBER_REQUIRED', 'この機能はログイン後に利用できます');
       }
       const response = await handler(request, ...args);
       response.headers.set('Cache-Control', 'no-store');
