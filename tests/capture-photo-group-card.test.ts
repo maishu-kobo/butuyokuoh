@@ -97,13 +97,22 @@ function milkCard(): Extract<WishlistRow, { kind: 'photo' }> {
   };
 }
 
-function photoMarkup(): string {
+function photoMarkup(shopsOpen = false): string {
   return markup(createElement(PhotoGroupCard, {
     card: milkCard(),
     item: face(),
     onUpdate: () => {},
+    shopsOpen,
   }));
 }
+
+function purchaseButton(html: string): string {
+  const match = html.match(/<button\b[^>]*>購入済みにする<\/button>/);
+  assert.ok(match, 'purchase button');
+  return match[0];
+}
+
+const enabledPurchase = '<button class="text-sm px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200">購入済みにする</button>';
 
 function urlMarkup(item: Item = face({
   id: 1,
@@ -152,5 +161,48 @@ test('a closed photo group keeps shop facts in the info area, on the same card a
   assert.equal(url.includes('photo-group-low'), false);
   assert.equal(url.includes('ショップを見る'), false);
   assert.ok(url.includes(actionBar));
-  assert.match(url, /<button[^>]*>購入済みにする<\/button>/);
+  assert.equal(purchaseButton(url), enabledPurchase);
+});
+
+test('two or more shops gray out the card purchase button and explain how to choose a shop', () => {
+  const html = photoMarkup();
+  const button = purchaseButton(html);
+  assert.match(button, /aria-disabled="true"/);
+  assert.doesNotMatch(button, /\sdisabled(?:=|\s|>)/);
+  assert.match(button, /bg-gray-200/);
+  assert.match(button, /text-gray-500/);
+  assert.doesNotMatch(button, /bg-green-100/);
+  const id = button.match(/aria-describedby="([^"]+)"/)?.[1];
+  assert.ok(id);
+  const tip = html.match(new RegExp(`<span\\b[^>]*\\bid="${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*>`));
+  assert.ok(tip, id);
+  assert.match(tip[0], /role="tooltip"/);
+  assert.match(tip[0], /group-hover:block/);
+  assert.match(tip[0], /group-focus-within:block/);
+  assert.match(html, /ショップが複数あります。ショップ一覧から購入したショップを選んで購入済みにしてください/);
+
+  const one = markup(createElement(ItemCard, {
+    item: face(),
+    onUpdate: () => {},
+    onDelete: () => {},
+    shopCount: 1,
+  }));
+  assert.equal(purchaseButton(one), enabledPurchase);
+  assert.equal(one.includes('ショップが複数あります'), false);
+});
+
+test('an opened shop list lets each unpurchased shop be marked purchased', () => {
+  assert.equal(photoMarkup().includes('photo-shop-list'), false);
+  const html = photoMarkup(true);
+  const listAt = html.indexOf('data-testid="photo-shop-list"');
+  const actionAt = html.indexOf(actionBar);
+  assert.ok(listAt > 0 && actionAt > listAt);
+  const list = html.slice(listAt, actionAt);
+  assert.match(list, /牛乳A/);
+  assert.match(list, /牛乳B/);
+  assert.match(list, /牛乳C/);
+  assert.equal(list.match(/<button\b[^>]*>購入済みにする<\/button>/g)?.length, 2);
+  const bought = list.slice(list.indexOf('牛乳C'), list.indexOf('牛乳A'));
+  assert.match(bought, />購入済み</);
+  assert.equal(bought.includes('購入済みにする'), false);
 });

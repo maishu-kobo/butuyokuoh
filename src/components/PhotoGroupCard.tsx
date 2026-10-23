@@ -20,6 +20,7 @@ export default function PhotoGroupCard({
   selectionMode,
   isSelected,
   onToggleSelect,
+  shopsOpen = false,
 }: {
   card: PhotoCard;
   item: Item;
@@ -30,8 +31,9 @@ export default function PhotoGroupCard({
   selectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (id: number) => void;
+  shopsOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(shopsOpen);
   const [busyId, setBusyId] = useState<number | null>(null);
   const memberIds = card.shops.map((shop) => shop.itemId);
 
@@ -86,7 +88,7 @@ export default function PhotoGroupCard({
         </button>
       </div>
       {open && (
-        <ul className="mt-2 space-y-3 text-sm">
+        <ul className="mt-2 space-y-3 text-sm" data-testid="photo-shop-list">
           {card.shops.map((shop) => {
             const when = formatListTimestamp(shop.fetchedAt);
             return (
@@ -151,6 +153,7 @@ export default function PhotoGroupCard({
         isSelected={isSelected}
         onToggleSelect={onToggleSelect}
         offerPriceRefresh={offersPriceRefresh(card.shops.length)}
+        shopCount={card.shops.length}
       />
     </div>
   );

@@ -64,6 +64,8 @@ test('a photo group is one list card, and hand-added items stay separate', async
   for (const name of ['価格推移', '編集', '購入済みにする', '削除', 'ドラッグして並び替え']) {
     await expect(one.getByRole('button', { name })).toBeVisible();
   }
+  await expect(one.getByRole('button', { name: '購入済みにする', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(milk.getByRole('button', { name: '購入済みにする', exact: true })).toHaveAttribute('aria-disabled', 'true');
 
   await page.getByRole('button', { name: '牛乳のショップを見る' }).click();
   await expect(milk.getByText('牛乳A')).toBeVisible();
@@ -77,6 +79,7 @@ test('a photo group is one list card, and hand-added items stay separate', async
   await expect(milk.getByRole('button', { name: '価格推移' })).toBeVisible();
   await expect(milk.getByRole('button', { name: '編集' })).toBeVisible();
   await expect(milk.getByRole('button', { name: '購入済みにする' }).first()).toBeVisible();
+  await expect(milk.getByTestId('photo-shop-list').getByRole('button', { name: '購入済みにする', exact: true })).toHaveCount(2);
   await expect(milk.getByRole('button', { name: '削除', exact: true })).toBeVisible();
   await expect(milk.getByRole('button', { name: 'ドラッグして並び替え' })).toBeVisible();
   await expect(milk.getByText('普通', { exact: true })).toBeVisible();
@@ -157,6 +160,30 @@ test('a photo group uses the same card as a url item on a phone and a desktop', 
   }
   const narrow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(narrow).toBeLessThanOrEqual(1);
+
+  const purchase = photo.getByRole('button', { name: '購入済みにする', exact: true });
+  const hint = 'ショップが複数あります。ショップ一覧から購入したショップを選んで購入済みにしてください';
+  await expect(purchase).toHaveAttribute('aria-disabled', 'true');
+  await expect(urlCard.getByRole('button', { name: '購入済みにする', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+  await purchase.hover();
+  await expect(photo.getByRole('tooltip')).toHaveText(hint);
+  await page.mouse.move(0, 0);
+  await expect(photo.getByRole('tooltip')).toBeHidden();
+  await purchase.focus();
+  await expect(photo.getByRole('tooltip')).toBeVisible();
+  await purchase.blur();
+  await expect(photo.getByRole('tooltip')).toBeHidden();
+  let patched = false;
+  const watchPurchase = (request: { method: () => string; url: () => string }) => {
+    if (request.method() === 'PATCH' && request.url().includes('/api/items/')) patched = true;
+  };
+  page.on('request', watchPurchase);
+  await purchase.dispatchEvent('click');
+  await expect(photo.getByRole('tooltip')).toBeVisible();
+  expect(patched).toBe(false);
+  await purchase.dispatchEvent('click');
+  await expect(photo.getByRole('tooltip')).toBeHidden();
+  page.off('request', watchPurchase);
 
   await photo.getByRole('button', { name: 'Belkin 電源アダプタのショップを見る' }).click();
   await expect(photo).not.toContainText('Yahoo!ショッピング Yahoo!ショッピング');

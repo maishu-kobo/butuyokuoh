@@ -24,6 +24,7 @@ interface SortableItemCardProps {
   displayImageUrl?: string | null;
   groupMemberIds?: readonly number[];
   offerPriceRefresh?: boolean;
+  shopCount?: number;
 }
 
 export default function SortableItemCard({
@@ -43,6 +44,7 @@ export default function SortableItemCard({
   displayImageUrl,
   groupMemberIds,
   offerPriceRefresh,
+  shopCount,
 }: SortableItemCardProps) {
   const {
     attributes,
@@ -118,6 +120,7 @@ export default function SortableItemCard({
           displayImageUrl={displayImageUrl}
           groupMemberIds={groupMemberIds}
           offerPriceRefresh={offerPriceRefresh}
+          shopCount={shopCount}
         />
       </div>
     </div>

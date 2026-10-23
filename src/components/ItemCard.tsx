@@ -4,7 +4,7 @@ import { apiFetch } from '@/lib/api-fetch';
 import { photoGroupSaveWrites } from '@/lib/capture/photo-group-actions';
 import { linkableHttpUrl } from '@/lib/http-url';
 
-import { useState, useRef, type ReactNode } from 'react';
+import { useId, useState, useRef, type ReactNode } from 'react';
 import { Item, Category, ComparisonGroup } from '@/types';
 import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
 import { rakutenPriceCaption } from '@/lib/capture/rakuten-price-note';
@@ -37,9 +37,12 @@ interface ItemCardProps {
   displayImageUrl?: string | null;
   groupMemberIds?: readonly number[];
   offerPriceRefresh?: boolean;
+  shopCount?: number;
 }
 
-export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, info, displayImageUrl, groupMemberIds, offerPriceRefresh = true }: ItemCardProps) {
+const SEVERAL_SHOPS_PURCHASE = 'ショップが複数あります。ショップ一覧から購入したショップを選んで購入済みにしてください';
+
+export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, info, displayImageUrl, groupMemberIds, offerPriceRefresh = true, shopCount }: ItemCardProps) {
   const { isGuest } = useAuth();
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -66,6 +69,9 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   const [showImageEdit, setShowImageEdit] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const purchaseLocked = shopCount != null && shopCount >= 2;
+  const purchaseHintId = useId();
+  const [purchaseHint, setPurchaseHint] = useState(false);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -386,12 +392,37 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           </button>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={handlePurchased}
-            className="text-sm px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
-          >
-            購入済みにする
-          </button>
+          {purchaseLocked ? (
+            <span className="relative group">
+              <button
+                type="button"
+                aria-disabled="true"
+                aria-describedby={purchaseHintId}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setPurchaseHint((current) => !current);
+                }}
+                className="cursor-not-allowed rounded bg-gray-200 px-3 py-1 text-sm text-gray-500"
+              >
+                購入済みにする
+              </button>
+              <span
+                id={purchaseHintId}
+                role="tooltip"
+                className={`${purchaseHint ? 'block' : 'hidden'} group-hover:block group-focus-within:block pointer-events-none absolute bottom-full right-0 z-20 mb-2 w-64 rounded-md bg-gray-900 px-2 py-1 text-left text-xs font-normal leading-snug text-white shadow-lg`}
+              >
+                {SEVERAL_SHOPS_PURCHASE}
+              </span>
+            </span>
+          ) : (
+            <button
+              onClick={handlePurchased}
+              className="text-sm px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
+            >
+              購入済みにする
+            </button>
+          )}
           <button
             onClick={() => onDelete(item.id)}
             aria-label="削除"
