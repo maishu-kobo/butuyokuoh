@@ -3,7 +3,7 @@
 import { apiFetch } from '@/lib/api-fetch';
 import { formatYen, type WishlistRow } from '@/lib/capture/list-card';
 import { photoGroupDeleteIds, photoShopDeleteIds } from '@/lib/capture/photo-group-actions';
-import { formatListTimestamp, offersPriceRefresh, photoImageUrl, shopBadgeText } from '@/lib/capture/photo-card-view';
+import { formatListTimestamp, offersPriceRefresh, photoImageUrl, shopBadgeText, uniqueShopTags } from '@/lib/capture/photo-card-view';
 import { useState } from 'react';
 import SortableItemCard from './SortableItemCard';
 import type { Category, ComparisonGroup, Item } from '@/types';
@@ -154,6 +154,7 @@ export default function PhotoGroupCard({
         onToggleSelect={onToggleSelect}
         offerPriceRefresh={offersPriceRefresh(card.shops.length)}
         shopCount={card.shops.length}
+        shopTags={card.shops.length >= 2 ? uniqueShopTags(card.shops) : undefined}
       />
     </div>
   );

@@ -206,3 +206,115 @@ test('an opened shop list lets each unpurchased shop be marked purchased', () =>
   assert.match(bought, />購入済み</);
   assert.equal(bought.includes('購入済みにする'), false);
 });
+
+function badgeClass(html: string, label: string): string {
+  const match = html.match(new RegExp(`<span class="([^"]+)">${label}</span>`));
+  assert.ok(match, label);
+  return match[1];
+}
+
+test('several shops show one horizontal tag each, matching a url card and skipping duplicates', () => {
+  const card: Extract<WishlistRow, { kind: 'photo' }> = {
+    kind: 'photo',
+    groupId: 8,
+    name: 'アダプタ',
+    minPrice: 500,
+    maxPrice: 2000,
+    rangeText: '¥500〜¥2,000',
+    itemIds: [1, 2, 3, 4],
+    shops: [
+      {
+        itemId: 1,
+        name: '楽天A',
+        site: '楽天',
+        shopName: '楽天',
+        price: 500,
+        fetchedAt: null,
+        url: 'https://item.rakuten.co.jp/shop/a',
+        purchased: false,
+      },
+      {
+        itemId: 2,
+        name: '楽天B',
+        site: '楽天',
+        shopName: '楽天',
+        price: 800,
+        fetchedAt: null,
+        url: 'https://item.rakuten.co.jp/shop/b',
+        purchased: false,
+      },
+      {
+        itemId: 3,
+        name: 'ヤフー',
+        site: 'Yahoo!ショッピング',
+        shopName: 'Yahoo!ショッピング',
+        price: 900,
+        fetchedAt: null,
+        url: 'https://store.shopping.yahoo.co.jp/shop/c',
+        purchased: false,
+      },
+      {
+        itemId: 4,
+        name: 'テスト店',
+        site: 'Yahoo!ショッピング',
+        shopName: 'テストショップ',
+        price: 2000,
+        fetchedAt: null,
+        url: 'https://store.shopping.yahoo.co.jp/shop/d',
+        purchased: false,
+      },
+    ],
+  };
+  const photo = markup(createElement(PhotoGroupCard, {
+    card,
+    item: face({
+      id: 1,
+      name: '楽天A',
+      source: 'rakuten',
+      source_name: '楽天',
+      url: 'https://item.rakuten.co.jp/shop/a',
+      current_price: 500,
+    }),
+    onUpdate: () => {},
+  }));
+  const row = photo.slice(photo.indexOf('flex items-center gap-2 mb-1 flex-wrap'), photo.indexOf('line-clamp-2'));
+  assert.match(row, /flex-wrap/);
+  const rakutenAt = row.indexOf('>楽天<');
+  const yahooAt = row.indexOf('>Yahoo!ショッピング<');
+  const shopAt = row.indexOf('>テストショップ<');
+  assert.ok(rakutenAt >= 0 && yahooAt > rakutenAt && shopAt > yahooAt);
+  assert.equal(row.split('>楽天<').length, 2);
+
+  const rakutenUrl = urlMarkup(face({
+    id: 21,
+    name: '楽天の品',
+    source: 'rakuten',
+    source_name: '楽天',
+    url: 'https://item.rakuten.co.jp/shop/one',
+  }));
+  const yahooUrl = urlMarkup(face({
+    id: 22,
+    name: 'ヤフーの品',
+    source: 'yahoo',
+    source_name: 'Yahoo!ショッピング',
+    url: 'https://store.shopping.yahoo.co.jp/shop/one',
+  }));
+  const namedUrl = urlMarkup(face({
+    id: 23,
+    name: '店の品',
+    source: 'yahoo',
+    source_name: 'テストショップ',
+    url: 'https://store.shopping.yahoo.co.jp/shop/named',
+  }));
+  const rakutenClass = 'text-xs px-2 py-0.5 rounded bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200';
+  const yahooClass = 'text-xs px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200';
+  assert.equal(badgeClass(rakutenUrl, '楽天'), rakutenClass);
+  assert.equal(badgeClass(yahooUrl, 'Yahoo!ショッピング'), yahooClass);
+  assert.equal(badgeClass(namedUrl, 'テストショップ'), yahooClass);
+  assert.equal(badgeClass(photo, '楽天'), rakutenClass);
+  assert.equal(badgeClass(photo, 'Yahoo!ショッピング'), yahooClass);
+  assert.equal(badgeClass(photo, 'テストショップ'), yahooClass);
+  assert.equal(rakutenUrl.match(/<span class="[^"]+">楽天<\/span>/g)?.length, 1);
+  assert.equal(rakutenUrl.includes('Yahoo!ショッピング'), false);
+  assert.equal(rakutenUrl.includes('テストショップ'), false);
+});

@@ -138,7 +138,8 @@ test('a photo group uses the same card as a url item on a phone and a desktop', 
   await expect(photo.getByRole('heading', { name: 'Belkin 電源アダプタ', exact: true })).toBeVisible();
   await expect(photo.getByRole('img', { name: 'Belkin 電源アダプタ' })).toHaveAttribute('src', 'https://item-shopping.c.yimg.jp/i/g/belkin');
   await expect(photo.locator('img[src*="evil.example"]')).toHaveCount(0);
-  await expect(photo.getByText('Yahoo!ショッピング', { exact: true })).toBeVisible();
+  await expect(photo.getByText('Yahoo!ショッピング', { exact: true })).toHaveCount(1);
+  await expect(photo.getByText('楽天', { exact: true })).toHaveCount(1);
   await expect(photo.getByText('普通', { exact: true })).toBeVisible();
   await expect(photo.getByText('¥1,338', { exact: true }).first()).toBeVisible();
   await expect(photo.getByTestId('photo-group-low')).toHaveText('最安 ¥1,338');
@@ -193,6 +194,15 @@ test('a photo group uses the same card as a url item on a phone and a desktop', 
   await expect(photo.locator('img[src*="evil.example"]')).toHaveCount(0);
 
   await page.setViewportSize({ width: 1280, height: 800 });
+  const yahooTag = photo.locator('span.bg-purple-100', { hasText: 'Yahoo!ショッピング' });
+  const rakutenTag = photo.locator('span.bg-red-100', { hasText: /^楽天$/ });
+  await expect(yahooTag).toHaveCount(1);
+  await expect(rakutenTag).toHaveCount(1);
+  const yahooBox = await yahooTag.boundingBox();
+  const rakutenBox = await rakutenTag.boundingBox();
+  expect(yahooBox && rakutenBox).toBeTruthy();
+  expect(Math.abs(yahooBox!.y - rakutenBox!.y)).toBeLessThanOrEqual(2);
+  expect(yahooBox!.x).toBeLessThan(rakutenBox!.x);
   await expect(photo.getByRole('img', { name: 'Belkin 電源アダプタ' })).toBeVisible();
   await expect(photo.getByRole('button', { name: '価格推移' })).toBeVisible();
   const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

@@ -2,6 +2,7 @@
 
 import { apiFetch } from '@/lib/api-fetch';
 import { photoGroupSaveWrites } from '@/lib/capture/photo-group-actions';
+import { sourceBadgeClass } from '@/lib/capture/photo-card-view';
 import { linkableHttpUrl } from '@/lib/http-url';
 
 import { useId, useState, useRef, type ReactNode } from 'react';
@@ -38,11 +39,12 @@ interface ItemCardProps {
   groupMemberIds?: readonly number[];
   offerPriceRefresh?: boolean;
   shopCount?: number;
+  shopTags?: readonly { label: string; source: string }[];
 }
 
 const SEVERAL_SHOPS_PURCHASE = 'ショップが複数あります。ショップ一覧から購入したショップを選んで購入済みにしてください';
 
-export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, info, displayImageUrl, groupMemberIds, offerPriceRefresh = true, shopCount }: ItemCardProps) {
+export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, info, displayImageUrl, groupMemberIds, offerPriceRefresh = true, shopCount, shopTags }: ItemCardProps) {
   const { isGuest } = useAuth();
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -246,9 +248,15 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1 flex-wrap">
-                <span className={`text-xs px-2 py-0.5 rounded ${sourceColors[item.source] || sourceColors.other}`}>
-                  {item.source_name || sourceNames[item.source] || 'その他'}
-                </span>
+                {shopTags && shopTags.length > 0 ? shopTags.map((tag) => (
+                  <span key={tag.label} className={`text-xs px-2 py-0.5 rounded ${sourceBadgeClass(tag.source)}`}>
+                    {tag.label}
+                  </span>
+                )) : (
+                  <span className={`text-xs px-2 py-0.5 rounded ${sourceColors[item.source] || sourceColors.other}`}>
+                    {item.source_name || sourceNames[item.source] || 'その他'}
+                  </span>
+                )}
                 {item.category_name && item.category_color && (
                   <span
                     className="text-xs px-2 py-0.5 rounded"
