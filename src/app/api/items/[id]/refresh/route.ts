@@ -12,7 +12,6 @@ interface DbItem {
   user_id: number;
   url: string;
   current_price: number | null;
-  source_item_code: string | null;
   comparison_group_id: number | null;
 }
 
@@ -33,7 +32,7 @@ async function handlePOST(
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
 
-  // 写真から登録した商品は、ページの再取得でAPIの価格を上書きしない。
+  // ショップが2件以上の写真グループは、ページの再取得で価格を上書きしない。
   if (excludesPagePriceCheck(db, item)) {
     return NextResponse.json(
       { error: '写真から登録した商品は価格の再取得をしません', code: 'PHOTO_PRICE_EXCLUDED' },
