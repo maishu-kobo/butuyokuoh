@@ -1,17 +1,24 @@
-import { mock, test } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import PrivacyPage from '../src/app/privacy/page';
 import TermsPage from '../src/app/terms/page';
 import LoginForm from '../src/components/LoginForm';
 import { AuthContext } from '../src/components/AuthProvider';
 
-mock.module('next/navigation', {
-  namedExports: {
-    useRouter: () => ({ push() {}, replace() {}, prefetch() {} }),
-  },
-});
+const router = {
+  back() {},
+  forward() {},
+  refresh() {},
+  hmrRefresh() {},
+  push() {},
+  replace() {},
+  prefetch() {},
+  experimental_gesturePush() {},
+  bfcacheId: '_b_0_',
+};
 
 function visible(node: ReactNode): string {
   return renderToStaticMarkup(node).replace(/<[^>]+>/g, '');
@@ -43,14 +50,15 @@ test('プライバシーポリシーは下書きで、アプリの扱いだけ�
   assert.match(body, /確認済みのGoogleアカウントのメールアドレス、名前、Googleの識別子を会員に結びつけます。/);
   assert.match(body, /同じメールの会員に結ぶと、その会員のパスワードは消します。/);
   assert.match(body, /商品名、URL、店舗の画像URL、価格、メモ、優先度、個数、購入予定日、購入済み、カテゴリ、比較グループを、このアプリが動いている場所のSQLiteに保存します。/);
-  assert.match(body, /価格の確認を実行すると、未購入の商品URLを取得します。価格が変わったときは履歴に残します。/);
+  assert.match(body, /商品の価格を取りに行くときは、その商品URLのページを取得します。価格が変わったときは履歴に残します。/);
+  assert.match(body, /まとめて行う価格の確認は、会員の未購入で、ゴミ箱に無く、商品コードが無く、写真の比較グループに入っていない商品が対象です。/);
   assert.match(body, /保存したSlackまたはDiscordのウェブフックがあり、通知がオンのときは、その宛先へ価格の通知を送ることがあります。/);
   assert.match(body, /会員がアップロードした画像は、位置情報などの付随データを落としてから保存します。/);
   assert.match(body, /写真から商品を判定するときは、写真をCloudflareのWorkers AI（api.cloudflare.com）へ送ります。写真そのものはこのアプリのデータベースに保存しません。/);
   assert.match(body, /検索で見つけた候補は30分で消します。/);
   assert.match(body, /Yahoo!ショッピング（shopping.yahooapis.jp）と楽天市場（openapi.rakuten.co.jp）/);
   assert.match(body, /キーが無い店は使いません。/);
-  assert.match(body, /ゲスト体験は、その設定があるときだけ使えます。メールアドレスは受け取りません。期限の標準は24時間で、設定で変わります。/);
+  assert.match(body, /ゲスト体験は、その設定があるときだけ使えます。メールアドレスは受け取りません。体験用の行には、利用者が入力していない仮の識別子を付けます。期限の標準は24時間で、設定で変わります。/);
   assert.match(body, /期限が切れるか体験を終えると、ゲストのデータを消します。会員のログインには引き継ぎません。/);
   assert.match(body, /butuyokuoh_token/);
   assert.match(body, /httpOnly、SameSite=Lax、有効期限は7日です。本番ではSecureを付けます。/);
@@ -126,7 +134,11 @@ test('設定画面から2つの下書きを開ける', async () => {
     register: async () => {},
     logout: async () => {},
   };
-  const page = renderToStaticMarkup(createElement(AuthContext.Provider, { value }, createElement(SettingsPage)));
+  const page = renderToStaticMarkup(createElement(
+    AppRouterContext.Provider,
+    { value: router },
+    createElement(AuthContext.Provider, { value }, createElement(SettingsPage)),
+  ));
   assert.match(page, /href="\/privacy"/);
   assert.match(page, /href="\/terms"/);
   assert.match(page, /プライバシーポリシー（下書き）/);
