@@ -95,7 +95,7 @@ test('a photo the browser cannot decode keeps the existing unreadable message', 
   if (!result.ok && !result.ignored) assert.equal(result.message, CaptureMessages.photoUnreadable);
 });
 
-test('HEIC is shrunk when the browser can decode it, and stays unreadable when it cannot', async () => {
+test('HEIC is shrunk when the browser can decode it, and the original is kept when it cannot', async () => {
   const { photoForUpload } = await import('../src/lib/capture/photo-pick');
   const original = new File([heic], 'library.heic', { type: 'image/heic' });
   let decoded = 0;
@@ -109,8 +109,11 @@ test('HEIC is shrunk when the browser can decode it, and stays unreadable when i
     },
   });
   assert.equal(decoded, 1);
-  assert.equal(unreadable.ok, false);
-  if (!unreadable.ok && !unreadable.ignored) assert.equal(unreadable.message, CaptureMessages.photoUnreadable);
+  assert.equal(unreadable.ok, true);
+  if (unreadable.ok) {
+    assert.equal(unreadable.file.type, 'image/heic');
+    assert.equal(Buffer.from(await unreadable.file.arrayBuffer()).equals(Buffer.from(heic)), true);
+  }
 
   const encoded = Uint8Array.of(0xff, 0xd8, 0xff, 0x22);
   const readable = await photoForUpload([original], {

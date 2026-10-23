@@ -46,7 +46,7 @@ test('a member chooses one readable photo and is guided away from files we canno
   expect(await input.evaluate((node: HTMLInputElement) => node.hasAttribute('capture'))).toBe(false);
 
   await input.setInputFiles({ name: 'a.heic', mimeType: 'image/heic', buffer: heic });
-  await expect(page.getByRole('alert').filter({ hasText: 'この写真は読めません' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'この写真は読めません' })).toBeVisible();
 
   await dropFiles(page, [
     { name: 'a.jpg', type: 'image/jpeg', bytes: jpeg },
