@@ -81,7 +81,7 @@ npm ci
 
 鍵の値は、Sota さんから安全な方法で受け取る。チャットやコミットに貼らない。この手順書にも書かない。本番のデータベースと本番の URL は使わない。
 
-値の置き場は、リポジトリに入らない `.env.local`。写真検索の鍵だけを分けるときは、リポジトリの外にモード 0600 のファイルを作り、`CAPTURE_SECRETS_FILE` でそのパスを指す。そのファイルから読むのは `CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_API_TOKEN`、`YAHOO_SHOPPING_APP_ID`、`RAKUTEN_APP_ID`、`RAKUTEN_ACCESS_KEY`、`AMAZON_ASSOCIATE_TAG` だけ。同じ名前が環境変数にあるときは、環境変数が勝つ。
+値の置き場は、リポジトリに入らない `.env.local`。写真検索の鍵だけを分けるときは、リポジトリの外にモード 0600 のファイルを作り、`CAPTURE_SECRETS_FILE` でそのパスを指す。そのファイルから読むのは `CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_API_TOKEN`、`YAHOO_SHOPPING_APP_ID`、`RAKUTEN_APP_ID`、`RAKUTEN_ACCESS_KEY`、`RAKUTEN_AFFILIATE_ID`、`AMAZON_ASSOCIATE_TAG` だけ。同じ名前が環境変数にあるときは、環境変数が勝つ。
 
 `npm run dev` のあと、初回に `data/butuyokuoh.db` ができる。これが自分の PC の開発用 DB。`BUTUYOKUOH_DB_PATH` を本番のファイルや、そのコピーに向けない。未設定のままにする。
 
@@ -109,8 +109,9 @@ openssl rand -base64 32
 | `GOOGLE_CLIENT_SECRET` | 上と同じ。同意画面が「テスト中」なら、自分の Gmail をテストユーザーに足す |
 | `RAKUTEN_APP_ID` | 無くてよい。楽天を使うときだけ、`RAKUTEN_ACCESS_KEY` と両方 |
 | `RAKUTEN_ACCESS_KEY` | 無くてよい。URL には付かない |
+| `RAKUTEN_AFFILIATE_ID` | 無くてよい。楽天の検索に付けると、返ってくる商品リンクがアフィリエイトリンクになる。空なら今のまま。値はログには出さない。商品リンクの URL には入ることがある |
 | `AMAZON_ASSOCIATE_TAG` | 無くてよい。Amazon の検索リンクに付けるタグ。商品の取得には使わない |
-| `CAPTURE_SECRETS_FILE` | 上の6つの鍵を、リポジトリの外のファイルに置くとき |
+| `CAPTURE_SECRETS_FILE` | 上の7つの鍵を、リポジトリの外のファイルに置くとき |
 | `JWT_SECRET` | 必須。共有と `tailscale serve` の前に、`openssl rand -base64 32` で自分で作る。未設定のフォールバックのまま公開しない。本番の値は置かない |
 | `BUTUYOKUOH_DB_PATH` | 置かない。本番の DB を指させない |
 

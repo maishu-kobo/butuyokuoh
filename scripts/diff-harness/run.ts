@@ -80,7 +80,7 @@ function runSide(dir: string, dbFile: string, root: string, side: string, sha: s
   for (const key of [
     'GUEST_MODE_ENABLED', 'BUTUYOKUOH_DB_PATH', 'CAPTURE_SECRETS_FILE',
     'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN', 'YAHOO_SHOPPING_APP_ID',
-    'RAKUTEN_APP_ID', 'RAKUTEN_ACCESS_KEY', 'AMAZON_ASSOCIATE_TAG',
+    'RAKUTEN_APP_ID', 'RAKUTEN_ACCESS_KEY', 'RAKUTEN_AFFILIATE_ID', 'AMAZON_ASSOCIATE_TAG',
   ]) delete env[key];
   env.BUTUYOKUOH_DB_PATH = dbFile;
   env.DIFF_TMP_ROOT = root;

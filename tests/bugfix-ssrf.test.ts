@@ -56,6 +56,43 @@ test('member scrape does not open private, loopback, or link-local addresses', a
   assert.deepEqual(leaked, []);
 });
 
+test('a Rakuten affiliate link is priced from its item page, and a bad target is not fetched', async () => {
+  const seen: string[] = [];
+  const deps = {
+    resolve: async () => [{ address: '1.1.1.1', family: 4 }],
+    request: async (url: URL) => {
+      seen.push(url.href);
+      return {
+        status: 200,
+        body: Buffer.from('<title>ペン</title>'),
+        contentType: 'text/html',
+      };
+    },
+  };
+  const product = 'https://item.rakuten.co.jp/example/pen';
+  const affiliate = `https://hb.afl.rakuten.co.jp/hgc/link/?pc=${encodeURIComponent(product)}`;
+  const result = await scrape(affiliate, deps);
+  assert.equal(seen.length, 1);
+  assert.equal(new URL(seen[0]).hostname, 'item.rakuten.co.jp');
+  assert.equal(new URL(seen[0]).pathname, '/example/pen');
+  assert.equal(seen[0].includes('hb.afl.rakuten.co.jp'), false);
+  assert.notEqual(result.name, '無効なURL');
+
+  seen.length = 0;
+  for (const bad of [
+    'https://hb.afl.rakuten.co.jp/hgc/link/?pc=https://evil.example/pen',
+    'https://hb.afl.rakuten.co.jp/hgc/link/?pc=http://169.254.169.254/',
+    `https://user:pw@hb.afl.rakuten.co.jp/hgc/link/?pc=${encodeURIComponent(product)}`,
+    'https://hb.afl.rakuten.co.jp/hgc/link/',
+    `https://hb.afl.rakuten.co.jp/hgc/link/?pc=${encodeURIComponent(product)}&m=${encodeURIComponent('https://evil.example/phish')}`,
+    `https://hb.afl.rakuten.co.jp/hgc/link/?pc=${encodeURIComponent(product)}&m=`,
+  ]) {
+    const blocked = await scrape(bad, deps);
+    assert.equal(blocked.name, '無効なURL', bad);
+  }
+  assert.equal(seen.length, 0);
+});
+
 test('member scrape blocks a private DNS answer and a redirect onto an internal address', async () => {
   const seen: string[] = [];
   const result = await withoutNetwork(async (requested) => {

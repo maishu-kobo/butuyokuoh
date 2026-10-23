@@ -69,6 +69,7 @@ export function resolveSearchPorts(input: {
   yahooAppId: string | null;
   rakutenAppId: string | null;
   rakutenAccessKey: string | null;
+  rakutenAffiliateId?: string | null;
   userId: string;
   referer: string | null;
 }): CapturePorts {
@@ -92,6 +93,7 @@ export function resolveSearchPorts(input: {
       now: extra?.now,
       timeoutMs: extra?.rakutenTimeoutMs,
       referer: input.referer,
+      affiliateId: input.rakutenAffiliateId,
     }),
   };
 }

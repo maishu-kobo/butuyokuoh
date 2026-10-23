@@ -10,6 +10,7 @@ import {
   type SiteSearch,
 } from './contract';
 import { canonicalCandidateImageUrl } from './image-hosts';
+import { canonicalRakutenAffiliateUrl, canonicalRakutenProductUrl } from './rakuten-link';
 
 export const RAKUTEN_SEARCH_TIMEOUT_MS = 6000;
 export const RAKUTEN_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701';
@@ -95,6 +96,7 @@ export function createRakutenSearch(options: {
   now?: () => Date;
   timeoutMs?: number;
   referer?: string | null;
+  affiliateId?: string | null;
 }): SiteSearch {
   const now = options.now ?? (() => new Date());
   const timeoutMs = options.timeoutMs ?? RAKUTEN_SEARCH_TIMEOUT_MS;
@@ -116,6 +118,8 @@ export function createRakutenSearch(options: {
       url.searchParams.set('keyword', keyword);
       url.searchParams.set('format', 'json');
       url.searchParams.set('formatVersion', '2');
+      const affiliateId = optionalAffiliateId(options.affiliateId);
+      if (affiliateId) url.searchParams.set('affiliateId', affiliateId);
       const headers: Record<string, string> = { accessKey: credentials.accessKey };
       if (referer) headers.Referer = referer;
 
@@ -160,6 +164,12 @@ function normalizeCredentials(value: RakutenCredentials | null): RakutenCredenti
   return { applicationId, accessKey };
 }
 
+function optionalAffiliateId(value: string | null | undefined): string | null {
+  if (typeof value !== 'string' || hasHeaderBreak(value)) return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
 function safeReferer(value: string | null | undefined): string | null | false {
   if (value == null || value === '') return null;
   if (hasHeaderBreak(value)) return false;
@@ -174,16 +184,7 @@ function safeReferer(value: string | null | undefined): string | null | false {
 }
 
 function canonicalItemUrl(raw: string): string | null {
-  if (/[\u0000-\u0020\\]/.test(raw)) return null;
-  let parsed: URL;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port) return null;
-  if (parsed.hostname !== 'item.rakuten.co.jp') return null;
-  return `${parsed.origin}${parsed.pathname}${parsed.search}`;
+  return canonicalRakutenProductUrl(raw) ?? canonicalRakutenAffiliateUrl(raw);
 }
 
 function rakutenKeyword(query: SearchQuery): string {

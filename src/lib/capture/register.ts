@@ -3,6 +3,7 @@
 import type Database from 'better-sqlite3';
 import { CaptureMessages, isAllowedCandidateUrl, type CaptureSite } from './contract';
 import { canonicalCandidateImageUrl } from './image-hosts';
+import { rakutenProductIdentity } from './rakuten-link';
 
 export const ALREADY_REGISTERED_LABEL = '登録済み' as const;
 
@@ -55,9 +56,18 @@ const SOURCE_LABEL: Record<CaptureSite, string> = {
   rakuten: '楽天',
 };
 
-export function candidateRegistration(db: Database.Database, userId: number, url: string): CandidateChoice {
+export function itemUrlTaken(db: Database.Database, userId: number, url: string): boolean {
+  const identity = rakutenProductIdentity(url);
+  if (identity) {
+    const rows = db.prepare('SELECT url FROM items WHERE user_id = ?').all(userId) as { url: string }[];
+    return rows.some((row) => row.url === url || rakutenProductIdentity(row.url) === identity);
+  }
   const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ? LIMIT 1').get(userId, url);
-  if (existing) return { selectable: false, label: ALREADY_REGISTERED_LABEL };
+  return Boolean(existing);
+}
+
+export function candidateRegistration(db: Database.Database, userId: number, url: string): CandidateChoice {
+  if (itemUrlTaken(db, userId, url)) return { selectable: false, label: ALREADY_REGISTERED_LABEL };
   return { selectable: true, label: null };
 }
 
@@ -139,11 +149,12 @@ function registerLocked(db: Database.Database, userId: number, ids: number[], no
   const fresh: CandidateRow[] = [];
   const seen = new Set<string>();
   for (const row of loaded.rows) {
-    if (seen.has(row.url) || !candidateRegistration(db, userId, row.url).selectable) {
+    const key = rakutenProductIdentity(row.url) ?? row.url;
+    if (seen.has(key) || !candidateRegistration(db, userId, row.url).selectable) {
       skipped.push({ candidateId: row.id, code: 'ALREADY_REGISTERED', error: ALREADY_REGISTERED_LABEL });
       continue;
     }
-    seen.add(row.url);
+    seen.add(key);
     fresh.push(row);
   }
   if (fresh.length === 0) {

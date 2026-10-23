@@ -8,6 +8,7 @@ export const CAPTURE_SECRET_NAMES = {
   yahooAppId: 'YAHOO_SHOPPING_APP_ID',
   rakutenAppId: 'RAKUTEN_APP_ID',
   rakutenAccessKey: 'RAKUTEN_ACCESS_KEY',
+  rakutenAffiliateId: 'RAKUTEN_AFFILIATE_ID',
   amazonAssociateTag: 'AMAZON_ASSOCIATE_TAG',
 } as const;
 
@@ -24,6 +25,7 @@ export type CaptureSecrets = {
   yahooAppId: string | null;
   rakutenAppId: string | null;
   rakutenAccessKey: string | null;
+  rakutenAffiliateId: string | null;
   amazonAssociateTag: string | null;
 };
 
@@ -132,6 +134,7 @@ function load(): { secrets: CaptureSecrets; secretsFile: CaptureAvailability['se
       yahooAppId: pick(CAPTURE_SECRET_NAMES.yahooAppId),
       rakutenAppId: pick(CAPTURE_SECRET_NAMES.rakutenAppId),
       rakutenAccessKey: pick(CAPTURE_SECRET_NAMES.rakutenAccessKey),
+      rakutenAffiliateId: pick(CAPTURE_SECRET_NAMES.rakutenAffiliateId),
       amazonAssociateTag: pick(CAPTURE_SECRET_NAMES.amazonAssociateTag),
     },
   };

@@ -3,6 +3,7 @@ import { parseProductHtml } from './product-html';
 import { readHtmlResponse } from './html-encoding';
 import puppeteer from 'puppeteer';
 import { validateAndSanitizeUrl, sanitizeGenericUrl } from './url-validator';
+import { canonicalRakutenAffiliateUrl, rakutenProductIdentity } from './capture/rakuten-link';
 import { BlockedTargetError, fetchPublicMember, HttpError, resolvedPublicAddress, type MemberFetchDeps } from './member-fetch';
 
 export { HttpError };
@@ -174,6 +175,17 @@ async function expandShortUrl(url: string, deps?: MemberFetchDeps): Promise<stri
   }
 }
 
+function rakutenAffiliateProductUrl(value: string): string | null | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return undefined;
+  }
+  if (parsed.hostname !== 'hb.afl.rakuten.co.jp') return undefined;
+  return canonicalRakutenAffiliateUrl(value) ? rakutenProductIdentity(value) : null;
+}
+
 export async function scrapeUrl(url: string, deps?: MemberFetchDeps): Promise<ScrapedItem> {
   // Amazonの短縮リンクの場合、展開を試みる
   if (isAmazonShortUrl(url)) {
@@ -214,6 +226,20 @@ export async function scrapeUrl(url: string, deps?: MemberFetchDeps): Promise<Sc
         sourceName: 'Amazon',
       };
     }
+  }
+
+  const affiliateProduct = rakutenAffiliateProductUrl(url);
+  if (affiliateProduct !== undefined) {
+    if (!affiliateProduct) {
+      return {
+        name: '無効なURL',
+        price: null,
+        imageUrl: null,
+        source: 'rakuten',
+        sourceName: '楽天市場',
+      };
+    }
+    url = affiliateProduct;
   }
 
   const validation = validateAndSanitizeUrl(url);
