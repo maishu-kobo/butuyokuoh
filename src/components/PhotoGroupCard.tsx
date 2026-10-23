@@ -2,7 +2,7 @@
 
 import { apiFetch } from '@/lib/api-fetch';
 import { formatYen, type WishlistRow } from '@/lib/capture/list-card';
-import { photoGroupDeleteIds } from '@/lib/capture/photo-group-actions';
+import { photoGroupDeleteIds, photoShopDeleteIds } from '@/lib/capture/photo-group-actions';
 import { formatListTimestamp, offersPriceRefresh, photoImageUrl, shopBadgeText } from '@/lib/capture/photo-card-view';
 import { useState } from 'react';
 import SortableItemCard from './SortableItemCard';
@@ -39,6 +39,18 @@ export default function PhotoGroupCard({
     const ids = photoGroupDeleteIds(memberIds, faceId);
     await Promise.all(ids.map((id) => apiFetch(`/api/items/${id}`, { method: 'DELETE' })));
     onUpdate();
+  }
+
+  async function deleteShop(shopId: number) {
+    const ids = photoShopDeleteIds(memberIds, shopId);
+    if (ids.length === 0) return;
+    setBusyId(shopId);
+    try {
+      await Promise.all(ids.map((id) => apiFetch(`/api/items/${id}`, { method: 'DELETE' })));
+      onUpdate();
+    } finally {
+      setBusyId(null);
+    }
   }
   const low = card.minPrice == null ? '---' : formatYen(card.minPrice);
   const displayImageUrl = photoImageUrl(item.source, item.image_url);
@@ -101,6 +113,15 @@ export default function PhotoGroupCard({
                       購入済みにする
                     </button>
                   )}
+                  <button
+                    type="button"
+                    disabled={busyId === shop.itemId}
+                    onClick={() => { void deleteShop(shop.itemId); }}
+                    aria-label={`${shop.name}を削除`}
+                    className="min-h-[24px] min-w-[24px] px-3 py-1 text-sm text-red-400 hover:text-red-600 disabled:opacity-50"
+                  >
+                    削除
+                  </button>
                 </div>
               </li>
             );

@@ -72,7 +72,7 @@ test('a photo group is one list card, and hand-added items stay separate', async
   await expect(milk.getByRole('button', { name: '価格推移' })).toBeVisible();
   await expect(milk.getByRole('button', { name: '編集' })).toBeVisible();
   await expect(milk.getByRole('button', { name: '購入済みにする' }).first()).toBeVisible();
-  await expect(milk.getByRole('button', { name: '削除' })).toBeVisible();
+  await expect(milk.getByRole('button', { name: '削除', exact: true })).toBeVisible();
   await expect(milk.getByRole('button', { name: 'ドラッグして並び替え' })).toBeVisible();
   await expect(milk.getByText('普通', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '左', exact: true })).toBeVisible();
@@ -338,4 +338,93 @@ test('editing a photo card keeps a stored image that the card does not display',
   } finally {
     check.close();
   }
+});
+
+test('each open shop can be deleted to the trash, and two shops become one registration', async ({ page }) => {
+  const registered = await page.request.post('/api/auth/register', {
+    data: { email: `shop-delete-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`, password: 'test-password' },
+  });
+  expect(registered.ok()).toBeTruthy();
+  const userId = (await (await page.request.get('/api/auth/me')).json()).user.id as number;
+
+  const db = new Database(process.env.E2E_DB_PATH!);
+  db.pragma('busy_timeout = 5000');
+  try {
+    const photo = Number(db.prepare(
+      "INSERT INTO comparison_groups (user_id, name, origin) VALUES (?, '牛乳', 'photo')",
+    ).run(userId).lastInsertRowid);
+    const whole = Number(db.prepare(
+      "INSERT INTO comparison_groups (user_id, name, origin) VALUES (?, '全部', 'photo')",
+    ).run(userId).lastInsertRowid);
+    const single = Number(db.prepare(
+      "INSERT INTO comparison_groups (user_id, name, origin) VALUES (?, '単品', 'photo')",
+    ).run(userId).lastInsertRowid);
+    const insert = db.prepare(
+      `INSERT INTO items (
+        user_id, name, url, current_price, source, source_name, price_fetched_at, comparison_group_id, is_purchased, priority
+      ) VALUES (?, ?, ?, ?, ?, ?, '2026-10-22 01:02:03', ?, 0, 3)`,
+    );
+    insert.run(userId, '手入力ペン', 'manual://pen', 400, 'other', null, null);
+    insert.run(userId, '単品ショップ', 'https://item.rakuten.co.jp/shop/one', 300, 'rakuten', '楽天', single);
+    insert.run(userId, '牛乳A', 'https://item.rakuten.co.jp/shop/a', 800, 'rakuten', '楽天', photo);
+    insert.run(userId, '牛乳B', 'https://item.rakuten.co.jp/shop/b', 1200, 'rakuten', '楽天', photo);
+    insert.run(userId, '牛乳C', 'https://store.shopping.yahoo.co.jp/shop/c', 500, 'yahoo', 'Yahoo!ショッピング', photo);
+    insert.run(userId, '全部A', 'https://item.rakuten.co.jp/shop/all-a', 100, 'rakuten', '楽天', whole);
+    insert.run(userId, '全部B', 'https://item.rakuten.co.jp/shop/all-b', 200, 'rakuten', '楽天', whole);
+  } finally {
+    db.close();
+  }
+
+  await page.goto('/');
+  const milk = page.getByTestId('photo-group-card').filter({ has: page.getByRole('heading', { name: '牛乳', exact: true }) });
+  const wholeCard = page.getByTestId('photo-group-card').filter({ has: page.getByRole('heading', { name: '全部', exact: true }) });
+  const urlCard = page.locator('.space-y-3 > div').filter({ has: page.getByRole('heading', { name: '手入力ペン', exact: true }) });
+  const one = page.locator('.space-y-3 > div').filter({ has: page.getByRole('heading', { name: '単品ショップ', exact: true }) });
+  await expect(milk).toBeVisible();
+  await expect(milk.getByRole('button', { name: '価格を更新' })).toHaveCount(0);
+  await expect(urlCard.getByRole('button', { name: '価格を更新', exact: true })).toBeVisible();
+  await expect(one.getByRole('button', { name: '価格を更新', exact: true })).toBeVisible();
+
+  await milk.getByRole('button', { name: '牛乳のショップを見る' }).click();
+  for (const name of ['牛乳A', '牛乳B', '牛乳C']) {
+    await expect(milk.getByRole('button', { name: `${name}を削除`, exact: true })).toBeVisible();
+  }
+  await expect(milk.getByRole('button', { name: '削除', exact: true })).toHaveCount(1);
+  await expect(milk.getByRole('button', { name: '価格を更新' })).toHaveCount(0);
+
+  await milk.getByRole('button', { name: '牛乳Bを削除', exact: true }).click();
+  await expect(milk.getByText('牛乳B', { exact: true })).toHaveCount(0);
+  await expect(milk.getByText('牛乳A', { exact: true })).toBeVisible();
+  await expect(milk.getByText('牛乳C', { exact: true })).toBeVisible();
+  await expect(milk.getByText('2件')).toBeVisible();
+  await expect(milk.getByRole('button', { name: '価格を更新' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '手入力ペン', exact: true })).toBeVisible();
+
+  await milk.getByRole('button', { name: '牛乳Aを削除', exact: true }).click();
+  await expect(page.getByTestId('photo-group-card').filter({ has: page.getByRole('heading', { name: '牛乳', exact: true }) })).toHaveCount(0);
+  const left = page.locator('.space-y-3 > div').filter({ has: page.getByRole('heading', { name: '牛乳C', exact: true }) });
+  await expect(left.getByTestId('photo-group-card')).toHaveCount(0);
+  await expect(left.getByText('¥500', { exact: true }).first()).toBeVisible();
+  await expect(left.getByText('Yahoo!ショッピング', { exact: true })).toBeVisible();
+  for (const name of ['価格を更新', '価格推移', '編集', '購入済みにする', '削除', 'ドラッグして並び替え']) {
+    await expect(left.getByRole('button', { name, exact: true })).toBeVisible();
+  }
+  await expect(page.getByRole('heading', { name: '牛乳', exact: true })).toHaveCount(0);
+
+  await left.getByRole('button', { name: '削除', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '牛乳C', exact: true })).toHaveCount(0);
+
+  await wholeCard.getByRole('button', { name: '削除', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '全部', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '全部A', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '全部B', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '手入力ペン', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '単品ショップ', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'ゴミ箱' }).click();
+  for (const name of ['牛乳A', '牛乳B', '牛乳C', '全部A', '全部B']) {
+    await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  }
+  await expect(page.getByRole('heading', { name: '手入力ペン', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '単品ショップ', exact: true })).toHaveCount(0);
 });
