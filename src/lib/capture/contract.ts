@@ -1,5 +1,6 @@
 // 写真から登録のAPIの形。画面とサーバーが同じ型を使う。
 // 登録の保存は候補の表ができてから（#90、#96）。ここではリクエストの形だけを確かめる。
+import { accessoryScore, preferMainProduct } from './accessory';
 import { canonicalCandidateImageUrl } from './image-hosts';
 
 export const CAPTURE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
@@ -209,14 +210,20 @@ export function isAllowedCandidateUrl(site: CaptureSite, url: string): boolean {
 
 export function sortCandidates(candidates: CaptureCandidate[], query: SearchQuery): CaptureCandidate[] {
   const name = query.name.toLocaleLowerCase('ja-JP');
+  const prefer = preferMainProduct(query, query.jan != null && isValidJan(query.jan));
   const rank = (item: CaptureCandidate) => ({
     jan: query.jan && item.jan === query.jan ? 0 : 1,
+    accessory: prefer ? accessoryScore(item.title) : 0,
     named: name && item.title.toLocaleLowerCase('ja-JP').includes(name) ? 0 : 1,
   });
   return [...candidates].sort((a, b) => {
     const left = rank(a);
     const right = rank(b);
-    return left.jan - right.jan || left.named - right.named || a.price - b.price || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    return left.jan - right.jan
+      || left.accessory - right.accessory
+      || left.named - right.named
+      || a.price - b.price
+      || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   });
 }
 

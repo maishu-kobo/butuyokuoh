@@ -43,7 +43,7 @@ function candidate(
     shop_name: 'テストショップ',
     name: "牛乳 '限定'",
     url: 'https://store.shopping.yahoo.co.jp/shop/milk',
-    image_url: 'https://store.shopping.yahoo.co.jp/shop/milk.jpg',
+    image_url: 'https://item-shopping.c.yimg.jp/i/g/milk',
     price: 198,
     source_item_code: 'yahoo:milk',
     price_fetched_at: '2026-10-22 12:00:00',
@@ -165,7 +165,7 @@ test('register request reads only stored candidate ids and keeps a hand-added it
     assert.equal(items[1].source_name, 'Yahoo!ショッピング');
     assert.equal(items[1].source_item_code, 'yahoo:milk');
     assert.equal(items[1].name, "牛乳 '限定'");
-    assert.equal(items[1].image_url, null);
+    assert.equal(items[1].image_url, 'https://item-shopping.c.yimg.jp/i/g/milk');
     assert.equal(items[1].current_price, 198);
     for (const item of items) {
       assert.equal(item.price_fetched_at, '2026-10-22 12:00:00');
