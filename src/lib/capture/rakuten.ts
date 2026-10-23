@@ -95,6 +95,7 @@ export function createRakutenSearch(options: {
   now?: () => Date;
   timeoutMs?: number;
   referer?: string | null;
+  affiliateId?: string | null;
 }): SiteSearch {
   const now = options.now ?? (() => new Date());
   const timeoutMs = options.timeoutMs ?? RAKUTEN_SEARCH_TIMEOUT_MS;
@@ -116,6 +117,8 @@ export function createRakutenSearch(options: {
       url.searchParams.set('keyword', keyword);
       url.searchParams.set('format', 'json');
       url.searchParams.set('formatVersion', '2');
+      const affiliateId = optionalAffiliateId(options.affiliateId);
+      if (affiliateId) url.searchParams.set('affiliateId', affiliateId);
       const headers: Record<string, string> = { accessKey: credentials.accessKey };
       if (referer) headers.Referer = referer;
 
@@ -160,6 +163,12 @@ function normalizeCredentials(value: RakutenCredentials | null): RakutenCredenti
   return { applicationId, accessKey };
 }
 
+function optionalAffiliateId(value: string | null | undefined): string | null {
+  if (typeof value !== 'string' || hasHeaderBreak(value)) return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
 function safeReferer(value: string | null | undefined): string | null | false {
   if (value == null || value === '') return null;
   if (hasHeaderBreak(value)) return false;
@@ -182,7 +191,7 @@ function canonicalItemUrl(raw: string): string | null {
     return null;
   }
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port) return null;
-  if (parsed.hostname !== 'item.rakuten.co.jp') return null;
+  if (parsed.hostname !== 'item.rakuten.co.jp' && parsed.hostname !== 'hb.afl.rakuten.co.jp') return null;
   return `${parsed.origin}${parsed.pathname}${parsed.search}`;
 }
 

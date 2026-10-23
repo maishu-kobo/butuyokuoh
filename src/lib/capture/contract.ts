@@ -201,7 +201,7 @@ export function isAllowedCandidateUrl(site: CaptureSite, url: string): boolean {
     if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return false;
     const hosts = site === 'yahoo'
       ? ['shopping.yahoo.co.jp', 'store.shopping.yahoo.co.jp']
-      : ['item.rakuten.co.jp'];
+      : ['item.rakuten.co.jp', 'hb.afl.rakuten.co.jp'];
     return hosts.includes(parsed.hostname);
   } catch {
     return false;
