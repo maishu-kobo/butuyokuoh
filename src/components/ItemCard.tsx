@@ -33,9 +33,10 @@ interface ItemCardProps {
   heading?: string;
   extra?: ReactNode;
   displayImageUrl?: string | null;
+  offerPriceRefresh?: boolean;
 }
 
-export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, displayImageUrl }: ItemCardProps) {
+export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, displayImageUrl, offerPriceRefresh = true }: ItemCardProps) {
   const { isGuest } = useAuth();
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -346,15 +347,17 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
       {/* アクション */}
       <div className="px-4 py-2 bg-gray-50 dark:bg-slate-700 flex items-center justify-between border-t">
         <div className="flex gap-2">
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing || !linkableHttpUrl(item.url)}
-            aria-label="価格を更新"
-            title={linkableHttpUrl(item.url) ? "商品名・価格・画像をURLから更新" : "商品URLを登録すると更新できます"}
-            className="text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500 disabled:opacity-50"
-          >
-            <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-          </button>
+          {offerPriceRefresh && (
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing || !linkableHttpUrl(item.url)}
+              aria-label="価格を更新"
+              title={linkableHttpUrl(item.url) ? "商品名・価格・画像をURLから更新" : "商品URLを登録すると更新できます"}
+              className="text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500 disabled:opacity-50"
+            >
+              <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+          )}
           <button
             onClick={() => setShowChart(!showChart)}
             className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500"
