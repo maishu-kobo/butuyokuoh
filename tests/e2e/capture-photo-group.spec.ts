@@ -206,27 +206,26 @@ test('budget rows for photo shops are flat on a phone and a desktop', async ({ p
   await expect(page.getByText('Yahoo!ショッピング', { exact: true })).toHaveCount(0);
   await expect(page.locator('.text-3xl').first()).toHaveText('¥2,430');
 
-  const row = (name: string) => page.locator('div.cursor-pointer').filter({ hasText: name }).first();
+  const month = page.locator('div.rounded-lg.shadow').filter({ hasText: '2026年10月' });
+  const row = (name: string) => month.locator('div.cursor-pointer').filter({ hasText: name });
   await expect(row('単品ショップ').getByRole('button', { name: '合計に数える' })).toHaveCount(0);
   await expect(row('天幕のジャードゥーガル 3').getByRole('button', { name: '合計に数える' })).toHaveCount(0);
   await expect(row('Belkin Yahoo').getByRole('button', { name: '合計に数える' })).toBeVisible();
   await expect(row('Belkin 楽天').getByRole('button', { name: '合計に数える' })).toBeVisible();
 
-  const leftOf = async (name: string) => (await row(name).boundingBox())?.x ?? -1;
-  const bookLeft = await leftOf('天幕のジャードゥーガル 3');
-  const yahooLeft = await leftOf('Belkin Yahoo');
-  const oneLeft = await leftOf('単品ショップ');
-  expect(Math.abs(bookLeft - yahooLeft)).toBeLessThanOrEqual(1);
-  expect(Math.abs(bookLeft - oneLeft)).toBeLessThanOrEqual(1);
+  const leftEdges = () => month.locator('div.cursor-pointer').evaluateAll((nodes) =>
+    nodes.map((node) => node.getBoundingClientRect().x),
+  );
+  const narrowEdges = await leftEdges();
+  expect(narrowEdges).toHaveLength(4);
+  for (const x of narrowEdges) expect(Math.abs(x - narrowEdges[0])).toBeLessThanOrEqual(1);
   const narrow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(narrow).toBeLessThanOrEqual(1);
 
   await page.setViewportSize({ width: 1280, height: 800 });
-  const bookWide = await leftOf('天幕のジャードゥーガル 3');
-  const yahooWide = await leftOf('Belkin Yahoo');
-  const oneWide = await leftOf('単品ショップ');
-  expect(Math.abs(bookWide - yahooWide)).toBeLessThanOrEqual(1);
-  expect(Math.abs(bookWide - oneWide)).toBeLessThanOrEqual(1);
+  const wideEdges = await leftEdges();
+  expect(wideEdges).toHaveLength(4);
+  for (const x of wideEdges) expect(Math.abs(x - wideEdges[0])).toBeLessThanOrEqual(1);
   const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(wide).toBeLessThanOrEqual(1);
   expect(hydration).toEqual([]);
@@ -254,6 +253,20 @@ test('a photo search keeps the provider thumbnail on a single item and on a mult
   });
   expect(created.status()).toBe(201);
 
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const single = page.locator('.space-y-3 > div').filter({ has: page.getByRole('heading', { name: '写真のペン', exact: true }) });
+  await expect(single.getByRole('img', { name: '写真のペン' })).toHaveAttribute('src', 'https://thumbnail.image.rakuten.co.jp/fake-pen.jpg');
+  await expect(page.getByTestId('photo-group-card')).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(single.getByRole('img', { name: '写真のペン' })).toHaveAttribute('src', 'https://thumbnail.image.rakuten.co.jp/fake-pen.jpg');
+
+  // 偽物の商品URLは検索のたびに同じなので、別の会員で両方を登録しないと楽天側が既登録になる。
+  const groupedUser = await page.request.post('/api/auth/register', {
+    headers: { Origin: origin },
+    data: { email: `thumb-group-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`, password: 'test-password' },
+  });
+  expect(groupedUser.ok()).toBeTruthy();
   const multiSearch = await page.request.post('/api/capture/search', {
     headers: { Origin: origin },
     data: { name: '比較のペン' },
@@ -268,11 +281,12 @@ test('a photo search keeps the provider thumbnail on a single item and on a mult
   });
   expect(grouped.status()).toBe(201);
 
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  const single = page.locator('.space-y-3 > div').filter({ has: page.getByRole('heading', { name: '写真のペン', exact: true }) });
-  await expect(single.getByRole('img', { name: '写真のペン' })).toHaveAttribute('src', 'https://thumbnail.image.rakuten.co.jp/fake-pen.jpg');
   const photo = page.getByTestId('photo-group-card');
   await expect(photo.getByRole('heading', { name: '比較のペン', exact: true })).toBeVisible();
+  await expect(photo.getByRole('img', { name: '比較のペン' })).toHaveAttribute('src', 'https://item-shopping.c.yimg.jp/i/g/fake-pen');
+  await page.setViewportSize({ width: 1280, height: 800 });
   await expect(photo.getByRole('img', { name: '比較のペン' })).toHaveAttribute('src', 'https://item-shopping.c.yimg.jp/i/g/fake-pen');
 });
 
@@ -309,6 +323,7 @@ test('editing a photo card keeps a stored image that the card does not display',
   await expect(photo.getByRole('heading', { name: '画像のグループ', exact: true })).toBeVisible();
   await expect(photo.locator(`img[src="${upload}"]`)).toHaveCount(0);
   await photo.getByRole('button', { name: '編集' }).click();
+  await photo.locator('summary').filter({ hasText: 'メモ・画像' }).click();
   await photo.getByPlaceholder('メモを入力...').fill('メモだけ');
   await photo.getByRole('button', { name: '保存', exact: true }).click();
   await expect(photo.getByPlaceholder('メモを入力...')).toHaveCount(0);
