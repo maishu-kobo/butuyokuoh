@@ -1,11 +1,19 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { guestErrorResponse, requireSameOrigin } from '@/lib/api-access';
 import { clearAuthCookie, getCurrentUser, revokeMemberSessions } from '@/lib/auth';
+import { GuestError } from '@/lib/guest';
 
 function outsideRequest(error: unknown): boolean {
   return error instanceof Error && error.message.includes('outside a request scope');
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  try {
+    requireSameOrigin(request);
+  } catch (error) {
+    if (error instanceof GuestError) return guestErrorResponse(error);
+    throw error;
+  }
   try {
     const user = await getCurrentUser();
     if (user?.account_type === 'member') revokeMemberSessions(user.id);

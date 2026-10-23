@@ -209,7 +209,9 @@ test('ログアウトすると古いログイン情報は拒否され、デー�
   const previousSession = await sessionToken(owner.user.id, owner.user.email);
   assert.equal(await sessionUserId(previousSession), String(owner.user.id));
 
-  const loggedOut = await call(logoutPath, 'POST', '/api/auth/logout');
+  const loggedOut = await call(logoutPath, 'POST', '/api/auth/logout', undefined, undefined, {
+    origin: 'http://localhost',
+  });
   assert.equal(loggedOut.status, 200);
   assert.equal((loggedOut.json as { success?: boolean }).success, true);
   assert.equal(jar.deleted, true);
@@ -273,6 +275,46 @@ test('ログアウトすると古いログイン情報は拒否され、デー�
   const renewedSession = await sessionToken(owner.user.id, owner.user.email, generation);
   assert.equal(await sessionUserId(renewedSession), String(owner.user.id));
   assert.equal(await sessionUserId(previousSession), undefined);
+}));
+
+async function postLogout(origin: string | null) {
+  const { POST } = await import(logoutPath);
+  const headers = new Headers();
+  if (origin !== null) headers.set('origin', origin);
+  const response = await POST(new NextRequest('http://127.0.0.1/api/auth/logout', {
+    method: 'POST',
+    headers,
+  }));
+  return { status: response.status, text: await response.text() };
+}
+
+test('別オリジンのログアウトは世代を上げず、同じオリジンでは上げる', () => serial(async () => {
+  await resetAuth();
+  const jar = await memberCookieJar();
+  const owner = await register('Logout-Origin@Example.TEST');
+  const database = await db();
+  const generation = () => (database.prepare(
+    'SELECT session_generation FROM users WHERE id = ?',
+  ).get(owner.user.id) as { session_generation: number }).session_generation;
+  assert.equal(generation(), 0);
+  present(jar, owner.token);
+
+  const foreign = await postLogout('https://evil.example');
+  assert.equal(foreign.status, 403);
+  assert.equal(generation(), 0);
+  assert.equal(jar.deleted, false);
+
+  const missing = await postLogout(null);
+  assert.equal(missing.status, 403);
+  assert.equal(generation(), 0);
+  assert.equal(jar.deleted, false);
+
+  const same = await postLogout('http://localhost');
+  assert.equal(same.status, 200, same.text);
+  assert.equal(generation(), 1);
+  assert.equal(jar.deleted, true);
+  const { getUserIdFromToken } = await import('../src/lib/auth');
+  assert.equal(getUserIdFromToken(owner.token), null);
 }));
 
 test('退会すると本人のデータだけ消え、古いログイン情報は拒否される', () => serial(async () => {
@@ -354,6 +396,72 @@ test('退会すると本人のデータだけ消え、古いログイン情報�
     assert.equal(existsSync(otherFile), true);
   } finally {
     for (const file of [ownerFile, ownerLink, otherFile, lookalike, note]) {
+      try { unlinkSync(file); } catch { /* 退会が消したファイルや、最初から無いファイル */ }
+    }
+  }
+}));
+
+test('退会すると十六進名のアップロードは image URL から消え、他の会員のファイルは残る', () => serial(async () => {
+  await resetAuth();
+  const jar = await memberCookieJar();
+  const owner = await register('Hex-Owner@Example.TEST');
+  const other = await register('hex-other@example.test');
+  const database = await db();
+  seedOwned(database, owner.user.id, 'https://hooks.example.test/slack/hex-owner');
+  seedOwned(database, other.user.id, 'https://hooks.example.test/slack/hex-other');
+
+  const uploadDir = join(process.cwd(), 'public', 'uploads');
+  mkdirSync(uploadDir, { recursive: true });
+  const ownerHex = `${'a'.repeat(64)}.jpg`;
+  const otherHex = `${'b'.repeat(64)}.png`;
+  const candidateHex = `${'d'.repeat(64)}.gif`;
+  const orphanHex = `${'c'.repeat(64)}.webp`;
+  const ownerLegacy = `${owner.user.id}_1710000000000.jpg`;
+  const otherLegacy = `${other.user.id}_1710000000000.png`;
+  const ownerHexFile = join(uploadDir, ownerHex);
+  const otherHexFile = join(uploadDir, otherHex);
+  const candidateFile = join(uploadDir, candidateHex);
+  const orphanFile = join(uploadDir, orphanHex);
+  const ownerLegacyFile = join(uploadDir, ownerLegacy);
+  const otherLegacyFile = join(uploadDir, otherLegacy);
+  const outside = join(process.cwd(), 'public', 'not-an-upload.txt');
+  writeFileSync(ownerHexFile, 'owner-hex');
+  writeFileSync(otherHexFile, 'other-hex');
+  writeFileSync(candidateFile, 'candidate-hex');
+  writeFileSync(orphanFile, 'orphan-hex');
+  writeFileSync(ownerLegacyFile, 'owner-legacy');
+  writeFileSync(otherLegacyFile, 'other-legacy');
+  writeFileSync(outside, 'keep-outside');
+  database.prepare('UPDATE items SET image_url = ? WHERE user_id = ?').run(`/uploads/${ownerHex}`, owner.user.id);
+  database.prepare('UPDATE items SET image_url = ? WHERE user_id = ?').run(`/uploads/${otherHex}`, other.user.id);
+  database.prepare('UPDATE capture_candidates SET image_url = ? WHERE user_id = ?').run(
+    `/uploads/${candidateHex}`,
+    owner.user.id,
+  );
+  database.prepare(
+    'INSERT INTO items (user_id, name, url, image_url) VALUES (?, ?, ?, ?)',
+  ).run(owner.user.id, 'copied', 'https://example.test/copied-upload', `/uploads/${otherHex}`);
+  database.prepare(
+    'INSERT INTO items (user_id, name, url, image_url) VALUES (?, ?, ?, ?)',
+  ).run(owner.user.id, 'copied-legacy', 'https://example.test/copied-legacy', `/uploads/${otherLegacy}`);
+  database.prepare(
+    'INSERT INTO items (user_id, name, url, image_url) VALUES (?, ?, ?, ?)',
+  ).run(owner.user.id, 'escape', 'https://example.test/escape-upload', '/uploads/../not-an-upload.txt');
+
+  try {
+    present(jar, owner.token);
+    const removed = await call(accountPath, 'DELETE', '/api/auth/account');
+    assert.equal(removed.status, 200, removed.text);
+    assert.equal(existsSync(ownerHexFile), false);
+    assert.equal(existsSync(candidateFile), false);
+    assert.equal(existsSync(ownerLegacyFile), false);
+    assert.equal(existsSync(otherHexFile), true);
+    assert.equal(existsSync(otherLegacyFile), true);
+    assert.equal(existsSync(orphanFile), true);
+    assert.equal(existsSync(outside), true);
+    assert.deepEqual(ownedCounts(database, other.user.id), full);
+  } finally {
+    for (const file of [ownerHexFile, otherHexFile, candidateFile, orphanFile, ownerLegacyFile, otherLegacyFile, outside]) {
       try { unlinkSync(file); } catch { /* 退会が消したファイルや、最初から無いファイル */ }
     }
   }

@@ -68,7 +68,9 @@ test('register normalizes email, rejects bad input, and logs in regardless of ca
   assert.equal(loggedBody.user.password_hash, undefined);
   assert.equal(cookies.value, loggedBody.token);
 
-  const loggedOut = await call(logoutPath, 'POST', '/api/auth/logout');
+  const loggedOut = await call(logoutPath, 'POST', '/api/auth/logout', undefined, undefined, {
+    origin: 'http://localhost',
+  });
   assert.equal(loggedOut.status, 200);
   assert.equal(cookies.deleted, true);
 });
