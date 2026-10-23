@@ -42,18 +42,23 @@ test('a photo group is one list card, and hand-added items stay separate', async
   await expect(page.getByRole('heading', { name: '左', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '右', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '牛乳', exact: true })).toHaveCount(1);
-  await expect(page.getByRole('heading', { name: '単品', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('heading', { name: '単品', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '単品ショップ', exact: true })).toHaveCount(1);
   await expect(page.getByRole('heading', { name: '牛乳A', exact: true })).toHaveCount(0);
-  await expect(page.getByTestId('photo-group-card')).toHaveCount(2);
+  await expect(page.getByTestId('photo-group-card')).toHaveCount(1);
 
   const milk = page.getByTestId('photo-group-card').filter({ has: page.getByRole('heading', { name: '牛乳', exact: true }) });
   await expect(milk.getByTestId('photo-group-low')).toHaveText('最安 ¥500');
   await expect(milk.getByTestId('photo-group-range')).toHaveText('¥500〜¥1,200');
   await expect(milk.getByText('3件')).toBeVisible();
 
-  const one = page.getByTestId('photo-group-card').filter({ has: page.getByRole('heading', { name: '単品', exact: true }) });
-  await expect(one.getByTestId('photo-group-range')).toHaveText('¥300〜¥300');
-  await expect(one.getByText('1件')).toBeVisible();
+  const one = page.locator('.space-y-3 > div').filter({ has: page.getByRole('heading', { name: '単品ショップ', exact: true }) });
+  await expect(one.getByTestId('photo-group-card')).toHaveCount(0);
+  await expect(one.getByText('¥300', { exact: true }).first()).toBeVisible();
+  await expect(one.getByText('楽天', { exact: true })).toBeVisible();
+  for (const name of ['価格推移', '編集', '購入済みにする', '削除', 'ドラッグして並び替え']) {
+    await expect(one.getByRole('button', { name })).toBeVisible();
+  }
 
   await page.getByRole('button', { name: '牛乳のショップを見る' }).click();
   await expect(milk.getByText('牛乳A')).toBeVisible();
@@ -148,6 +153,80 @@ test('a photo group uses the same card as a url item on a phone and a desktop', 
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(photo.getByRole('img', { name: 'Belkin 電源アダプタ' })).toBeVisible();
   await expect(photo.getByRole('button', { name: '価格推移' })).toBeVisible();
+  const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(wide).toBeLessThanOrEqual(1);
+  expect(hydration).toEqual([]);
+});
+
+test('budget rows for photo shops are flat on a phone and a desktop', async ({ page }) => {
+  const hydration: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error' && /hydration|did not match/i.test(message.text())) hydration.push(message.text());
+  });
+  page.on('pageerror', (error) => {
+    if (/hydration|did not match/i.test(error.message)) hydration.push(error.message);
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const registered = await page.request.post('/api/auth/register', {
+    data: { email: `budget-flat-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`, password: 'test-password' },
+  });
+  expect(registered.ok()).toBeTruthy();
+  const userId = (await (await page.request.get('/api/auth/me')).json()).user.id as number;
+  const db = new Database(process.env.E2E_DB_PATH!);
+  db.pragma('busy_timeout = 5000');
+  try {
+    const groupId = Number(db.prepare(
+      "INSERT INTO comparison_groups (user_id, name, origin) VALUES (?, 'Belkin 電源アダプタ', 'photo')",
+    ).run(userId).lastInsertRowid);
+    const singleId = Number(db.prepare(
+      "INSERT INTO comparison_groups (user_id, name, origin) VALUES (?, '単品グループ', 'photo')",
+    ).run(userId).lastInsertRowid);
+    const insert = db.prepare(
+      `INSERT INTO items (
+        user_id, name, url, current_price, source, source_name, planned_purchase_date, comparison_group_id, priority
+      ) VALUES (?, ?, ?, ?, ?, ?, '2026-10-02', ?, 3)`,
+    );
+    insert.run(userId, '天幕のジャードゥーガル 3', `manual://${userId}-book`, 792, 'other', null, null);
+    insert.run(userId, 'Belkin Yahoo', `manual://${userId}-yahoo`, 1338, 'yahoo', 'Yahoo!ショッピング', groupId);
+    insert.run(userId, 'Belkin 楽天', `manual://${userId}-rakuten`, 2000, 'rakuten', '楽天', groupId);
+    insert.run(userId, '単品ショップ', `manual://${userId}-one`, 300, 'rakuten', '楽天', singleId);
+  } finally {
+    db.close();
+  }
+
+  await page.goto('/');
+  await page.getByRole('button', { name: '出費予定' }).click();
+  await expect(page.getByText('天幕のジャードゥーガル 3', { exact: true })).toBeVisible();
+  await expect(page.getByText('Belkin Yahoo', { exact: true })).toBeVisible();
+  await expect(page.getByText('Belkin 楽天', { exact: true })).toBeVisible();
+  await expect(page.getByText('単品ショップ', { exact: true })).toBeVisible();
+  await expect(page.getByText('Belkin 電源アダプタ', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('単品グループ', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Yahoo!ショッピング', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.text-3xl').first()).toHaveText('¥2,430');
+
+  const row = (name: string) => page.locator('div.cursor-pointer').filter({ hasText: name }).first();
+  await expect(row('単品ショップ').getByRole('button', { name: '合計に数える' })).toHaveCount(0);
+  await expect(row('天幕のジャードゥーガル 3').getByRole('button', { name: '合計に数える' })).toHaveCount(0);
+  await expect(row('Belkin Yahoo').getByRole('button', { name: '合計に数える' })).toBeVisible();
+  await expect(row('Belkin 楽天').getByRole('button', { name: '合計に数える' })).toBeVisible();
+
+  const leftOf = async (name: string) => (await row(name).boundingBox())?.x ?? -1;
+  const bookLeft = await leftOf('天幕のジャードゥーガル 3');
+  const yahooLeft = await leftOf('Belkin Yahoo');
+  const oneLeft = await leftOf('単品ショップ');
+  expect(Math.abs(bookLeft - yahooLeft)).toBeLessThanOrEqual(1);
+  expect(Math.abs(bookLeft - oneLeft)).toBeLessThanOrEqual(1);
+  const narrow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(narrow).toBeLessThanOrEqual(1);
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const bookWide = await leftOf('天幕のジャードゥーガル 3');
+  const yahooWide = await leftOf('Belkin Yahoo');
+  const oneWide = await leftOf('単品ショップ');
+  expect(Math.abs(bookWide - yahooWide)).toBeLessThanOrEqual(1);
+  expect(Math.abs(bookWide - oneWide)).toBeLessThanOrEqual(1);
   const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(wide).toBeLessThanOrEqual(1);
   expect(hydration).toEqual([]);
