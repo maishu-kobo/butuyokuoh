@@ -1,5 +1,7 @@
 import { test, expect, request as playwrightRequest, type APIRequestContext } from '@playwright/test';
 import Database from 'better-sqlite3';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import sharp from 'sharp';
 import { CaptureMessages } from '../../src/lib/capture/contract';
 
@@ -70,9 +72,13 @@ test('logged-in capture APIs use fakes and reject guests, bad photos, and other 
       expect(accepted.status(), mimeType).toBe(200);
     }
 
+    const realHeic = readFileSync(join(process.cwd(), 'tests/fixtures/tiny-hevc.heic'));
+    const converted = await user.post('/api/capture/identify', { multipart: { photo: photo('pixel.heic', 'image/heic', realHeic) } });
+    expect(converted.status()).toBe(200);
+
     const unreadable = await user.post('/api/capture/identify', { multipart: { photo: photo('a.heic', 'image/heic', heic) } });
-    expect(unreadable.status()).toBe(415);
-    expect(await unreadable.json()).toMatchObject({ code: 'UNSUPPORTED_MEDIA', error: CaptureMessages.photoUnreadable });
+    expect(unreadable.status()).toBe(400);
+    expect(await unreadable.json()).toMatchObject({ code: 'PHOTO_UNREADABLE', error: CaptureMessages.photoUnreadable });
 
     const two = new FormData();
     two.append('photo', new File([Uint8Array.from(jpeg)], 'a.jpg', { type: 'image/jpeg' }));

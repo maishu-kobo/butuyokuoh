@@ -1,5 +1,5 @@
 // 「写真を選ぶ」で受け取る1枚を、縮小してから送る。元の写真は保存しない。
-import { CaptureMessages, sniffImage } from './contract';
+import { CAPTURE_PHOTO_MAX_BYTES, CaptureMessages, sniffImage } from './contract';
 import { preparePhotoUpload, type ShrinkDeps } from './photo-client';
 
 const HEIC_TYPES = new Set(['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence']);
@@ -38,8 +38,17 @@ export async function photoForUpload(files: readonly File[], deps?: ShrinkDeps):
   const picked = await classifyPickedPhotos(files);
   if (picked.ok) return finishPhotoUpload(picked.file, deps);
   if (picked.ignored || files.length !== 1 || picked.message !== CaptureMessages.photoUnreadable) return picked;
-  if (!(await fileLooksLikeHeic(files[0]))) return picked;
-  return finishPhotoUpload(files[0], deps);
+  const file = files[0];
+  if (!(await fileLooksLikeHeic(file))) return picked;
+  const prepared = await finishPhotoUpload(file, deps);
+  if (prepared.ok) return prepared;
+  if (!prepared.ignored && prepared.message === CaptureMessages.photoTooLarge) return prepared;
+  const header = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+  if (sniffImage(header) !== 'heif') return prepared;
+  if (file.size > CAPTURE_PHOTO_MAX_BYTES) {
+    return { ok: false, ignored: false, message: CaptureMessages.photoTooLarge };
+  }
+  return { ok: true, file };
 }
 
 async function finishPhotoUpload(file: File, deps?: ShrinkDeps): Promise<PhotoPick> {
