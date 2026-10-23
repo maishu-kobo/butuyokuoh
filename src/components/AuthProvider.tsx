@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, Fragment, ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import { useSession, signOut as nextAuthSignOut } from 'next-auth/react';
 
 interface User {
@@ -28,6 +29,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { status } = useSession();
+  const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -143,7 +145,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login: (email, password) => authenticate('/api/auth/login', { email, password }),
       register: (email, password, name) => authenticate('/api/auth/register', { email, password, name }), logout }}>
       {notice && <div role="alert" className="bg-amber-100 text-amber-950 p-3 flex justify-between gap-4"><span>{notice}</span><button onClick={() => setNotice('')} aria-label="お知らせを閉じる">×</button></div>}
-      {loading ? <div className="p-12 text-center" role="status">読み込み中...</div> :
+      {/* 読み込み中は中身を出さない。水和の回帰ページだけは、サーバHTMLにピッカーを載せる。 */}
+      {(loading && pathname !== '/capture-hydration') ? <div className="p-12 text-center" role="status">読み込み中...</div> :
         <Fragment key={user ? `${user.account_type}:${user.id}` : 'anonymous'}>{children}</Fragment>}
     </AuthContext.Provider>
   );

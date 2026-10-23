@@ -132,6 +132,7 @@ test('live playwright discovery is the required e2e set', async () => {
   const files = mod.e2eFilesFromPlaywrightReport(JSON.parse(result.stdout), process.cwd());
   assert.deepEqual(files, [
     'tests/e2e/capture-flow.spec.ts',
+    'tests/e2e/capture-hydration.spec.ts',
     'tests/e2e/capture-manual.spec.ts',
     'tests/e2e/capture-photo-group.spec.ts',
     'tests/e2e/capture-photo-pick.spec.ts',
