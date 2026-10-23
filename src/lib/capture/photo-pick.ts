@@ -9,6 +9,13 @@ export function showPhotoPicker(flags: { enabled?: boolean } | null, isGuest: bo
   return flags?.enabled === true && !isGuest;
 }
 
+export type CapturePhotoAction = 'camera' | 'file';
+
+export function capturePhotoActions(input: { coarsePointer: boolean; camera: boolean }): CapturePhotoAction[] | 'sheet' {
+  if (input.coarsePointer) return 'sheet';
+  return input.camera ? ['camera', 'file'] : ['file'];
+}
+
 export type PhotoPick =
   | { ok: true; file: File }
   | { ok: false; ignored: true }

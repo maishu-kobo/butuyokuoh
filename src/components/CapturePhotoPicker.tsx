@@ -1,8 +1,8 @@
 'use client';
 
 import { CaptureMessages } from '@/lib/capture/contract';
-import { photoForUpload } from '@/lib/capture/photo-pick';
-import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { capturePhotoActions, photoForUpload } from '@/lib/capture/photo-pick';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 export type CapturePhotoPick = {
   enabled: boolean;
@@ -76,9 +76,39 @@ export function useCapturePhotoPick(
   };
 }
 
+const MENU_ITEM_CLASS = 'flex min-h-[24px] w-full items-center px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-slate-700';
+
 export function CapturePhotoControls({ pick }: { pick: CapturePhotoPick }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  const [open, setOpen] = useState(false);
+  const [camera, setCamera] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setOpen(false);
+      buttonRef.current?.focus();
+    }
+    function onPointer(event: PointerEvent) {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (menuRef.current?.contains(target) || buttonRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPointer);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPointer);
+    };
+  }, [open]);
+  if (!pick.enabled && open) setOpen(false);
   if (!pick.enabled) return null;
 
   function onChange(event: ChangeEvent<HTMLInputElement>) {
@@ -87,12 +117,35 @@ export function CapturePhotoControls({ pick }: { pick: CapturePhotoPick }) {
     pick.acceptFiles(files);
   }
 
+  function chooseFile() {
+    setOpen(false);
+    inputRef.current?.click();
+  }
+
+  function chooseCamera() {
+    setOpen(false);
+    cameraRef.current?.click();
+  }
+
+  function onRegister() {
+    const coarse = window.matchMedia('(pointer: coarse)').matches;
+    const available = window.isSecureContext && typeof navigator.mediaDevices?.getUserMedia === 'function';
+    const actions = capturePhotoActions({ coarsePointer: coarse, camera: available });
+    if (actions === 'sheet') {
+      setOpen(false);
+      inputRef.current?.click();
+      return;
+    }
+    setCamera(actions.includes('camera'));
+    setOpen(value => !value);
+  }
+
   return (
-    <div className="mb-4">
+    <div className="relative mb-4">
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/*,image/heic,image/heif,.heic,.heif"
         aria-label="写真ファイル"
         className="hidden"
         onChange={onChange}
@@ -106,22 +159,36 @@ export function CapturePhotoControls({ pick }: { pick: CapturePhotoPick }) {
         className="hidden"
         onChange={onChange}
       />
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => cameraRef.current?.click()}
-          className="min-h-[24px] min-w-[24px] flex-1 px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm text-gray-700 dark:text-gray-200"
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={onRegister}
+        className="min-h-[24px] min-w-[24px] w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm text-gray-700 dark:text-gray-200"
+      >
+        写真から登録
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          id={menuId}
+          role="menu"
+          aria-label="写真の取り込み"
+          onKeyDown={onMenuKeyDown}
+          className="absolute left-0 right-0 z-20 mt-1 rounded-md border border-gray-300 bg-white py-1 shadow-md dark:border-slate-600 dark:bg-slate-800"
         >
-          撮る
-        </button>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="min-h-[24px] min-w-[24px] flex-1 px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm text-gray-700 dark:text-gray-200"
-        >
-          写真を選ぶ
-        </button>
-      </div>
+          {camera && (
+            <button type="button" role="menuitem" onClick={chooseCamera} className={MENU_ITEM_CLASS}>
+              カメラで撮る
+            </button>
+          )}
+          <button type="button" role="menuitem" onClick={chooseFile} className={MENU_ITEM_CLASS}>
+            ファイル/写真を選ぶ
+          </button>
+        </div>
+      )}
       <div aria-live="polite">
         {pick.message && (
           <p role="alert" className="mt-2 rounded-md bg-red-50 dark:bg-red-950/40 p-3 text-red-700 dark:text-red-300 text-sm">
@@ -134,4 +201,22 @@ export function CapturePhotoControls({ pick }: { pick: CapturePhotoPick }) {
       </div>
     </div>
   );
+}
+
+function onMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+  const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+  if (items.length === 0) return;
+  const index = items.indexOf(document.activeElement as HTMLButtonElement);
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    const delta = event.key === 'ArrowDown' ? 1 : -1;
+    const next = index < 0 ? 0 : (index + delta + items.length) % items.length;
+    items[next]?.focus();
+  } else if (event.key === 'Home') {
+    event.preventDefault();
+    items[0]?.focus();
+  } else if (event.key === 'End') {
+    event.preventDefault();
+    items[items.length - 1]?.focus();
+  }
 }
