@@ -94,7 +94,7 @@ test('page price checks keep hand-added items and skip photo registrations', asy
     assert.equal(excludesPagePriceCheck(database, stored(add(member.id, 'ゴミ箱手入力', 'manual://gone-hand', { deleted: true }))), false);
     assert.equal(excludesPagePriceCheck(database, stored(add(guestId, 'ゲスト手入力', 'manual://guest-hand'))), false);
     assert.equal(excludesPagePriceCheck(database, stored(photo)), true);
-    assert.equal(excludesPagePriceCheck(database, stored(coded)), true);
+    assert.equal(excludesPagePriceCheck(database, stored(coded)), false);
     assert.equal(excludesPagePriceCheck(database, stored(both)), true);
     assert.equal(excludesPagePriceCheck(database, stored(add(member.id, '購入済み写真', 'manual://bought-photo', { purchased: 1, groupId: photoGroup }))), true);
   } finally {
@@ -103,7 +103,7 @@ test('page price checks keep hand-added items and skip photo registrations', asy
   }
 });
 
-test('refresh skips photo items and still refreshes hand-added items', async () => {
+test('refresh skips a multi-shop photo group and still refreshes a single photo code', async () => {
   const member = await createMember('photo-refresh');
   const other = await createMember('photo-refresh-other');
   const database = await db();
@@ -119,7 +119,8 @@ test('refresh skips photo items and still refreshes hand-added items', async () 
   const emptyCode = add(member.id, '空コード', 'manual://refresh-empty', { code: '' });
   const purchased = add(member.id, '購入済み', 'manual://refresh-bought', { purchased: 1 });
   const photo = add(member.id, '写真', 'manual://refresh-photo', { groupId: photoGroup });
-  const coded = add(member.id, 'コード', 'https://shopping.yahoo.co.jp/products/milk', { code: 'yahoo:milk' });
+  const photoMate = add(member.id, '写真の別店', 'manual://refresh-photo-b', { groupId: photoGroup });
+  const coded = add(member.id, 'コード', 'manual://refresh-coded', { code: 'yahoo:milk' });
   const purchasedPhoto = add(member.id, '購入済み写真', 'manual://refresh-bought-photo', { purchased: 1, code: 'rakuten:shop:milk' });
   const foreign = add(other.id, '他人', 'manual://refresh-foreign');
   await setTestUser(member);
@@ -149,7 +150,16 @@ test('refresh skips photo items and still refreshes hand-added items', async () 
     assert.equal(bought.status, 200);
     assert.ok((snapshot(database, purchased) as { last_scraped_at: string | null }).last_scraped_at);
 
-    for (const id of [photo, coded, purchasedPhoto]) {
+    for (const id of [coded, purchasedPhoto]) {
+      const response = await call(refresh, 'POST', `/api/items/${id}/refresh`, undefined, { id: String(id) });
+      assert.equal(response.status, 200);
+      const row = snapshot(database, id) as { current_price: number; last_scraped_at: string | null; scrape_status: string };
+      assert.equal(row.current_price, 1500);
+      assert.ok(row.last_scraped_at);
+      assert.equal(row.scrape_status, 'failed');
+    }
+
+    for (const id of [photo, photoMate]) {
       const before = snapshot(database, id);
       const response = await call(refresh, 'POST', `/api/items/${id}/refresh`, undefined, { id: String(id) });
       assert.equal(response.status, 409);

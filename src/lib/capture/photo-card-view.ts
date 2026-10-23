@@ -25,8 +25,8 @@ export function photoFaceItemId(card: { shops: readonly { itemId: number; purcha
   return face.itemId;
 }
 
-// 写真グループはページ再取得が 409 になる。ボタンは出さない。
-// 1件の登録は URL 商品と同じく、再取得ボタンを残す。再取得そのものはここでは動かさない。
+// 写真グループ（2店以上）はページ再取得が 409 になる。ボタンは出さない。
+// 1件の登録は URL 商品と同じく、再取得ボタンを残す。
 export function offersPriceRefresh(shopCount: number): boolean {
   return shopCount < 2;
 }
