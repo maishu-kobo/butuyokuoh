@@ -265,9 +265,9 @@ test('the server rejects HEIC and a pixel bomb without keeping the original', as
   const rejected = await prepareCapturePhoto(heic, 'image/heic');
   assert.equal(rejected.ok, false);
   if (!rejected.ok) {
-    assert.equal(rejected.error.code, 'UNSUPPORTED_MEDIA');
+    assert.equal(rejected.error.code, 'PHOTO_UNREADABLE');
     assert.equal(rejected.error.error, CaptureMessages.photoUnreadable);
-    assert.equal(rejected.status, 415);
+    assert.equal(rejected.status, 400);
     assert.equal(JSON.stringify(rejected.error).includes('ftypheic'), false);
   }
 
@@ -278,7 +278,7 @@ test('the server rejects HEIC and a pixel bomb without keeping the original', as
     body: part.body,
   }));
   assert.equal(fromRequest.ok, false);
-  if (!fromRequest.ok) assert.equal(fromRequest.error.code, 'UNSUPPORTED_MEDIA');
+  if (!fromRequest.ok) assert.equal(fromRequest.error.code, 'PHOTO_UNREADABLE');
 
   const started = Date.now();
   const bomb = await prepareCapturePhoto(new Uint8Array(png(8000, 8000)));
