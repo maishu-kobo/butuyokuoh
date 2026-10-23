@@ -185,9 +185,11 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
   assert.equal(imported.status, 200, imported.text);
   assert.equal((imported.json as { imported: number }).imported, 1);
   const urls = (database.prepare('SELECT url FROM items WHERE user_id = ? ORDER BY url').all(owner.id) as { url: string }[]).map((row) => row.url);
-  assert.equal(urls.includes('https://example.test/bad-price'), false);
-  assert.equal(urls.includes('https://example.test/long-name'), false);
-  assert.equal(urls.includes('https://example.test/keep'), true);
+  assert.deepEqual(urls, [
+    'https://example.test/extension',
+    'https://example.test/keep',
+    saved.url,
+  ]);
 
   const longHook = `https://hooks.slack.com/services/${'a'.repeat(2100)}`;
   const rejectedHook = await call(notify, 'PUT', '/api/notification-settings', { slack_webhook: longHook, notify_on_price_drop: false });
