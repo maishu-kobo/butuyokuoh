@@ -97,6 +97,34 @@ export async function withPhotoSlot<T>(task: () => Promise<T>): Promise<T> {
   }
 }
 
+export function runPhotoWithinSlot<T>(task: () => Promise<T>, timeoutMs: number): Promise<T> {
+  let settled = false;
+  let finishHttp: (result: { ok: true; value: T } | { ok: false; error: unknown }) => void = () => {};
+  const http = new Promise<{ ok: true; value: T } | { ok: false; error: unknown }>(resolve => {
+    finishHttp = resolve;
+  });
+  const finish = (result: { ok: true; value: T } | { ok: false; error: unknown }) => {
+    if (settled) return;
+    settled = true;
+    finishHttp(result);
+  };
+  const occupied = withPhotoSlot(async () => {
+    const work = Promise.resolve().then(task).then(
+      value => ({ ok: true as const, value }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    const timer = setTimeout(() => finish({ ok: false, error: new Error('photo timeout') }), timeoutMs);
+    const outcome = await work;
+    clearTimeout(timer);
+    finish(outcome);
+  });
+  void occupied.catch((error: unknown) => finish({ ok: false, error }));
+  return http.then(result => {
+    if (!result.ok) throw result.error;
+    return result.value;
+  });
+}
+
 export async function runBoundedPhotoTask<T>(task: () => Promise<T>, timeoutMs: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const work = task().then(
@@ -230,8 +258,8 @@ export async function prepareCapturePhoto(
     if (!decoded.ok) return decoded;
   }
   try {
-    // 時間切れで待つのをやめても、枠は画素化が終わるまで手放さない。
-    const encoded = await runBoundedPhotoTask(() => withPhotoSlot(async () => {
+    // 枠を取ってから5秒を数える。時間切れでも、画素化が終わるまで枠は手放さない。
+    const encoded = await runPhotoWithinSlot(async () => {
       let input: Buffer;
       let raw: { width: number; height: number; channels: 4 } | undefined;
       if (heif) {
@@ -275,7 +303,7 @@ export async function prepareCapturePhoto(
       } finally {
         clearTimeout(killer);
       }
-    }), CAPTURE_PHOTO_TIMEOUT_MS);
+    }, CAPTURE_PHOTO_TIMEOUT_MS);
     if (!encoded || encoded.length === 0 || encoded.length > CAPTURE_PHOTO_MAX_BYTES) {
       return captureFailure('PHOTO_UNREADABLE', CaptureMessages.photoUnreadable, 400);
     }
