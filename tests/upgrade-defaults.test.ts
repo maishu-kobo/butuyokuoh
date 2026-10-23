@@ -29,7 +29,13 @@ test('Next 16.4 leaves this app on the 16.1 caching model', () => {
 });
 
 test('image optimizer keeps the 50MB cap and still refuses SVG', () => {
-  assert.equal(nextConfig.images, undefined);
+  // remotePatterns は候補画像の配信ホストだけ。容量、SVG、キャッシュは Next の初期値のまま。
+  assert.equal(nextConfig.images?.dangerouslyAllowSVG, undefined);
+  assert.equal(nextConfig.images?.maximumResponseBody, undefined);
+  assert.equal(nextConfig.images?.minimumCacheTTL, undefined);
+  const patterns = nextConfig.images?.remotePatterns ?? [];
+  assert.equal(patterns.length > 0, true);
+  assert.equal(patterns.every((pattern) => 'protocol' in pattern && pattern.protocol === 'https'), true);
   assert.equal(imageConfigDefault.maximumResponseBody, 50_000_000);
   assert.equal(imageConfigDefault.dangerouslyAllowSVG, false);
   assert.equal(imageConfigDefault.minimumCacheTTL, 14_400);
