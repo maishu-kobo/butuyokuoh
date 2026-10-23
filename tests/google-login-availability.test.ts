@@ -10,6 +10,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import LoginForm from '../src/components/LoginForm';
 import GuestBanner from '../src/components/GuestBanner';
 import { AuthContext } from '../src/components/AuthProvider';
+import { googleLoginEnabled } from '../src/lib/google-login';
+import { googleListed } from '../src/lib/google-listed';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -21,6 +23,7 @@ type GoogleEnv = {
 function providerCatalog(google: GoogleEnv): Record<string, { id?: string }> {
   const directory = mkdtempSync(join(tmpdir(), 'butuyokuoh-google-login-'));
   const env: NodeJS.ProcessEnv = {
+    NODE_ENV: 'test',
     PATH: process.env.PATH,
     HOME: process.env.HOME,
     TMPDIR: process.env.TMPDIR ?? tmpdir(),
@@ -84,13 +87,6 @@ function screens(googleLogin: boolean) {
   };
 }
 
-async function serverAllowsGoogleLogin(env: GoogleEnv): Promise<boolean> {
-  const loaded = await import('../src/lib/google-login');
-  const read = loaded.googleLoginEnabled ?? loaded.default?.googleLoginEnabled;
-  if (typeof read !== 'function') throw new Error('googleLoginEnabled missing');
-  return read(env);
-}
-
 const hiddenCases: GoogleEnv[] = [
   {},
   { GOOGLE_CLIENT_ID: '' },
@@ -115,13 +111,12 @@ test('both Google credentials register the provider, keep the secret on the serv
   assert.equal(serialized.includes('clientSecret'), false);
   assert.equal(Object.hasOwn(catalog, 'credentials'), true);
   assert.equal(Object.hasOwn(catalog, 'google'), true);
-
-  const enabled = await serverAllowsGoogleLogin({
+  assert.equal(googleLoginEnabled({
     GOOGLE_CLIENT_ID: clientId,
     GOOGLE_CLIENT_SECRET: clientSecret,
-  });
-  assert.equal(enabled, Object.hasOwn(catalog, 'google'));
-  const { login, guest } = screens(enabled);
+  }), true);
+  assert.equal(googleListed(catalog), true);
+  const { login, guest } = screens(googleListed(catalog));
   assert.equal(login.includes('Googleでログイン'), true);
   assert.equal(guest.includes('Googleでログイン'), true);
   assert.equal(login.includes(clientSecret), false);
@@ -158,10 +153,9 @@ test('missing or blank Google credentials omit the provider and hide every Googl
     }
     assert.equal(Object.hasOwn(catalog, 'credentials'), true, label);
     assert.equal(Object.hasOwn(catalog, 'google'), false, label);
-
-    const enabled = await serverAllowsGoogleLogin(google);
-    assert.equal(enabled, false, label);
-    const { login, guest } = screens(enabled);
+    assert.equal(googleLoginEnabled(google), false, label);
+    assert.equal(googleListed(catalog), false, label);
+    const { login, guest } = screens(googleListed(catalog));
     assert.equal(login.includes('Googleでログイン'), false, label);
     assert.equal(guest.includes('Googleでログイン'), false, label);
     assert.match(login, /メールアドレス/, label);

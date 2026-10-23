@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, Fragment, ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { useSession, signOut as nextAuthSignOut } from 'next-auth/react';
+import { googleListed } from '@/lib/google-listed';
 
 interface User {
   id: number;
@@ -19,6 +20,7 @@ interface AuthContextType {
   isGuest: boolean;
   guestEnabled: boolean;
   ttlHours: number;
+  googleLogin: boolean;
   startGuest: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
@@ -35,12 +37,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [guestEnabled, setGuestEnabled] = useState(false);
   const [ttlHours, setTtlHours] = useState(24);
+  const [googleLogin, setGoogleLogin] = useState(false);
   const [notice, setNotice] = useState('');
   const revision = useRef(0);
   const currentUser = useRef<User | null>(null);
 
   const refresh = useCallback(async () => {
     const version = ++revision.current;
+    const providersTask = fetch('/api/auth/providers', { cache: 'no-store' })
+      .then(async (response) => (response.ok ? googleListed(await response.json()) : false))
+      .catch(() => false);
     try {
       const res = await fetch('/api/auth/me', { cache: 'no-store' });
       if (!res.ok && res.status !== 401) throw new Error('ログイン状態を確認できません。画面を再読み込みしてください。');
@@ -66,7 +72,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setNotice(error instanceof Error ? error.message : '通信に失敗しました');
     } finally {
-      if (version === revision.current) setLoading(false);
+      const nextGoogleLogin = await providersTask;
+      if (version === revision.current) {
+        setGoogleLogin(nextGoogleLogin);
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -140,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, isGuest: user?.account_type === 'guest', guestEnabled, ttlHours,
+    <AuthContext.Provider value={{ user, token, loading, isGuest: user?.account_type === 'guest', guestEnabled, ttlHours, googleLogin,
       startGuest: () => authenticate('/api/auth/guest'),
       login: (email, password) => authenticate('/api/auth/login', { email, password }),
       register: (email, password, name) => authenticate('/api/auth/register', { email, password, name }), logout }}>
