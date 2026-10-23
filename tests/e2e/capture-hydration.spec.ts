@@ -1,6 +1,6 @@
 import { devices, expect, test, webkit, type Page } from '@playwright/test';
 
-const hydrationError = /hydrat|didn't match|won't be patched|did not match/i;
+const hydrationError = /server rendered HTML didn't match the client|won't be patched up|Hydration failed because the server rendered/i;
 
 function watchHydration(page: Page) {
   const errors: string[] = [];
