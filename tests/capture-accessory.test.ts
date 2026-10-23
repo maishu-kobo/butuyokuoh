@@ -160,6 +160,64 @@ test('a long name keeps the Yahoo exclusion inside 400 characters', async () => 
   assert.equal(query.includes('あ'), true);
 });
 
+test('weak words keep the main product, and a model-for bracket or accessory noun does not', async () => {
+  const compatible = 'Google Pixel 9 128GB グレー 5G対応';
+  const glass = 'Google Pixel 9 強化ガラス';
+  const guard = 'Google Pixel 9 画面保護';
+  const spigen = 'Spigen Case for Pixel';
+  const bracket = '【Google Pixel用】TPUバンパー';
+  const modelCase = 'Google Pixel 9 対応 ケース';
+  const phoneHits = [
+    yahooHit(spigen, 1, 1980),
+    yahooHit(compatible, 2, 84800),
+    yahooHit(PHONE, 3, 89800),
+    yahooHit(glass, 4, 1280),
+    yahooHit(guard, 5, 980),
+    yahooHit(bracket, 6, 1500),
+    yahooHit(modelCase, 7, 699),
+    yahooHit(SCREENSHOT_CASES[1], 8, 890),
+  ];
+  const keptTitles = [spigen, compatible, PHONE, glass, guard];
+
+  const yahoo = yahooHarness(phoneHits);
+  const found = await yahoo.search.search(PHONE_QUERY);
+  assert.equal(found.ok, true);
+  if (!found.ok) return;
+  assert.deepEqual(found.value.map((item) => item.title), keptTitles);
+
+  const rakuten = rakutenHarness(phoneHits.map((hit, index) => rakutenItem(String(hit.name), index, Number(hit.price))));
+  const rakutenFound = await rakuten.search.search(PHONE_QUERY);
+  assert.equal(rakutenFound.ok, true);
+  if (!rakutenFound.ok) return;
+  assert.deepEqual(rakutenFound.value.map((item) => item.title), keptTitles);
+
+  const microwave = 'パナソニック 家庭用電子レンジ NE-BS6A';
+  const turntable = 'レンジ ターンテーブル';
+  const home = '【家庭用】電子レンジ';
+  const business = '【業務用】電子レンジ';
+  const general = '【一般用】電子レンジ';
+  const tray = '【パナソニック用】庫内トレイ';
+  const ovenQuery: SearchQuery = { name: 'パナソニック 電子レンジ', brand: null, model: null, jan: null };
+  const oven = yahooHarness([
+    yahooHit(turntable, 1, 1980),
+    yahooHit(microwave, 2, 29800),
+    yahooHit(home, 3, 24800),
+    yahooHit(business, 4, 54800),
+    yahooHit(general, 5, 19800),
+    yahooHit(tray, 6, 2200),
+  ]);
+  const ovens = await oven.search.search(ovenQuery);
+  assert.equal(ovens.ok, true);
+  if (!ovens.ok) return;
+  assert.deepEqual(ovens.value.map((item) => item.title), [turntable, microwave, home, business, general]);
+
+  const onlyBracket = yahooHarness([yahooHit(bracket, 1, 1500)]);
+  const stayed = await onlyBracket.search.search(PHONE_QUERY);
+  assert.equal(stayed.ok, true);
+  if (!stayed.ok) return;
+  assert.deepEqual(stayed.value.map((item) => item.title), [bracket]);
+});
+
 test('recommended order puts the phone ahead of a cheaper case, including a 5G対応 listing', () => {
   const query = PHONE_QUERY;
   const sorted = sortCandidates([
