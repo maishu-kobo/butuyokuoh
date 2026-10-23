@@ -1,7 +1,6 @@
 import type Database from 'better-sqlite3';
 
-// 写真から登録した商品は、ページを取りに行く価格チェックに載せない。
-// 商品コードがあるか、本人の比較グループが origin = 'photo' のときが対象。
+// 定期の価格チェックには、商品コード付きと写真グループを載せない。
 // 機能を止めていても、この除外は残す。
 export function priceCheckItems(db: Database.Database) {
   return db.prepare(`
@@ -18,16 +17,23 @@ export function priceCheckItems(db: Database.Database) {
   `).all();
 }
 
+// ショップが2件以上残っている写真グループだけ、ページ再取得をしない。
+// 写真から1件だけ登録した商品は商品コードがあっても URL 登録と同じくページを取りに行く。
+// ゴミ箱の店は店数に数えない。定期チェックの一覧は priceCheckItems が別に決める。
 export function excludesPagePriceCheck(
   db: Database.Database,
-  item: { source_item_code?: string | null; comparison_group_id?: number | null; user_id?: number | null },
+  item: { comparison_group_id?: number | null; user_id?: number | null },
 ): boolean {
-  if (item.source_item_code) return true;
   if (item.comparison_group_id == null || item.user_id == null) return false;
   const group = db.prepare(
     'SELECT origin FROM comparison_groups WHERE id = ? AND user_id = ?',
   ).get(item.comparison_group_id, item.user_id) as { origin: string | null } | undefined;
-  return group?.origin === 'photo';
+  if (group?.origin !== 'photo') return false;
+  const count = db.prepare(`
+    SELECT COUNT(*) AS n FROM items
+    WHERE user_id = ? AND comparison_group_id = ? AND deleted_at IS NULL
+  `).get(item.user_id, item.comparison_group_id) as { n: number };
+  return count.n >= 2;
 }
 
 // 直近の履歴と同じ価格なら足さない。recorded_at が同じ秒でも id が大きい方を直近とする。
