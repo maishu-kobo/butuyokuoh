@@ -235,18 +235,18 @@ export function CaptureSearchPanel({
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1" htmlFor="capture-search-name">
             探す商品名
           </label>
-          <div className="flex gap-2">
+          <div className="flex items-stretch gap-2">
             <input
               id="capture-search-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md"
+              className="min-w-0 flex-1 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md"
             />
             <button
               type="button"
               disabled={searchBlocked}
               onClick={() => void runSearch(chosen, name)}
-              className="min-h-[24px] min-w-[24px] px-3 py-2 bg-slate-800 text-white rounded-md text-sm disabled:opacity-50"
+              className="inline-flex shrink-0 items-center whitespace-nowrap min-h-[24px] min-w-[24px] px-3 py-2 border rounded-md text-sm disabled:opacity-50"
             >
               この名前で探す
             </button>
@@ -302,22 +302,24 @@ export function CaptureSearchPanel({
               );
             })}
           </ul>
-          {amazonUrl && (
-            <a href={amazonUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[24px] min-w-[24px] items-center text-sm underline">Amazonで探す</a>
-          )}
-          {showRakutenCredit && (
-            <p className="text-xs text-gray-400">
-              <a href={RAKUTEN_CREDIT.url} target="_blank" rel="noopener noreferrer" className="underline">{RAKUTEN_CREDIT.label}</a>
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={() => void registerSelected()}
-            disabled={selected.length === 0}
-            className="min-h-[24px] min-w-[24px] px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
-          >
-            選んだ候補を登録
-          </button>
+          <div className="flex flex-col items-start gap-4">
+            {amazonUrl && (
+              <a href={amazonUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[24px] min-w-[24px] items-center text-sm underline">Amazonで探す</a>
+            )}
+            {showRakutenCredit && (
+              <p className="text-xs text-gray-400">
+                <a href={RAKUTEN_CREDIT.url} target="_blank" rel="noopener noreferrer" className="underline">{RAKUTEN_CREDIT.label}</a>
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => void registerSelected()}
+              disabled={selected.length === 0}
+              className="min-h-[24px] min-w-[24px] px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
+            >
+              選んだ候補を登録
+            </button>
+          </div>
         </div>
       )}
       {slow && busy && (

@@ -8,6 +8,34 @@ test.beforeAll(async () => {
   jpeg = await sharp(pixel).jpeg().toBuffer();
 });
 
+async function expectCandidateControls(page: Page) {
+  const amazon = await page.getByRole('link', { name: 'Amazonで探す' }).boundingBox();
+  const register = await page.getByRole('button', { name: '選んだ候補を登録' }).boundingBox();
+  expect(amazon).toBeTruthy();
+  expect(register).toBeTruthy();
+  expect(register!.y - (amazon!.y + amazon!.height)).toBeGreaterThanOrEqual(40);
+
+  const searchName = await page.getByRole('button', { name: 'この名前で探す' }).boundingBox();
+  const nameField = await page.getByLabel('探す商品名').boundingBox();
+  const recommended = await page.getByRole('button', { name: 'おすすめ順' }).boundingBox();
+  expect(searchName).toBeTruthy();
+  expect(nameField).toBeTruthy();
+  expect(recommended).toBeTruthy();
+  expect(searchName!.width).toBeGreaterThan(searchName!.height);
+  expect(Math.abs(searchName!.y - nameField!.y)).toBeLessThanOrEqual(2);
+  expect(Math.abs(searchName!.height - nameField!.height)).toBeLessThanOrEqual(2);
+  expect(Math.abs(searchName!.height - recommended!.height)).toBeLessThanOrEqual(8);
+  const border = await page.evaluate(() => {
+    const width = (label: string) => {
+      const el = [...document.querySelectorAll('button')].find((node) => node.textContent?.trim() === label);
+      return el ? Number.parseFloat(getComputedStyle(el).borderTopWidth) : 0;
+    };
+    return { search: width('この名前で探す'), sort: width('おすすめ順') };
+  });
+  expect(border.search).toBeGreaterThanOrEqual(1);
+  expect(border.search).toBe(border.sort);
+}
+
 async function member(page: Page) {
   const response = await page.request.post('/api/auth/register', {
     data: { email: `flow-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`, password: 'test-password' },
@@ -61,6 +89,17 @@ test('a member can take or choose a photo, edit the name, and register a candida
   expect(thumbBox!.width).toBeLessThanOrEqual(68);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
+  await expectCandidateControls(page);
+  await page.evaluate(() => document.documentElement.classList.add('dark'));
+  const visibleInDark = await page.getByRole('button', { name: 'この名前で探す' }).evaluate((el) => {
+    const button = getComputedStyle(el);
+    const card = el.closest('[data-testid="capture-photo-card"]');
+    const cardBg = card ? getComputedStyle(card).backgroundColor : '';
+    const border = Number.parseFloat(button.borderTopWidth);
+    return border >= 1 && button.backgroundColor !== cardBg;
+  });
+  expect(visibleInDark).toBe(true);
+  await page.evaluate(() => document.documentElement.classList.remove('dark'));
   await expect(page.locator('time').first()).toHaveText(/\d{4}\/\d{1,2}\/\d{1,2}/);
   await expect(page.locator('time').first()).not.toHaveText(/T\d{2}:\d{2}:\d{2}/);
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -68,6 +107,7 @@ test('a member can take or choose a photo, edit the name, and register a candida
   const desktopThumb = await thumb.boundingBox();
   expect(desktopThumb).toBeTruthy();
   expect(desktopThumb!.width).toBeLessThanOrEqual(68);
+  await expectCandidateControls(page);
   const chooseBox = await page.getByRole('checkbox', { name: '候補を選ぶ テスト用ゲルボールペン 0.5' }).first().boundingBox();
   expect(chooseBox).toBeTruthy();
   expect(chooseBox!.width).toBeGreaterThanOrEqual(24);
