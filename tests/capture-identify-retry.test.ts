@@ -76,6 +76,32 @@ test('an empty product list is a retryable parse failure, not an unreadable phot
   assert.equal(result.error.error.includes('読み取れません'), false);
 });
 
+test('explicit unreadable is not retried when products is missing or not an array', async () => {
+  for (const first of [
+    { confidence: 'unreadable' },
+    { confidence: 'unreadable', products: null },
+    { confidence: 'unreadable', products: 'none' },
+  ]) {
+    const { calls, identifier } = harness([
+      textResult(JSON.stringify(first)),
+      textResult(JSON.stringify(SURE)),
+    ]);
+    const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+    assert.equal(calls.length, 1, JSON.stringify(first));
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.value, { confidence: 'unreadable', products: [] });
+  }
+});
+
+test('a thrown search after a sure identification retries search, not another identify', async () => {
+  const flow = await import('../src/lib/capture/capture-flow');
+  const retry = (flow as { thrownCaptureRetry?: (identified: boolean) => { kind: string; message: string } }).thrownCaptureRetry;
+  assert.equal(typeof retry, 'function');
+  assert.deepEqual(retry?.(true), { kind: 'search', message: CaptureMessages.searchFailed });
+  assert.deepEqual(retry?.(false), { kind: 'identify', message: CaptureMessages.aiRetryable });
+});
+
 test('the model saying unreadable is not retried and stays unreadable', async () => {
   const { calls, identifier } = harness([
     textResult(JSON.stringify({ confidence: 'unreadable', products: [] })),
