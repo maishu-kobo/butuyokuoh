@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { photoGroupSaveWrites } from '@/lib/capture/photo-group-actions';
 import { linkableHttpUrl } from '@/lib/http-url';
 
 import { useState, useRef, type ReactNode } from 'react';
@@ -33,10 +34,11 @@ interface ItemCardProps {
   heading?: string;
   extra?: ReactNode;
   displayImageUrl?: string | null;
+  groupMemberIds?: readonly number[];
   offerPriceRefresh?: boolean;
 }
 
-export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, displayImageUrl, offerPriceRefresh = true }: ItemCardProps) {
+export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, displayImageUrl, groupMemberIds, offerPriceRefresh = true }: ItemCardProps) {
   const { isGuest } = useAuth();
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -110,29 +112,39 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     setSaving(true);
     setSaveError('');
     try {
-      const res = await apiFetch(`/api/items/${item.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editData.name || item.name,
-          url: editData.url || item.url,
-          priority: editData.priority,
-          planned_purchase_date: editData.planned_purchase_date || null,
-          notes: editData.notes || null,
-          target_price: editData.target_price ? Number(editData.target_price) : null,
-          target_currency: editData.target_currency,
-          category_id: editData.category_id ? Number(editData.category_id) : null,
-          comparison_group_id: editData.comparison_group_id ? Number(editData.comparison_group_id) : null,
-          quantity: Number(editData.quantity) || 1,
-          ...(!isGuest ? { image_url: editData.image_url || null } : {}),
-          current_price: editData.current_price ? Number(editData.current_price) : null,
-        }),
-      });
-      if (!res.ok) {
-        // 失敗時はフォームを閉じず、APIのエラーメッセージがあればそれを優先表示する
-        const data = await res.json().catch(() => null);
-        setSaveError(data?.error || '保存に失敗しました。もう一度お試しください');
-        return;
+      const payload = {
+        name: editData.name || item.name,
+        url: editData.url || item.url,
+        priority: editData.priority,
+        planned_purchase_date: editData.planned_purchase_date || null,
+        notes: editData.notes || null,
+        target_price: editData.target_price ? Number(editData.target_price) : null,
+        target_currency: editData.target_currency,
+        category_id: editData.category_id ? Number(editData.category_id) : null,
+        comparison_group_id: editData.comparison_group_id ? Number(editData.comparison_group_id) : null,
+        quantity: Number(editData.quantity) || 1,
+        ...(!isGuest ? { image_url: editData.image_url || null } : {}),
+        current_price: editData.current_price ? Number(editData.current_price) : null,
+      };
+      const writes = groupMemberIds && groupMemberIds.length >= 2
+        ? photoGroupSaveWrites(groupMemberIds, item.id, payload)
+        : [{ id: item.id, body: payload }];
+      const faceFirst = [
+        ...writes.filter((write) => write.id === item.id),
+        ...writes.filter((write) => write.id !== item.id),
+      ];
+      for (const write of faceFirst) {
+        const res = await apiFetch(`/api/items/${write.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(write.body),
+        });
+        if (!res.ok) {
+          // 失敗時はフォームを閉じず、APIのエラーメッセージがあればそれを優先表示する
+          const data = await res.json().catch(() => null);
+          setSaveError(data?.error || '保存に失敗しました。もう一度お試しください');
+          return;
+        }
       }
       // 成功時のみフォームを閉じる
       setEditing(false);

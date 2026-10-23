@@ -2,6 +2,7 @@
 
 import { apiFetch } from '@/lib/api-fetch';
 import { formatYen, type WishlistRow } from '@/lib/capture/list-card';
+import { photoGroupDeleteIds } from '@/lib/capture/photo-group-actions';
 import { formatListTimestamp, offersPriceRefresh, photoImageUrl, shopBadgeText } from '@/lib/capture/photo-card-view';
 import { useState } from 'react';
 import SortableItemCard from './SortableItemCard';
@@ -13,7 +14,6 @@ export default function PhotoGroupCard({
   card,
   item,
   onUpdate,
-  onDelete,
   categories,
   comparisonGroups,
   isDragEnabled,
@@ -24,7 +24,6 @@ export default function PhotoGroupCard({
   card: PhotoCard;
   item: Item;
   onUpdate: () => void;
-  onDelete: (id: number) => void;
   categories?: Category[];
   comparisonGroups?: ComparisonGroup[];
   isDragEnabled?: boolean;
@@ -34,6 +33,13 @@ export default function PhotoGroupCard({
 }) {
   const [open, setOpen] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const memberIds = card.shops.map((shop) => shop.itemId);
+
+  async function deleteGroup(faceId: number) {
+    const ids = photoGroupDeleteIds(memberIds, faceId);
+    await Promise.all(ids.map((id) => apiFetch(`/api/items/${id}`, { method: 'DELETE' })));
+    onUpdate();
+  }
   const low = card.minPrice == null ? '---' : formatYen(card.minPrice);
   const displayImageUrl = photoImageUrl(item.source, item.image_url);
 
@@ -112,7 +118,8 @@ export default function PhotoGroupCard({
         heading={card.name}
         extra={shops}
         onUpdate={onUpdate}
-        onDelete={onDelete}
+        onDelete={(id) => { void deleteGroup(id); }}
+        groupMemberIds={memberIds}
         categories={categories}
         comparisonGroups={comparisonGroups}
         isLowestPrice={item.current_price != null && item.current_price === card.minPrice}
