@@ -14,15 +14,12 @@ export const MIN_BYTES = {
   chromium: 50_000_000,
   'chromium-headless-shell': 20_000_000,
   ffmpeg: 500_000,
-  // 起動スクリプト。本体は同梱の libwebkitgtk で、--version が通れば揃っている。
-  webkit: 1_000,
 };
 
 const EXECUTABLES = {
   chromium: ['chrome-linux64', 'chrome'],
   'chromium-headless-shell': ['chrome-headless-shell-linux64', 'chrome-headless-shell'],
   ffmpeg: ['ffmpeg-linux'],
-  webkit: ['pw_run.sh'],
 };
 
 export function parseInstallLocations(stdout) {
@@ -39,7 +36,6 @@ export function browserKind(location) {
   if (base.startsWith('chromium_headless_shell-')) return 'chromium-headless-shell';
   if (base.startsWith('chromium-')) return 'chromium';
   if (base.startsWith('ffmpeg-')) return 'ffmpeg';
-  if (base.startsWith('webkit-')) return 'webkit';
   return null;
 }
 
@@ -99,7 +95,7 @@ function liveIo() {
 
 function main() {
   const playwright = join(root, 'node_modules', '.bin', 'playwright');
-  const dry = spawnSync(playwright, ['install', 'chromium', 'webkit', '--dry-run'], {
+  const dry = spawnSync(playwright, ['install', 'chromium', '--dry-run'], {
     cwd: root,
     encoding: 'utf8',
   });

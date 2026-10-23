@@ -184,6 +184,7 @@ export function CapturePhotoControls({ pick }: { pick: CapturePhotoPick }) {
       <button
         ref={buttonRef}
         type="button"
+        data-pointer={coarse === null ? 'pending' : coarse ? 'coarse' : 'fine'}
         aria-haspopup={menu ? 'menu' : undefined}
         aria-expanded={menu ? open : undefined}
         aria-controls={menu ? menuId : undefined}

@@ -17,20 +17,20 @@ function isNotFound(error: unknown) {
 }
 
 function withEnv(env: { NODE_ENV?: string; CAPTURE_TEST_HOOKS?: string }, run: () => void) {
+  const current = process.env as { NODE_ENV?: string; CAPTURE_TEST_HOOKS?: string };
   const previous = {
-    NODE_ENV: process.env.NODE_ENV,
-    CAPTURE_TEST_HOOKS: process.env.CAPTURE_TEST_HOOKS,
+    NODE_ENV: current.NODE_ENV,
+    CAPTURE_TEST_HOOKS: current.CAPTURE_TEST_HOOKS,
   };
-  process.env.NODE_ENV = env.NODE_ENV;
-  if (env.CAPTURE_TEST_HOOKS === undefined) delete process.env.CAPTURE_TEST_HOOKS;
-  else process.env.CAPTURE_TEST_HOOKS = env.CAPTURE_TEST_HOOKS;
+  current.NODE_ENV = env.NODE_ENV;
+  if (env.CAPTURE_TEST_HOOKS === undefined) delete current.CAPTURE_TEST_HOOKS;
+  else current.CAPTURE_TEST_HOOKS = env.CAPTURE_TEST_HOOKS;
   try {
     run();
   } finally {
-    if (previous.NODE_ENV === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = previous.NODE_ENV;
-    if (previous.CAPTURE_TEST_HOOKS === undefined) delete process.env.CAPTURE_TEST_HOOKS;
-    else process.env.CAPTURE_TEST_HOOKS = previous.CAPTURE_TEST_HOOKS;
+    current.NODE_ENV = previous.NODE_ENV;
+    if (previous.CAPTURE_TEST_HOOKS === undefined) delete current.CAPTURE_TEST_HOOKS;
+    else current.CAPTURE_TEST_HOOKS = previous.CAPTURE_TEST_HOOKS;
   }
 }
 
