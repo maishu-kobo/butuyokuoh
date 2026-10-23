@@ -103,8 +103,14 @@ function registerLocked(db: Database.Database, userId: number, ids: number[], no
 
   const captureId = loaded.rows[0].capture_id;
   const capture = db.prepare(
-    'SELECT id, estimated_name, comparison_group_id, status FROM captures WHERE id = ? AND user_id = ?',
-  ).get(captureId, userId) as { id: number; estimated_name: string | null; comparison_group_id: number | null; status: string } | undefined;
+    'SELECT id, estimated_name, comparison_group_id, status, registered_item_id FROM captures WHERE id = ? AND user_id = ?',
+  ).get(captureId, userId) as {
+    id: number;
+    estimated_name: string | null;
+    comparison_group_id: number | null;
+    status: string;
+    registered_item_id: number | null;
+  } | undefined;
   if (!capture) return missing();
   if (capture.comparison_group_id != null) {
     return {
@@ -120,7 +126,7 @@ function registerLocked(db: Database.Database, userId: number, ids: number[], no
       ok: true,
       created: false,
       comparisonGroupId: null,
-      itemIds: plainItemIds(db, userId, capture.id),
+      itemIds: plainItemIds(db, userId, capture.id, capture.registered_item_id),
       skipped: [],
     };
   }
@@ -152,9 +158,9 @@ function registerLocked(db: Database.Database, userId: number, ids: number[], no
     const itemId = insertCandidate(db, userId, fresh[0], null, 0);
     const linked = db.prepare(
       `UPDATE captures
-       SET status = 'registered'
+       SET status = 'registered', registered_item_id = ?
        WHERE id = ? AND user_id = ? AND comparison_group_id IS NULL AND status != 'registered'`,
-    ).run(capture.id, userId);
+    ).run(itemId, capture.id, userId);
     if (linked.changes !== 1) {
       throw new Error('capture was already registered');
     }
@@ -232,13 +238,24 @@ function insertCandidate(
   return itemId;
 }
 
-function plainItemIds(db: Database.Database, userId: number, captureId: number): number[] {
-  return (db.prepare(
+function plainItemIds(
+  db: Database.Database,
+  userId: number,
+  captureId: number,
+  registeredItemId: number | null,
+): number[] {
+  if (registeredItemId != null) {
+    const row = db.prepare('SELECT id FROM items WHERE id = ? AND user_id = ?').get(registeredItemId, userId) as { id: number } | undefined;
+    return row ? [row.id] : [];
+  }
+  // 商品 id を残す前の行は、候補 URL に一致する商品が1件のときだけそれを返す。
+  const matched = (db.prepare(
     `SELECT id FROM items
      WHERE user_id = ?
        AND url IN (SELECT url FROM capture_candidates WHERE user_id = ? AND capture_id = ?)
      ORDER BY id`,
   ).all(userId, userId, captureId) as { id: number }[]).map((row) => row.id);
+  return matched.length === 1 ? matched : [];
 }
 
 function groupItemIds(db: Database.Database, userId: number, groupId: number): number[] {

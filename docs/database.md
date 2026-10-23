@@ -216,7 +216,7 @@ CREATE TABLE user_notification_settings (
 
 ### captures
 
-撮影1回。推定した商品名、JAN、状態、作った比較グループ。写真の列は無い。
+撮影1回。推定した商品名、JAN、状態、作った比較グループ。1件だけ登録したときは `registered_item_id` にその商品を残す。比較グループのときは NULL。写真の列は無い。
 
 ### capture_candidates
 

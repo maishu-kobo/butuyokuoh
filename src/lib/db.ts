@@ -22,6 +22,7 @@ const CAPTURE_SCHEMA_SQL = `
     jan TEXT,
     status TEXT NOT NULL DEFAULT 'open',
     comparison_group_id INTEGER,
+    registered_item_id INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (comparison_group_id) REFERENCES comparison_groups(id)
@@ -241,6 +242,8 @@ function migrateDb(db: Database.Database) {
   addColumnIfNotExists(db, 'comparison_groups', 'origin', 'TEXT');
   addColumnIfNotExists(db, 'comparison_groups', 'capture_id', 'INTEGER');
   addColumnIfNotExists(db, 'comparison_groups', 'budget_item_id', 'INTEGER');
+  // 1件だけ登録した商品。比較グループのときは NULL。
+  addColumnIfNotExists(db, 'captures', 'registered_item_id', 'INTEGER');
   addColumnIfNotExists(db, 'items', 'source_item_code', 'TEXT');
   addColumnIfNotExists(db, 'items', 'price_fetched_at', 'TEXT');
   db.exec(CAPTURE_SCHEMA_SQL);
