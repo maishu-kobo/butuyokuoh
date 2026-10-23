@@ -8,6 +8,7 @@ import {
   type SearchQuery,
   type SiteSearch,
 } from './contract';
+import { canonicalCandidateImageUrl } from './image-hosts';
 
 export const RAKUTEN_SEARCH_TIMEOUT_MS = 6000;
 export const RAKUTEN_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701';
@@ -305,7 +306,7 @@ function firstImage(value: unknown): string | null {
         ? (entry as { imageUrl?: unknown }).imageUrl
         : null;
     if (typeof raw !== 'string') continue;
-    const image = canonicalItemUrl(raw);
+    const image = canonicalCandidateImageUrl('rakuten', raw);
     if (image) return image;
   }
   return null;

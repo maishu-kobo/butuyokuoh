@@ -20,6 +20,7 @@ interface SortableItemCardProps {
   onToggleSelect?: (id: number) => void;
   heading?: string;
   extra?: ReactNode;
+  displayImageUrl?: string | null;
 }
 
 export default function SortableItemCard({
@@ -35,6 +36,7 @@ export default function SortableItemCard({
   onToggleSelect,
   heading,
   extra,
+  displayImageUrl,
 }: SortableItemCardProps) {
   const {
     attributes,
@@ -106,6 +108,7 @@ export default function SortableItemCard({
           isLowestPrice={isLowestPrice}
           heading={heading}
           extra={extra}
+          displayImageUrl={displayImageUrl}
         />
       </div>
     </div>

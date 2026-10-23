@@ -231,3 +231,96 @@ test('budget rows for photo shops are flat on a phone and a desktop', async ({ p
   expect(wide).toBeLessThanOrEqual(1);
   expect(hydration).toEqual([]);
 });
+
+test('a photo search keeps the provider thumbnail on a single item and on a multi-shop card', async ({ page }) => {
+  const origin = 'http://localhost:3107';
+  const registered = await page.request.post('/api/auth/register', {
+    headers: { Origin: origin },
+    data: { email: `thumb-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`, password: 'test-password' },
+  });
+  expect(registered.ok()).toBeTruthy();
+
+  const singleSearch = await page.request.post('/api/capture/search', {
+    headers: { Origin: origin },
+    data: { name: '写真のペン' },
+  });
+  expect(singleSearch.ok()).toBeTruthy();
+  const singleBody = await singleSearch.json();
+  const rakuten = singleBody.candidates.find((item: { site: string }) => item.site === 'rakuten');
+  expect(rakuten.imageUrl).toBe('https://thumbnail.image.rakuten.co.jp/fake-pen.jpg');
+  const created = await page.request.post('/api/capture/register', {
+    headers: { Origin: origin },
+    data: { candidateIds: [rakuten.candidateId] },
+  });
+  expect(created.status()).toBe(201);
+
+  const multiSearch = await page.request.post('/api/capture/search', {
+    headers: { Origin: origin },
+    data: { name: '比較のペン' },
+  });
+  expect(multiSearch.ok()).toBeTruthy();
+  const multiBody = await multiSearch.json();
+  const ids = multiBody.candidates.map((item: { candidateId: number }) => item.candidateId);
+  expect(ids).toHaveLength(2);
+  const grouped = await page.request.post('/api/capture/register', {
+    headers: { Origin: origin },
+    data: { candidateIds: ids },
+  });
+  expect(grouped.status()).toBe(201);
+
+  await page.goto('/');
+  const single = page.locator('.space-y-3 > div').filter({ has: page.getByRole('heading', { name: '写真のペン', exact: true }) });
+  await expect(single.getByRole('img', { name: '写真のペン' })).toHaveAttribute('src', 'https://thumbnail.image.rakuten.co.jp/fake-pen.jpg');
+  const photo = page.getByTestId('photo-group-card');
+  await expect(photo.getByRole('heading', { name: '比較のペン', exact: true })).toBeVisible();
+  await expect(photo.getByRole('img', { name: '比較のペン' })).toHaveAttribute('src', 'https://item-shopping.c.yimg.jp/i/g/fake-pen');
+});
+
+test('editing a photo card keeps a stored image that the card does not display', async ({ page }) => {
+  const registered = await page.request.post('/api/auth/register', {
+    data: { email: `keep-image-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`, password: 'test-password' },
+  });
+  expect(registered.ok()).toBeTruthy();
+  const userId = (await (await page.request.get('/api/auth/me')).json()).user.id as number;
+  const db = new Database(process.env.E2E_DB_PATH!);
+  db.pragma('busy_timeout = 5000');
+  const upload = 'https://uploads.example.test/mine.jpg';
+  let faceId = 0;
+  try {
+    const groupId = Number(db.prepare(
+      "INSERT INTO comparison_groups (user_id, name, origin) VALUES (?, '画像のグループ', 'photo')",
+    ).run(userId).lastInsertRowid);
+    const insert = db.prepare(
+      `INSERT INTO items (user_id, name, url, image_url, current_price, source, source_name, comparison_group_id, priority)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 3)`,
+    );
+    faceId = Number(insert.run(
+      userId, '安い画像', `https://store.shopping.yahoo.co.jp/shop/img-${userId}`, upload, 100, 'yahoo', 'Yahoo!ショッピング', groupId,
+    ).lastInsertRowid);
+    insert.run(
+      userId, '高い画像', `https://item.rakuten.co.jp/shop/img-${userId}`, 'https://evil.example/case.jpg', 900, 'rakuten', '楽天', groupId,
+    );
+  } finally {
+    db.close();
+  }
+
+  await page.goto('/');
+  const photo = page.getByTestId('photo-group-card');
+  await expect(photo.getByRole('heading', { name: '画像のグループ', exact: true })).toBeVisible();
+  await expect(photo.locator(`img[src="${upload}"]`)).toHaveCount(0);
+  await photo.getByRole('button', { name: '編集' }).click();
+  await photo.getByPlaceholder('メモを入力...').fill('メモだけ');
+  await photo.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(photo.getByPlaceholder('メモを入力...')).toHaveCount(0);
+
+  const check = new Database(process.env.E2E_DB_PATH!);
+  check.pragma('busy_timeout = 5000');
+  try {
+    expect(check.prepare('SELECT image_url, notes FROM items WHERE id = ?').get(faceId)).toEqual({
+      image_url: upload,
+      notes: 'メモだけ',
+    });
+  } finally {
+    check.close();
+  }
+});

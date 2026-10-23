@@ -10,6 +10,7 @@ import {
   type SearchQuery,
   type SiteSearch,
 } from './contract';
+import { canonicalCandidateImageUrl } from './image-hosts';
 
 const YAHOO_ITEM_SEARCH = 'https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch';
 const TIMEOUT_MS = 6_000;
@@ -179,7 +180,7 @@ function imageUrl(hit: Record<string, unknown>): string | undefined {
   const record = image as { medium?: unknown; small?: unknown };
   for (const candidate of [record.medium, record.small]) {
     if (typeof candidate !== 'string') continue;
-    const safe = canonicalProductUrl(candidate);
+    const safe = canonicalCandidateImageUrl('yahoo', candidate);
     if (safe) return safe;
   }
   return undefined;

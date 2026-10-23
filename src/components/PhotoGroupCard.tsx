@@ -35,7 +35,7 @@ export default function PhotoGroupCard({
   const [open, setOpen] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const low = card.minPrice == null ? '---' : formatYen(card.minPrice);
-  const shown: Item = { ...item, image_url: photoImageUrl(item.source, item.image_url) };
+  const displayImageUrl = photoImageUrl(item.source, item.image_url);
 
   async function markPurchased(itemId: number) {
     setBusyId(itemId);
@@ -107,7 +107,8 @@ export default function PhotoGroupCard({
   return (
     <div data-testid="photo-group-card">
       <SortableItemCard
-        item={shown}
+        item={item}
+        displayImageUrl={displayImageUrl}
         heading={card.name}
         extra={shops}
         onUpdate={onUpdate}

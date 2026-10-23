@@ -32,9 +32,10 @@ interface ItemCardProps {
   isLowestPrice?: boolean;
   heading?: string;
   extra?: ReactNode;
+  displayImageUrl?: string | null;
 }
 
-export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra }: ItemCardProps) {
+export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, displayImageUrl }: ItemCardProps) {
   const { isGuest } = useAuth();
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -198,15 +199,16 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     yahoo: 'Yahoo!ショッピング',
     other: 'その他',
   };
+  const shownImage = displayImageUrl !== undefined ? displayImageUrl : item.image_url;
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
       <div className="flex">
         {/* 画像 */}
         <div className="w-32 h-32 flex-shrink-0 bg-gray-100 dark:bg-slate-700">
-          {item.image_url ? (
+          {shownImage ? (
             <img
-              src={item.image_url}
+              src={shownImage}
               alt={heading || item.name}
               loading="lazy"
               decoding="async"
