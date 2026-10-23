@@ -136,7 +136,8 @@ test('an upload body over the limit is cut off before the rest is read', async (
     assert.ok(producedAtCancel >= 0);
     assert.ok(producedAtCancel < total);
     assert.ok(produced < total);
-    assert.ok(produced <= BODY_CEILING + chunkSize);
+    // 読み取り側は次の1チャンクを先に積む。超えた塊とその次までで止まり、残りは読まない。
+    assert.ok(produced <= BODY_CEILING + chunkSize * 2);
     assert.equal(response.status, 400);
     assert.equal(json.error, 'ファイルサイズは5MB以下にしてください');
     assert.deepEqual(snapshotUploads(), before);
@@ -321,10 +322,15 @@ test('gif and avif uploads are still stored as those formats', async () => {
     const pixel = { create: { width: 8, height: 8, channels: 3, background: { r: 20, g: 30, b: 40 } } } as const;
     const gif = await sharp(pixel).gif().toBuffer();
     const avif = await sharp(pixel).avif().toBuffer();
+    const red = await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 255, g: 0, b: 0 } } }).png().toBuffer();
+    const blue = await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 0, g: 0, b: 255 } } }).png().toBuffer();
+    const animated = await sharp([red, blue], { join: { animated: true } }).gif().toBuffer();
     const gifUpload = await postUpload(gif, 'move.gif', 'image/gif');
     const avifUpload = await postUpload(avif, 'still.avif', 'image/avif');
+    const animatedUpload = await postUpload(animated, 'frames.gif', 'image/gif');
     assert.equal(gifUpload.status, 200);
     assert.equal(avifUpload.status, 200);
+    assert.equal(animatedUpload.status, 200);
     assert.equal(gifUpload.json.url?.endsWith('.gif'), true);
     assert.equal(avifUpload.json.url?.endsWith('.avif'), true);
     const gifSaved = storedFile(gifUpload.json.url || '');
@@ -334,9 +340,11 @@ test('gif and avif uploads are still stored as those formats', async () => {
     assert.equal(['avif', 'avis'].includes(avifSaved.subarray(8, 12).toString('ascii')), true);
     const gifMeta = await sharp(gifSaved).metadata();
     const avifMeta = await sharp(avifSaved).metadata();
+    const animatedMeta = await sharp(storedFile(animatedUpload.json.url || ''), { animated: true }).metadata();
     assert.equal(gifMeta.format, 'gif');
     assert.equal(gifMeta.width, 8);
     assert.equal(avifMeta.width, 8);
+    assert.equal(animatedMeta.pages, 2);
   } finally {
     removeNewUploads(before);
   }
