@@ -765,7 +765,6 @@ export default function Home() {
                         card={row}
                         item={filteredItems.find((entry) => entry.id === photoFaceItemId(row))!}
                         onUpdate={refreshPhotoCard}
-                        onDelete={handleDelete}
                         categories={categories}
                         comparisonGroups={groups}
                         isDragEnabled={isDragEnabled && !selectionMode}
