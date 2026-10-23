@@ -109,7 +109,7 @@ openssl rand -base64 32
 | `GOOGLE_CLIENT_SECRET` | 上と同じ。同意画面が「テスト中」なら、自分の Gmail をテストユーザーに足す |
 | `RAKUTEN_APP_ID` | 無くてよい。楽天を使うときだけ、`RAKUTEN_ACCESS_KEY` と両方 |
 | `RAKUTEN_ACCESS_KEY` | 無くてよい。URL には付かない |
-| `RAKUTEN_AFFILIATE_ID` | 無くてよい。楽天の検索に付けると、返ってくる商品リンクがアフィリエイトリンクになる。空なら今のまま。値はログにも画面にも出さない |
+| `RAKUTEN_AFFILIATE_ID` | 無くてよい。楽天の検索に付けると、返ってくる商品リンクがアフィリエイトリンクになる。空なら今のまま。値はログには出さない。商品リンクの URL には入ることがある |
 | `AMAZON_ASSOCIATE_TAG` | 無くてよい。Amazon の検索リンクに付けるタグ。商品の取得には使わない |
 | `CAPTURE_SECRETS_FILE` | 上の7つの鍵を、リポジトリの外のファイルに置くとき |
 | `JWT_SECRET` | 必須。共有と `tailscale serve` の前に、`openssl rand -base64 32` で自分で作る。未設定のフォールバックのまま公開しない。本番の値は置かない |

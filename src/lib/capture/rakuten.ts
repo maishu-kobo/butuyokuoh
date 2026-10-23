@@ -10,6 +10,7 @@ import {
   type SiteSearch,
 } from './contract';
 import { canonicalCandidateImageUrl } from './image-hosts';
+import { canonicalRakutenAffiliateUrl, canonicalRakutenProductUrl } from './rakuten-link';
 
 export const RAKUTEN_SEARCH_TIMEOUT_MS = 6000;
 export const RAKUTEN_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701';
@@ -183,16 +184,7 @@ function safeReferer(value: string | null | undefined): string | null | false {
 }
 
 function canonicalItemUrl(raw: string): string | null {
-  if (/[\u0000-\u0020\\]/.test(raw)) return null;
-  let parsed: URL;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port) return null;
-  if (parsed.hostname !== 'item.rakuten.co.jp' && parsed.hostname !== 'hb.afl.rakuten.co.jp') return null;
-  return `${parsed.origin}${parsed.pathname}${parsed.search}`;
+  return canonicalRakutenProductUrl(raw) ?? canonicalRakutenAffiliateUrl(raw);
 }
 
 function rakutenKeyword(query: SearchQuery): string {

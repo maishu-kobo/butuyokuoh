@@ -3,6 +3,7 @@ import { parseProductHtml } from './product-html';
 import { readHtmlResponse } from './html-encoding';
 import puppeteer from 'puppeteer';
 import { validateAndSanitizeUrl, sanitizeGenericUrl } from './url-validator';
+import { canonicalRakutenAffiliateUrl, rakutenProductIdentity } from './capture/rakuten-link';
 import { BlockedTargetError, fetchPublicMember, HttpError, resolvedPublicAddress, type MemberFetchDeps } from './member-fetch';
 
 export { HttpError };
@@ -182,21 +183,7 @@ function rakutenAffiliateProductUrl(value: string): string | null | undefined {
     return undefined;
   }
   if (parsed.hostname !== 'hb.afl.rakuten.co.jp') return undefined;
-  if (/[\u0000-\u0020\\]/.test(value) || parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port) {
-    return null;
-  }
-  const pc = parsed.searchParams.get('pc');
-  if (!pc || /[\u0000-\u0020\\]/.test(pc)) return null;
-  let product: URL;
-  try {
-    product = new URL(pc);
-  } catch {
-    return null;
-  }
-  if (product.protocol !== 'https:' || product.username || product.password || product.port || product.hostname !== 'item.rakuten.co.jp') {
-    return null;
-  }
-  return `${product.origin}${product.pathname}${product.search}`;
+  return canonicalRakutenAffiliateUrl(value) ? rakutenProductIdentity(value) : null;
 }
 
 export async function scrapeUrl(url: string, deps?: MemberFetchDeps): Promise<ScrapedItem> {
