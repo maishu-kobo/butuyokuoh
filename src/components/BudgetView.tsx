@@ -41,6 +41,8 @@ export default function BudgetView() {
   const [allItems, setAllItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [selectionError, setSelectionError] = useState('');
+  const [savingSelection, setSavingSelection] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const fetchBudget = async () => {
@@ -122,22 +124,35 @@ export default function BudgetView() {
     setSelectedIds(newSet);
   };
 
-  const chooseCandidate = async (groupId: number, itemId: number) => {
-    const response = await apiFetch(`/api/comparison-groups/${groupId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ budgetItemId: itemId }),
-    });
-    if (response.ok) await fetchBudget();
+  const chooseCandidate = async (groupId: number, itemId: number | null) => {
+    if (savingSelection) return;
+    setSavingSelection(true);
+    setSelectionError('');
+    try {
+      const response = await apiFetch(`/api/comparison-groups/${groupId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budgetItemId: itemId }),
+      }, { notifyError: false });
+      if (!response.ok) throw new Error('Budget selection failed');
+      await fetchBudget();
+    } catch {
+      setSelectionError('合計に数える商品の設定を保存できませんでした。もう一度お試しください。');
+    } finally {
+      setSavingSelection(false);
+    }
   };
 
   const renderBudgetItems = (entries: Item[]) => budgetRows(entries, allItems).map(({ item, chooseGroupId }) => {
     const isSelected = selectedIds.has(item.id);
+    const hasOverride = item.group_origin === 'photo' && item.budget_selected_item_id != null;
+    const firstInGroup = allItems.find((entry) => entry.comparison_group_id === item.comparison_group_id);
+    const showReset = hasOverride && firstInGroup?.id === item.id;
     return (
       <div
         key={item.id}
         onClick={() => toggleSelect(item.id)}
-        className={`flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
+        className={`flex flex-wrap items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
           isSelected ? 'bg-blue-50' : 'hover:bg-gray-50 dark:bg-slate-700'
         }`}
       >
@@ -148,6 +163,7 @@ export default function BudgetView() {
           <button
             type="button"
             aria-label="合計に数える"
+            disabled={savingSelection}
             aria-pressed={item.countsInTotal === true}
             onClick={(event) => {
               event.stopPropagation();
@@ -173,6 +189,22 @@ export default function BudgetView() {
           item={item}
           className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}
         />
+        {showReset && (
+          <div className="flex basis-full justify-end">
+          <button
+            type="button"
+            disabled={savingSelection}
+            aria-label={`${item.comparison_group_name || item.name}を自動（最安）に戻す`}
+            onClick={(event) => {
+              event.stopPropagation();
+              void chooseCandidate(item.comparison_group_id!, null);
+            }}
+            className="min-h-[24px] shrink-0 rounded border px-2 py-1 text-xs text-gray-700 dark:text-gray-200 disabled:opacity-50"
+          >
+            自動（最安）に戻す
+          </button>
+          </div>
+        )}
       </div>
     );
   });
@@ -213,6 +245,7 @@ export default function BudgetView() {
 
   return (
     <div className="space-y-4">
+      {selectionError && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{selectionError}</p>}
       {/* 合計カード */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg p-4">
