@@ -186,6 +186,47 @@ test('a timed-out HEIC decode keeps its concurrency slot until the decode settle
   }
 });
 
+test('the decode timeout starts only after a photo slot is acquired', async () => {
+  const photo = await import('../src/lib/capture/photo') as typeof import('../src/lib/capture/photo') & {
+    runPhotoWithinSlot?: <T>(task: () => Promise<T>, timeoutMs: number) => Promise<T>;
+  };
+  assert.equal(typeof photo.runPhotoWithinSlot, 'function');
+  const run = photo.runPhotoWithinSlot;
+  if (!run) return;
+  let releaseFirst = () => {};
+  let releaseSecond = () => {};
+  const first = withPhotoSlot(() => new Promise<void>(resolve => {
+    releaseFirst = resolve;
+  }));
+  const second = withPhotoSlot(() => new Promise<void>(resolve => {
+    releaseSecond = resolve;
+  }));
+  let started = false;
+  const third = run(async () => {
+    started = true;
+    return 'ready';
+  }, 40);
+  let rejected = false;
+  third.then(() => undefined, () => {
+    rejected = true;
+  });
+  try {
+    await new Promise(resolve => setTimeout(resolve, 80));
+    assert.equal(started, false);
+    assert.equal(rejected, false);
+    releaseFirst();
+    await first;
+    assert.equal(await third, 'ready');
+    assert.equal(started, true);
+  } finally {
+    releaseFirst();
+    releaseSecond();
+    await first.catch(() => undefined);
+    await second.catch(() => undefined);
+    await third.catch(() => undefined);
+  }
+});
+
 test('decodeCapturePhoto still refuses HEIC so the model is only given JPEG', () => {
   const result = decodeCapturePhoto([{ mediaType: 'image/heic', bytes: heic }]);
   assert.equal(result.ok, false);
