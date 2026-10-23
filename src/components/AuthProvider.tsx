@@ -155,8 +155,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login: (email, password) => authenticate('/api/auth/login', { email, password }),
       register: (email, password, name) => authenticate('/api/auth/register', { email, password, name }), logout }}>
       {notice && <div role="alert" className="bg-amber-100 text-amber-950 p-3 flex justify-between gap-4"><span>{notice}</span><button onClick={() => setNotice('')} aria-label="お知らせを閉じる">×</button></div>}
-      {/* 読み込み中は中身を出さない。水和の回帰ページだけは、サーバHTMLにピッカーを載せる。 */}
-      {(loading && pathname !== '/capture-hydration') ? <div className="p-12 text-center" role="status">読み込み中...</div> :
+      {/* 読み込み中は中身を出さない。水和の回帰と、ログイン前に読む下書きはサーバHTMLに本文を載せる。 */}
+      {(loading && pathname !== '/capture-hydration' && pathname !== '/privacy' && pathname !== '/terms') ? <div className="p-12 text-center" role="status">読み込み中...</div> :
         <Fragment key={user ? `${user.account_type}:${user.id}` : 'anonymous'}>{children}</Fragment>}
     </AuthContext.Provider>
   );
