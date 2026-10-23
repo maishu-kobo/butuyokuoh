@@ -3,7 +3,7 @@
 import { apiFetch } from '@/lib/api-fetch';
 import { formatYen, type WishlistRow } from '@/lib/capture/list-card';
 import { photoGroupDeleteIds, photoShopDeleteIds } from '@/lib/capture/photo-group-actions';
-import { formatListTimestamp, offersPriceRefresh, photoImageUrl, shopBadgeText } from '@/lib/capture/photo-card-view';
+import { formatListTimestamp, offersPriceRefresh, photoImageUrl, shopBadgeText, uniqueShopTags } from '@/lib/capture/photo-card-view';
 import { useState } from 'react';
 import SortableItemCard from './SortableItemCard';
 import type { Category, ComparisonGroup, Item } from '@/types';
@@ -20,6 +20,7 @@ export default function PhotoGroupCard({
   selectionMode,
   isSelected,
   onToggleSelect,
+  shopsOpen = false,
 }: {
   card: PhotoCard;
   item: Item;
@@ -30,8 +31,9 @@ export default function PhotoGroupCard({
   selectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (id: number) => void;
+  shopsOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(shopsOpen);
   const [busyId, setBusyId] = useState<number | null>(null);
   const memberIds = card.shops.map((shop) => shop.itemId);
 
@@ -70,25 +72,27 @@ export default function PhotoGroupCard({
   }
 
   const shops = (
-    <div className="border-t border-gray-100 dark:border-slate-700 px-4 py-3 text-sm">
-      <p className="text-gray-900 dark:text-gray-100" data-testid="photo-group-low">最安 {low}</p>
-      <p className="text-gray-600 dark:text-gray-300" data-testid="photo-group-range">{card.rangeText}</p>
-      <p className="text-gray-500 dark:text-gray-400">{card.shops.length}件</p>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-label={open ? `${card.name}のショップを閉じる` : `${card.name}のショップを見る`}
-        onClick={() => setOpen((current) => !current)}
-        className="mt-2 min-h-[24px] min-w-[24px] px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-md text-gray-700 dark:text-gray-200"
-      >
-        {open ? 'ショップを閉じる' : 'ショップを見る'}
-      </button>
+    <>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-gray-600 dark:text-gray-300">
+        <span data-testid="photo-group-low">最安 {low}</span>
+        <span data-testid="photo-group-range">{card.rangeText}</span>
+        <span>{card.shops.length}件</span>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-label={open ? `${card.name}のショップを閉じる` : `${card.name}のショップを見る`}
+          onClick={() => setOpen((current) => !current)}
+          className="inline-flex min-h-[24px] min-w-[24px] items-center text-blue-600 hover:text-blue-700"
+        >
+          {open ? 'ショップを閉じる' : 'ショップを見る'}
+        </button>
+      </div>
       {open && (
-        <ul className="mt-3 space-y-3">
+        <ul className="mt-2 space-y-3 text-sm" data-testid="photo-shop-list">
           {card.shops.map((shop) => {
             const when = formatListTimestamp(shop.fetchedAt);
             return (
-              <li key={shop.itemId} className="border-t border-gray-100 dark:border-slate-700 pt-3">
+              <li key={shop.itemId} className="border-t border-gray-100 pt-3 dark:border-slate-700">
                 <p className="font-medium text-gray-900 dark:text-gray-100">{shop.name}</p>
                 <p className="flex flex-wrap gap-2 text-gray-600 dark:text-gray-300">
                   <span>{shopBadgeText(shop.site, shop.shopName)}</span>
@@ -128,7 +132,7 @@ export default function PhotoGroupCard({
           })}
         </ul>
       )}
-    </div>
+    </>
   );
 
   return (
@@ -137,7 +141,7 @@ export default function PhotoGroupCard({
         item={item}
         displayImageUrl={displayImageUrl}
         heading={card.name}
-        extra={shops}
+        info={shops}
         onUpdate={onUpdate}
         onDelete={(id) => { void deleteGroup(id); }}
         groupMemberIds={memberIds}
@@ -149,6 +153,8 @@ export default function PhotoGroupCard({
         isSelected={isSelected}
         onToggleSelect={onToggleSelect}
         offerPriceRefresh={offersPriceRefresh(card.shops.length)}
+        shopCount={card.shops.length}
+        shopTags={card.shops.length >= 2 ? uniqueShopTags(card.shops) : undefined}
       />
     </div>
   );

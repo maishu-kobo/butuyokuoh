@@ -20,9 +20,12 @@ interface SortableItemCardProps {
   onToggleSelect?: (id: number) => void;
   heading?: string;
   extra?: ReactNode;
+  info?: ReactNode;
   displayImageUrl?: string | null;
   groupMemberIds?: readonly number[];
   offerPriceRefresh?: boolean;
+  shopCount?: number;
+  shopTags?: readonly { label: string; source: string }[];
 }
 
 export default function SortableItemCard({
@@ -38,9 +41,12 @@ export default function SortableItemCard({
   onToggleSelect,
   heading,
   extra,
+  info,
   displayImageUrl,
   groupMemberIds,
   offerPriceRefresh,
+  shopCount,
+  shopTags,
 }: SortableItemCardProps) {
   const {
     attributes,
@@ -112,9 +118,12 @@ export default function SortableItemCard({
           isLowestPrice={isLowestPrice}
           heading={heading}
           extra={extra}
+          info={info}
           displayImageUrl={displayImageUrl}
           groupMemberIds={groupMemberIds}
           offerPriceRefresh={offerPriceRefresh}
+          shopCount={shopCount}
+          shopTags={shopTags}
         />
       </div>
     </div>

@@ -51,6 +51,11 @@ test('a photo group is one list card, and hand-added items stay separate', async
   await expect(milk.getByTestId('photo-group-low')).toHaveText('最安 ¥500');
   await expect(milk.getByTestId('photo-group-range')).toHaveText('¥500〜¥1,200');
   await expect(milk.getByText('3件')).toBeVisible();
+  const lowBox = await milk.getByTestId('photo-group-low').boundingBox();
+  const milkAction = await milk.getByRole('button', { name: '価格推移' }).boundingBox();
+  expect(lowBox).not.toBeNull();
+  expect(milkAction).not.toBeNull();
+  expect(lowBox!.y + lowBox!.height).toBeLessThanOrEqual(milkAction!.y + 1);
 
   const one = page.locator('.space-y-3 > div').filter({ has: page.getByRole('heading', { name: '単品ショップ', exact: true }) });
   await expect(one.getByTestId('photo-group-card')).toHaveCount(0);
@@ -59,6 +64,8 @@ test('a photo group is one list card, and hand-added items stay separate', async
   for (const name of ['価格推移', '編集', '購入済みにする', '削除', 'ドラッグして並び替え']) {
     await expect(one.getByRole('button', { name })).toBeVisible();
   }
+  await expect(one.getByRole('button', { name: '購入済みにする', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+  await expect(milk.getByRole('button', { name: '購入済みにする', exact: true })).toHaveAttribute('aria-disabled', 'true');
 
   await page.getByRole('button', { name: '牛乳のショップを見る' }).click();
   await expect(milk.getByText('牛乳A')).toBeVisible();
@@ -72,6 +79,7 @@ test('a photo group is one list card, and hand-added items stay separate', async
   await expect(milk.getByRole('button', { name: '価格推移' })).toBeVisible();
   await expect(milk.getByRole('button', { name: '編集' })).toBeVisible();
   await expect(milk.getByRole('button', { name: '購入済みにする' }).first()).toBeVisible();
+  await expect(milk.getByTestId('photo-shop-list').getByRole('button', { name: '購入済みにする', exact: true })).toHaveCount(2);
   await expect(milk.getByRole('button', { name: '削除', exact: true })).toBeVisible();
   await expect(milk.getByRole('button', { name: 'ドラッグして並び替え' })).toBeVisible();
   await expect(milk.getByText('普通', { exact: true })).toBeVisible();
@@ -130,18 +138,53 @@ test('a photo group uses the same card as a url item on a phone and a desktop', 
   await expect(photo.getByRole('heading', { name: 'Belkin 電源アダプタ', exact: true })).toBeVisible();
   await expect(photo.getByRole('img', { name: 'Belkin 電源アダプタ' })).toHaveAttribute('src', 'https://item-shopping.c.yimg.jp/i/g/belkin');
   await expect(photo.locator('img[src*="evil.example"]')).toHaveCount(0);
-  await expect(photo.getByText('Yahoo!ショッピング', { exact: true })).toBeVisible();
+  await expect(photo.getByText('Yahoo!ショッピング', { exact: true })).toHaveCount(1);
+  await expect(photo.getByText('楽天', { exact: true })).toHaveCount(1);
   await expect(photo.getByText('普通', { exact: true })).toBeVisible();
   await expect(photo.getByText('¥1,338', { exact: true }).first()).toBeVisible();
   await expect(photo.getByTestId('photo-group-low')).toHaveText('最安 ¥1,338');
   await expect(photo.getByTestId('photo-group-range')).toHaveText('¥1,338〜¥2,000');
   await expect(photo.getByText('2件')).toBeVisible();
+  const photoBox = await photo.boundingBox();
+  const urlBox = await urlCard.boundingBox();
+  const photoAction = await photo.getByRole('button', { name: '価格推移' }).boundingBox();
+  const urlAction = await urlCard.getByRole('button', { name: '価格推移' }).boundingBox();
+  const low = await photo.getByTestId('photo-group-low').boundingBox();
+  expect(photoBox && urlBox && photoAction && urlAction && low).toBeTruthy();
+  expect(low!.y + low!.height).toBeLessThanOrEqual(photoAction!.y + 1);
+  const photoTail = photoBox!.y + photoBox!.height - (photoAction!.y + photoAction!.height);
+  const urlTail = urlBox!.y + urlBox!.height - (urlAction!.y + urlAction!.height);
+  expect(photoTail).toBeLessThanOrEqual(urlTail + 4);
   for (const name of ['価格推移', '編集', '購入済みにする', '削除', 'ドラッグして並び替え']) {
     await expect(photo.getByRole('button', { name })).toBeVisible();
     await expect(urlCard.getByRole('button', { name })).toBeVisible();
   }
   const narrow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(narrow).toBeLessThanOrEqual(1);
+
+  const purchase = photo.getByRole('button', { name: '購入済みにする', exact: true });
+  const hint = 'ショップが複数あります。ショップ一覧から購入したショップを選んで購入済みにしてください';
+  await expect(purchase).toHaveAttribute('aria-disabled', 'true');
+  await expect(urlCard.getByRole('button', { name: '購入済みにする', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+  await purchase.hover();
+  await expect(photo.getByRole('tooltip')).toHaveText(hint);
+  await page.mouse.move(0, 0);
+  await expect(photo.getByRole('tooltip')).toBeHidden();
+  await purchase.focus();
+  await expect(photo.getByRole('tooltip')).toBeVisible();
+  await purchase.blur();
+  await expect(photo.getByRole('tooltip')).toBeHidden();
+  let patched = false;
+  const watchPurchase = (request: { method: () => string; url: () => string }) => {
+    if (request.method() === 'PATCH' && request.url().includes('/api/items/')) patched = true;
+  };
+  page.on('request', watchPurchase);
+  await purchase.dispatchEvent('click');
+  await expect(photo.getByRole('tooltip')).toBeVisible();
+  expect(patched).toBe(false);
+  await purchase.dispatchEvent('click');
+  await expect(photo.getByRole('tooltip')).toBeHidden();
+  page.off('request', watchPurchase);
 
   await photo.getByRole('button', { name: 'Belkin 電源アダプタのショップを見る' }).click();
   await expect(photo).not.toContainText('Yahoo!ショッピング Yahoo!ショッピング');
@@ -151,6 +194,15 @@ test('a photo group uses the same card as a url item on a phone and a desktop', 
   await expect(photo.locator('img[src*="evil.example"]')).toHaveCount(0);
 
   await page.setViewportSize({ width: 1280, height: 800 });
+  const yahooTag = photo.locator('span.bg-purple-100', { hasText: 'Yahoo!ショッピング' });
+  const rakutenTag = photo.locator('span.bg-red-100', { hasText: /^楽天$/ });
+  await expect(yahooTag).toHaveCount(1);
+  await expect(rakutenTag).toHaveCount(1);
+  const yahooBox = await yahooTag.boundingBox();
+  const rakutenBox = await rakutenTag.boundingBox();
+  expect(yahooBox && rakutenBox).toBeTruthy();
+  expect(Math.abs(yahooBox!.y - rakutenBox!.y)).toBeLessThanOrEqual(2);
+  expect(yahooBox!.x).toBeLessThan(rakutenBox!.x);
   await expect(photo.getByRole('img', { name: 'Belkin 電源アダプタ' })).toBeVisible();
   await expect(photo.getByRole('button', { name: '価格推移' })).toBeVisible();
   const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
