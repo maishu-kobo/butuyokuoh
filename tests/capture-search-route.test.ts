@@ -114,6 +114,7 @@ function liveEnv(extra: Record<string, string | undefined> = {}) {
     RAKUTEN_APP_ID: RAKUTEN_APP_ID,
     RAKUTEN_ACCESS_KEY: ACCESS_KEY,
     AMAZON_ASSOCIATE_TAG: ASSOCIATE,
+    RAKUTEN_AFFILIATE_ID: undefined,
     ...extra,
   };
 }
@@ -223,6 +224,48 @@ test('search calls Yahoo and Rakuten, keeps the Amazon link, and stores the cand
       assert.equal(leaked.includes(YAHOO_APP_ID), false);
       assert.equal(leaked.includes(RAKUTEN_APP_ID), false);
     });
+  } finally {
+    for (const method of methods) console[method] = original[method];
+  }
+});
+
+test('a Rakuten affiliate id is sent only to Rakuten and stays out of the client response and logs', async () => {
+  const affiliateId = 'example-rakuten-affiliate';
+  const owner = await createMember('search-affiliate');
+  const logs: unknown[][] = [];
+  const methods = ['log', 'info', 'warn', 'error', 'debug'] as const;
+  const original = Object.fromEntries(methods.map((method) => [method, console[method]])) as Record<(typeof methods)[number], (...args: unknown[]) => void>;
+  for (const method of methods) {
+    console[method] = (...args: unknown[]) => { logs.push(args); };
+  }
+  try {
+    await withEnv(liveEnv({ RAKUTEN_AFFILIATE_ID: affiliateId }), async () => {
+      await setTestUser(owner);
+      const { rakutenCalls } = install();
+      const response = await searchPost(searchRequest({ name: 'ペン', jan: JAN }));
+      assert.equal(response.status, 200);
+      const body = await response.json() as { candidates: { site: string; url: string }[] };
+      assert.equal(rakutenCalls.length, 1);
+      const rakutenUrl = new URL(rakutenCalls[0].url);
+      assert.equal(rakutenUrl.searchParams.get('affiliateId'), affiliateId);
+      assert.equal(rakutenUrl.searchParams.get('accessKey'), null);
+      assert.equal(body.candidates.find((item) => item.site === 'rakuten')?.url, 'https://item.rakuten.co.jp/example/pen');
+      assert.equal(JSON.stringify({ body, logs }).includes(affiliateId), false);
+    });
+
+    for (const value of [undefined, '', '   '] as const) {
+      logs.length = 0;
+      await withEnv(liveEnv({ RAKUTEN_AFFILIATE_ID: value }), async () => {
+        await setTestUser(owner);
+        const { rakutenCalls } = install();
+        const response = await searchPost(searchRequest({ name: 'ペン', jan: JAN }));
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(rakutenCalls.length, 1);
+        assert.equal(new URL(rakutenCalls[0].url).searchParams.get('affiliateId'), null);
+        assert.equal(JSON.stringify({ body, logs }).includes(affiliateId), false);
+      });
+    }
   } finally {
     for (const method of methods) console[method] = original[method];
   }
