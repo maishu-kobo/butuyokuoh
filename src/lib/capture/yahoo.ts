@@ -310,7 +310,7 @@ export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
         throw new Error('yahoo search is server-only');
       }
       const appId = usableAppId(deps.appId);
-      if (!appId) return captureFailure('SEARCH_FAILED', UNAVAILABLE, 503);
+      if (!appId) return captureFailure('SEARCH_NOT_CONFIGURED', UNAVAILABLE, 503);
       const url = requestUrl(appId, query);
       if (!url) return captureFailure('INVALID_INPUT', CaptureMessages.searchInput, 400);
       const at = now();
