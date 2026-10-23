@@ -83,6 +83,34 @@ function candidate(partial: Pick<CaptureCandidate, 'id' | 'title' | 'price'> & P
   };
 }
 
+test('a charging-case AirPods stays, and the store query does not minus out ケース', async () => {
+  const airpods = 'Apple AirPods Pro（第2世代）MagSafe充電ケース（USB-C）付き';
+  const soldCase = 'AirPods Pro 第2世代 シリコン ケース カバー';
+  const query: SearchQuery = { name: 'AirPods Pro', brand: null, model: null, jan: null };
+  const yahoo = yahooHarness([
+    yahooHit(soldCase, 1, 1280),
+    yahooHit(airpods, 2, 39800),
+  ]);
+  const found = await yahoo.search.search(query);
+  assert.equal(yahoo.calls.length, 1);
+  assert.equal(new URL(yahoo.calls[0].url).searchParams.get('query'), 'AirPods Pro');
+  assert.equal(found.ok, true);
+  if (!found.ok) return;
+  assert.equal(found.value.some((item) => item.title === airpods), true);
+
+  const rakuten = rakutenHarness([
+    rakutenItem(soldCase, 1, 1280),
+    rakutenItem(airpods, 2, 39800),
+  ]);
+  const rakutenFound = await rakuten.search.search(query);
+  const rakutenUrl = new URL(rakuten.calls[0].url);
+  assert.equal(rakutenUrl.searchParams.get('keyword'), 'AirPods Pro');
+  assert.equal(rakutenUrl.searchParams.has('NGKeyword'), false);
+  assert.equal(rakutenFound.ok, true);
+  if (!rakutenFound.ok) return;
+  assert.equal(rakutenFound.value.some((item) => item.title === airpods), true);
+});
+
 test('a phone name asks Yahoo and Rakuten to drop accessory words and keeps the phone', async () => {
   const hits = [
     ...SCREENSHOT_CASES.map((title, index) => yahooHit(title, index, 699 + index)),
