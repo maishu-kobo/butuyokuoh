@@ -148,6 +148,30 @@ test('the desktop menu closes on Escape, outside click, and arrow keys move betw
   await expect(menu).toHaveCount(0);
 });
 
+test('desktop menu items open the camera input and the file input', async ({ page }) => {
+  await member(page);
+  await openAdd(page);
+  const clicks = () => page.evaluate(() => (window as unknown as { __captureClicks?: string[] }).__captureClicks ?? []);
+  await page.evaluate(() => {
+    (window as unknown as { __captureClicks?: string[] }).__captureClicks = [];
+  });
+  for (const label of ['写真を撮る', '写真ファイル']) {
+    await page.getByLabel(label).evaluate((node, name) => {
+      node.addEventListener('click', () => {
+        const record = (window as unknown as { __captureClicks?: string[] });
+        record.__captureClicks = [...(record.__captureClicks ?? []), name];
+      });
+    }, label);
+  }
+  await page.getByRole('button', { name: '写真から登録' }).click();
+  await page.getByRole('menuitem', { name: 'カメラで撮る' }).click();
+  await expect.poll(clicks).toEqual(['写真を撮る']);
+  await expect(page.getByRole('menu', { name: '写真の取り込み' })).toHaveCount(0);
+  await page.getByRole('button', { name: '写真から登録' }).click();
+  await page.getByRole('menuitem', { name: 'ファイル/写真を選ぶ' }).click();
+  await expect.poll(clicks).toEqual(['写真を撮る', '写真ファイル']);
+});
+
 test('a coarse pointer opens the file input and does not show the custom menu', async ({ page }) => {
   await page.addInitScript(() => {
     const original = window.matchMedia.bind(window);
@@ -174,7 +198,9 @@ test('a coarse pointer opens the file input and does not show the custom menu', 
       (window as unknown as { __captureFileClicked?: boolean }).__captureFileClicked = true;
     });
   });
-  await page.getByRole('button', { name: '写真から登録' }).click();
+  const register = page.getByRole('button', { name: '写真から登録' });
+  await expect(register).not.toHaveAttribute('aria-haspopup');
+  await register.click();
   await expect(page.getByRole('menu', { name: '写真の取り込み' })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (window as unknown as { __captureFileClicked?: boolean }).__captureFileClicked === true)).toBe(true);
 });
