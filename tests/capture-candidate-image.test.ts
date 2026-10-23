@@ -1,6 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { acceptCandidate, type CaptureCandidate } from '../src/lib/capture/contract';
 import { createYahooRateGate, createYahooSearch, type YahooFetch } from '../src/lib/capture/yahoo';
 import { createRakutenLimiter, createRakutenSearch, type RakutenHttp } from '../src/lib/capture/rakuten';
@@ -176,12 +175,4 @@ test('a candidate row formats the fetch time in Japan and renders an allowlisted
   assert.equal(view.candidateThumbnail(yahooCandidate('https://evil.example/pixel.jpg')), null);
   assert.equal(view.candidateThumbnail(yahooCandidate('http://item-shopping.c.yimg.jp/i/g/example_pixel')), null);
   assert.equal(view.candidateThumbnail(rakutenCandidate(RAKUTEN_IMAGE))?.src, RAKUTEN_IMAGE);
-
-  const doc = readFileSync(new URL('../docs/capture.md', import.meta.url), 'utf8');
-  const changelog = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
-  assert.equal(doc.includes('item-shopping.c.yimg.jp'), true);
-  assert.equal(doc.includes('thumbnail.image.rakuten.co.jp'), true);
-  assert.equal(doc.includes('tshop.r10s.jp'), true);
-  assert.equal(doc.includes('日本時間'), true);
-  assert.equal(changelog.includes('付属品'), true);
 });

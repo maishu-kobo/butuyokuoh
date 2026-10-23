@@ -160,13 +160,15 @@ test('a long name keeps the Yahoo exclusion inside 400 characters', async () => 
   assert.equal(query.includes('あ'), true);
 });
 
-test('weak words keep the main product, and a model-for bracket or accessory noun does not', async () => {
+test('weak words and brackets stay, and only strong accessory nouns drop', async () => {
   const compatible = 'Google Pixel 9 128GB グレー 5G対応';
   const glass = 'Google Pixel 9 強化ガラス';
   const guard = 'Google Pixel 9 画面保護';
   const spigen = 'Spigen Case for Pixel';
-  const bracket = '【Google Pixel用】TPUバンパー';
+  const bracket = '【Google Pixel用】128GB グレー';
   const modelCase = 'Google Pixel 9 対応 ケース';
+  const cover = 'Google Pixel クリアカバー';
+  const film = 'Google Pixel 保護フィルム';
   const phoneHits = [
     yahooHit(spigen, 1, 1980),
     yahooHit(compatible, 2, 84800),
@@ -175,9 +177,11 @@ test('weak words keep the main product, and a model-for bracket or accessory nou
     yahooHit(guard, 5, 980),
     yahooHit(bracket, 6, 1500),
     yahooHit(modelCase, 7, 699),
-    yahooHit(SCREENSHOT_CASES[1], 8, 890),
+    yahooHit(cover, 8, 890),
+    yahooHit(film, 9, 780),
+    yahooHit(SCREENSHOT_CASES[1], 10, 990),
   ];
-  const keptTitles = [spigen, compatible, PHONE, glass, guard];
+  const keptTitles = [spigen, compatible, PHONE, glass, guard, bracket];
 
   const yahoo = yahooHarness(phoneHits);
   const found = await yahoo.search.search(PHONE_QUERY);
@@ -191,31 +195,67 @@ test('weak words keep the main product, and a model-for bracket or accessory nou
   if (!rakutenFound.ok) return;
   assert.deepEqual(rakutenFound.value.map((item) => item.title), keptTitles);
 
+  const plainOven = 'パナソニック 電子レンジ NE-BS6A';
   const microwave = 'パナソニック 家庭用電子レンジ NE-BS6A';
   const turntable = 'レンジ ターンテーブル';
-  const home = '【家庭用】電子レンジ';
-  const business = '【業務用】電子レンジ';
-  const general = '【一般用】電子レンジ';
+  const home = '【ご家庭用】パナソニック 電子レンジ NE-BS6A';
+  const mixed = '【新品・家庭用】電子レンジ';
+  const both = '【家庭用・業務用】電子レンジ';
+  const spaced = '【 家庭用】電子レンジ';
   const tray = '【パナソニック用】庫内トレイ';
+  const ovenCase = '電子レンジ ケース';
+  const ovenCover = '庫内カバー';
+  const ovenFilm = 'レンジ フィルム';
   const ovenQuery: SearchQuery = { name: 'パナソニック 電子レンジ', brand: null, model: null, jan: null };
+  const ovenKept = [turntable, plainOven, microwave, home, mixed, both, spaced, tray];
   const oven = yahooHarness([
     yahooHit(turntable, 1, 1980),
-    yahooHit(microwave, 2, 29800),
-    yahooHit(home, 3, 24800),
-    yahooHit(business, 4, 54800),
-    yahooHit(general, 5, 19800),
-    yahooHit(tray, 6, 2200),
+    yahooHit(plainOven, 2, 32000),
+    yahooHit(microwave, 3, 29800),
+    yahooHit(home, 4, 24800),
+    yahooHit(mixed, 5, 22000),
+    yahooHit(both, 6, 21000),
+    yahooHit(spaced, 7, 20000),
+    yahooHit(tray, 8, 2200),
+    yahooHit(ovenCase, 9, 1500),
+    yahooHit(ovenCover, 10, 1400),
+    yahooHit(ovenFilm, 11, 1300),
   ]);
   const ovens = await oven.search.search(ovenQuery);
   assert.equal(ovens.ok, true);
   if (!ovens.ok) return;
-  assert.deepEqual(ovens.value.map((item) => item.title), [turntable, microwave, home, business, general]);
+  assert.deepEqual(ovens.value.map((item) => item.title), ovenKept);
 
   const onlyBracket = yahooHarness([yahooHit(bracket, 1, 1500)]);
   const stayed = await onlyBracket.search.search(PHONE_QUERY);
   assert.equal(stayed.ok, true);
   if (!stayed.ok) return;
   assert.deepEqual(stayed.value.map((item) => item.title), [bracket]);
+});
+
+test('brackets with 用 sort behind the plain product and do not outrank it on price', () => {
+  const plain = 'パナソニック 電子レンジ NE-BS6A';
+  const query: SearchQuery = { name: 'パナソニック 電子レンジ', brand: null, model: null, jan: null };
+  const sorted = sortCandidates([
+    candidate({ id: 'yahoo:home', title: '【ご家庭用】パナソニック 電子レンジ NE-BS6A', price: 1000 }),
+    candidate({ id: 'yahoo:mixed', title: '【新品・家庭用】電子レンジ', price: 1000 }),
+    candidate({ id: 'yahoo:both', title: '【家庭用・業務用】電子レンジ', price: 1000 }),
+    candidate({ id: 'yahoo:spaced', title: '【 家庭用】電子レンジ', price: 1000 }),
+    candidate({ id: 'yahoo:plain', title: plain, price: 50000 }),
+  ], query);
+  assert.deepEqual(sorted.map((item) => item.id), [
+    'yahoo:plain',
+    'yahoo:home',
+    'yahoo:both',
+    'yahoo:mixed',
+    'yahoo:spaced',
+  ]);
+
+  const phone = sortCandidates([
+    candidate({ id: 'yahoo:bracket', title: '【Google Pixel用】128GB グレー', price: 1000 }),
+    candidate({ id: 'yahoo:phone', title: PHONE, price: 89800 }),
+  ], PHONE_QUERY);
+  assert.deepEqual(phone.map((item) => item.id), ['yahoo:phone', 'yahoo:bracket']);
 });
 
 test('recommended order puts the phone ahead of a cheaper case, including a 5G対応 listing', () => {

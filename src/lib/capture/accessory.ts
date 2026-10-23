@@ -2,13 +2,12 @@
 // 安いケースが上に来るので、価格では絞らない。店への検索は1回だけで、やり直しはしない。
 // 除外は1回のクエリに載せ、返った候補に本体が残るときだけ付属品を落とす。
 // 本体が一件も無いときは、取れた候補をそのまま出す。
-// 「対応」「用」「保護」「ガラス」は本体の商品名にも出る。
-// 検索語の除外には入れず、並びの点数にだけ使う。候補を落とすのは強い付属品の名詞と、
-// 「【機種用】」のような括弧だけ。「【家庭用】」「【業務用】」「【一般用】」は本体なので残す。
+// 「対応」「用」「保護」「ガラス」と、「【機種用】」のような括弧は本体の商品名にも出る。
+// 検索語の除外には入れず、並びの点数にだけ使う。候補を落とすのは強い付属品の名詞だけ。
+// 本体が消える誤除外は、付属品が後ろに残るより悪い。
 
 const STRONG_ACCESSORY_TERMS = ['ケース', 'カバー', 'フィルム', '充電器', 'ケーブル', 'ストラップ'] as const;
 const WEAK_ACCESSORY_TERMS = ['保護', 'ガラス', '対応', '用'] as const;
-const BRACKET_FOR_MODEL = /【(?!家庭用】|業務用】|一般用】)[^】\n]{1,40}用】/;
 
 export type AccessoryQuery = {
   name: string;
@@ -34,8 +33,7 @@ export function accessoryScore(title: string): number {
 }
 
 export function accessoryListing(title: string): boolean {
-  if (STRONG_ACCESSORY_TERMS.some((term) => title.includes(term))) return true;
-  return BRACKET_FOR_MODEL.test(title);
+  return STRONG_ACCESSORY_TERMS.some((term) => title.includes(term));
 }
 
 export function preferMainProducts<T extends { title: string }>(items: readonly T[], prefer: boolean): T[] {
