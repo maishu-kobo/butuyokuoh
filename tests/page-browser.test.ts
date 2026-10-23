@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { readFileSync } from 'node:fs';
+import { platform } from 'node:os';
+import type { ChildProcess } from 'node:child_process';
 import { launchPageBrowser } from '../src/lib/page-browser';
 
 function cmdline(pid: number): string[] {
@@ -32,6 +34,12 @@ function seccompMode(pid: number): number {
   return Number(line?.split(/\s+/)[1]);
 }
 
+function launchedArgs(child: ChildProcess): string[] {
+  const pid = child.pid;
+  if (platform() === 'linux' && pid !== undefined) return cmdline(pid);
+  return child.spawnargs ?? [];
+}
+
 test('取得用ブラウザはサンドボックス付きで起動し、価格の文字を読む', async () => {
   const server = createServer((_req, res) => {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -47,13 +55,16 @@ test('取得用ブラウザはサンドボックス付きで起動し、価格�
     await page.goto(`http://127.0.0.1:${address.port}/`, { waitUntil: 'domcontentloaded', timeout: 15_000 });
     assert.equal(await page.$eval('#price', (el) => el.textContent), '¥1,280');
 
-    const pid = browser.process()?.pid;
-    assert.equal(typeof pid, 'number');
-    const args = cmdline(pid as number);
+    const child = browser.process();
+    assert.ok(child);
+    const args = launchedArgs(child);
     assert.equal(args.includes('--no-sandbox'), false, args.join('\n'));
     assert.equal(args.includes('--disable-setuid-sandbox'), false, args.join('\n'));
-    const modes = descendantPids(pid as number).map(seccompMode);
-    assert.equal(modes.includes(2), true, modes.join(','));
+    if (platform() === 'linux') {
+      assert.equal(typeof child.pid, 'number');
+      const modes = descendantPids(child.pid as number).map(seccompMode);
+      assert.equal(modes.includes(2), true, modes.join(','));
+    }
   } finally {
     await browser.close();
     server.close();
