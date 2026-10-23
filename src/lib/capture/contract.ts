@@ -105,7 +105,7 @@ export interface RegisterRequest {
 }
 
 export interface RegisterResponse {
-  comparisonGroupId: number;
+  comparisonGroupId: number | null;
   itemIds: number[];
 }
 

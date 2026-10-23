@@ -30,7 +30,7 @@ test('a member can take or choose a photo, edit the name, and register a candida
   await member(page);
   await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
 
-  const shoot = page.getByRole('button', { name: '撮る', exact: true });
+  const shoot = page.getByRole('button', { name: '写真から登録', exact: true });
   await expect(shoot).toBeVisible();
   const box = await shoot.boundingBox();
   expect(box).toBeTruthy();
@@ -38,7 +38,12 @@ test('a member can take or choose a photo, edit the name, and register a candida
   expect(box!.height).toBeGreaterThanOrEqual(24);
   const camera = page.getByLabel('写真を撮る');
   await expect(camera).toHaveAttribute('capture', 'environment');
-  await expect(page.getByRole('button', { name: '写真を選ぶ' })).toBeVisible();
+  await expect(camera).toBeHidden();
+  await shoot.click();
+  await expect(page.getByRole('menuitem', { name: 'カメラで撮る' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'ファイル/写真を選ぶ' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu', { name: '写真の取り込み' })).toHaveCount(0);
 
   await camera.setInputFiles({ name: 'shot.jpg', mimeType: 'image/jpeg', buffer: jpeg });
   await expect(page.getByRole('button', { name: 'テスト用ゲルボールペン 0.5' })).toBeVisible();

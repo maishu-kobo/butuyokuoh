@@ -220,8 +220,20 @@ test('register request reads only stored candidate ids and keeps a hand-added it
     assert.equal(second.ok, true);
     if (!second.ok) return;
     assert.equal(second.created, true);
-    assert.notEqual(second.comparisonGroupId, saved.comparisonGroupId);
-    assert.equal(count(db, 'comparison_groups'), 3);
+    assert.equal(second.comparisonGroupId, null);
+    assert.equal(count(db, 'comparison_groups'), 2);
+    const secondItem = db.prepare('SELECT name, comparison_group_id FROM items WHERE id = ?').get(second.itemIds[0]) as {
+      name: string;
+      comparison_group_id: number | null;
+    };
+    assert.equal(secondItem.name, 'パン');
+    assert.equal(secondItem.comparison_group_id, null);
+    const secondCaptureRow = db.prepare('SELECT status, comparison_group_id FROM captures WHERE id = ?').get(secondCapture) as {
+      status: string;
+      comparison_group_id: number | null;
+    };
+    assert.equal(secondCaptureRow.status, 'registered');
+    assert.equal(secondCaptureRow.comparison_group_id, null);
   } finally {
     db.close();
   }
@@ -237,13 +249,25 @@ test('a second press does not add candidates that were left out of the first gro
     const saved = registerCapturedCandidates(db, userId, [first], NOW);
     assert.equal(saved.ok, true);
     if (!saved.ok) return;
+    assert.equal(saved.comparisonGroupId, null);
     const replay = registerCapturedCandidates(db, userId, [first, extra], NOW);
     assert.equal(replay.ok, true);
     if (!replay.ok) return;
     assert.equal(replay.created, false);
+    assert.equal(replay.comparisonGroupId, null);
     assert.deepEqual(replay.itemIds, saved.itemIds);
-    assert.equal(count(db, 'comparison_groups'), 1);
+    assert.equal(count(db, 'comparison_groups'), 0);
     assert.equal(count(db, 'items'), 1);
+    const linked = db.prepare('SELECT status, comparison_group_id FROM captures WHERE id = ?').get(captureId) as {
+      status: string;
+      comparison_group_id: number | null;
+    };
+    assert.equal(linked.status, 'registered');
+    assert.equal(linked.comparison_group_id, null);
+    const stored = db.prepare('SELECT comparison_group_id FROM items WHERE id = ?').get(saved.itemIds[0]) as {
+      comparison_group_id: number | null;
+    };
+    assert.equal(stored.comparison_group_id, null);
   } finally {
     db.close();
   }
@@ -378,7 +402,10 @@ test('the same url on another account stays selectable', () => {
     const saved = registerCapturedCandidates(db, userId, [candidateId], NOW);
     assert.equal(saved.ok, true);
     if (!saved.ok) return;
+    assert.equal(saved.comparisonGroupId, null);
     assert.equal(saved.itemIds.length, 1);
+    assert.equal(count(db, 'comparison_groups'), 0);
+    assert.equal((db.prepare('SELECT comparison_group_id FROM items WHERE id = ?').get(saved.itemIds[0]) as { comparison_group_id: number | null }).comparison_group_id, null);
     assert.equal((db.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id = ?').get(other) as { n: number }).n, 1);
   } finally {
     db.close();
@@ -403,8 +430,10 @@ test('two chosen candidates with one url create a single item', () => {
       { id: first, selectable: false, label: '登録済み' },
       { id: second, selectable: false, label: '登録済み' },
     ]);
+    assert.equal(saved.comparisonGroupId, null);
     assert.equal(count(db, 'items'), 1);
-    assert.equal(count(db, 'comparison_groups'), 1);
+    assert.equal(count(db, 'comparison_groups'), 0);
+    assert.equal((db.prepare('SELECT comparison_group_id FROM items WHERE id = ?').get(saved.itemIds[0]) as { comparison_group_id: number | null }).comparison_group_id, null);
   } finally {
     db.close();
   }
@@ -502,4 +531,111 @@ test('the register route stays closed unless CAPTURE_ENABLED is exactly true', a
     }
     assert.notEqual(status, 404);
   });
+});
+
+test('register keeps a provider image host and drops product-page and http images', () => {
+  const db = openDatabase(':memory:');
+  try {
+    const userId = member(db, 'image@example.com');
+    const captureId = capture(db, userId, 'Belkin 電源アダプタ');
+    const yahooId = candidate(db, userId, captureId, {
+      name: 'Belkin 電源アダプタ',
+      url: 'https://store.shopping.yahoo.co.jp/shop/belkin',
+      image_url: 'https://item-shopping.c.yimg.jp/i/g/belkin',
+      source_item_code: 'yahoo:belkin',
+    });
+    const pageImageId = candidate(db, userId, captureId, {
+      name: '商品ページの画像',
+      url: 'https://store.shopping.yahoo.co.jp/shop/page',
+      image_url: 'https://store.shopping.yahoo.co.jp/shop/belkin.jpg',
+      source_item_code: 'yahoo:page',
+    });
+    const httpId = candidate(db, userId, captureId, {
+      name: 'httpの画像',
+      url: 'https://store.shopping.yahoo.co.jp/shop/http',
+      image_url: 'http://item-shopping.c.yimg.jp/i/g/belkin',
+      source_item_code: 'yahoo:http',
+    });
+    const saved = registerCapturedCandidates(db, userId, [yahooId, pageImageId, httpId], NOW);
+    assert.equal(saved.ok, true);
+    if (!saved.ok) return;
+    const images = db.prepare(
+      'SELECT source_item_code, image_url FROM items WHERE comparison_group_id = ? ORDER BY sort_order, id',
+    ).all(saved.comparisonGroupId) as { source_item_code: string; image_url: string | null }[];
+    assert.deepEqual(images, [
+      { source_item_code: 'yahoo:belkin', image_url: 'https://item-shopping.c.yimg.jp/i/g/belkin' },
+      { source_item_code: 'yahoo:page', image_url: null },
+      { source_item_code: 'yahoo:http', image_url: null },
+    ]);
+  } finally {
+    db.close();
+  }
+});
+
+test('one fresh candidate is a plain item, and a replay after expiry does not create a group', () => {
+  const db = openDatabase(':memory:');
+  try {
+    const userId = member(db, 'single@example.com');
+    const captureId = capture(db, userId, '単品の牛乳');
+    const only = candidate(db, userId, captureId, {
+      source: 'rakuten',
+      source_name: '楽天',
+      name: '単品ショップ',
+      url: 'https://item.rakuten.co.jp/shop/one',
+      image_url: 'https://thumbnail.image.rakuten.co.jp/one.jpg',
+      price: 300,
+      source_item_code: 'rakuten:shop:one',
+    });
+    const saved = registerCapturedCandidates(db, userId, [only], NOW);
+    assert.equal(saved.ok, true);
+    if (!saved.ok) return;
+    assert.equal(saved.created, true);
+    assert.equal(saved.comparisonGroupId, null);
+    assert.equal(saved.itemIds.length, 1);
+    assert.equal(count(db, 'comparison_groups'), 0);
+    const stored = db.prepare(
+      `SELECT name, url, image_url, current_price, source, source_name, source_item_code, comparison_group_id, priority, quantity
+       FROM items WHERE id = ?`,
+    ).get(saved.itemIds[0]) as {
+      name: string;
+      url: string;
+      image_url: string | null;
+      current_price: number;
+      source: string;
+      source_name: string;
+      source_item_code: string;
+      comparison_group_id: number | null;
+      priority: number;
+      quantity: number;
+    };
+    assert.equal(stored.name, '単品ショップ');
+    assert.equal(stored.url, 'https://item.rakuten.co.jp/shop/one');
+    assert.equal(stored.image_url, 'https://thumbnail.image.rakuten.co.jp/one.jpg');
+    assert.equal(stored.current_price, 300);
+    assert.equal(stored.source, 'rakuten');
+    assert.equal(stored.source_name, '楽天');
+    assert.equal(stored.source_item_code, 'rakuten:shop:one');
+    assert.equal(stored.comparison_group_id, null);
+    assert.equal(stored.priority, 3);
+    assert.equal(stored.quantity, 1);
+    const linked = db.prepare('SELECT status, comparison_group_id FROM captures WHERE id = ?').get(captureId) as {
+      status: string;
+      comparison_group_id: number | null;
+    };
+    assert.equal(linked.status, 'registered');
+    assert.equal(linked.comparison_group_id, null);
+    assert.equal(count(db, 'price_history'), 1);
+
+    db.prepare('UPDATE capture_candidates SET expires_at = ? WHERE id = ?').run(NOW - 1, only);
+    const replay = registerCapturedCandidates(db, userId, [only], NOW);
+    assert.equal(replay.ok, true);
+    if (!replay.ok) return;
+    assert.equal(replay.created, false);
+    assert.equal(replay.comparisonGroupId, null);
+    assert.deepEqual(replay.itemIds, saved.itemIds);
+    assert.equal(count(db, 'comparison_groups'), 0);
+    assert.equal(count(db, 'items'), 1);
+  } finally {
+    db.close();
+  }
 });
