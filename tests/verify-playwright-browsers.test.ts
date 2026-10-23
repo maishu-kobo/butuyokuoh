@@ -37,6 +37,17 @@ test('dry-run output lists install locations', () => {
   assert.equal(browserKind('/cache/chromium-1248'), 'chromium');
   assert.equal(browserKind('/cache/chromium_headless_shell-1248'), 'chromium-headless-shell');
   assert.equal(browserKind('/cache/ffmpeg-1013'), 'ffmpeg');
+  assert.equal(browserKind('/cache/webkit-2370'), 'webkit');
+});
+
+test('webkit is present when pw_run.sh can print a version', () => {
+  const present: Record<string, number> = {
+    '/cache/webkit-2370/INSTALLATION_COMPLETE': 1,
+    '/cache/webkit-2370/pw_run.sh': MIN_BYTES.webkit,
+  };
+  const result = assessBrowserCache(['/cache/webkit-2370'], ioFor(present));
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.checks.length, 1);
 });
 
 test('a complete cache passes and reports checksums', () => {

@@ -54,16 +54,21 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: ms-playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('package-lock.json') }}
+          key: ms-playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}-chromium-webkit-${{ hashFiles('package-lock.json') }}
 
       # chromium の共有ライブラリは ubuntu-24.04 に入っている。
       # --with-deps は apt が 30 分で打ち切られるまで止まっていた（#122 f432e7b）。使わない。
       # 公式イメージ v1.64.1-noble は約 940MiB で、毎回の pull はブラウザの zip より遅い。
       # キャッシュヒット時は導入しない。
+      # WebKit は水和の回帰に使う。依存はブラウザの zip とは別に入れる。--with-deps は使わない。
+      - name: Install WebKit system libraries
+        timeout-minutes: 10
+        run: npx playwright install-deps webkit
+
       - name: Install Playwright browsers
         if: steps.playwright-browsers.outputs.cache-hit != 'true'
         timeout-minutes: 5
-        run: npx playwright install chromium
+        run: npx playwright install chromium webkit
 
       # dry-run はブラウザが欠けていても成功する。印、実行ファイル、バージョンで落とす。
       # sha256 はログに出す。browsers.json に実行ファイルのダイジェストは無い。
