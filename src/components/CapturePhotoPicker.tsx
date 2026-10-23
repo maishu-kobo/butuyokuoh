@@ -2,7 +2,7 @@
 
 import { CaptureMessages } from '@/lib/capture/contract';
 import { capturePhotoActions, photoForUpload } from '@/lib/capture/photo-pick';
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 export type CapturePhotoPick = {
   enabled: boolean;
@@ -78,6 +78,16 @@ export function useCapturePhotoPick(
 
 const MENU_ITEM_CLASS = 'flex min-h-[24px] w-full items-center px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-slate-700';
 
+function subscribeCoarsePointer(onChange: () => void): () => void {
+  const media = window.matchMedia('(pointer: coarse)');
+  media.addEventListener('change', onChange);
+  return () => media.removeEventListener('change', onChange);
+}
+
+function coarsePointerNow(): boolean {
+  return window.matchMedia('(pointer: coarse)').matches;
+}
+
 export function CapturePhotoControls({ pick }: { pick: CapturePhotoPick }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -86,6 +96,7 @@ export function CapturePhotoControls({ pick }: { pick: CapturePhotoPick }) {
   const menuId = useId();
   const [open, setOpen] = useState(false);
   const [camera, setCamera] = useState(false);
+  const sheet = useSyncExternalStore(subscribeCoarsePointer, coarsePointerNow, () => false);
   useEffect(() => {
     if (!open) return;
     menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
@@ -162,9 +173,9 @@ export function CapturePhotoControls({ pick }: { pick: CapturePhotoPick }) {
       <button
         ref={buttonRef}
         type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={menuId}
+        aria-haspopup={sheet ? undefined : 'menu'}
+        aria-expanded={sheet ? undefined : open}
+        aria-controls={sheet ? undefined : menuId}
         onClick={onRegister}
         className="min-h-[24px] min-w-[24px] w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm text-gray-700 dark:text-gray-200"
       >
