@@ -122,6 +122,34 @@ test('missing store keys disable another search instead of asking for a retry', 
   await expectManual(page, SURE_NAME);
 });
 
+test('a thrown shop search retries the same name and does not identify again', async ({ page }) => {
+  let identifies = 0;
+  let searches = 0;
+  await page.route('**/api/capture/identify', async (route) => {
+    identifies += 1;
+    await route.continue();
+  });
+  await page.route('**/api/capture/search', async (route) => {
+    searches += 1;
+    if (searches === 1) {
+      await route.abort('failed');
+      return;
+    }
+    await route.continue();
+  });
+  await member(page);
+  await shoot(page);
+  await expect(page.getByRole('status').filter({ hasText: '候補を取得できませんでした' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'もう一度判定する' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'もう一度探す' })).toBeVisible();
+  await expectManual(page, SURE_NAME);
+  const identifiesBefore = identifies;
+  await page.getByRole('button', { name: 'もう一度探す' }).click();
+  await expect.poll(() => searches).toBe(2);
+  expect(identifies).toBe(identifiesBefore);
+  await expect(page.getByRole('status').filter({ hasText: '候補が' })).toBeVisible();
+});
+
 test('a failed shop search opens the manual form with the estimated name and no photo image', async ({ page }) => {
   await page.route('**/api/capture/search', (route) => json(route, 502, {
     code: 'SEARCH_FAILED',

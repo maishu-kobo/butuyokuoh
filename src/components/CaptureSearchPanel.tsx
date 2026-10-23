@@ -10,8 +10,9 @@ import {
   productsToShow,
   statusAfterIdentify,
   statusAfterSearch,
+  thrownCaptureRetry,
 } from '@/lib/capture/capture-flow';
-import { CaptureMessages, type CaptureCandidate, type ProductGuess } from '@/lib/capture/contract';
+import { type CaptureCandidate, type ProductGuess } from '@/lib/capture/contract';
 import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
 import { useEffect, useRef, useState } from 'react';
 
@@ -39,8 +40,10 @@ export function CaptureSearchPanel({
   const [notice, setNotice] = useState('');
   const [attempt, setAttempt] = useState(0);
   const [identifyRetryable, setIdentifyRetryable] = useState(false);
+  const [searchRetryable, setSearchRetryable] = useState(false);
   const [searchBlocked, setSearchBlocked] = useState(false);
   const searchBlockedRef = useRef(false);
+  const searchRetryRef = useRef<{ product: ProductGuess | null; name: string } | null>(null);
 
   useEffect(() => {
     if (!file) return;
@@ -62,6 +65,8 @@ export function CaptureSearchPanel({
       setAmazonUrl('');
       setStatus(FLOW_STATUS.identifying);
       setIdentifyRetryable(false);
+      setSearchRetryable(false);
+      searchRetryRef.current = null;
       searchBlockedRef.current = false;
       setSearchBlocked(false);
       const body = new FormData();
@@ -90,12 +95,13 @@ export function CaptureSearchPanel({
         setStatus(FLOW_STATUS.choose);
       }
     })().catch(() => {
-      if (!cancelled) {
-        setBusy(false);
-        setIdentifyRetryable(true);
-        setStatus(CaptureMessages.aiRetryable);
-        onManual('');
-      }
+      if (cancelled) return;
+      const retry = thrownCaptureRetry(false);
+      setBusy(false);
+      setSearchRetryable(false);
+      setIdentifyRetryable(retry.kind === 'identify');
+      setStatus(retry.message);
+      onManual('');
     });
 
     return () => {
@@ -111,18 +117,32 @@ export function CaptureSearchPanel({
     setBusy(true);
     setSlow(false);
     setNotice('');
+    setSearchRetryable(false);
     setStatus(FLOW_STATUS.searching);
     const same = product !== null && trimmed === product.name;
-    const response = await apiFetch('/api/capture/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: trimmed,
-        brand: same ? product.brand : null,
-        model: same ? product.model : null,
-        jan: same ? product.jan : null,
-      }),
-    }, { notifyError: false });
+    let response: Response;
+    try {
+      response = await apiFetch('/api/capture/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: trimmed,
+          brand: same ? product.brand : null,
+          model: same ? product.model : null,
+          jan: same ? product.jan : null,
+        }),
+      }, { notifyError: false });
+    } catch {
+      if (cancelled()) return;
+      const retry = thrownCaptureRetry(true);
+      searchRetryRef.current = { product, name: trimmed };
+      setBusy(false);
+      setIdentifyRetryable(false);
+      setSearchRetryable(retry.kind === 'search');
+      setStatus(retry.message);
+      onManual(trimmed);
+      return;
+    }
     const data = await response.json().catch(() => null);
     if (cancelled()) return;
     setBusy(false);
@@ -175,6 +195,19 @@ export function CaptureSearchPanel({
           className="min-h-[24px] min-w-[24px] px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
         >
           もう一度判定する
+        </button>
+      )}
+      {searchRetryable && !busy && !searchBlocked && (
+        <button
+          type="button"
+          onClick={() => {
+            const retry = searchRetryRef.current;
+            if (!retry) return;
+            void runSearch(retry.product, retry.name);
+          }}
+          className="min-h-[24px] min-w-[24px] px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+        >
+          もう一度探す
         </button>
       )}
       {products.length > 0 && (

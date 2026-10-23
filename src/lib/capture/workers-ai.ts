@@ -567,8 +567,8 @@ function parseGuess(output: unknown): ParsedGuess {
   const value = typeof output === 'string' ? firstJsonObject(output) : output;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { kind: 'invalid' };
   const record = value as { products?: unknown; confidence?: unknown };
-  if (!Array.isArray(record.products)) return { kind: 'invalid' };
   if (record.confidence === 'unreadable') return { kind: 'guess', value: { confidence: 'unreadable', products: [] } };
+  if (!Array.isArray(record.products)) return { kind: 'invalid' };
   const products: ProductGuess[] = [];
   let catalog = false;
   for (const item of record.products) {

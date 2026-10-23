@@ -79,6 +79,11 @@ export function statusAfterIdentify(body: unknown, ok: boolean): { message: stri
   };
 }
 
+export function thrownCaptureRetry(identified: boolean): { kind: 'identify' | 'search'; message: string } {
+  if (identified) return { kind: 'search', message: CaptureMessages.searchFailed };
+  return { kind: 'identify', message: CaptureMessages.aiRetryable };
+}
+
 export function statusAfterSearch(body: unknown, ok: boolean, queryName: string): {
   blocked: boolean;
   message: string;
