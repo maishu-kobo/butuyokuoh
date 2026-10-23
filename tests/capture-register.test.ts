@@ -503,3 +503,42 @@ test('the register route stays closed unless CAPTURE_ENABLED is exactly true', a
     assert.notEqual(status, 404);
   });
 });
+
+test('register keeps a provider image host and drops product-page and http images', () => {
+  const db = openDatabase(':memory:');
+  try {
+    const userId = member(db, 'image@example.com');
+    const captureId = capture(db, userId, 'Belkin 電源アダプタ');
+    const yahooId = candidate(db, userId, captureId, {
+      name: 'Belkin 電源アダプタ',
+      url: 'https://store.shopping.yahoo.co.jp/shop/belkin',
+      image_url: 'https://item-shopping.c.yimg.jp/i/g/belkin',
+      source_item_code: 'yahoo:belkin',
+    });
+    const pageImageId = candidate(db, userId, captureId, {
+      name: '商品ページの画像',
+      url: 'https://store.shopping.yahoo.co.jp/shop/page',
+      image_url: 'https://store.shopping.yahoo.co.jp/shop/belkin.jpg',
+      source_item_code: 'yahoo:page',
+    });
+    const httpId = candidate(db, userId, captureId, {
+      name: 'httpの画像',
+      url: 'https://store.shopping.yahoo.co.jp/shop/http',
+      image_url: 'http://item-shopping.c.yimg.jp/i/g/belkin',
+      source_item_code: 'yahoo:http',
+    });
+    const saved = registerCapturedCandidates(db, userId, [yahooId, pageImageId, httpId], NOW);
+    assert.equal(saved.ok, true);
+    if (!saved.ok) return;
+    const images = db.prepare(
+      'SELECT source_item_code, image_url FROM items WHERE comparison_group_id = ? ORDER BY sort_order, id',
+    ).all(saved.comparisonGroupId) as { source_item_code: string; image_url: string | null }[];
+    assert.deepEqual(images, [
+      { source_item_code: 'yahoo:belkin', image_url: 'https://item-shopping.c.yimg.jp/i/g/belkin' },
+      { source_item_code: 'yahoo:page', image_url: null },
+      { source_item_code: 'yahoo:http', image_url: null },
+    ]);
+  } finally {
+    db.close();
+  }
+});
