@@ -22,6 +22,7 @@ interface SortableItemCardProps {
   extra?: ReactNode;
   displayImageUrl?: string | null;
   groupMemberIds?: readonly number[];
+  offerPriceRefresh?: boolean;
 }
 
 export default function SortableItemCard({
@@ -39,6 +40,7 @@ export default function SortableItemCard({
   extra,
   displayImageUrl,
   groupMemberIds,
+  offerPriceRefresh,
 }: SortableItemCardProps) {
   const {
     attributes,
@@ -112,6 +114,7 @@ export default function SortableItemCard({
           extra={extra}
           displayImageUrl={displayImageUrl}
           groupMemberIds={groupMemberIds}
+          offerPriceRefresh={offerPriceRefresh}
         />
       </div>
     </div>

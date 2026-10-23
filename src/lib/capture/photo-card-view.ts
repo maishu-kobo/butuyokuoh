@@ -24,3 +24,9 @@ export function photoFaceItemId(card: { shops: readonly { itemId: number; purcha
   const face = card.shops.find((shop) => !shop.purchased) ?? card.shops[0];
   return face.itemId;
 }
+
+// 写真グループはページ再取得が 409 になる。ボタンは出さない。
+// 1件の登録は URL 商品と同じく、再取得ボタンを残す。再取得そのものはここでは動かさない。
+export function offersPriceRefresh(shopCount: number): boolean {
+  return shopCount < 2;
+}
