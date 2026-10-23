@@ -6,7 +6,7 @@ test('a shop badge is the store name once, and the site name when the store repe
   assert.equal(shopBadgeText('Yahoo!ショッピング', 'Yahoo!ショッピング'), 'Yahoo!ショッピング');
   assert.equal(shopBadgeText('楽天', '楽天'), '楽天');
   assert.equal(shopBadgeText('Yahoo!ショッピング', 'テストショップ'), 'テストショップ');
-  assert.equal(`${shopBadgeText('Yahoo!ショッピング', 'Yahoo!ショッピング')} ${shopBadgeText('Yahoo!ショッピング', 'Yahoo!ショッピング')}`.includes('Yahoo!ショッピング Yahoo!ショッピング'), false);
+  assert.equal(shopBadgeText('Yahoo!ショッピング', 'Yahoo!ショッピング').split('Yahoo!ショッピング').length, 2);
 });
 
 test('list timestamps are Japanese local time, and an unreadable value is blank', () => {

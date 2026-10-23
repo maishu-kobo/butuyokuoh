@@ -3,7 +3,7 @@
 import { apiFetch } from '@/lib/api-fetch';
 import { linkableHttpUrl } from '@/lib/http-url';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, type ReactNode } from 'react';
 import { Item, Category, ComparisonGroup } from '@/types';
 import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
 import { rakutenPriceCaption } from '@/lib/capture/rakuten-price-note';
@@ -30,9 +30,11 @@ interface ItemCardProps {
   categories?: Category[];
   comparisonGroups?: ComparisonGroup[];
   isLowestPrice?: boolean;
+  heading?: string;
+  extra?: ReactNode;
 }
 
-export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false }: ItemCardProps) {
+export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra }: ItemCardProps) {
   const { isGuest } = useAuth();
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -205,7 +207,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           {item.image_url ? (
             <img
               src={item.image_url}
-              alt={item.name}
+              alt={heading || item.name}
               loading="lazy"
               decoding="async"
               className="w-full h-full object-contain"
@@ -251,7 +253,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                 </div>
               </div>
               {Boolean(item.is_demo_sample) && <span className="text-xs text-amber-700 dark:text-amber-300">デモ商品・参考価格</span>}
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">{item.name}</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">{heading || item.name}</h3>
             </div>
               {linkableHttpUrl(item.url) && <a
               href={linkableHttpUrl(item.url)!}
@@ -373,6 +375,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           </button>
           <button
             onClick={() => onDelete(item.id)}
+            aria-label="削除"
             className="text-red-400 hover:text-red-600"
           >
             <Trash2 size={18} />
@@ -602,6 +605,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           </div>
         </div>
       )}
+      {extra}
     </div>
   );
 }

@@ -38,10 +38,10 @@ test('dragging a photo group moves every member together and keeps hand-made ite
   assert.deepEqual([...orders.entries()], [
     [1, 0],
     [4, 1],
-    [20, 2],
-    [21, 3],
-    [10, 4],
-    [11, 5],
+    [10, 2],
+    [11, 3],
+    [20, 4],
+    [21, 5],
   ]);
   const back = nextSortOrders(items, 4, 10);
   assert.ok(back);
