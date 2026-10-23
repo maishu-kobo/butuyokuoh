@@ -209,12 +209,21 @@ test('ログアウトすると古いログイン情報は拒否され、デー�
   const previousSession = await sessionToken(owner.user.id, owner.user.email);
   assert.equal(await sessionUserId(previousSession), String(owner.user.id));
 
+  const generationBefore = (database.prepare(
+    'SELECT session_generation FROM users WHERE id = ?',
+  ).get(owner.user.id) as { session_generation: number }).session_generation;
   const loggedOut = await call(logoutPath, 'POST', '/api/auth/logout', undefined, undefined, {
     origin: 'http://localhost',
-  });
+  }, 'http://localhost/api/auth/logout');
   assert.equal(loggedOut.status, 200);
   assert.equal((loggedOut.json as { success?: boolean }).success, true);
   assert.equal(jar.deleted, true);
+  assert.equal(
+    (database.prepare('SELECT session_generation FROM users WHERE id = ?').get(owner.user.id) as {
+      session_generation: number;
+    }).session_generation,
+    generationBefore + 1,
+  );
 
   present(jar, ownerToken);
   assert.equal(getUserIdFromToken(ownerToken), null);
@@ -281,7 +290,7 @@ async function postLogout(origin: string | null) {
   const { POST } = await import(logoutPath);
   const headers = new Headers();
   if (origin !== null) headers.set('origin', origin);
-  const response = await POST(new NextRequest('http://127.0.0.1/api/auth/logout', {
+  const response = await POST(new NextRequest('http://localhost/api/auth/logout', {
     method: 'POST',
     headers,
   }));

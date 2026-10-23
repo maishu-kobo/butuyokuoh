@@ -68,11 +68,43 @@ test('register normalizes email, rejects bad input, and logs in regardless of ca
   assert.equal(loggedBody.user.password_hash, undefined);
   assert.equal(cookies.value, loggedBody.token);
 
+  const database = await db();
+  const owner = database.prepare(
+    "SELECT id, session_generation FROM users WHERE email = 'owner@example.test'",
+  ).get() as { id: number; session_generation: number };
+  const { installAuthTestHooks } = await import('../src/lib/auth');
+  const { MEMBER_TOKEN_COOKIE } = await import('../src/lib/cookie-policy');
+  installAuthTestHooks({
+    session: null,
+    cookies: {
+      set(name, value, options) {
+        cookies.name = name;
+        cookies.value = value;
+        cookies.options = options;
+        cookies.deleted = false;
+      },
+      delete(name) {
+        cookies.name = name;
+        cookies.deleted = true;
+        cookies.value = undefined;
+      },
+      get(name) {
+        if (cookies.deleted || name !== MEMBER_TOKEN_COOKIE) return undefined;
+        return cookies.value;
+      },
+    },
+  });
   const loggedOut = await call(logoutPath, 'POST', '/api/auth/logout', undefined, undefined, {
     origin: 'http://localhost',
-  });
+  }, 'http://localhost/api/auth/logout');
   assert.equal(loggedOut.status, 200);
   assert.equal(cookies.deleted, true);
+  assert.equal(
+    (database.prepare('SELECT session_generation FROM users WHERE id = ?').get(owner.id) as {
+      session_generation: number;
+    }).session_generation,
+    owner.session_generation + 1,
+  );
 });
 
 test('a logged-out caller is rejected and a member token cannot name a guest', async () => {
