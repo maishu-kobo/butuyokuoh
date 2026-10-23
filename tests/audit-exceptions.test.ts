@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import {
@@ -13,7 +14,6 @@ import {
 
 const require = createRequire(import.meta.url);
 const root = process.cwd();
-const exceptionPath = join(root, '.github', 'audit-exceptions.json');
 
 const bracesAdvisory = {
   name: 'braces',
@@ -27,11 +27,30 @@ const bracesAdvisory = {
   ],
 };
 
+const devOnlyBraces = {
+  name: 'braces',
+  ghsa: 'GHSA-vfj7-8cjw-p6xm',
+  devOnly: true,
+  expires: '2027-01-22',
+  reason: '開発依存だけで、本番の依存木には入らない。',
+};
+
 function report(extra: Record<string, unknown> = {}) {
   return { vulnerabilities: { braces: bracesAdvisory, ...extra } };
 }
 
-test('the braces exception has a reason, a real expiry, and no vendored copy', () => {
+function withExceptionFile(entries: unknown, run: (path: string) => void) {
+  const dir = mkdtempSync(join(tmpdir(), 'audit-exceptions-'));
+  const path = join(dir, 'audit-exceptions.json');
+  writeFileSync(path, JSON.stringify({ exceptions: entries }));
+  try {
+    run(path);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('the tree does not vendor braces or depend on it directly', () => {
   assert.equal(existsSync(join(root, 'vendor', 'braces')), false);
   const packageJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
     engines: { node: string };
@@ -44,48 +63,95 @@ test('the braces exception has a reason, a real expiry, and no vendored copy', (
   assert.equal(packageJson.devDependencies.braces, undefined);
   assert.equal(packageJson.overrides, undefined);
 
-  const [entry] = loadExceptions(exceptionPath);
-  assert.equal(entry.name, 'braces');
-  assert.equal(entry.ghsa, 'GHSA-VFJ7-8CJW-P6XM');
-  assert.equal(entry.devOnly, true);
-  assert.equal(entry.expires, '2027-01-22');
-  assert.match(entry.reason, /開発依存/);
-  assert.match(entry.reason, /micromatch\/braces#79/);
-  assert.ok(entry.expires > '2026-10-22');
-
   const deployment = readFileSync(join(root, 'docs', 'deployment.md'), 'utf8');
   assert.match(deployment, /22\.12 以上/);
   assert.match(deployment, /develop にマージする前に/);
   assert.match(deployment, /本番環境、本番データベース、秘密情報はいじらない/);
 });
 
-test('a current dev-only braces advisory is allowed and anything else is not', () => {
-  const exceptions = loadExceptions(exceptionPath);
-  assert.deepEqual(evaluateAudit(report(), exceptions, '2026-10-22'), []);
-  assert.deepEqual(highAdvisories(report()).map((finding) => finding.ghsa), ['GHSA-VFJ7-8CJW-P6XM']);
+test('an exception needs a reason and a real expiry', () => {
+  withExceptionFile([devOnlyBraces], (path) => {
+    const [entry] = loadExceptions(path);
+    assert.equal(entry.name, 'braces');
+    assert.equal(entry.ghsa, 'GHSA-VFJ7-8CJW-P6XM');
+    assert.equal(entry.devOnly, true);
+    assert.equal(entry.expires, '2027-01-22');
+    assert.equal(entry.reason, devOnlyBraces.reason);
+  });
 
-  const expired = evaluateAudit(report(), exceptions, '2027-01-22');
-  assert.equal(expired.length, 1);
-  assert.match(expired[0], /期限切れ/);
+  withExceptionFile([{ ...devOnlyBraces, reason: '   ' }], (path) => {
+    assert.throws(() => loadExceptions(path), /理由が無い/);
+  });
 
-  const other = report({
-    leftpad: {
-      name: 'left-pad',
-      severity: 'critical',
-      via: [{ name: 'left-pad', severity: 'critical', url: 'https://github.com/advisories/GHSA-1111-2222-3333' }],
+  withExceptionFile(
+    [
+      {
+        name: devOnlyBraces.name,
+        ghsa: devOnlyBraces.ghsa,
+        devOnly: devOnlyBraces.devOnly,
+        expires: devOnlyBraces.expires,
+      },
+    ],
+    (path) => {
+      assert.throws(() => loadExceptions(path), /reason/);
     },
-  });
-  const extra = evaluateAudit(other, exceptions, '2026-10-22');
-  assert.equal(extra.length, 1);
-  assert.match(extra[0], /left-pad/);
+  );
 
-  const transitive = report({
-    micromatch: { name: 'micromatch', severity: 'high', via: ['braces'] },
+  withExceptionFile([{ ...devOnlyBraces, expires: '2026-02-31' }], (path) => {
+    assert.throws(() => loadExceptions(path), /期限が日付ではない/);
   });
-  assert.deepEqual(evaluateAudit(transitive, exceptions, '2026-10-22'), []);
+});
 
-  const stale = evaluateAudit({ vulnerabilities: {} }, exceptions, '2026-10-22');
-  assert.match(stale[0], /もう出ていない/);
+test('only a current dev-only advisory may be excepted', () => {
+  withExceptionFile([devOnlyBraces], (path) => {
+    const exceptions = loadExceptions(path);
+    assert.deepEqual(evaluateAudit(report(), exceptions, '2026-10-22'), []);
+    assert.deepEqual(highAdvisories(report()).map((finding) => finding.ghsa), ['GHSA-VFJ7-8CJW-P6XM']);
+
+    const expired = evaluateAudit(report(), exceptions, '2027-01-22');
+    assert.equal(expired.length, 1);
+    assert.match(expired[0], /期限切れ/);
+
+    const other = report({
+      leftpad: {
+        name: 'left-pad',
+        severity: 'critical',
+        via: [{ name: 'left-pad', severity: 'critical', url: 'https://github.com/advisories/GHSA-1111-2222-3333' }],
+      },
+    });
+    const extra = evaluateAudit(other, exceptions, '2026-10-22');
+    assert.equal(extra.length, 1);
+    assert.match(extra[0], /left-pad/);
+
+    const transitive = report({
+      micromatch: { name: 'micromatch', severity: 'high', via: ['braces'] },
+    });
+    assert.deepEqual(evaluateAudit(transitive, exceptions, '2026-10-22'), []);
+  });
+
+  withExceptionFile([{ ...devOnlyBraces, devOnly: false }], (path) => {
+    assert.throws(() => loadExceptions(path), /開発依存だけに限る/);
+  });
+
+  withExceptionFile([], (path) => {
+    const uncovered = evaluateAudit(report(), loadExceptions(path), '2026-10-22');
+    assert.equal(uncovered.length, 1);
+    assert.match(uncovered[0], /例外の無い/);
+  });
+});
+
+test('a stale exception is reported', () => {
+  withExceptionFile([devOnlyBraces], (path) => {
+    const stale = evaluateAudit({ vulnerabilities: {} }, loadExceptions(path), '2026-10-22');
+    assert.equal(stale.length, 1);
+    assert.match(stale[0], /もう出ていない/);
+    assert.match(stale[0], /braces GHSA-VFJ7-8CJW-P6XM/);
+  });
+
+  withExceptionFile([], (path) => {
+    assert.deepEqual(loadExceptions(path), []);
+    assert.deepEqual(evaluateAudit({ vulnerabilities: {} }, loadExceptions(path), '2026-10-22'), []);
+  });
 });
 
 test('registry braces still expands the patterns the linter uses', () => {
