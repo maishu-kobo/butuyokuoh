@@ -130,6 +130,74 @@ function withinPixelBudget(width: number, height: number): boolean {
   return width * height <= CAPTURE_PHOTO_MAX_PIXELS;
 }
 
+const HEIF_CONTAINERS = new Set([
+  'moov', 'trak', 'edts', 'mdia', 'minf', 'dinf', 'stbl', 'mvex', 'moof', 'traf',
+  'mfra', 'skip', 'iprp', 'ipco', 'grpl', 'meta', 'udta', 'meco',
+]);
+
+function readU32(bytes: Uint8Array, offset: number): number {
+  return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(offset);
+}
+
+function boxType(bytes: Uint8Array, offset: number): string {
+  return String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
+}
+
+export function heifIspeWithinBudget(bytes: Uint8Array): boolean {
+  let found = false;
+  let ok = true;
+  const walk = (start: number, end: number, depth: number) => {
+    if (depth > 32) {
+      ok = false;
+      return;
+    }
+    let offset = start;
+    while (ok && offset + 8 <= end) {
+      const size32 = readU32(bytes, offset);
+      const type = boxType(bytes, offset + 4);
+      let header = 8;
+      let size = size32;
+      if (size32 === 1) {
+        if (offset + 16 > end) {
+          ok = false;
+          return;
+        }
+        if (readU32(bytes, offset + 8) !== 0) {
+          ok = false;
+          return;
+        }
+        size = readU32(bytes, offset + 12);
+        header = 16;
+      } else if (size32 === 0) {
+        size = end - offset;
+      }
+      if (!Number.isSafeInteger(size) || size < header || offset + size > end) {
+        ok = false;
+        return;
+      }
+      const boxEnd = offset + size;
+      if (type === 'ispe') {
+        if (boxEnd < offset + header + 12) {
+          ok = false;
+          return;
+        }
+        found = true;
+        if (!withinPixelBudget(readU32(bytes, offset + header + 4), readU32(bytes, offset + header + 8))) ok = false;
+      } else if (HEIF_CONTAINERS.has(type)) {
+        const inner = offset + header + (type === 'meta' ? 4 : 0);
+        if (inner > boxEnd) {
+          ok = false;
+          return;
+        }
+        walk(inner, boxEnd, depth + 1);
+      }
+      offset = boxEnd;
+    }
+  };
+  walk(0, bytes.length, 0);
+  return found && ok;
+}
+
 async function decodeHeicPixels(bytes: Uint8Array): Promise<{ width: number; height: number; data: Uint8ClampedArray } | null> {
   const decode = require('heic-decode') as typeof import('heic-decode');
   const images = await decode.all({ buffer: Buffer.from(bytes) });
@@ -153,12 +221,17 @@ export async function prepareCapturePhoto(
     return captureFailure('PHOTO_TOO_LARGE', CaptureMessages.photoTooLarge, 413);
   }
   const heif = sniffImage(bytes) === 'heif';
+  // libheif の既定上限はこちらの画素上限より大きい。復号の前に ispe を見る。
+  if (heif && !heifIspeWithinBudget(bytes)) {
+    return captureFailure('PHOTO_UNREADABLE', CaptureMessages.photoUnreadable, 400);
+  }
   if (!heif) {
     const decoded = decodeCapturePhoto([{ mediaType, bytes }]);
     if (!decoded.ok) return decoded;
   }
   try {
-    const encoded = await withPhotoSlot(() => runBoundedPhotoTask(async () => {
+    // 時間切れで待つのをやめても、枠は画素化が終わるまで手放さない。
+    const encoded = await runBoundedPhotoTask(() => withPhotoSlot(async () => {
       let input: Buffer;
       let raw: { width: number; height: number; channels: 4 } | undefined;
       if (heif) {
@@ -202,7 +275,7 @@ export async function prepareCapturePhoto(
       } finally {
         clearTimeout(killer);
       }
-    }, CAPTURE_PHOTO_TIMEOUT_MS));
+    }), CAPTURE_PHOTO_TIMEOUT_MS);
     if (!encoded || encoded.length === 0 || encoded.length > CAPTURE_PHOTO_MAX_BYTES) {
       return captureFailure('PHOTO_UNREADABLE', CaptureMessages.photoUnreadable, 400);
     }

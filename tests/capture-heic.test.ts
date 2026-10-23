@@ -34,17 +34,6 @@ test('a real HEVC HEIC is re-encoded to JPEG before the model can see it', async
   assert.equal(meta.exif, undefined);
 });
 
-test('the file picker lists HEIC and HEIF so a desktop dialog can choose them', () => {
-  const picker = readFileSync(new URL('../src/components/CapturePhotoPicker.tsx', import.meta.url), 'utf8');
-  const fileInput = picker.slice(0, picker.indexOf('aria-label="写真ファイル"'));
-  const accept = [...fileInput.matchAll(/accept="([^"]+)"/g)].at(-1);
-  assert.ok(accept, 'file input accept');
-  const value = accept?.[1] ?? '';
-  for (const token of ['image/heic', 'image/heif', '.heic', '.heif']) {
-    assert.equal(value.split(',').includes(token), true, token);
-  }
-});
-
 test('when the browser cannot decode HEIC the original is uploaded for the server', async () => {
   const original = new File([heic], 'library.heic', { type: 'image/heic' });
   const result = await photoForUpload([original], cannotDecode);

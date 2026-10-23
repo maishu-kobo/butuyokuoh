@@ -35,6 +35,7 @@ export async function photoForUpload(files: readonly File[], deps?: ShrinkDeps):
   if (!(await fileLooksLikeHeic(file))) return picked;
   const prepared = await finishPhotoUpload(file, deps);
   if (prepared.ok) return prepared;
+  if (!prepared.ignored && prepared.message === CaptureMessages.photoTooLarge) return prepared;
   const header = new Uint8Array(await file.slice(0, 32).arrayBuffer());
   if (sniffImage(header) !== 'heif') return prepared;
   if (file.size > CAPTURE_PHOTO_MAX_BYTES) {
