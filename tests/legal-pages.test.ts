@@ -156,7 +156,7 @@ test('ログイン画面から2つの下書きを開ける', () => {
 });
 
 test('設定画面から2つの下書きを開ける', async () => {
-  const { default: SettingsPage } = await import('../src/app/settings/page');
+  const { default: SettingsPage } = await import('../src/app/(app)/settings/page');
   const value = {
     user: { id: 1, account_type: 'member' as const, email: 'member@example.com', name: '会員' },
     token: null,
