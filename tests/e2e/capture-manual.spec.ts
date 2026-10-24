@@ -39,15 +39,35 @@ async function expectManual(page: Page, name: string) {
   await expect(page.getByRole('button', { name: 'URLから追加' })).toBeVisible();
 }
 
-test('zero candidates open the manual form with the estimated name and no photo image', async ({ page }) => {
-  await page.route('**/api/capture/search', (route) => json(route, 200, {
-    candidates: [],
-    amazonUrl: 'https://www.amazon.co.jp/s?k=4900000000009',
-    failures: [],
-  }));
+test('zero candidates say nothing was found and keep the search name editable', async ({ page }) => {
+  const bodies: string[] = [];
+  await page.route('**/api/capture/search', (route) => {
+    bodies.push(route.request().postData() ?? '');
+    return json(route, 200, {
+      candidates: [],
+      amazonUrl: 'https://www.amazon.co.jp/s?k=pen',
+      failures: [],
+    });
+  });
   await member(page);
   await shoot(page);
-  await expectManual(page, SURE_NAME);
+  await expect(page.getByRole('status').filter({ hasText: '見つかりませんでした' })).toBeVisible();
+  await expect(page.getByText('候補を取得できませんでした')).toHaveCount(0);
+  await expect(page.getByPlaceholder('商品名を入力')).toHaveCount(0);
+  const name = page.getByLabel('探す商品名');
+  await expect(name).toBeEnabled();
+  await expect(name).toHaveValue(SURE_NAME);
+  await expect(page.getByRole('button', { name: 'この名前で探す' })).toBeEnabled();
+  const amazon = page.getByRole('link', { name: 'Amazonで探す' });
+  await expect(amazon).toHaveAttribute('href', 'https://www.amazon.co.jp/s?k=pen');
+  await expect(amazon).toHaveAttribute('target', '_blank');
+  await expect(amazon).toHaveAttribute('rel', 'noopener noreferrer');
+  await name.fill('ニーモシネ');
+  await page.getByRole('button', { name: 'この名前で探す' }).click();
+  await expect.poll(() => bodies.length).toBe(2);
+  expect(JSON.parse(bodies[1]).name).toBe('ニーモシネ');
+  await expect(page.getByRole('status').filter({ hasText: '見つかりませんでした' })).toBeVisible();
+  await expect(page.getByPlaceholder('商品名を入力')).toHaveCount(0);
 });
 
 test('an unreadable estimate opens the manual form with that product name and does not search', async ({ page }) => {
