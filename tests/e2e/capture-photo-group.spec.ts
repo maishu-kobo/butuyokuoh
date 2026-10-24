@@ -530,3 +530,62 @@ test('budget override persists, reports failures, and can return to automatic ch
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   } finally { db.close(); }
 });
+
+test('dark budget rows keep names, prices and Rakuten notes readable in every selection state', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
+  const registered = await page.request.post('/api/auth/register', {
+    data: { email: 'budget-contrast@example.test', password: 'test-password' },
+  });
+  expect(registered.ok()).toBeTruthy();
+  const userId = (await (await page.request.get('/api/auth/me')).json()).user.id as number;
+  const db = new Database(process.env.E2E_DB_PATH!);
+  db.pragma('busy_timeout = 5000');
+  try {
+    db.prepare(`INSERT INTO items (
+      user_id, name, url, current_price, source, source_item_code, price_fetched_at, priority
+    ) VALUES (?, '配色確認のペン', 'manual://budget-contrast', 980, 'rakuten', 'rakuten:shop:pen', '2026-10-22 01:02:03', 3)`).run(userId);
+  } finally {
+    db.close();
+  }
+  await page.goto('/');
+  await page.getByRole('button', { name: '出費予定' }).click();
+  await page.addStyleTag({ content: '* { transition: none !important; }' });
+  const name = page.getByText('配色確認のペン', { exact: true });
+  const row = name.locator('..');
+  const note = row.getByText('価格は楽天市場の商品価格です。価格は変動する場合があります。', { exact: false });
+  const price = note.locator('..');
+  await expect(note).toBeVisible();
+  for (const state of ['normal', 'hover', 'selected'] as const) {
+    if (state === 'normal') await page.mouse.move(0, 0);
+    if (state === 'hover') await row.hover();
+    if (state === 'selected') {
+      await name.click();
+      await page.mouse.move(0, 0);
+    }
+    const background = await row.evaluate(el => getComputedStyle(el).backgroundColor);
+    for (const [label, text] of [['name', name], ['price', price], ['note', note]] as const) {
+      const ratio = await text.evaluate((el, bg) => {
+        // Canvas resolves browser-supported CSS colors (including oklch) to sRGB.
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 1;
+        const ctx = canvas.getContext('2d')!;
+        const luminance = (color: string) => {
+          ctx.clearRect(0, 0, 1, 1);
+          ctx.fillStyle = color;
+          ctx.fillRect(0, 0, 1, 1);
+          const pixel = ctx.getImageData(0, 0, 1, 1).data;
+          if (pixel[3] !== 255) throw new Error('Contrast fixture requires opaque colors');
+          const rgb = [...pixel].slice(0, 3).map(value => {
+            const v = value / 255;
+            return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+          });
+          return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+        };
+        const a = luminance(getComputedStyle(el).color);
+        const b = luminance(bg);
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      }, background);
+      expect.soft(ratio, `${state}: ${label}`).toBeGreaterThanOrEqual(4.5);
+    }
+  }
+});
