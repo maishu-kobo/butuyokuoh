@@ -60,14 +60,22 @@ export interface RakutenHttpResponse {
 export type RakutenHttp = (request: RakutenHttpRequest) => Promise<RakutenHttpResponse>;
 
 export interface RakutenLimiter {
-  tryAcquire(userId: string, nowMs: number): { ok: true } | { ok: false; reason: string };
+  tryAcquire(userId: string, nowMs: number, chargeUser?: boolean): { ok: true } | { ok: false; reason: string };
+  globalSlotWait?(nowMs: number): number;
 }
 
 export function createRakutenLimiter(): RakutenLimiter {
   let lastGlobal = Number.NEGATIVE_INFINITY;
   const users = new Map<string, number[]>();
   return {
-    tryAcquire(userId, nowMs) {
+    tryAcquire(userId, nowMs, chargeUser = true) {
+      if (!chargeUser) {
+        if (nowMs - lastGlobal < GLOBAL_INTERVAL_MS) {
+          return { ok: false, reason: RakutenMessages.globalRate };
+        }
+        lastGlobal = nowMs;
+        return { ok: true };
+      }
       const id = userId.trim() || 'anonymous';
       const stamps = (users.get(id) ?? []).filter(stamp => nowMs - stamp < USER_DAY_MS);
       if (stamps.filter(stamp => nowMs - stamp < USER_MINUTE_MS).length >= USER_MINUTE_MAX) {
@@ -87,6 +95,10 @@ export function createRakutenLimiter(): RakutenLimiter {
       lastGlobal = nowMs;
       return { ok: true };
     },
+    globalSlotWait(nowMs) {
+      const remaining = GLOBAL_INTERVAL_MS - (nowMs - lastGlobal);
+      return remaining > 0 ? remaining : 0;
+    },
   };
 }
 
@@ -96,11 +108,15 @@ export function createRakutenSearch(options: {
   limiter: RakutenLimiter;
   userId?: string;
   now?: () => Date;
+  delay?: (ms: number) => Promise<void>;
   timeoutMs?: number;
   referer?: string | null;
   affiliateId?: string | null;
 }): SiteSearch {
   const now = options.now ?? (() => new Date());
+  const delay = options.delay ?? ((ms: number) => new Promise<void>(resolve => {
+    setTimeout(resolve, ms);
+  }));
   const timeoutMs = options.timeoutMs ?? RAKUTEN_SEARCH_TIMEOUT_MS;
   const userId = options.userId?.trim() || 'anonymous';
 
@@ -172,19 +188,56 @@ export function createRakutenSearch(options: {
       if (variants.length === 0) return captureFailure('SEARCH_FAILED', RakutenMessages.failed, 400);
 
       let lastEmpty: CaptureResult<CaptureCandidate[]> | null = null;
+      let chargedUser = false;
+      let waitedMs = 0;
       const seen = new Set<string>();
+
+      async function acquireRakutenSlot(later: boolean): Promise<{ ok: true } | { ok: false; result: CaptureResult<CaptureCandidate[]> }> {
+        const slotWait = (at: number) => options.limiter.globalSlotWait?.(at) ?? 0;
+        if (!later) {
+          const slot = options.limiter.tryAcquire(userId, now().getTime(), true);
+          if (slot.ok) return { ok: true };
+          return {
+            ok: false,
+            result: reportStoreAttempt('rakuten', {
+              result: captureFailure('SEARCH_FAILED', slot.reason, 429),
+              httpStatus: null,
+            }),
+          };
+        }
+        const budget = Math.min(1_000, 2_000 - waitedMs);
+        let spent = 0;
+        while (spent < budget) {
+          const wait = slotWait(now().getTime());
+          if (wait <= 0) break;
+          const slice = Math.min(wait, budget - spent);
+          const before = now().getTime();
+          await delay(slice);
+          spent += slice;
+          waitedMs += slice;
+          if (now().getTime() <= before) return { ok: false, result: lastEmpty ?? { ok: true, value: [] } };
+        }
+        const slot = options.limiter.tryAcquire(userId, now().getTime(), false);
+        if (slot.ok) return { ok: true };
+        if (slot.reason === RakutenMessages.globalRate) {
+          return { ok: false, result: lastEmpty ?? { ok: true, value: [] } };
+        }
+        return {
+          ok: false,
+          result: reportStoreAttempt('rakuten', {
+            result: captureFailure('SEARCH_FAILED', slot.reason, 429),
+            httpStatus: null,
+          }),
+        };
+      }
+
       for (const variant of variants) {
         const keyword = rakutenKeyword(variant);
         if (!keyword || seen.has(keyword)) continue;
         seen.add(keyword);
-        const slot = options.limiter.tryAcquire(userId, now().getTime());
-        if (!slot.ok) {
-          if (lastEmpty) return lastEmpty;
-          return reportStoreAttempt('rakuten', {
-            result: captureFailure('SEARCH_FAILED', slot.reason, 429),
-            httpStatus: null,
-          });
-        }
+        const acquired = await acquireRakutenSlot(chargedUser);
+        if (!acquired.ok) return acquired.result;
+        chargedUser = true;
         const result = reportStoreAttempt('rakuten', await requestOnce(credentials, referer, variant));
         if (!result.ok) {
           if (lastEmpty && result.status === 429) return lastEmpty;

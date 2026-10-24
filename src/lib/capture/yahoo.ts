@@ -47,8 +47,11 @@ export type YahooFetch = (url: string, init: YahooRequest) => Promise<Response>;
 
 export type YahooSchedule = (callback: () => void, delayMs: number) => () => void;
 
+export type YahooDelay = (ms: number) => Promise<void>;
+
 export type YahooRateGate = {
-  take(userId: string, now: number): YahooLimit | null;
+  take(userId: string, now: number, chargeUser?: boolean): YahooLimit | null;
+  globalSlotWait(now: number): number;
 };
 
 export type YahooSearchDeps = {
@@ -58,6 +61,7 @@ export type YahooSearchDeps = {
   now?: () => number;
   gate?: YahooRateGate;
   schedule?: YahooSchedule;
+  delay?: YahooDelay;
 };
 
 export function createYahooRateGate(): YahooRateGate {
@@ -65,13 +69,18 @@ export function createYahooRateGate(): YahooRateGate {
   const users = new Map<string, number[]>();
 
   return {
-    take(userId, now) {
+    take(userId, now, chargeUser = true) {
       const id = userId.trim().slice(0, 64) || 'anonymous';
       const recent = globalHits.filter(time => now - time < MINUTE_MS);
       globalHits.length = 0;
       globalHits.push(...recent);
       if (globalHits.some(time => now - time < 1_000)) return 'second';
       if (globalHits.length >= 25) return 'minute';
+
+      if (!chargeUser) {
+        globalHits.push(now);
+        return null;
+      }
 
       const history = (users.get(id) ?? []).filter(time => now - time < DAY_MS);
       if (history.filter(time => now - time < MINUTE_MS).length >= 5) {
@@ -87,6 +96,14 @@ export function createYahooRateGate(): YahooRateGate {
       users.set(id, history);
       return null;
     },
+    globalSlotWait(now) {
+      let wait = 0;
+      for (const time of globalHits) {
+        const remaining = 1_000 - (now - time);
+        if (remaining > wait) wait = remaining;
+      }
+      return wait;
+    },
   };
 }
 
@@ -95,6 +112,12 @@ const sharedGate = createYahooRateGate();
 function defaultSchedule(callback: () => void, delayMs: number): () => void {
   const timer = setTimeout(callback, delayMs);
   return () => clearTimeout(timer);
+}
+
+function defaultDelay(ms: number): Promise<void> {
+  return new Promise(resolve => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function failed(): CaptureResult<never> {
@@ -315,6 +338,7 @@ export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
   const now = deps.now ?? Date.now;
   const gate = deps.gate ?? sharedGate;
   const schedule = deps.schedule ?? defaultSchedule;
+  const delay = deps.delay ?? defaultDelay;
   const userId = deps.userId ?? 'anonymous';
 
   async function requestOnce(appId: string, query: SearchQuery, at: number): Promise<StoreAttempt> {
@@ -388,21 +412,58 @@ export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
       if (variants.length === 0) return captureFailure('INVALID_INPUT', CaptureMessages.searchInput, 400);
 
       let lastEmpty: CaptureResult<CaptureCandidate[]> | null = null;
+      let chargedUser = false;
+      let waitedMs = 0;
       const seen = new Set<string>();
+
+      async function acquireYahooSlot(later: boolean): Promise<{ ok: true; at: number } | { ok: false; result: CaptureResult<CaptureCandidate[]> }> {
+        if (!later) {
+          const at = now();
+          const limit = gate.take(userId, at, true);
+          if (!limit) return { ok: true, at };
+          return {
+            ok: false,
+            result: reportStoreAttempt('yahoo', {
+              result: captureFailure('SEARCH_FAILED', LIMIT_MESSAGE[limit], 429),
+              httpStatus: null,
+            }),
+          };
+        }
+        const budget = Math.min(1_000, 2_000 - waitedMs);
+        let spent = 0;
+        while (spent < budget) {
+          const wait = gate.globalSlotWait(now());
+          if (wait <= 0) break;
+          const slice = Math.min(wait, budget - spent);
+          const before = now();
+          await delay(slice);
+          spent += slice;
+          waitedMs += slice;
+          if (now() <= before) return { ok: false, result: lastEmpty ?? { ok: true, value: [] } };
+        }
+        const at = now();
+        const limit = gate.take(userId, at, false);
+        if (!limit) return { ok: true, at };
+        if (limit === 'minute' || limit === 'second') {
+          return { ok: false, result: lastEmpty ?? { ok: true, value: [] } };
+        }
+        return {
+          ok: false,
+          result: reportStoreAttempt('yahoo', {
+            result: captureFailure('SEARCH_FAILED', LIMIT_MESSAGE[limit], 429),
+            httpStatus: null,
+          }),
+        };
+      }
+
       for (const variant of variants) {
         const key = yahooAttemptKey(appId, variant);
         if (!key || seen.has(key)) continue;
         seen.add(key);
-        const at = now();
-        const limit = gate.take(userId, at);
-        if (limit) {
-          if (lastEmpty) return lastEmpty;
-          return reportStoreAttempt('yahoo', {
-            result: captureFailure('SEARCH_FAILED', LIMIT_MESSAGE[limit], 429),
-            httpStatus: null,
-          });
-        }
-        const result = reportStoreAttempt('yahoo', await requestOnce(appId, variant, at));
+        const acquired = await acquireYahooSlot(chargedUser);
+        if (!acquired.ok) return acquired.result;
+        chargedUser = true;
+        const result = reportStoreAttempt('yahoo', await requestOnce(appId, variant, acquired.at));
         if (!result.ok) {
           if (lastEmpty && result.status === 429) return lastEmpty;
           return result;

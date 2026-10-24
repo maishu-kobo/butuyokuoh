@@ -4,6 +4,7 @@ import { CaptureMessages, type SearchQuery } from '../src/lib/capture/contract';
 import { statusAfterSearch } from '../src/lib/capture/capture-flow';
 import { createYahooRateGate, createYahooSearch, type YahooFetch } from '../src/lib/capture/yahoo';
 import {
+  RakutenMessages,
   createRakutenLimiter,
   createRakutenSearch,
   type RakutenHttp,
@@ -82,13 +83,15 @@ function assertLogShape(event: Record<string, unknown>) {
 test('zero hits for Mnemosyne human A5 are searched again as Mnemosyne A5 and then stop', async () => {
   const yahooQueries: string[] = [];
   const rakutenKeywords: string[] = [];
-  const rakutenAt = steppingNow();
+  const yahooClock = waitedClock();
+  const rakutenClock = waitedClock();
   const lines = await withInfo(async () => {
     const yahoo = createYahooSearch({
       appId: YAHOO_APP_ID,
       userId: 'mnemosyne',
       gate: createYahooRateGate(),
-      now: steppingNow(),
+      now: yahooClock.now,
+      delay: yahooClock.delay,
       schedule: () => () => {},
       fetch: (async (url) => {
         const query = new URL(url).searchParams.get('query') ?? '';
@@ -102,7 +105,8 @@ test('zero hits for Mnemosyne human A5 are searched again as Mnemosyne A5 and th
       credentials: { applicationId: RAKUTEN_APP_ID, accessKey: RAKUTEN_ACCESS_KEY },
       limiter: createRakutenLimiter(),
       userId: 'mnemosyne',
-      now: () => new Date(rakutenAt()),
+      now: rakutenClock.date,
+      delay: rakutenClock.delay,
       http: (async (request) => {
         const keyword = new URL(request.url).searchParams.get('keyword') ?? '';
         rakutenCalls.push(keyword);
@@ -125,6 +129,8 @@ test('zero hits for Mnemosyne human A5 are searched again as Mnemosyne A5 and th
 
   assert.deepEqual(yahooQueries, ['Mnemosyne human A5', 'Mnemosyne A5']);
   assert.deepEqual(rakutenKeywords, ['Mnemosyne human A5', 'Mnemosyne A5']);
+  assert.deepEqual(yahooClock.waits, [1000]);
+  assert.deepEqual(rakutenClock.waits, [1000]);
   const events = logEvents(lines);
   assert.equal(events.length, 4);
   for (const event of events) assertLogShape(event);
@@ -140,21 +146,27 @@ test('zero hits for Mnemosyne human A5 are searched again as Mnemosyne A5 and th
 
 test('zero hits on the name and model are searched again as the name only', async () => {
   const queries: string[] = [];
+  const clock = waitedClock();
+  const sentAt: number[] = [];
   const yahoo = createYahooSearch({
     appId: YAHOO_APP_ID,
     userId: 'mnemosyne-name',
     gate: createYahooRateGate(),
-    now: steppingNow(),
+    now: clock.now,
+    delay: clock.delay,
     schedule: () => () => {},
     fetch: (async (url) => {
       const query = new URL(url).searchParams.get('query') ?? '';
       queries.push(query);
+      sentAt.push(clock.now());
       if (query === 'Mnemosyne') return jsonResponse({ hits: [yahooHit()] });
       return jsonResponse({ hits: [] });
     }) as YahooFetch,
   });
   const result = await yahoo.search(MNEMOSYNE);
   assert.deepEqual(queries, ['Mnemosyne human A5', 'Mnemosyne A5', 'Mnemosyne']);
+  assert.deepEqual(clock.waits, [1000, 1000]);
+  assert.deepEqual(sentAt, [NOW, NOW + 1000, NOW + 2000]);
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.value.length, 1);
@@ -262,24 +274,38 @@ test('a name that already has hits is not searched with a shorter query', async 
   assert.equal(JSON.stringify(events).includes('Mnemosyne'), false);
 });
 
-function steppingNow(start = NOW): () => number {
+function waitedClock(start = NOW) {
   let at = start;
-  return () => {
-    const value = at;
-    at += 1000;
-    return value;
+  const waits: number[] = [];
+  return {
+    waits,
+    now: () => at,
+    date: () => new Date(at),
+    advance: (ms: number) => {
+      at += ms;
+    },
+    delay: async (ms: number) => {
+      waits.push(ms);
+      at += ms;
+    },
   };
 }
 
 test('a frozen clock keeps the first zero-hit and does not send the shorter queries', async () => {
   const yahooQueries: string[] = [];
   const rakutenKeywords: string[] = [];
+  let yahooDelays = 0;
+  let rakutenDelays = 0;
   const lines = await withInfo(async () => {
     const yahoo = createYahooSearch({
       appId: YAHOO_APP_ID,
       userId: 'frozen-yahoo',
       gate: createYahooRateGate(),
       now: () => NOW,
+      delay: async () => {
+        yahooDelays += 1;
+        if (yahooDelays > 3) throw new Error('yahoo waited without time moving');
+      },
       schedule: () => () => {},
       fetch: (async (url) => {
         yahooQueries.push(new URL(url).searchParams.get('query') ?? '');
@@ -291,6 +317,10 @@ test('a frozen clock keeps the first zero-hit and does not send the shorter quer
       limiter: createRakutenLimiter(),
       userId: 'frozen-rakuten',
       now: () => new Date(NOW),
+      delay: async () => {
+        rakutenDelays += 1;
+        if (rakutenDelays > 3) throw new Error('rakuten waited without time moving');
+      },
       http: async (request) => {
         rakutenKeywords.push(new URL(request.url).searchParams.get('keyword') ?? '');
         return rakutenResponse({ items: [] });
@@ -307,6 +337,8 @@ test('a frozen clock keeps the first zero-hit and does not send the shorter quer
 
   assert.deepEqual(yahooQueries, ['Mnemosyne human A5']);
   assert.deepEqual(rakutenKeywords, ['Mnemosyne human A5']);
+  assert.equal(yahooDelays < 3, true);
+  assert.equal(rakutenDelays < 3, true);
   const events = logEvents(lines);
   assert.equal(events.length, 2);
   assert.deepEqual(events.map((event) => event.provider), ['yahoo', 'rakuten']);
@@ -316,15 +348,16 @@ test('a frozen clock keeps the first zero-hit and does not send the shorter quer
 });
 
 test('a later upstream 429 keeps the first zero-hit and does not try a shorter query', async () => {
-  const yahooNow = steppingNow();
-  const rakutenNow = steppingNow();
+  const yahooClock = waitedClock();
+  const rakutenClock = waitedClock();
   const yahooQueries: string[] = [];
   const rakutenKeywords: string[] = [];
   const yahoo = createYahooSearch({
     appId: YAHOO_APP_ID,
     userId: 'later-429-yahoo',
     gate: createYahooRateGate(),
-    now: yahooNow,
+    now: yahooClock.now,
+    delay: yahooClock.delay,
     schedule: () => () => {},
     fetch: (async (url) => {
       const query = new URL(url).searchParams.get('query') ?? '';
@@ -337,7 +370,8 @@ test('a later upstream 429 keeps the first zero-hit and does not try a shorter q
     credentials: { applicationId: RAKUTEN_APP_ID, accessKey: RAKUTEN_ACCESS_KEY },
     limiter: createRakutenLimiter(),
     userId: 'later-429-rakuten',
-    now: () => new Date(rakutenNow()),
+    now: rakutenClock.date,
+    delay: rakutenClock.delay,
     http: async (request) => {
       const keyword = new URL(request.url).searchParams.get('keyword') ?? '';
       rakutenKeywords.push(keyword);
@@ -358,11 +392,13 @@ test('a later upstream 429 keeps the first zero-hit and does not try a shorter q
 
 test('a later provider failure stays a failure and is not searched shorter', async () => {
   const queries: string[] = [];
+  const clock = waitedClock();
   const yahoo = createYahooSearch({
     appId: YAHOO_APP_ID,
     userId: 'later-500-yahoo',
     gate: createYahooRateGate(),
-    now: steppingNow(),
+    now: clock.now,
+    delay: clock.delay,
     schedule: () => () => {},
     fetch: (async (url) => {
       const query = new URL(url).searchParams.get('query') ?? '';
@@ -375,6 +411,161 @@ test('a later provider failure stays a failure and is not searched shorter', asy
   assert.deepEqual(queries, ['Mnemosyne human A5', 'Mnemosyne A5']);
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, 'SEARCH_FAILED');
+});
+
+test('a fast zero-hit waits for the global second and still counts as one user search', async () => {
+  const yahooClock = waitedClock();
+  const yahooQueries: string[] = [];
+  const yahooSent: number[] = [];
+  const yahooGate = createYahooRateGate();
+  const yahoo = createYahooSearch({
+    appId: YAHOO_APP_ID,
+    userId: 'slot-yahoo',
+    gate: yahooGate,
+    now: yahooClock.now,
+    delay: yahooClock.delay,
+    schedule: () => () => {},
+    fetch: (async (url) => {
+      yahooQueries.push(new URL(url).searchParams.get('query') ?? '');
+      yahooSent.push(yahooClock.now());
+      return jsonResponse({ hits: [] });
+    }) as YahooFetch,
+  });
+  const yahooEmpty = await yahoo.search(MNEMOSYNE);
+  assert.equal(yahooEmpty.ok, true);
+  if (yahooEmpty.ok) assert.deepEqual(yahooEmpty.value, []);
+  assert.deepEqual(yahooQueries, ['Mnemosyne human A5', 'Mnemosyne A5', 'Mnemosyne']);
+  assert.deepEqual(yahooClock.waits, [1000, 1000]);
+  assert.deepEqual(yahooSent, [NOW, NOW + 1000, NOW + 2000]);
+
+  for (let index = 0; index < 4; index += 1) {
+    yahooClock.advance(1000);
+    const follow = createYahooSearch({
+      appId: YAHOO_APP_ID,
+      userId: 'slot-yahoo',
+      gate: yahooGate,
+      now: yahooClock.now,
+      delay: yahooClock.delay,
+      schedule: () => () => {},
+      fetch: (async () => jsonResponse({ hits: [yahooHit()] })) as YahooFetch,
+    });
+    const result = await follow.search(MNEMOSYNE);
+    assert.equal(result.ok, true, `yahoo user search ${index + 2}`);
+  }
+  yahooClock.advance(1000);
+  const yahooBlocked = await createYahooSearch({
+    appId: YAHOO_APP_ID,
+    userId: 'slot-yahoo',
+    gate: yahooGate,
+    now: yahooClock.now,
+    delay: yahooClock.delay,
+    schedule: () => () => {},
+    fetch: (async () => jsonResponse({ hits: [yahooHit()] })) as YahooFetch,
+  }).search(MNEMOSYNE);
+  assert.equal(yahooBlocked.ok, false);
+  if (!yahooBlocked.ok) assert.equal(yahooBlocked.error.error, 'この検索は1分に5回までです');
+
+  const rakutenClock = waitedClock();
+  const rakutenKeywords: string[] = [];
+  const limiter = createRakutenLimiter();
+  const rakuten = createRakutenSearch({
+    credentials: { applicationId: RAKUTEN_APP_ID, accessKey: RAKUTEN_ACCESS_KEY },
+    limiter,
+    userId: 'slot-rakuten',
+    now: rakutenClock.date,
+    delay: rakutenClock.delay,
+    http: async (request) => {
+      rakutenKeywords.push(new URL(request.url).searchParams.get('keyword') ?? '');
+      return rakutenResponse({ items: [] });
+    },
+  });
+  const rakutenEmpty = await rakuten.search(MNEMOSYNE);
+  assert.equal(rakutenEmpty.ok, true);
+  if (rakutenEmpty.ok) assert.deepEqual(rakutenEmpty.value, []);
+  assert.deepEqual(rakutenKeywords, ['Mnemosyne human A5', 'Mnemosyne A5', 'Mnemosyne']);
+  assert.deepEqual(rakutenClock.waits, [1000, 1000]);
+
+  for (let index = 0; index < 4; index += 1) {
+    rakutenClock.advance(1000);
+    const follow = createRakutenSearch({
+      credentials: { applicationId: RAKUTEN_APP_ID, accessKey: RAKUTEN_ACCESS_KEY },
+      limiter,
+      userId: 'slot-rakuten',
+      now: rakutenClock.date,
+      delay: rakutenClock.delay,
+      http: async () => rakutenResponse({ items: [rakutenItem()] }),
+    });
+    const result = await follow.search(MNEMOSYNE);
+    assert.equal(result.ok, true, `rakuten user search ${index + 2}`);
+  }
+  rakutenClock.advance(1000);
+  const rakutenBlocked = await createRakutenSearch({
+    credentials: { applicationId: RAKUTEN_APP_ID, accessKey: RAKUTEN_ACCESS_KEY },
+    limiter,
+    userId: 'slot-rakuten',
+    now: rakutenClock.date,
+    delay: rakutenClock.delay,
+    http: async () => rakutenResponse({ items: [rakutenItem()] }),
+  }).search(MNEMOSYNE);
+  assert.equal(rakutenBlocked.ok, false);
+  if (!rakutenBlocked.ok) assert.equal(rakutenBlocked.error.error, RakutenMessages.userMinute);
+});
+
+test('a shorter query waits at most one second, and two seconds in total', async () => {
+  const gate = createYahooRateGate();
+  const clock = waitedClock();
+  const queries: string[] = [];
+  const yahoo = createYahooSearch({
+    appId: YAHOO_APP_ID,
+    userId: 'wait-cap',
+    gate,
+    now: clock.now,
+    delay: async (ms) => {
+      assert.equal(ms <= 1_000, true);
+      await clock.delay(ms);
+      if (clock.waits.length === 1) assert.equal(gate.take('someone-else', clock.now()), null);
+    },
+    schedule: () => () => {},
+    fetch: (async (url) => {
+      queries.push(new URL(url).searchParams.get('query') ?? '');
+      return jsonResponse({ hits: [] });
+    }) as YahooFetch,
+  });
+  const result = await yahoo.search(MNEMOSYNE);
+  assert.deepEqual(queries, ['Mnemosyne human A5']);
+  assert.deepEqual(clock.waits, [1000]);
+  assert.equal(clock.waits.reduce((sum, ms) => sum + ms, 0) <= 2_000, true);
+  assert.equal(result.ok, true);
+  if (result.ok) assert.deepEqual(result.value, []);
+});
+
+test('the yahoo minute cap keeps the first zero-hit without waiting out the minute', async () => {
+  const gate = createYahooRateGate();
+  let seeded = NOW;
+  for (let index = 0; index < 24; index += 1) {
+    assert.equal(gate.take(`seed-${index}`, seeded), null);
+    seeded += 1000;
+  }
+  const clock = waitedClock(seeded);
+  const queries: string[] = [];
+  const yahoo = createYahooSearch({
+    appId: YAHOO_APP_ID,
+    userId: 'minute-user',
+    gate,
+    now: clock.now,
+    delay: clock.delay,
+    schedule: () => () => {},
+    fetch: (async (url) => {
+      queries.push(new URL(url).searchParams.get('query') ?? '');
+      return jsonResponse({ hits: [] });
+    }) as YahooFetch,
+  });
+  const result = await yahoo.search(MNEMOSYNE);
+  assert.equal(result.ok, true);
+  if (result.ok) assert.deepEqual(result.value, []);
+  assert.deepEqual(queries, ['Mnemosyne human A5']);
+  assert.equal(clock.waits.every((ms) => ms <= 1_000), true);
+  assert.equal(clock.waits.reduce((sum, ms) => sum + ms, 0) <= 1_000, true);
 });
 
 test('zero hits stay editable and a shop failure keeps its message', () => {
