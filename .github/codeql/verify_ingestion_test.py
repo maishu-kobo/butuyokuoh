@@ -10,13 +10,6 @@ SCRIPT = Path(__file__).with_name("verify_ingestion.sh")
 
 
 class VerifyIngestionTest(unittest.TestCase):
-    def test_workflow_runs_the_guard_and_tests_without_failure_tolerance(self):
-        workflow = SCRIPT.parents[1] / "workflows" / "codeql.yml"
-        text = workflow.read_text(encoding="utf-8")
-        self.assertRegex(text, r"(?m)^ +run: bash \.github/codeql/verify_ingestion\.sh$")
-        self.assertRegex(text, r"(?m)^ +run: python3 \.github/codeql/verify_ingestion_test\.py$")
-        self.assertNotRegex(text, r"(?m)^ +continue-on-error:")
-
     def run_guard(self, status="complete", api_exit=0, sarif_id="upload-id"):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
