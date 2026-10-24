@@ -22,10 +22,12 @@ type ListedCandidate = CaptureCandidate & { candidateId?: number };
 export function CaptureSearchPanel({
   file,
   onManual,
+  onSearching,
   onRegistered,
 }: {
   file: File | null;
   onManual: (name: string) => void;
+  onSearching: () => void;
   onRegistered: () => void;
 }) {
   const [status, setStatus] = useState('');
@@ -44,6 +46,7 @@ export function CaptureSearchPanel({
   const [searchRetryable, setSearchRetryable] = useState(false);
   const [searchBlocked, setSearchBlocked] = useState(false);
   const searchBlockedRef = useRef(false);
+  const searchVersionRef = useRef(0);
   const searchRetryRef = useRef<{ product: ProductGuess | null; name: string } | null>(null);
 
   useEffect(() => {
@@ -57,6 +60,7 @@ export function CaptureSearchPanel({
     void (async () => {
       await Promise.resolve();
       if (cancelled) return;
+      onSearching();
       setSlow(false);
       setBusy(true);
       setNotice('');
@@ -107,14 +111,18 @@ export function CaptureSearchPanel({
 
     return () => {
       cancelled = true;
+      searchVersionRef.current += 1;
       clearTimeout(timer);
     };
-  }, [file, attempt]);
+  }, [file, attempt, onSearching]);
 
   async function runSearch(product: ProductGuess | null, queryName: string, cancelled: () => boolean = () => false) {
     if (searchBlockedRef.current) return;
     const trimmed = queryName.trim();
     if (!trimmed) return;
+    const version = ++searchVersionRef.current;
+    const searchCancelled = () => cancelled() || version !== searchVersionRef.current;
+    onSearching();
     setBusy(true);
     setSlow(false);
     setNotice('');
@@ -134,7 +142,7 @@ export function CaptureSearchPanel({
         }),
       }, { notifyError: false });
     } catch {
-      if (cancelled()) return;
+      if (searchCancelled()) return;
       const retry = thrownCaptureRetry(true);
       searchRetryRef.current = { product, name: trimmed };
       setBusy(false);
@@ -145,7 +153,7 @@ export function CaptureSearchPanel({
       return;
     }
     const data = await response.json().catch(() => null);
-    if (cancelled()) return;
+    if (searchCancelled()) return;
     setBusy(false);
     const decision = statusAfterSearch(data, response.ok, trimmed);
     if (decision.manual.enter) {
@@ -184,6 +192,7 @@ export function CaptureSearchPanel({
   if (!file && !status) return null;
 
   const listed = orderCandidates(candidates, sort);
+  const selectedCandidates = listed.filter((item) => typeof item.candidateId === 'number' && selected.includes(item.candidateId));
   const showRakutenCredit = listed.some((item) => item.site === 'rakuten');
 
   return (
@@ -310,6 +319,24 @@ export function CaptureSearchPanel({
               <p className="text-xs text-gray-400">
                 <a href={RAKUTEN_CREDIT.url} target="_blank" rel="noopener noreferrer" className="underline">{RAKUTEN_CREDIT.label}</a>
               </p>
+            )}
+            {selectedCandidates.length > 0 && (
+              <fieldset className="w-full min-w-0 space-y-2">
+                <legend className="text-sm font-medium">選択した商品のURL</legend>
+                <p className="text-sm text-gray-600 dark:text-gray-300">候補の商品URLが自動で入ります。そのまま登録できます。</p>
+                {selectedCandidates.map((item) => (
+                  <label key={item.candidateId} className="block text-sm">
+                    <span className="mb-1 block">{item.shopName}</span>
+                    <input
+                      type="url"
+                      aria-label={`商品URL（自動入力） ${item.shopName}`}
+                      value={item.url}
+                      readOnly
+                      className="w-full min-w-0 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-gray-50 dark:bg-slate-900"
+                    />
+                  </label>
+                ))}
+              </fieldset>
             )}
             <button
               type="button"
