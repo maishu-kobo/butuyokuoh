@@ -59,6 +59,7 @@ function harness(options: {
   status?: number;
   fetch?: YahooFetch;
   schedule?: YahooSchedule;
+  delay?: (ms: number) => Promise<void>;
 } = {}) {
   const calls: { url: string; init: YahooRequest }[] = [];
   const clock = options.clock ?? { t: NOW };
@@ -73,6 +74,7 @@ function harness(options: {
     gate,
     now: () => clock.t,
     fetch,
+    delay: options.delay,
     schedule: options.schedule ?? (() => () => {}),
   });
   return { calls, clock, gate, search };
@@ -347,7 +349,7 @@ test('only https links on the Yahoo shopping hosts are returned', async () => {
 });
 
 test('an empty hit list is an empty success, and unusable hits are a failure', async () => {
-  const empty = harness({ body: { totalResultsReturned: 0, hits: [] } });
+  const empty = harness({ body: { totalResultsReturned: 0, hits: [] }, delay: async () => {} });
   const none = await empty.search.search(nameQuery);
   assert.equal(none.ok, true);
   if (none.ok) assert.deepEqual(none.value, []);

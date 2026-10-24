@@ -12,6 +12,8 @@ import {
   type SiteSearch,
 } from './contract';
 import { canonicalCandidateImageUrl } from './image-hosts';
+import { textQueryVariants } from './search-attempt';
+import { reportStoreAttempt, type StoreAttempt } from './search-log';
 
 const YAHOO_ITEM_SEARCH = 'https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch';
 const TIMEOUT_MS = 6_000;
@@ -45,8 +47,11 @@ export type YahooFetch = (url: string, init: YahooRequest) => Promise<Response>;
 
 export type YahooSchedule = (callback: () => void, delayMs: number) => () => void;
 
+export type YahooDelay = (ms: number) => Promise<void>;
+
 export type YahooRateGate = {
-  take(userId: string, now: number): YahooLimit | null;
+  take(userId: string, now: number, chargeUser?: boolean): YahooLimit | null;
+  globalSlotWait(now: number): number;
 };
 
 export type YahooSearchDeps = {
@@ -56,6 +61,7 @@ export type YahooSearchDeps = {
   now?: () => number;
   gate?: YahooRateGate;
   schedule?: YahooSchedule;
+  delay?: YahooDelay;
 };
 
 export function createYahooRateGate(): YahooRateGate {
@@ -63,13 +69,18 @@ export function createYahooRateGate(): YahooRateGate {
   const users = new Map<string, number[]>();
 
   return {
-    take(userId, now) {
+    take(userId, now, chargeUser = true) {
       const id = userId.trim().slice(0, 64) || 'anonymous';
       const recent = globalHits.filter(time => now - time < MINUTE_MS);
       globalHits.length = 0;
       globalHits.push(...recent);
       if (globalHits.some(time => now - time < 1_000)) return 'second';
       if (globalHits.length >= 25) return 'minute';
+
+      if (!chargeUser) {
+        globalHits.push(now);
+        return null;
+      }
 
       const history = (users.get(id) ?? []).filter(time => now - time < DAY_MS);
       if (history.filter(time => now - time < MINUTE_MS).length >= 5) {
@@ -85,6 +96,14 @@ export function createYahooRateGate(): YahooRateGate {
       users.set(id, history);
       return null;
     },
+    globalSlotWait(now) {
+      let wait = 0;
+      for (const time of globalHits) {
+        const remaining = 1_000 - (now - time);
+        if (remaining > wait) wait = remaining;
+      }
+      return wait;
+    },
   };
 }
 
@@ -93,6 +112,12 @@ const sharedGate = createYahooRateGate();
 function defaultSchedule(callback: () => void, delayMs: number): () => void {
   const timer = setTimeout(callback, delayMs);
   return () => clearTimeout(timer);
+}
+
+function defaultDelay(ms: number): Promise<void> {
+  return new Promise(resolve => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function failed(): CaptureResult<never> {
@@ -299,12 +324,77 @@ function isAbort(error: unknown, signal: AbortSignal): boolean {
   return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError');
 }
 
+function yahooAttemptKey(appId: string, query: SearchQuery): string | null {
+  const url = requestUrl(appId, query);
+  if (!url) return null;
+  const params = new URL(url).searchParams;
+  if (params.has('jan_code')) return `jan:${params.get('jan_code')}`;
+  const text = params.get('query');
+  return text ? `q:${text}` : null;
+}
+
 export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
   const fetchImpl = deps.fetch ?? ((url, init) => globalThis.fetch(url, init));
   const now = deps.now ?? Date.now;
   const gate = deps.gate ?? sharedGate;
   const schedule = deps.schedule ?? defaultSchedule;
+  const delay = deps.delay ?? defaultDelay;
   const userId = deps.userId ?? 'anonymous';
+
+  async function requestOnce(appId: string, query: SearchQuery, at: number): Promise<StoreAttempt> {
+    const url = requestUrl(appId, query);
+    if (!url) {
+      return { result: captureFailure('INVALID_INPUT', CaptureMessages.searchInput, 400), httpStatus: null };
+    }
+    const controller = new AbortController();
+    const cancel = schedule(() => controller.abort(), TIMEOUT_MS);
+    const aborted = whenAborted(controller.signal);
+    void aborted.catch(() => undefined);
+    try {
+      const response = await Promise.race([
+        fetchImpl(url, {
+          method: 'GET',
+          redirect: 'manual',
+          cache: 'no-store',
+          signal: controller.signal,
+          headers: { Accept: 'application/json' },
+        }),
+        aborted,
+      ]);
+      if (controller.signal.aborted) {
+        await discard(response);
+        return { result: captureFailure('SEARCH_TIMEOUT', TIMEOUT, 504), httpStatus: null };
+      }
+      if (response.status === 429) {
+        await discard(response);
+        return { result: captureFailure('SEARCH_FAILED', UPSTREAM_LIMITED, 429), httpStatus: 429 };
+      }
+      if (response.status < 200 || response.status >= 300) {
+        await discard(response);
+        return { result: failed(), httpStatus: response.status };
+      }
+      const text = await readLimited(response);
+      if (text === null) return { result: failed(), httpStatus: response.status };
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text.replace(/^\uFEFF/, ''));
+      } catch {
+        return { result: failed(), httpStatus: response.status };
+      }
+      const preferMain = preferMainProduct(query, Boolean(query.jan && isValidJan(query.jan)));
+      return {
+        result: mapHits(parsed, new Date(at).toISOString(), preferMain),
+        httpStatus: response.status,
+      };
+    } catch (error) {
+      if (isAbort(error, controller.signal)) {
+        return { result: captureFailure('SEARCH_TIMEOUT', TIMEOUT, 504), httpStatus: null };
+      }
+      return { result: failed(), httpStatus: null };
+    } finally {
+      cancel();
+    }
+  }
 
   return {
     async search(query) {
@@ -312,56 +402,76 @@ export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
         throw new Error('yahoo search is server-only');
       }
       const appId = usableAppId(deps.appId);
-      if (!appId) return captureFailure('SEARCH_NOT_CONFIGURED', UNAVAILABLE, 503);
-      const url = requestUrl(appId, query);
-      if (!url) return captureFailure('INVALID_INPUT', CaptureMessages.searchInput, 400);
-      const at = now();
-      const limit = gate.take(userId, at);
-      if (limit) return captureFailure('SEARCH_FAILED', LIMIT_MESSAGE[limit], 429);
-
-      const controller = new AbortController();
-      const cancel = schedule(() => controller.abort(), TIMEOUT_MS);
-      const aborted = whenAborted(controller.signal);
-      void aborted.catch(() => undefined);
-      try {
-        const response = await Promise.race([
-          fetchImpl(url, {
-            method: 'GET',
-            redirect: 'manual',
-            cache: 'no-store',
-            signal: controller.signal,
-            headers: { Accept: 'application/json' },
-          }),
-          aborted,
-        ]);
-        if (controller.signal.aborted) {
-          await discard(response);
-          return captureFailure('SEARCH_TIMEOUT', TIMEOUT, 504);
-        }
-        if (response.status === 429) {
-          await discard(response);
-          return captureFailure('SEARCH_FAILED', UPSTREAM_LIMITED, 429);
-        }
-        if (response.status < 200 || response.status >= 300) {
-          await discard(response);
-          return failed();
-        }
-        const text = await readLimited(response);
-        if (text === null) return failed();
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(text.replace(/^\uFEFF/, ''));
-        } catch {
-          return failed();
-        }
-        const preferMain = preferMainProduct(query, Boolean(query.jan && isValidJan(query.jan)));
-        return mapHits(parsed, new Date(at).toISOString(), preferMain);
-      } catch (error) {
-        if (isAbort(error, controller.signal)) return captureFailure('SEARCH_TIMEOUT', TIMEOUT, 504);
-        return failed();
-      } finally {
-        cancel();
+      if (!appId) {
+        return reportStoreAttempt('yahoo', {
+          result: captureFailure('SEARCH_NOT_CONFIGURED', UNAVAILABLE, 503),
+          httpStatus: null,
+        });
       }
+      const variants = textQueryVariants(query).filter((variant) => yahooAttemptKey(appId, variant));
+      if (variants.length === 0) return captureFailure('INVALID_INPUT', CaptureMessages.searchInput, 400);
+
+      let lastEmpty: CaptureResult<CaptureCandidate[]> | null = null;
+      let chargedUser = false;
+      let waitedMs = 0;
+      const seen = new Set<string>();
+
+      async function acquireYahooSlot(later: boolean): Promise<{ ok: true; at: number } | { ok: false; result: CaptureResult<CaptureCandidate[]> }> {
+        if (!later) {
+          const at = now();
+          const limit = gate.take(userId, at, true);
+          if (!limit) return { ok: true, at };
+          return {
+            ok: false,
+            result: reportStoreAttempt('yahoo', {
+              result: captureFailure('SEARCH_FAILED', LIMIT_MESSAGE[limit], 429),
+              httpStatus: null,
+            }),
+          };
+        }
+        const budget = Math.min(1_000, 2_000 - waitedMs);
+        let spent = 0;
+        while (spent < budget) {
+          const wait = gate.globalSlotWait(now());
+          if (wait <= 0) break;
+          const slice = Math.min(wait, budget - spent);
+          const before = now();
+          await delay(slice);
+          spent += slice;
+          waitedMs += slice;
+          if (now() <= before) return { ok: false, result: lastEmpty ?? { ok: true, value: [] } };
+        }
+        const at = now();
+        const limit = gate.take(userId, at, false);
+        if (!limit) return { ok: true, at };
+        if (limit === 'minute' || limit === 'second') {
+          return { ok: false, result: lastEmpty ?? { ok: true, value: [] } };
+        }
+        return {
+          ok: false,
+          result: reportStoreAttempt('yahoo', {
+            result: captureFailure('SEARCH_FAILED', LIMIT_MESSAGE[limit], 429),
+            httpStatus: null,
+          }),
+        };
+      }
+
+      for (const variant of variants) {
+        const key = yahooAttemptKey(appId, variant);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        const acquired = await acquireYahooSlot(chargedUser);
+        if (!acquired.ok) return acquired.result;
+        chargedUser = true;
+        const result = reportStoreAttempt('yahoo', await requestOnce(appId, variant, acquired.at));
+        if (!result.ok) {
+          if (lastEmpty && result.status === 429) return lastEmpty;
+          return result;
+        }
+        if (result.value.length > 0) return result;
+        lastEmpty = result;
+      }
+      return lastEmpty ?? { ok: true, value: [] };
     },
   };
 }

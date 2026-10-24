@@ -11,6 +11,8 @@ import {
 } from './contract';
 import { canonicalCandidateImageUrl } from './image-hosts';
 import { canonicalRakutenAffiliateUrl, canonicalRakutenProductUrl } from './rakuten-link';
+import { textQueryVariants } from './search-attempt';
+import { reportStoreAttempt, type StoreAttempt } from './search-log';
 
 export const RAKUTEN_SEARCH_TIMEOUT_MS = 6000;
 export const RAKUTEN_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701';
@@ -58,14 +60,22 @@ export interface RakutenHttpResponse {
 export type RakutenHttp = (request: RakutenHttpRequest) => Promise<RakutenHttpResponse>;
 
 export interface RakutenLimiter {
-  tryAcquire(userId: string, nowMs: number): { ok: true } | { ok: false; reason: string };
+  tryAcquire(userId: string, nowMs: number, chargeUser?: boolean): { ok: true } | { ok: false; reason: string };
+  globalSlotWait?(nowMs: number): number;
 }
 
 export function createRakutenLimiter(): RakutenLimiter {
   let lastGlobal = Number.NEGATIVE_INFINITY;
   const users = new Map<string, number[]>();
   return {
-    tryAcquire(userId, nowMs) {
+    tryAcquire(userId, nowMs, chargeUser = true) {
+      if (!chargeUser) {
+        if (nowMs - lastGlobal < GLOBAL_INTERVAL_MS) {
+          return { ok: false, reason: RakutenMessages.globalRate };
+        }
+        lastGlobal = nowMs;
+        return { ok: true };
+      }
       const id = userId.trim() || 'anonymous';
       const stamps = (users.get(id) ?? []).filter(stamp => nowMs - stamp < USER_DAY_MS);
       if (stamps.filter(stamp => nowMs - stamp < USER_MINUTE_MS).length >= USER_MINUTE_MAX) {
@@ -85,6 +95,10 @@ export function createRakutenLimiter(): RakutenLimiter {
       lastGlobal = nowMs;
       return { ok: true };
     },
+    globalSlotWait(nowMs) {
+      const remaining = GLOBAL_INTERVAL_MS - (nowMs - lastGlobal);
+      return remaining > 0 ? remaining : 0;
+    },
   };
 }
 
@@ -94,54 +108,145 @@ export function createRakutenSearch(options: {
   limiter: RakutenLimiter;
   userId?: string;
   now?: () => Date;
+  delay?: (ms: number) => Promise<void>;
   timeoutMs?: number;
   referer?: string | null;
   affiliateId?: string | null;
 }): SiteSearch {
   const now = options.now ?? (() => new Date());
+  const delay = options.delay ?? ((ms: number) => new Promise<void>(resolve => {
+    setTimeout(resolve, ms);
+  }));
   const timeoutMs = options.timeoutMs ?? RAKUTEN_SEARCH_TIMEOUT_MS;
   const userId = options.userId?.trim() || 'anonymous';
+
+  async function requestOnce(
+    credentials: RakutenCredentials,
+    referer: string | null,
+    query: SearchQuery,
+  ): Promise<StoreAttempt> {
+    const keyword = rakutenKeyword(query);
+    if (!keyword) {
+      return { result: captureFailure('SEARCH_FAILED', RakutenMessages.failed, 400), httpStatus: null };
+    }
+    const preferMain = preferMainProduct(query, Boolean(query.jan && isValidJan(query.jan)));
+    const url = new URL(RAKUTEN_ENDPOINT);
+    url.searchParams.set('applicationId', credentials.applicationId);
+    url.searchParams.set('keyword', keyword);
+    url.searchParams.set('format', 'json');
+    url.searchParams.set('formatVersion', '2');
+    const affiliateId = optionalAffiliateId(options.affiliateId);
+    if (affiliateId) url.searchParams.set('affiliateId', affiliateId);
+    const headers: Record<string, string> = { accessKey: credentials.accessKey };
+    if (referer) headers.Referer = referer;
+
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    try {
+      const response = await Promise.race([
+        options.http({ url: url.toString(), method: 'GET', headers, signal: controller.signal }),
+        aborted(controller.signal),
+      ]);
+      if (timedOut || controller.signal.aborted) {
+        return { result: captureFailure('SEARCH_TIMEOUT', RakutenMessages.timeout, 504), httpStatus: null };
+      }
+      return {
+        result: parseRakutenResponse(response, now().toISOString(), preferMain),
+        httpStatus: response.status,
+      };
+    } catch {
+      if (timedOut || controller.signal.aborted) {
+        return { result: captureFailure('SEARCH_TIMEOUT', RakutenMessages.timeout, 504), httpStatus: null };
+      }
+      return { result: captureFailure('SEARCH_FAILED', RakutenMessages.failed, 502), httpStatus: null };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   return {
     async search(query) {
       const credentials = normalizeCredentials(options.credentials);
-      if (!credentials) return captureFailure('SEARCH_NOT_CONFIGURED', RakutenMessages.unavailable, 503);
-      const referer = safeReferer(options.referer);
-      if (referer === false) return captureFailure('SEARCH_FAILED', RakutenMessages.unavailable, 503);
-      const keyword = rakutenKeyword(query);
-      if (!keyword) return captureFailure('SEARCH_FAILED', RakutenMessages.failed, 400);
-      const preferMain = preferMainProduct(query, Boolean(query.jan && isValidJan(query.jan)));
-      const slot = options.limiter.tryAcquire(userId, now().getTime());
-      if (!slot.ok) return captureFailure('SEARCH_FAILED', slot.reason, 429);
-
-      const url = new URL(RAKUTEN_ENDPOINT);
-      url.searchParams.set('applicationId', credentials.applicationId);
-      url.searchParams.set('keyword', keyword);
-      url.searchParams.set('format', 'json');
-      url.searchParams.set('formatVersion', '2');
-      const affiliateId = optionalAffiliateId(options.affiliateId);
-      if (affiliateId) url.searchParams.set('affiliateId', affiliateId);
-      const headers: Record<string, string> = { accessKey: credentials.accessKey };
-      if (referer) headers.Referer = referer;
-
-      const controller = new AbortController();
-      let timedOut = false;
-      const timer = setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, timeoutMs);
-      try {
-        const response = await Promise.race([
-          options.http({ url: url.toString(), method: 'GET', headers, signal: controller.signal }),
-          aborted(controller.signal),
-        ]);
-        if (timedOut || controller.signal.aborted) return captureFailure('SEARCH_TIMEOUT', RakutenMessages.timeout, 504);
-        return parseRakutenResponse(response, now().toISOString(), preferMain);
-      } catch {
-        if (timedOut || controller.signal.aborted) return captureFailure('SEARCH_TIMEOUT', RakutenMessages.timeout, 504);
-        return captureFailure('SEARCH_FAILED', RakutenMessages.failed, 502);
-      } finally {
-        clearTimeout(timer);
+      if (!credentials) {
+        return reportStoreAttempt('rakuten', {
+          result: captureFailure('SEARCH_NOT_CONFIGURED', RakutenMessages.unavailable, 503),
+          httpStatus: null,
+        });
       }
+      const referer = safeReferer(options.referer);
+      if (referer === false) {
+        return reportStoreAttempt('rakuten', {
+          result: captureFailure('SEARCH_FAILED', RakutenMessages.unavailable, 503),
+          httpStatus: null,
+        });
+      }
+      const variants = textQueryVariants(query).filter((variant) => rakutenKeyword(variant));
+      if (variants.length === 0) return captureFailure('SEARCH_FAILED', RakutenMessages.failed, 400);
+
+      let lastEmpty: CaptureResult<CaptureCandidate[]> | null = null;
+      let chargedUser = false;
+      let waitedMs = 0;
+      const seen = new Set<string>();
+
+      async function acquireRakutenSlot(later: boolean): Promise<{ ok: true } | { ok: false; result: CaptureResult<CaptureCandidate[]> }> {
+        const slotWait = (at: number) => options.limiter.globalSlotWait?.(at) ?? 0;
+        if (!later) {
+          const slot = options.limiter.tryAcquire(userId, now().getTime(), true);
+          if (slot.ok) return { ok: true };
+          return {
+            ok: false,
+            result: reportStoreAttempt('rakuten', {
+              result: captureFailure('SEARCH_FAILED', slot.reason, 429),
+              httpStatus: null,
+            }),
+          };
+        }
+        const budget = Math.min(1_000, 2_000 - waitedMs);
+        let spent = 0;
+        while (spent < budget) {
+          const wait = slotWait(now().getTime());
+          if (wait <= 0) break;
+          const slice = Math.min(wait, budget - spent);
+          const before = now().getTime();
+          await delay(slice);
+          spent += slice;
+          waitedMs += slice;
+          if (now().getTime() <= before) return { ok: false, result: lastEmpty ?? { ok: true, value: [] } };
+        }
+        const slot = options.limiter.tryAcquire(userId, now().getTime(), false);
+        if (slot.ok) return { ok: true };
+        if (slot.reason === RakutenMessages.globalRate) {
+          return { ok: false, result: lastEmpty ?? { ok: true, value: [] } };
+        }
+        return {
+          ok: false,
+          result: reportStoreAttempt('rakuten', {
+            result: captureFailure('SEARCH_FAILED', slot.reason, 429),
+            httpStatus: null,
+          }),
+        };
+      }
+
+      for (const variant of variants) {
+        const keyword = rakutenKeyword(variant);
+        if (!keyword || seen.has(keyword)) continue;
+        seen.add(keyword);
+        const acquired = await acquireRakutenSlot(chargedUser);
+        if (!acquired.ok) return acquired.result;
+        chargedUser = true;
+        const result = reportStoreAttempt('rakuten', await requestOnce(credentials, referer, variant));
+        if (!result.ok) {
+          if (lastEmpty && result.status === 429) return lastEmpty;
+          return result;
+        }
+        if (result.value.length > 0) return result;
+        lastEmpty = result;
+      }
+      return lastEmpty ?? { ok: true, value: [] };
     },
   };
 }

@@ -135,6 +135,7 @@ async function yahooKeyword(query: SearchQuery): Promise<string | null> {
     userId: 'property-user',
     gate: createYahooRateGate(),
     now: () => NOW,
+    delay: async () => {},
     schedule: () => () => {},
     fetch: (async (url) => {
       captured = url;
@@ -153,6 +154,7 @@ async function rakutenKeyword(query: SearchQuery): Promise<string | null> {
     limiter: createRakutenLimiter(),
     userId: 'property-user',
     now: () => new Date(NOW),
+    delay: async () => {},
     http: async (request) => {
       captured = request.url;
       return { status: 200, body: JSON.stringify({ items: [] }) };
