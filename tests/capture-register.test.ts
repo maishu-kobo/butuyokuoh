@@ -360,7 +360,8 @@ test('expired, unsafe, and mixed-capture candidates are not registered', () => {
 for (const [label, flags] of [
   ['active item', { purchased: 0, deleted: null }],
   ['purchased item', { purchased: 1, deleted: null }],
-  ['trashed item', { purchased: 0, deleted: '2026-10-01 00:00:00' }],
+  ['trashed item', { purchased: 0, deleted: '-1 day' }],
+  ['expired trashed item', { purchased: 0, deleted: '-8 days' }],
 ] as const) {
   test(`a candidate for an existing ${label} is marked 登録済み and cannot be selected`, () => {
     const db = openDatabase(':memory:');
@@ -368,12 +369,12 @@ for (const [label, flags] of [
       const userId = member(db, `${label}@example.com`);
       const url = 'https://store.shopping.yahoo.co.jp/shop/kept';
       db.prepare(
-        'INSERT INTO items (user_id, name, url, is_purchased, deleted_at) VALUES (?, ?, ?, ?, ?)',
+        "INSERT INTO items (user_id, name, url, is_purchased, deleted_at) VALUES (?, ?, ?, ?, datetime('now', ?))",
       ).run(userId, '既存', url, flags.purchased, flags.deleted);
       const captureId = capture(db, userId);
       const candidateId = candidate(db, userId, captureId, { url, source_item_code: 'yahoo:kept' });
       assert.deepEqual(candidateRegistration(db, userId, url), { selectable: false, label: '登録済み' });
-      assert.equal(registeredCandidateLocation(db, userId, url), flags.deleted ? 'trash' : flags.purchased ? 'purchased' : 'list');
+      assert.equal(registeredCandidateLocation(db, userId, url), flags.deleted === '-8 days' ? 'expired-trash' : flags.deleted ? 'trash' : flags.purchased ? 'purchased' : 'list');
       const listed = listCaptureCandidateChoices(db, userId, captureId, NOW);
       assert.deepEqual(listed, [{ id: candidateId, selectable: false, label: '登録済み' }]);
       const result = registerCapturedCandidates(db, userId, [candidateId], NOW);

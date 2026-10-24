@@ -422,14 +422,14 @@ async function duplicateFixture(page: Page, suffix: string) {
 function existingCandidate(userId: number, purchased = 0, deleted: string | null = null) {
   const db = new Database(process.env.E2E_DB_PATH!);
   try {
-    db.prepare('INSERT INTO items(user_id,name,url,current_price,is_purchased,deleted_at) VALUES (?,?,?,?,?,?)')
+    db.prepare("INSERT INTO items(user_id,name,url,current_price,is_purchased,deleted_at) VALUES (?,?,?,?,?,datetime('now',?))")
       .run(userId, '既存のペン', 'https://store.shopping.yahoo.co.jp/example/pen', 980, purchased, deleted);
   } finally {db.close();}
 }
 for (const state of ['list', 'purchased', 'trash'] as const) {
   test(`registered ${state} candidates are disabled before registration`, async ({page}) => {
     const userId = await duplicateFixture(page,state);
-    existingCandidate(userId,state === 'purchased' ? 1 : 0,state === 'trash' ? '2026-10-24 00:00:00' : null);
+    existingCandidate(userId,state === 'purchased' ? 1 : 0,state === 'trash' ? '-1 day' : null);
     await page.getByLabel('写真ファイル').setInputFiles({name:'pen.jpg',mimeType:'image/jpeg',buffer:jpeg});
     const choices=page.getByRole('checkbox',{name:'候補を選ぶ テスト用ゲルボールペン 0.5'});
     await expect(choices).toHaveCount(2);
@@ -476,3 +476,19 @@ for (const mixed of [false,true]) {
     }
   });
 }
+
+
+test('expired trash candidates do not promise restoration or navigate to cleanup', async ({page}) => {
+  const userId = await duplicateFixture(page, 'expired-trash');
+  existingCandidate(userId, 0, '-8 days');
+  await page.getByLabel('写真ファイル').setInputFiles({name:'pen.jpg',mimeType:'image/jpeg',buffer:jpeg});
+  const choices = page.getByRole('checkbox',{name:'候補を選ぶ テスト用ゲルボールペン 0.5'});
+  await expect(choices).toHaveCount(2);
+  await expect(choices.first()).toBeDisabled();
+  await expect(page.getByText('ゴミ箱の保存期間が過ぎています')).toBeVisible();
+  await expect(page.getByText('ゴミ箱から復元できます')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'ゴミ箱を見る',exact:true})).toHaveCount(0);
+  const db = new Database(process.env.E2E_DB_PATH!);
+  try { expect(db.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id=?').get(userId)).toEqual({n:1}); }
+  finally { db.close(); }
+});
