@@ -17,6 +17,7 @@ export interface Item {
   comparison_group_name?: string | null;
   comparison_group_origin?: string | null;
   group_origin?: string | null;
+  budget_selected_item_id?: number | null;
   countsInTotal?: boolean;
   totalLabel?: string | null;
   category_id: number | null;
