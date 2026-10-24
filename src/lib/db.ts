@@ -253,6 +253,15 @@ function migrateDb(db: Database.Database) {
   addColumnIfNotExists(db, 'items', 'source_item_code', 'TEXT');
   addColumnIfNotExists(db, 'items', 'price_fetched_at', 'TEXT');
   db.exec(CAPTURE_SCHEMA_SQL);
+  // 十六進のファイル名からは所有者が分からない。アップロードした会員だけを記録する。
+  // 足すだけで、既存の行は消さない。開くたびに同じ結果になる。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS member_uploads (
+      name TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_member_uploads_user ON member_uploads(user_id);
+  `);
   recordSchemaVersion(db);
 }
 

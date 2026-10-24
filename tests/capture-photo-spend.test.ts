@@ -222,10 +222,12 @@ test('the counted photo item month is the only month that receives its price', a
   assert.equal(saved.status, 200);
   assert.equal((saved.json as { budget_item_id: number; name: string }).budget_item_id, dearId);
   const chosen = await call(budgetRoute, 'GET', '/api/budget');
-  const chosenBody = chosen.json as Record<string, { total: number; items: { id: number; totalLabel: string | null }[] }>;
+  const chosenBody = chosen.json as Record<string, { total: number; items: { id: number; totalLabel: string | null; budget_selected_item_id: number | null }[] }>;
   assert.equal(chosenBody['2026-10'].total, 50);
   assert.equal(chosenBody['2026-10'].items.find((row) => row.id === cheapId)?.totalLabel, '合計に含まない');
   assert.equal(chosenBody['2026-11'].total, 940);
+  assert.equal(chosenBody['2026-11'].items.find((row) => row.id === dearId)?.budget_selected_item_id, dearId);
+  assert.equal(chosenBody.undated.items[0].budget_selected_item_id, dearId);
   assert.equal(chosenBody['2026-11'].items.find((row) => row.id === dearId)?.totalLabel, null);
 
   const renamed = await call(groupRoute, 'PUT', `/api/comparison-groups/${photo}`, { name: '牛乳パック', priority: 1 }, { id: String(photo) });
@@ -239,6 +241,8 @@ test('the counted photo item month is the only month that receives its price', a
   assert.equal((cleared.json as { budget_item_id: number | null }).budget_item_id, null);
   const restored = (await call(budgetRoute, 'GET', '/api/budget')).json as Record<string, { total: number }>;
   assert.equal(restored['2026-10'].total, 150);
+  const afterReset = (await call(budgetRoute, 'GET', '/api/budget')).json as Record<string, { items: { budget_selected_item_id: number | null }[] }>;
+  assert.ok(Object.values(afterReset).flatMap((month) => month.items).every((item) => item.budget_selected_item_id === null));
 
   await setTestUser(other);
   assert.equal((await call(groupRoute, 'PUT', `/api/comparison-groups/${photo}`, { budgetItemId: dearId }, { id: String(photo) })).status, 404);

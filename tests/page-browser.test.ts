@@ -9,8 +9,51 @@ import { readFileSync } from 'node:fs';
 import { platform } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import type { ChildProcess } from 'node:child_process';
+import puppeteer, { type Browser, type LaunchOptions } from 'puppeteer';
 import { launchPageBrowser } from '../src/lib/page-browser';
 import { withPricePage } from './page-browser-session';
+
+const FALLBACK_WARNING = 'Chrome のサンドボックスが使えない（No usable sandbox!）ため、--no-sandbox で一度だけ起動し直します';
+const UNSANDBOXED = {
+  headless: true,
+  args: ['--no-sandbox', '--disable-setuid-sandbox'],
+};
+
+function sandboxLaunchError(): Error {
+  return new Error([
+    'Failed to launch the browser process:  Code: 1',
+    '',
+    'stderr:',
+    '[1024:1024:FATAL] No usable sandbox! If you are running on Ubuntu 23.10+ or another Linux distro that has disabled unprivileged user namespaces with AppArmor, see https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md.',
+    '',
+    'TROUBLESHOOTING: https://pptr.dev/troubleshooting',
+    '',
+  ].join('\n'));
+}
+
+function assertSandboxEnvUntouched(): void {
+  assert.equal(process.env.PUPPETEER_DANGEROUS_NO_SANDBOX, undefined);
+}
+
+// puppeteer.launch は受け取ったオブジェクトに logger を足す。呼び出した時点の引数を残す。
+function remember(calls: LaunchOptions[], options: LaunchOptions): void {
+  const snapshot: LaunchOptions = { ...options };
+  if (options.args !== undefined) snapshot.args = [...options.args];
+  calls.push(snapshot);
+}
+
+async function captureWarn<T>(run: (warnings: unknown[][]) => Promise<T>): Promise<T> {
+  const warnings: unknown[][] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+  try {
+    return await run(warnings);
+  } finally {
+    console.warn = original;
+  }
+}
 
 function cmdline(pid: number): string[] {
   return readFileSync(`/proc/${pid}/cmdline`).toString().split('\0').filter(Boolean);
@@ -113,4 +156,144 @@ test('取得用ブラウザはサンドボックス付きで起動し、価格�
   }, {
     registerCleanup: (close) => { t.after(close); },
   });
+});
+
+test('サンドボックスで起動できたときは --no-sandbox を付けず、警告しない', async () => {
+  assertSandboxEnvUntouched();
+  await captureWarn(async (warnings) => {
+    const calls: LaunchOptions[] = [];
+    const browser = { process: () => null } as Browser;
+    const opened = await launchPageBrowser({
+      launch: async (options) => {
+        remember(calls, options);
+        assertSandboxEnvUntouched();
+        return browser;
+      },
+    });
+    assert.equal(opened, browser);
+    assert.deepEqual(calls, [{ headless: true }]);
+    assert.deepEqual(warnings, []);
+  });
+  assertSandboxEnvUntouched();
+});
+
+test('No usable sandbox! のときだけ --no-sandbox で一度だけ起動し直し、警告を1行出す', async () => {
+  assertSandboxEnvUntouched();
+  await captureWarn(async (warnings) => {
+    const calls: LaunchOptions[] = [];
+    const browser = { process: () => null } as Browser;
+    const first = sandboxLaunchError();
+    let opened: Browser | undefined;
+    let thrown: unknown;
+    try {
+      opened = await launchPageBrowser({
+        launch: async (options) => {
+          remember(calls, options);
+          assertSandboxEnvUntouched();
+          if (calls.length === 1) throw first;
+          return browser;
+        },
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    assert.equal(thrown, undefined, thrown instanceof Error ? thrown.message : String(thrown));
+    assert.equal(opened, browser);
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[0], { headless: true });
+    assert.deepEqual(calls[1], UNSANDBOXED);
+    assert.equal(FALLBACK_WARNING.includes('\n'), false);
+    assert.deepEqual(warnings, [[FALLBACK_WARNING]]);
+  });
+  assertSandboxEnvUntouched();
+});
+
+test('フォールバックの起動も No usable sandbox! なら、もう一度は外さない', async () => {
+  assertSandboxEnvUntouched();
+  await captureWarn(async (warnings) => {
+    const calls: LaunchOptions[] = [];
+    const second = sandboxLaunchError();
+    let thrown: unknown;
+    try {
+      await launchPageBrowser({
+        launch: async (options) => {
+          remember(calls, options);
+          assertSandboxEnvUntouched();
+          throw calls.length === 1 ? sandboxLaunchError() : second;
+        },
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    assert.equal(thrown, second);
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[0], { headless: true });
+    assert.deepEqual(calls[1], UNSANDBOXED);
+    assert.deepEqual(warnings, [[FALLBACK_WARNING]]);
+  });
+  assertSandboxEnvUntouched();
+});
+
+test('別の起動エラーではサンドボックスを外して再試行しない', async () => {
+  const messages = [
+    'Failed to launch the browser process: Code: 1\n\nstderr:\nspawn ENOENT\n',
+    'The SUID sandbox helper binary was found, but is not configured correctly. Rather than run without sandboxing I\'m aborting now.',
+    'No usable sandbox',
+  ];
+  for (const message of messages) {
+    assertSandboxEnvUntouched();
+    await captureWarn(async (warnings) => {
+      const calls: LaunchOptions[] = [];
+      const expected = new Error(message);
+      let thrown: unknown;
+      try {
+        await launchPageBrowser({
+          launch: async (options) => {
+            remember(calls, options);
+            assertSandboxEnvUntouched();
+            throw expected;
+          },
+        });
+      } catch (error) {
+        thrown = error;
+      }
+      assert.equal(thrown, expected, message);
+      assert.equal(calls.length, 1, message);
+      assert.deepEqual(calls[0], { headless: true }, message);
+      assert.deepEqual(warnings, [], message);
+    });
+    assertSandboxEnvUntouched();
+  }
+});
+
+test('No usable sandbox! のあとでも価格の文字を読む', { timeout: 30_000 }, async (t) => {
+  assertSandboxEnvUntouched();
+  await captureWarn(async (warnings) => {
+    const calls: LaunchOptions[] = [];
+    await withPricePage(async () => launchPageBrowser({
+      launch: async (options) => {
+        remember(calls, options);
+        assertSandboxEnvUntouched();
+        if (calls.length === 1) throw sandboxLaunchError();
+        return puppeteer.launch(options);
+      },
+    }), async (browser, port) => {
+      const page = await browser.newPage();
+      await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded', timeout: 15_000 });
+      assert.equal(await page.$eval('#price', (el) => el.textContent), '¥1,280');
+      const child = browser.process();
+      assert.ok(child);
+      const args = launchedArgs(child);
+      assert.equal(args.includes('--no-sandbox'), true, args.join('\n'));
+      assert.equal(args.includes('--disable-setuid-sandbox'), true, args.join('\n'));
+    }, {
+      registerCleanup: (close) => { t.after(close); },
+    });
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[0], { headless: true });
+    assert.deepEqual(calls[1], UNSANDBOXED);
+    assert.equal(FALLBACK_WARNING.includes('\n'), false);
+    assert.deepEqual(warnings, [[FALLBACK_WARNING]]);
+  });
+  assertSandboxEnvUntouched();
 });
