@@ -1,3 +1,4 @@
+import './upload-test-directory';
 // 保存されたファイルと、本文を読み切る前に切れるかを見る。ソースの文字列は見ない。
 import './bugfix-harness';
 import { test } from 'node:test';
