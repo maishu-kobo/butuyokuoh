@@ -116,6 +116,16 @@
           "googleId": "sub-unverified"
         }
       ]
+    },
+    {
+      "id": "member-uploads",
+      "reason": "退会する会員の十六進アップロードの所有。URL登録・一覧・価格再取得では行を作らない。",
+      "tablesAdded": ["member_uploads"],
+      "requireEmpty": true,
+      "indexesAdded": [
+        "idx_member_uploads_user",
+        "sqlite_autoindex_member_uploads_1"
+      ]
     }
   ]
 }
