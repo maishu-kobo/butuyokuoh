@@ -29,21 +29,25 @@ function removeUploadEntry(full: string): void {
   if (stat.isSymbolicLink() || stat.isFile()) unlinkSync(full);
 }
 
-// 古い名前 `${会員id}_${時刻}.${拡張子}` を消す。他の会員のファイルは残す。
-function deleteLegacyMemberUploads(userId: number): void {
+// 古い名前 `${会員id}_${時刻}.${拡張子}` のパス。他の会員のファイルは含めない。
+function legacyUploadPaths(userId: number): string[] {
   const root = path.resolve(uploadRoot);
-  if (!existsSync(root)) return;
+  if (!existsSync(root)) return [];
   let names: string[];
   try {
     names = readdirSync(root);
   } catch {
-    return;
+    return [];
   }
+  const paths: string[] = [];
   for (const name of names) {
     const match = UPLOAD_NAME.exec(name);
     if (!match || Number(match[1]) !== userId) continue;
-    removeUploadEntry(path.resolve(root, name));
+    const full = path.resolve(root, name);
+    if (path.dirname(full) !== root) continue;
+    paths.push(full);
   }
+  return paths;
 }
 
 // 保存された URL が public/uploads の直下のファイルを指すときだけ、そのパスを返す。
@@ -119,33 +123,37 @@ function reservedUploadPaths(db: Database.Database, userId: number): Set<string>
   return reserved;
 }
 
-// 所有記録にある十六進ファイルを消す。ディレクトリは走査しない。
-function deleteOwnedUploads(db: Database.Database, userId: number, reserved: Set<string>): void {
+// 退会が commit したあとに消すパス。ここでは消さない。
+// 十六進は所有記録にあるものだけ。記録の無い古い十六進は、ディレクトリを走査して消さない。
+function uploadPathsForWithdrawal(db: Database.Database, userId: number): string[] {
+  const reserved = reservedUploadPaths(db, userId);
+  const planned = new Set<string>(legacyUploadPaths(userId));
   for (const name of ownedNames(db, userId, false)) {
     const full = uploadPathFromOwnedName(name);
     if (!full || reserved.has(full)) continue;
-    removeUploadEntry(full);
+    planned.add(full);
   }
-}
-
-// 会員行を消す前に、その会員の image_url が指す public/uploads のファイルを消す。
-// 記録が無い既存ファイルは、この参照から辿れるものだけを消す。
-// 他の会員の古い名前、他の会員が指しているファイル、他の会員の所有、ディレクトリの外は残す。
-function deleteReferencedUploads(db: Database.Database, userId: number, reserved: Set<string>): void {
   for (const url of imageUrlsFor(db, userId, false)) {
     const full = uploadPathFromStoredUrl(url);
     if (!full || reserved.has(full)) continue;
-    const legacy = UPLOAD_NAME.exec(path.basename(full));
+    const base = path.basename(full);
+    if (STORED_UPLOAD_NAME.test(base)) continue;
+    const legacy = UPLOAD_NAME.exec(base);
     if (legacy && Number(legacy[1]) !== userId) continue;
-    removeUploadEntry(full);
+    planned.add(full);
   }
+  return [...planned];
 }
 
-function deleteMemberUploads(db: Database.Database, userId: number): void {
-  deleteLegacyMemberUploads(userId);
-  const reserved = reservedUploadPaths(db, userId);
-  deleteOwnedUploads(db, userId, reserved);
-  deleteReferencedUploads(db, userId, reserved);
+// 失敗しても退会自体は戻さない。ログして次のファイルへ進む。
+function removeUploadsBestEffort(paths: string[]): void {
+  for (const full of paths) {
+    try {
+      removeUploadEntry(full);
+    } catch (error) {
+      console.error('退会後のアップロード削除に失敗しました', error);
+    }
+  }
 }
 
 // 会員の行と、その会員に紐づくデータを消す。ゲスト行は消さない。
@@ -155,12 +163,13 @@ export function deleteMemberAccount(userId: number, db: Database.Database = getD
     "SELECT id FROM users WHERE id = ? AND account_type = 'member'",
   ).get(userId);
   if (!member) return false;
-  deleteMemberUploads(db, userId);
-  return db.transaction(() => {
+  let paths: string[] = [];
+  const committed = db.transaction(() => {
     const stillMember = db.prepare(
       "SELECT id FROM users WHERE id = ? AND account_type = 'member'",
     ).get(userId);
     if (!stillMember) return false;
+    paths = uploadPathsForWithdrawal(db, userId);
     db.prepare('DELETE FROM capture_candidates WHERE user_id = ?').run(userId);
     db.prepare(
       'DELETE FROM price_history WHERE item_id IN (SELECT id FROM items WHERE user_id = ?)',
@@ -182,4 +191,7 @@ export function deleteMemberAccount(userId: number, db: Database.Database = getD
     ).run(userId);
     return result.changes === 1;
   }).immediate();
+  if (!committed) return false;
+  removeUploadsBestEffort(paths);
+  return true;
 }

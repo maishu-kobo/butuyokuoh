@@ -411,7 +411,7 @@ test('退会すると本人のデータだけ消え、古いログイン情報�
   }
 }));
 
-test('退会すると十六進名のアップロードは image URL から消え、他の会員のファイルは残る', () => serial(async () => {
+test('退会しても所有記録の無い十六進は残り、古い名前のファイルは消える', () => serial(async () => {
   await resetAuth();
   const jar = await memberCookieJar();
   const owner = await register('Hex-Owner@Example.TEST');
@@ -462,8 +462,8 @@ test('退会すると十六進名のアップロードは image URL から消え
     present(jar, owner.token);
     const removed = await call(accountPath, 'DELETE', '/api/auth/account');
     assert.equal(removed.status, 200, removed.text);
-    assert.equal(existsSync(ownerHexFile), false);
-    assert.equal(existsSync(candidateFile), false);
+    assert.equal(existsSync(ownerHexFile), true);
+    assert.equal(existsSync(candidateFile), true);
     assert.equal(existsSync(ownerLegacyFile), false);
     assert.equal(existsSync(otherHexFile), true);
     assert.equal(existsSync(otherLegacyFile), true);
@@ -589,7 +589,7 @@ test('退会すると十六進の差し替え前ファイルと未保存のア�
     assert.equal(existsSync(orphanFile), true);
     assert.equal(existsSync(outside), true);
     assert.equal(existsSync(linkTarget), true);
-    assert.equal(linkGone(linkPath), true);
+    assert.equal(linkGone(linkPath), false);
     assert.deepEqual(ownedCounts(database, other.user.id), full);
     assert.equal(
       (database.prepare('SELECT COUNT(*) AS n FROM member_uploads WHERE user_id = ?').get(owner.user.id) as { n: number }).n,
