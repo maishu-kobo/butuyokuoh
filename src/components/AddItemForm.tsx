@@ -8,15 +8,17 @@ import { Plus, X, Upload, Link, Edit3 } from 'lucide-react';
 import { ComparisonGroup, Category } from '@/types';
 import { showPhotoPicker } from '@/lib/capture/photo-pick';
 import { CapturePhotoControls, useCapturePhotoPick } from './CapturePhotoPicker';
+import type { RegisteredLocation } from '@/lib/capture/register';
 import { CaptureSearchPanel } from './CaptureSearchPanel';
 
 interface AddItemFormProps {
   onAdd: () => void;
+  onViewRegistered?: (location: RegisteredLocation) => void;
   comparisonGroups: ComparisonGroup[];
   categories: Category[];
 }
 
-export default function AddItemForm({ onAdd, comparisonGroups, categories }: AddItemFormProps) {
+export default function AddItemForm({ onAdd, comparisonGroups, categories, onViewRegistered }: AddItemFormProps) {
   const { isGuest } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [captureEnabled, setCaptureEnabled] = useState(false);
@@ -28,6 +30,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [canAddManually, setCanAddManually] = useState(false);
+  const [photoSuccess, setPhotoSuccess] = useState('');
   const [successNote, setSuccessNote] = useState(''); // 追加成功時の注意メッセージ
   const [uploading, setUploading] = useState(false);
   const photoPick = useCapturePhotoPick(
@@ -195,6 +198,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
   if (!isOpen) {
     return (
       <>
+        {photoSuccess && <p role="status" className="mb-4 text-sm text-green-800 dark:text-green-200">{photoSuccess}</p>}
         {/* 追加成功時の注意メッセージ */}
         {successNote && (
           <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg">
@@ -214,7 +218,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
           </div>
         )}
         <button
-          onClick={() => setIsOpen(true)}
+          onClick={() => { setPhotoSuccess(''); setIsOpen(true); }}
           className="w-full py-4 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-lg text-gray-600 dark:text-gray-300 hover:border-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors flex items-center justify-center gap-2"
         >
           <Plus size={20} />
@@ -243,7 +247,8 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
           file={pickedFile}
           onSearching={startPhotoSearch}
           onManual={enterManual}
-          onRegistered={() => { resetForm(); setIsOpen(false); onAdd(); }}
+          onRegistered={(summary) => { resetForm(); setIsOpen(false); setPhotoSuccess(summary); onAdd(); }}
+          onViewRegistered={(location) => { resetForm(); setIsOpen(false); onViewRegistered?.(location); }}
         />
       )}
 
