@@ -3,6 +3,7 @@
 import { apiFetch } from '@/lib/api-fetch';
 import {
   FLOW_STATUS,
+  NOT_FOUND_MESSAGE,
   SLOW_MS,
   candidateCountStatus,
   fallbackFromIdentify,
@@ -173,6 +174,16 @@ export function CaptureSearchPanel({
     setAttribution(data?.attribution ? { yahoo: data.attribution.yahoo === true, rakuten: data.attribution.rakuten === true } : null);
     setAmazonUrl(typeof data?.amazonUrl === 'string' ? data.amazonUrl : '');
     const decision = statusAfterSearch(data, response.ok, trimmed);
+    if (decision.message === NOT_FOUND_MESSAGE && !decision.manual.enter) {
+      searchBlockedRef.current = false;
+      setSearchBlocked(false);
+      completedSearchRef.current = { product, name: trimmed };
+      setCandidates([]);
+      setSelected([]);
+      setSort('recommended');
+      setStatus(decision.message);
+      return;
+    }
     if (decision.manual.enter) {
       setCandidates([]);
       searchBlockedRef.current = decision.blocked;

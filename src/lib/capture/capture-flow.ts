@@ -12,6 +12,8 @@ export const FLOW_STATUS = {
   choose: '商品名を選んでください',
 } as const;
 
+export const NOT_FOUND_MESSAGE = '見つかりませんでした';
+
 export function productsToShow(confidence: IdentifyConfidence, products: ProductGuess[]): ProductGuess[] {
   if (confidence === 'unreadable') return [];
   if (confidence === 'sure') return products.slice(0, 1);
@@ -84,11 +86,24 @@ export function thrownCaptureRetry(identified: boolean): { kind: 'identify' | 's
   return { kind: 'identify', message: CaptureMessages.aiRetryable };
 }
 
+function isCleanMiss(body: unknown, ok: boolean): boolean {
+  if (!ok) return false;
+  const record = recordOf(body);
+  if (!record || typeof record.code === 'string') return false;
+  if (!Array.isArray(record.candidates) || record.candidates.length > 0) return false;
+  const failures = record.failures;
+  return !Array.isArray(failures) || failures.length === 0;
+}
+
 export function statusAfterSearch(body: unknown, ok: boolean, queryName: string): {
   blocked: boolean;
   message: string;
   manual: ManualFallback;
 } {
+  // 0 件は店の失敗と分ける。検索語を直してやり直すので、手入力へは進まない。
+  if (isCleanMiss(body, ok)) {
+    return { blocked: false, message: NOT_FOUND_MESSAGE, manual: { enter: false } };
+  }
   const manual = fallbackFromSearch(body, ok, queryName);
   if (!manual.enter) return { blocked: false, message: '', manual };
   const record = recordOf(body);
