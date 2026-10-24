@@ -4,7 +4,7 @@ import { signIn } from 'next-auth/react';
 import { useAuth } from './AuthProvider';
 
 export default function GuestBanner() {
-  const { user, isGuest, logout } = useAuth();
+  const { user, isGuest, logout, googleLogin } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   if (!isGuest || !user) return null;
@@ -20,7 +20,7 @@ export default function GuestBanner() {
         <p>期限: {new Date(user.expiresAt!).toLocaleString('ja-JP')}。期限・体験終了後に削除され、ログイン後には引き継がれません。</p>
         <p className="text-xs mt-1">URLからの追加・個別の価格更新・編集・比較・予算を体験できます。インポート・画像の手動追加・通知・拡張機能はログイン後に利用できます。</p>
       </div>
-      <div className="flex gap-2"><button disabled={busy} onClick={login} className="rounded bg-amber-600 px-3 py-2 text-white disabled:opacity-50">Googleでログイン</button>
+      <div className="flex gap-2">{googleLogin && <button disabled={busy} onClick={login} className="rounded bg-amber-600 px-3 py-2 text-white disabled:opacity-50">Googleでログイン</button>}
         <button disabled={busy} onClick={async () => { setBusy(true); try { await logout(); } finally { setBusy(false); } }} className="rounded border border-amber-400 px-3 py-2">体験を終了</button></div>
       {error && <p role="alert">{error}</p>}
     </div>

@@ -161,7 +161,7 @@ test('browser demo flow, manual add, restricted controls, tabs and member transi
   await expect(page.getByText('自分で追加した商品',{exact:true})).toHaveCount(0);
   await expect.poll(async()=> (await browser.cookies()).some(c=>c.name==='butuyokuoh_guest')).toBe(false);
   // The same member can log out, start another demo, and log in again.
-  await browser.request.post('/api/auth/logout');
+  await browser.request.post('/api/auth/logout', { headers: { origin: 'http://localhost:3107' } });
   await page.reload(); await page.getByRole('button',{name:'ゲストで試す',exact:true}).click();
   await expect(page.getByRole('complementary',{name:'ゲスト体験'})).toBeVisible();
   await browser.request.post('/api/auth/login',{data:{email,password:'test-password'}});

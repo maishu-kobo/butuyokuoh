@@ -1,4 +1,4 @@
-import puppeteer from 'puppeteer';
+import { launchPageBrowser } from './page-browser';
 
 export interface WishlistItem {
   name: string;
@@ -88,10 +88,7 @@ export async function scrapeAmazonWishlist(sanitizedUrl: string): Promise<Wishli
     };
   }
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+  const browser = await launchPageBrowser();
 
   try {
     const page = await browser.newPage();
@@ -193,10 +190,7 @@ export async function scrapeRakutenFavorites(sanitizedUrl: string): Promise<Wish
     };
   }
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+  const browser = await launchPageBrowser();
 
   try {
     const page = await browser.newPage();

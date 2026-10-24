@@ -4,7 +4,30 @@ import { apiFetch } from '@/lib/api-fetch';
 
 import { useEffect, useState } from 'react';
 import { Item } from '@/types';
+import { budgetRows } from '@/lib/capture/budget-rows';
+import { rakutenPriceCaption } from '@/lib/capture/rakuten-price-note';
+import { idsForSelectAll } from '@/lib/photo-spend';
 import { Calendar, Wallet, Check, Square, CheckSquare, Calculator } from 'lucide-react';
+
+function priceText(item: Item): string {
+  return (item.quantity || 1) > 1
+    ? `¥${((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}`
+    : `¥${item.current_price?.toLocaleString() || '---'}`;
+}
+
+function PriceWithNote({ item, className }: { item: Item; className: string }) {
+  const caption = rakutenPriceCaption(item);
+  return (
+    <span className={className}>
+      {priceText(item)}
+      {caption && (
+        <span className="block text-xs font-normal text-gray-400 dark:text-gray-300">
+          {caption.fetchedAt} {caption.note}
+        </span>
+      )}
+    </span>
+  );
+}
 
 interface BudgetData {
   [month: string]: {
@@ -18,6 +41,8 @@ export default function BudgetView() {
   const [allItems, setAllItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [selectionError, setSelectionError] = useState('');
+  const [savingSelection, setSavingSelection] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const fetchBudget = async () => {
@@ -32,10 +57,11 @@ export default function BudgetView() {
       // 各エントリを検証し、不正な形のエントリは除外してクラッシュを防ぐ
       const safeBudget: BudgetData = {};
       const items: Item[] = [];
-      Object.entries(data as Record<string, any>).forEach(([month, monthData]) => {
+      Object.entries(data as Record<string, { items?: unknown; total?: unknown }>).forEach(([month, monthData]) => {
         if (monthData && Array.isArray(monthData.items) && typeof monthData.total === 'number') {
-          safeBudget[month] = monthData;
-          items.push(...monthData.items);
+          const monthItems = monthData.items as Item[];
+          safeBudget[month] = { items: monthItems, total: monthData.total };
+          items.push(...monthItems);
         }
       });
       setBudget(safeBudget);
@@ -50,7 +76,8 @@ export default function BudgetView() {
   };
 
   useEffect(() => {
-    fetchBudget();
+    // 取得関数の中の setState は await のあと。effect から直接呼ぶと新しい react-hooks が同期 setState と誤認する。
+    void (async () => { await fetchBudget(); })();
   }, []);
 
   // 読み込み失敗時の再試行
@@ -70,16 +97,22 @@ export default function BudgetView() {
     setSelectedIds(newSet);
   };
 
+  const selectableIds = idsForSelectAll(allItems);
+  const allSelectableChosen = selectableIds.length > 0
+    && selectableIds.every((id) => selectedIds.has(id))
+    && selectedIds.size === selectableIds.length;
+
   const toggleSelectAll = () => {
-    if (selectedIds.size === allItems.length) {
+    if (allSelectableChosen) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(allItems.map(i => i.id)));
+      setSelectedIds(new Set(selectableIds));
     }
   };
 
   const toggleSelectMonth = (monthItems: Item[]) => {
-    const monthIds = monthItems.map(i => i.id);
+    const monthIds = idsForSelectAll(monthItems);
+    if (monthIds.length === 0) return;
     const allSelected = monthIds.every(id => selectedIds.has(id));
     const newSet = new Set(selectedIds);
     
@@ -90,6 +123,91 @@ export default function BudgetView() {
     }
     setSelectedIds(newSet);
   };
+
+  const chooseCandidate = async (groupId: number, itemId: number | null) => {
+    if (savingSelection) return;
+    setSavingSelection(true);
+    setSelectionError('');
+    try {
+      const response = await apiFetch(`/api/comparison-groups/${groupId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budgetItemId: itemId }),
+      }, { notifyError: false });
+      if (!response.ok) throw new Error('Budget selection failed');
+      await fetchBudget();
+    } catch {
+      setSelectionError('合計に数える商品の設定を保存できませんでした。もう一度お試しください。');
+    } finally {
+      setSavingSelection(false);
+    }
+  };
+
+  const renderBudgetItems = (entries: Item[]) => budgetRows(entries, allItems).map(({ item, chooseGroupId }) => {
+    const isSelected = selectedIds.has(item.id);
+    const hasOverride = item.group_origin === 'photo' && item.budget_selected_item_id != null;
+    const firstInGroup = allItems.find((entry) => entry.comparison_group_id === item.comparison_group_id);
+    const showReset = hasOverride && firstInGroup?.id === item.id;
+    return (
+      <div
+        key={item.id}
+        onClick={() => toggleSelect(item.id)}
+        className={`flex flex-wrap items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
+          isSelected ? 'bg-blue-50 dark:bg-blue-900' : 'hover:bg-gray-50 dark:bg-slate-700 dark:hover:bg-slate-600'
+        }`}
+      >
+        <span className={isSelected ? 'text-blue-600 dark:text-blue-300' : 'text-gray-300'}>
+          {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+        </span>
+        {chooseGroupId != null && (
+          <button
+            type="button"
+            aria-label="合計に数える"
+            disabled={savingSelection}
+            aria-pressed={item.countsInTotal === true}
+            onClick={(event) => {
+              event.stopPropagation();
+              void chooseCandidate(chooseGroupId, item.id);
+            }}
+            className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${
+              item.countsInTotal ? 'border-orange-500 bg-orange-500 text-white' : 'border-gray-300 text-transparent'
+            }`}
+          >
+            <Check size={10} />
+          </button>
+        )}
+        <span className={`flex-1 truncate ${isSelected ? 'text-blue-700 dark:text-blue-100' : 'text-gray-700 dark:text-gray-200'}`}>
+          {item.name}
+          {(item.quantity || 1) > 1 && (
+            <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
+          )}
+        </span>
+        {item.countsInTotal === false && (
+          <span className="text-xs text-gray-400 whitespace-nowrap">合計に含まない</span>
+        )}
+        <PriceWithNote
+          item={item}
+          className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 dark:text-blue-200 font-medium' : 'text-gray-600 dark:text-gray-300'}`}
+        />
+        {showReset && (
+          <div className="flex basis-full justify-end">
+          <button
+            type="button"
+            disabled={savingSelection}
+            aria-label={`${item.comparison_group_name || item.name}を自動（最安）に戻す`}
+            onClick={(event) => {
+              event.stopPropagation();
+              void chooseCandidate(item.comparison_group_id!, null);
+            }}
+            className="min-h-[24px] shrink-0 rounded border px-2 py-1 text-xs text-gray-700 dark:text-gray-200 disabled:opacity-50"
+          >
+            自動（最安）に戻す
+          </button>
+          </div>
+        )}
+      </div>
+    );
+  });
 
   if (loading) {
     return <div className="text-gray-500 dark:text-gray-400">読み込み中...</div>;
@@ -127,6 +245,7 @@ export default function BudgetView() {
 
   return (
     <div className="space-y-4">
+      {selectionError && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{selectionError}</p>}
       {/* 合計カード */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg p-4">
@@ -173,7 +292,7 @@ export default function BudgetView() {
               onClick={toggleSelectAll}
               className="text-sm text-gray-600 dark:text-gray-300 hover:text-blue-600 flex items-center gap-1"
             >
-              {selectedIds.size === allItems.length ? (
+              {allSelectableChosen ? (
                 <><CheckSquare size={16} /> 全て解除</>
               ) : (
                 <><Square size={16} /> 全て選択</>
@@ -185,8 +304,8 @@ export default function BudgetView() {
             const data = budget[month];
             const [year, monthNum] = month.split('-');
             const monthName = `${year}年${parseInt(monthNum)}月`;
-            const monthIds = data.items.map(i => i.id);
-            const allMonthSelected = monthIds.every(id => selectedIds.has(id));
+            const monthIds = idsForSelectAll(data.items);
+            const allMonthSelected = monthIds.length > 0 && monthIds.every(id => selectedIds.has(id));
             const someMonthSelected = monthIds.some(id => selectedIds.has(id));
             const monthNoPriceCount = countNoPriceItems(data.items);
 
@@ -215,34 +334,7 @@ export default function BudgetView() {
                   </div>
                 )}
                 <div className="space-y-1">
-                  {data.items.map((item) => {
-                    const isSelected = selectedIds.has(item.id);
-                    return (
-                      <div
-                        key={item.id}
-                        onClick={() => toggleSelect(item.id)}
-                        className={`flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
-                          isSelected ? 'bg-blue-50' : 'hover:bg-gray-50 dark:bg-slate-700'
-                        }`}
-                      >
-                        <span className={isSelected ? 'text-blue-600' : 'text-gray-300'}>
-                          {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-                        </span>
-                        <span className={`flex-1 truncate ${isSelected ? 'text-blue-700' : 'text-gray-700 dark:text-gray-200'}`}>
-                          {item.name}
-                          {(item.quantity || 1) > 1 && (
-                            <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
-                          )}
-                        </span>
-                        <span className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
-                          {(item.quantity || 1) > 1 
-                            ? `¥${((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}`
-                            : `¥${item.current_price?.toLocaleString() || '---'}`
-                          }
-                        </span>
-                      </div>
-                    );
-                  })}
+                  {renderBudgetItems(data.items)}
                 </div>
               </div>
             );
@@ -256,11 +348,11 @@ export default function BudgetView() {
                   <button
                     onClick={() => toggleSelectMonth(undatedData.items)}
                     className={`p-1 rounded hover:bg-gray-100 ${
-                      undatedData.items.every(i => selectedIds.has(i.id)) ? 'text-blue-600' : 
-                      undatedData.items.some(i => selectedIds.has(i.id)) ? 'text-blue-400' : 'text-gray-300'
+                      idsForSelectAll(undatedData.items).length > 0 && idsForSelectAll(undatedData.items).every(i => selectedIds.has(i)) ? 'text-blue-600' : 
+                      idsForSelectAll(undatedData.items).some(i => selectedIds.has(i)) ? 'text-blue-400' : 'text-gray-300'
                     }`}
                   >
-                    {undatedData.items.every(i => selectedIds.has(i.id)) ? <CheckSquare size={18} /> : <Square size={18} />}
+                    {idsForSelectAll(undatedData.items).length > 0 && idsForSelectAll(undatedData.items).every(i => selectedIds.has(i)) ? <CheckSquare size={18} /> : <Square size={18} />}
                   </button>
                   <Calendar size={18} className="text-gray-400" />
                   <span className="font-semibold text-gray-500">購入時期未定</span>
@@ -275,34 +367,7 @@ export default function BudgetView() {
                 </div>
               )}
               <div className="space-y-1">
-                {undatedData.items.map((item) => {
-                  const isSelected = selectedIds.has(item.id);
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => toggleSelect(item.id)}
-                      className={`flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
-                        isSelected ? 'bg-blue-50' : 'hover:bg-gray-50 dark:bg-slate-700'
-                      }`}
-                    >
-                      <span className={isSelected ? 'text-blue-600' : 'text-gray-300'}>
-                        {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-                      </span>
-                      <span className={`flex-1 truncate ${isSelected ? 'text-blue-700' : 'text-gray-700 dark:text-gray-200'}`}>
-                        {item.name}
-                        {(item.quantity || 1) > 1 && (
-                          <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
-                        )}
-                      </span>
-                      <span className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
-                        {(item.quantity || 1) > 1 
-                          ? `¥${((item.current_price || 0) * (item.quantity || 1)).toLocaleString()}`
-                          : `¥${item.current_price?.toLocaleString() || '---'}`
-                        }
-                      </span>
-                    </div>
-                  );
-                })}
+                {renderBudgetItems(undatedData.items)}
               </div>
             </div>
           )}
