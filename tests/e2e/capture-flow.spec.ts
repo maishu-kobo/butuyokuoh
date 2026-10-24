@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import sharp from 'sharp';
+import Database from 'better-sqlite3';
 
 const pixel = { create: { width: 8, height: 8, channels: 3 as const, background: { r: 20, g: 40, b: 60 } } };
 let jpeg: Buffer;
@@ -413,6 +414,13 @@ test('candidate images fall back for missing, failed and undecodable images', as
 for (const theme of ['light', 'dark']) {
   test(`add form labels and actions have readable contrast in ${theme}`, async ({ page }) => {
     await page.request.post('/api/auth/register', { data: { email: `contrast-${theme}@example.test`, password: 'test-password' } });
+    const userId = (await (await page.request.get('/api/auth/me')).json()).user.id;
+    const db = new Database(process.env.E2E_DB_PATH!);
+    try {
+      db.prepare('INSERT INTO categories(user_id,name) VALUES (?,?)').run(userId,'配色確認カテゴリ');
+      db.prepare('INSERT INTO comparison_groups(user_id,name) VALUES (?,?)').run(userId,'配色確認グループ');
+    } finally { db.close(); }
+
     await page.emulateMedia({ colorScheme: theme as 'light' | 'dark' });
     await page.goto('/');
     await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
