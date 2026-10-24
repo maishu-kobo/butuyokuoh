@@ -327,7 +327,15 @@ test('photo group spending counts one candidate on the list and budget screens',
     await expect(page.getByText('2件選択中')).toBeVisible();
 
     const dear = page.locator('div').filter({ hasText: '高い牛乳' }).last();
+    const saved = page.waitForResponse(response =>
+      new URL(response.url()).pathname === `/api/comparison-groups/${groupId}`
+      && response.request().method() === 'PUT');
+    const refreshed = page.waitForResponse(response =>
+      new URL(response.url()).pathname === '/api/budget'
+      && response.request().method() === 'GET');
     await dear.getByRole('button', { name: '合計に数える' }).click();
+    expect((await saved).ok()).toBeTruthy();
+    expect((await refreshed).ok()).toBeTruthy();
     await expect(page.locator('.text-3xl').first()).toHaveText('¥950');
     await expect(page.getByText('合計に含まない')).toBeVisible();
   } finally {
