@@ -704,7 +704,7 @@ export default function Home() {
               </div>
             </div>
 
-            <AddItemForm onAdd={fetchItems} comparisonGroups={groups} categories={categories} />
+            <AddItemForm onViewRegistered={(location) => { clearFilters(); changeTab(location); if (location === 'list') void fetchItems(); }} onAdd={fetchItems} comparisonGroups={groups} categories={categories} />
 
             {loading ? (
               <div className="text-center py-12 text-slate-500 dark:text-slate-400">読み込み中...</div>

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import sharp from 'sharp';
+import Database from 'better-sqlite3';
 
 const pixel = { create: { width: 8, height: 8, channels: 3 as const, background: { r: 20, g: 40, b: 60 } } };
 let jpeg: Buffer;
@@ -408,4 +409,137 @@ test('candidate images fall back for missing, failed and undecodable images', as
     await expect(page.getByRole('button', { name: '選んだ候補を登録' })).toBeEnabled();
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   }
+});
+
+for (const theme of ['light', 'dark']) {
+  test(`add form labels and actions have readable contrast in ${theme}`, async ({ page }) => {
+    await page.request.post('/api/auth/register', { data: { email: `contrast-${theme}@example.test`, password: 'test-password' } });
+    const userId = (await (await page.request.get('/api/auth/me')).json()).user.id;
+    const db = new Database(process.env.E2E_DB_PATH!);
+    try {
+      db.prepare('INSERT INTO categories(user_id,name) VALUES (?,?)').run(userId,'配色確認カテゴリ');
+      db.prepare('INSERT INTO comparison_groups(user_id,name) VALUES (?,?)').run(userId,'配色確認グループ');
+    } finally { db.close(); }
+
+    await page.emulateMedia({ colorScheme: theme as 'light' | 'dark' });
+    await page.goto('/');
+    await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
+    const card = page.getByTestId('capture-photo-card');
+    await page.addStyleTag({ content: '* { transition: none !important; }' });
+    for (const mode of ['url', 'manual']) {
+      if (mode === 'manual') await page.getByRole('button', { name: '手動で追加', exact: true }).click();
+      const controls = card.locator('label, button').filter({ visible: true });
+      for (const control of await controls.all()) {
+        if (!(await control.isEnabled())) continue;
+        // Primary submit is not changed by this patch; test labels and secondary actions.
+        if ((await control.textContent())?.trim() === '追加') continue;
+        for (const state of ['normal', 'hover', 'focus']) {
+          await page.mouse.move(0, 0);
+          if (state === 'hover') await control.hover();
+          if (state === 'focus') await control.focus();
+          const ratio = await control.evaluate(el => {
+            const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+            const ctx = canvas.getContext('2d')!;
+            const luminance = (color: string) => {
+              ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = color; ctx.fillRect(0, 0, 1, 1);
+              const rgba = ctx.getImageData(0, 0, 1, 1).data;
+              if (rgba[3] !== 255) throw new Error('Expected opaque background');
+              const rgb = [...rgba].slice(0, 3).map(x => { const v=x/255; return v <= .04045 ? v/12.92 : ((v+.055)/1.055)**2.4; });
+              return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2];
+            };
+            let bg = 'rgba(0, 0, 0, 0)';
+            for (let node: Element | null = el; node; node = node.parentElement) {
+              bg = getComputedStyle(node).backgroundColor;
+              if (bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') break;
+            }
+            const a = luminance(getComputedStyle(el).color), b = luminance(bg);
+            return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+          });
+          expect.soft(ratio, `${mode} ${state} ${await control.textContent()}`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+  });
+}
+
+async function duplicateFixture(page: Page, suffix: string) {
+  await page.request.post('/api/auth/register', {data:{email:`duplicate-${suffix}@example.test`,password:'test-password'}});
+  await page.route('https://item-shopping.c.yimg.jp/**', r => r.abort());
+  await page.route('https://thumbnail.image.rakuten.co.jp/**', r => r.abort());
+  await page.goto('/');
+  await page.getByRole('button', {name:'新しいアイテムを追加'}).click();
+  return (await (await page.request.get('/api/auth/me')).json()).user.id as number;
+}
+function existingCandidate(userId: number, purchased = 0, deleted: string | null = null) {
+  const db = new Database(process.env.E2E_DB_PATH!);
+  try {
+    db.prepare("INSERT INTO items(user_id,name,url,current_price,is_purchased,deleted_at) VALUES (?,?,?,?,?,datetime('now',?))")
+      .run(userId, '既存のペン', 'https://store.shopping.yahoo.co.jp/example/pen', 980, purchased, deleted);
+  } finally {db.close();}
+}
+for (const state of ['list', 'purchased', 'trash'] as const) {
+  test(`registered ${state} candidates are disabled before registration`, async ({page}) => {
+    const userId = await duplicateFixture(page,state);
+    existingCandidate(userId,state === 'purchased' ? 1 : 0,state === 'trash' ? '-1 day' : null);
+    await page.getByLabel('写真ファイル').setInputFiles({name:'pen.jpg',mimeType:'image/jpeg',buffer:jpeg});
+    const choices=page.getByRole('checkbox',{name:'候補を選ぶ テスト用ゲルボールペン 0.5'});
+    await expect(choices).toHaveCount(2);
+    await expect(choices.first()).toBeDisabled();
+    await expect(choices.nth(1)).toBeEnabled();
+    await expect(page.getByText('登録済み', {exact:true})).toBeVisible();
+    if(state === 'trash') await expect(page.getByText('ゴミ箱から復元できます')).toBeVisible();
+    await choices.nth(1).check();
+    await page.getByRole('button',{name:'選んだ候補を登録'}).click();
+    await expect(page.getByRole('status').filter({hasText:'1件を登録しました'})).toBeVisible();
+    await page.getByRole('button',{name:'新しいアイテムを追加'}).click();
+    await page.getByLabel('写真ファイル').setInputFiles({name:'again.jpg',mimeType:'image/jpeg',buffer:jpeg});
+    await expect(choices.first()).toBeDisabled();
+    await expect(choices.nth(1)).toBeDisabled();
+    await expect(page.getByText('候補はすべて登録済みです')).toBeVisible();
+    await expect(page.getByRole('button',{name:'選んだ候補を登録'})).toBeDisabled();
+    const target={list:'ほしいものリストを見る',purchased:'購入済みを見る',trash:'ゴミ箱を見る'}[state];
+    await page.getByRole('button',{name:target,exact:true}).first().click();
+    await expect(page.getByTestId('capture-photo-card')).toHaveCount(0);
+    await expect(page.getByText('既存のペン',{exact:true})).toBeVisible();
+  });
+}
+for (const mixed of [false,true]) {
+  test(`registration race ${mixed ? 'partial' : 'all'} reports saved and skipped results`, async ({page}) => {
+    const userId=await duplicateFixture(page,`race-${mixed}`);
+    await page.getByLabel('写真ファイル').setInputFiles({name:'pen.jpg',mimeType:'image/jpeg',buffer:jpeg});
+    const choices=page.getByRole('checkbox',{name:'候補を選ぶ テスト用ゲルボールペン 0.5'});
+    await expect(choices).toHaveCount(2);
+    await choices.first().check();
+    if(mixed) await choices.nth(1).check();
+    existingCandidate(userId);
+    if (!mixed) await page.getByLabel('探す商品名').fill('');
+    await page.getByRole('button',{name:'選んだ候補を登録'}).click();
+    if(mixed) {
+      await expect(page.getByRole('status').filter({hasText:'1件を登録しました。1件は同じ商品の重複を避けるため追加していません。'})).toBeVisible();
+      const items=await (await page.request.get('/api/items')).json(); expect(items).toHaveLength(2);
+    } else {
+      await expect(choices.first()).toBeDisabled();
+      await expect(page.getByRole('button',{name:'選んだ候補を登録'})).toBeDisabled();
+      await expect(page.getByRole('alert').filter({hasText:'選んだ候補は登録済みです'})).toBeVisible();
+      const items=await (await page.request.get('/api/items')).json(); expect(items).toHaveLength(1);
+      await page.getByRole('button',{name:'ほしいものリストを見る',exact:true}).click();
+      await expect(page.getByText('既存のペン',{exact:true})).toBeVisible();
+    }
+  });
+}
+
+
+test('expired trash candidates do not promise restoration or navigate to cleanup', async ({page}) => {
+  const userId = await duplicateFixture(page, 'expired-trash');
+  existingCandidate(userId, 0, '-8 days');
+  await page.getByLabel('写真ファイル').setInputFiles({name:'pen.jpg',mimeType:'image/jpeg',buffer:jpeg});
+  const choices = page.getByRole('checkbox',{name:'候補を選ぶ テスト用ゲルボールペン 0.5'});
+  await expect(choices).toHaveCount(2);
+  await expect(choices.first()).toBeDisabled();
+  await expect(page.getByText('ゴミ箱の保存期間が過ぎています')).toBeVisible();
+  await expect(page.getByText('ゴミ箱から復元できます')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'ゴミ箱を見る',exact:true})).toHaveCount(0);
+  const db = new Database(process.env.E2E_DB_PATH!);
+  try { expect(db.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id=?').get(userId)).toEqual({n:1}); }
+  finally { db.close(); }
 });
