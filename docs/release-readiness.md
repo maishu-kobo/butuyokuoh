@@ -141,7 +141,10 @@ SQLite は、外部キーを有効にしても、すでに入っている違反�
 
 次の PR は `feature/photo-capture` にまだ入っていない。develop との差分には混ぜない。
 
-- https://github.com/maishu-kobo/butuyokuoh/pull/208 退会時、その会員のアップロードだけ消す
+- https://github.com/maishu-kobo/butuyokuoh/pull/208 退会時、その会員のアップロードだけ消す。未マージなので、上の差分には入っていない。
+  - このリリースでは、所有記録の無い古い十六進ファイルは消さない。残す。
+  - ファイル削除は、退会の DB トランザクションが commit したあとだけ。失敗はログして throw しない。ロールバックしてもファイルは残る。
+  - スキーマの追加（表 `member_uploads` と索引 2 つ）は Dev Lead が承認した。既存の行は消さない。
 - https://github.com/maishu-kobo/butuyokuoh/pull/209 既存 DB を開いても行は減らない。`db.ts` は無変更。テストだけ
 - https://github.com/maishu-kobo/butuyokuoh/pull/210 Chrome はサンドボックスを先に試し、`No usable sandbox!` のときだけ `--no-sandbox` に一度落とす
 - https://github.com/maishu-kobo/butuyokuoh/pull/211 プライバシーと利用規約の事実関係
