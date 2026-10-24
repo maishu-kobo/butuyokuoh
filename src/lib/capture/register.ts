@@ -57,17 +57,23 @@ const SOURCE_LABEL: Record<CaptureSite, string> = {
 };
 
 export type RegisteredLocation = 'list' | 'purchased' | 'trash';
+export type RegisteredCandidateLocation = RegisteredLocation | 'expired-trash';
 
-export function registeredCandidateLocation(db: Database.Database, userId: number, url: string): RegisteredLocation | null {
+export function registeredCandidateLocation(db: Database.Database, userId: number, url: string): RegisteredCandidateLocation | null {
   const identity = rakutenProductIdentity(url);
-  type Existing = { url: string; is_purchased: number; deleted_at: string | null };
-  const columns = 'SELECT url, is_purchased, deleted_at FROM items WHERE user_id = ?';
+  type Existing = { url: string; is_purchased: number; deleted_at: string | null; expired: number | null };
+  // Match the retention boundary used by GET /api/trash, without triggering cleanup.
+  const columns = `SELECT url, is_purchased, deleted_at,
+    datetime(deleted_at, '+7 days') < datetime('now') AS expired
+    FROM items WHERE user_id = ?`;
   const order = ' ORDER BY (deleted_at IS NULL) DESC, is_purchased ASC, id ASC';
   const rows = identity
     ? db.prepare(columns + order).all(userId) as Existing[]
     : db.prepare(columns + ' AND url = ?' + order + ' LIMIT 1').all(userId, url) as Existing[];
   const item = rows.find(row => row.url === url || (identity !== null && rakutenProductIdentity(row.url) === identity));
-  return item ? item.deleted_at ? 'trash' : item.is_purchased ? 'purchased' : 'list' : null;
+  if (!item) return null;
+  if (item.deleted_at) return item.expired ? 'expired-trash' : 'trash';
+  return item.is_purchased ? 'purchased' : 'list';
 }
 
 export function itemUrlTaken(db: Database.Database, userId: number, url: string): boolean {
