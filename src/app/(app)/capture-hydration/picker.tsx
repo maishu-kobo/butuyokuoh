@@ -7,6 +7,7 @@ const pick: CapturePhotoPick = {
   message: '',
   selected: false,
   acceptFiles() {},
+  clear() {},
   onDragOver() {},
   onDrop() {},
 };
