@@ -6,6 +6,7 @@ import { openDatabase } from '../src/lib/db';
 import { CaptureMessages } from '../src/lib/capture/contract';
 import {
   candidateRegistration,
+  registeredCandidateLocation,
   listCaptureCandidateChoices,
   registerCapturedCandidates,
 } from '../src/lib/capture/register';
@@ -372,6 +373,7 @@ for (const [label, flags] of [
       const captureId = capture(db, userId);
       const candidateId = candidate(db, userId, captureId, { url, source_item_code: 'yahoo:kept' });
       assert.deepEqual(candidateRegistration(db, userId, url), { selectable: false, label: '登録済み' });
+      assert.equal(registeredCandidateLocation(db, userId, url), flags.deleted ? 'trash' : flags.purchased ? 'purchased' : 'list');
       const listed = listCaptureCandidateChoices(db, userId, captureId, NOW);
       assert.deepEqual(listed, [{ id: candidateId, selectable: false, label: '登録済み' }]);
       const result = registerCapturedCandidates(db, userId, [candidateId], NOW);
@@ -397,6 +399,7 @@ test('the same url on another account stays selectable', () => {
     const url = 'https://store.shopping.yahoo.co.jp/shop/shared';
     db.prepare('INSERT INTO items (user_id, name, url) VALUES (?, ?, ?)').run(other, '他人の商品', url);
     assert.deepEqual(candidateRegistration(db, userId, url), { selectable: true, label: null });
+    assert.equal(registeredCandidateLocation(db, userId, url), null);
     const captureId = capture(db, userId);
     const candidateId = candidate(db, userId, captureId, { url, source_item_code: 'yahoo:shared' });
     const saved = registerCapturedCandidates(db, userId, [candidateId], NOW);
