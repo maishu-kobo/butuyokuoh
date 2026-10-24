@@ -464,7 +464,7 @@ for (const mixed of [false,true]) {
     if (!mixed) await page.getByLabel('探す商品名').fill('');
     await page.getByRole('button',{name:'選んだ候補を登録'}).click();
     if(mixed) {
-      await expect(page.getByRole('status').filter({hasText:'1件を登録しました。1件は登録済みのため追加していません。'})).toBeVisible();
+      await expect(page.getByRole('status').filter({hasText:'1件を登録しました。1件は同じ商品の重複を避けるため追加していません。'})).toBeVisible();
       const items=await (await page.request.get('/api/items')).json(); expect(items).toHaveLength(2);
     } else {
       await expect(choices.first()).toBeDisabled();
