@@ -411,6 +411,57 @@ test('candidate images fall back for missing, failed and undecodable images', as
   }
 });
 
+for (const theme of ['light', 'dark']) {
+  test(`add form labels and actions have readable contrast in ${theme}`, async ({ page }) => {
+    await page.request.post('/api/auth/register', { data: { email: `contrast-${theme}@example.test`, password: 'test-password' } });
+    const userId = (await (await page.request.get('/api/auth/me')).json()).user.id;
+    const db = new Database(process.env.E2E_DB_PATH!);
+    try {
+      db.prepare('INSERT INTO categories(user_id,name) VALUES (?,?)').run(userId,'配色確認カテゴリ');
+      db.prepare('INSERT INTO comparison_groups(user_id,name) VALUES (?,?)').run(userId,'配色確認グループ');
+    } finally { db.close(); }
+
+    await page.emulateMedia({ colorScheme: theme as 'light' | 'dark' });
+    await page.goto('/');
+    await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
+    const card = page.getByTestId('capture-photo-card');
+    await page.addStyleTag({ content: '* { transition: none !important; }' });
+    for (const mode of ['url', 'manual']) {
+      if (mode === 'manual') await page.getByRole('button', { name: '手動で追加', exact: true }).click();
+      const controls = card.locator('label, button').filter({ visible: true });
+      for (const control of await controls.all()) {
+        if (!(await control.isEnabled())) continue;
+        // Primary submit is not changed by this patch; test labels and secondary actions.
+        if ((await control.textContent())?.trim() === '追加') continue;
+        for (const state of ['normal', 'hover', 'focus']) {
+          await page.mouse.move(0, 0);
+          if (state === 'hover') await control.hover();
+          if (state === 'focus') await control.focus();
+          const ratio = await control.evaluate(el => {
+            const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+            const ctx = canvas.getContext('2d')!;
+            const luminance = (color: string) => {
+              ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = color; ctx.fillRect(0, 0, 1, 1);
+              const rgba = ctx.getImageData(0, 0, 1, 1).data;
+              if (rgba[3] !== 255) throw new Error('Expected opaque background');
+              const rgb = [...rgba].slice(0, 3).map(x => { const v=x/255; return v <= .04045 ? v/12.92 : ((v+.055)/1.055)**2.4; });
+              return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2];
+            };
+            let bg = 'rgba(0, 0, 0, 0)';
+            for (let node: Element | null = el; node; node = node.parentElement) {
+              bg = getComputedStyle(node).backgroundColor;
+              if (bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') break;
+            }
+            const a = luminance(getComputedStyle(el).color), b = luminance(bg);
+            return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+          });
+          expect.soft(ratio, `${mode} ${state} ${await control.textContent()}`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+  });
+}
+
 async function duplicateFixture(page: Page, suffix: string) {
   await page.request.post('/api/auth/register', {data:{email:`duplicate-${suffix}@example.test`,password:'test-password'}});
   await page.route('https://item-shopping.c.yimg.jp/**', r => r.abort());
