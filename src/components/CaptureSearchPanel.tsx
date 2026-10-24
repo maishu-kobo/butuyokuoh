@@ -315,24 +315,29 @@ export function CaptureSearchPanel({
       )}
       {(attribution || amazonUrl) && (
           <div className="flex flex-col items-start gap-4">
-            {amazonUrl && (
-              <a href={amazonUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[24px] min-w-[24px] items-center text-sm underline">Amazonで探す</a>
-            )}
-            {isAmazonAffiliate && (
-              <p className="text-sm text-gray-700 dark:text-gray-200">
-                広告：上のAmazonリンクはアフィリエイトリンクです。Amazonのアソシエイトとして、物欲王は適格販売により収入を得ています。
-              </p>
-            )}
-            {attribution?.yahoo && (
-              <div className="py-[15px]">
-                <span style={{ margin: '15px 15px 15px 15px' }}><a href="https://developer.yahoo.co.jp/sitemap/">Webサービス by Yahoo! JAPAN</a></span>
-              </div>
-            )}
-            {showRakutenCredit && (
-              <p className="text-xs text-gray-400">
-                <a href={RAKUTEN_CREDIT.url} target="_blank" rel="noopener noreferrer" className="underline">{RAKUTEN_CREDIT.label}</a>
-              </p>
-            )}
+            <div className="w-full space-y-1 text-sm leading-6">
+              {amazonUrl && (
+                <p className="px-[15px]">
+                  <a href={amazonUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[24px] min-w-[24px] items-center underline">Amazonで探す</a>
+                </p>
+              )}
+              {isAmazonAffiliate && (
+                <p className="px-[15px] text-gray-700 dark:text-gray-200">
+                  広告：上のAmazonリンクはアフィリエイトリンクです。Amazonのアソシエイトとして、物欲王は適格販売により収入を得ています。
+                </p>
+              )}
+              {attribution?.yahoo && (
+                <div className="min-h-[24px] underline">
+                  {/* Yahoo!の指定HTMLを保ち、ほかのリンクを同じ15pxの字下げにそろえる。 */}
+                  <span style={{ margin: '15px 15px 15px 15px' }}><a href="https://developer.yahoo.co.jp/sitemap/">Webサービス by Yahoo! JAPAN</a></span>
+                </div>
+              )}
+              {showRakutenCredit && (
+                <p className="px-[15px]">
+                  <a href={RAKUTEN_CREDIT.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[24px] min-w-[24px] items-center underline">{RAKUTEN_CREDIT.label}</a>
+                </p>
+              )}
+            </div>
             {listed.length > 0 && <button
               type="button"
               onClick={() => void registerSelected()}
