@@ -56,14 +56,28 @@ const SOURCE_LABEL: Record<CaptureSite, string> = {
   rakuten: '楽天',
 };
 
-export function itemUrlTaken(db: Database.Database, userId: number, url: string): boolean {
+export type RegisteredLocation = 'list' | 'purchased' | 'trash';
+export type RegisteredCandidateLocation = RegisteredLocation | 'expired-trash';
+
+export function registeredCandidateLocation(db: Database.Database, userId: number, url: string): RegisteredCandidateLocation | null {
   const identity = rakutenProductIdentity(url);
-  if (identity) {
-    const rows = db.prepare('SELECT url FROM items WHERE user_id = ?').all(userId) as { url: string }[];
-    return rows.some((row) => row.url === url || rakutenProductIdentity(row.url) === identity);
-  }
-  const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ? LIMIT 1').get(userId, url);
-  return Boolean(existing);
+  type Existing = { url: string; is_purchased: number; deleted_at: string | null; expired: number | null };
+  // Match the retention boundary used by GET /api/trash, without triggering cleanup.
+  const columns = `SELECT url, is_purchased, deleted_at,
+    datetime(deleted_at, '+7 days') < datetime('now') AS expired
+    FROM items WHERE user_id = ?`;
+  const order = ' ORDER BY (deleted_at IS NULL) DESC, is_purchased ASC, id ASC';
+  const rows = identity
+    ? db.prepare(columns + order).all(userId) as Existing[]
+    : db.prepare(columns + ' AND url = ?' + order + ' LIMIT 1').all(userId, url) as Existing[];
+  const item = rows.find(row => row.url === url || (identity !== null && rakutenProductIdentity(row.url) === identity));
+  if (!item) return null;
+  if (item.deleted_at) return item.expired ? 'expired-trash' : 'trash';
+  return item.is_purchased ? 'purchased' : 'list';
+}
+
+export function itemUrlTaken(db: Database.Database, userId: number, url: string): boolean {
+  return registeredCandidateLocation(db, userId, url) !== null;
 }
 
 export function candidateRegistration(db: Database.Database, userId: number, url: string): CandidateChoice {
