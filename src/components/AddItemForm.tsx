@@ -217,7 +217,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
         )}
         <button
           onClick={() => setIsOpen(true)}
-          className="w-full py-4 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-lg text-gray- dark:text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors flex items-center justify-center gap-2"
+          className="w-full py-4 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-lg text-gray-600 dark:text-gray-300 hover:border-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors flex items-center justify-center gap-2"
         >
           <Plus size={20} />
           新しいアイテムを追加
@@ -235,7 +235,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
     >
       <div className="flex justify-between items-center mb-4">
         <h3 className="font-semibold text-lg">新しいアイテムを追加</h3>
-        <button onClick={() => { setIsOpen(false); resetForm(); }} className="text-gray- dark:text-gray-400 hover:text-gray- dark:text-gray-600">
+        <button onClick={() => { setIsOpen(false); resetForm(); }} aria-label="追加フォームを閉じる" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100">
           <X size={20} />
         </button>
       </div>
@@ -269,7 +269,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
         <button
           type="button"
           onClick={() => { setIsManualMode(!isManualMode); setError(''); setCanAddManually(false); }}
-          className="text-xs text-gray- dark:text-gray-400 hover:text-gray- dark:text-gray-600 flex items-center gap-1"
+          className="text-xs text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 flex items-center gap-1"
         >
           {isManualMode ? (
             <><Link size={12} /> URLから追加</>
@@ -284,7 +284,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
           /* 手動追加モード */
           <>
             <div>
-              <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
                 商品名 <span className="text-red-500">*</span>
               </label>
               <input
@@ -299,7 +299,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">価格</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">価格</label>
                 <input
                   type="number"
                   value={formData.price}
@@ -309,7 +309,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">URL（任意）</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">URL（任意）</label>
                 <input
                   type="url"
                   value={formData.url}
@@ -322,7 +322,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
 
             {/* 画像アップロード */}
             {!isGuest && <div>
-              <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">画像</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">画像</label>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -342,7 +342,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
-                  className="px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1 text-sm text-gray- dark:text-gray-600"
+                  className="px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300"
                 >
                   <Upload size={14} />
                   {uploading ? '...' : 'アップロード'}
@@ -359,7 +359,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
         ) : (
           /* URLモード（通常） */
           <div>
-            <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
               商品URL <span className="text-red-500">*</span>
             </label>
             <input
@@ -375,7 +375,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">優先度</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">優先度</label>
             <select
               value={formData.priority}
               onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) })}
@@ -390,7 +390,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">購入予定日</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">購入予定日</label>
             <input
               type="date"
               value={formData.planned_purchase_date}
@@ -400,7 +400,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">個数</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">個数</label>
             <input
               type="number"
               min="1"
@@ -414,7 +414,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
         <div className="grid grid-cols-2 gap-4">
           {categories.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">カテゴリ</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">カテゴリ</label>
               <select
                 value={formData.category_id}
                 onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
@@ -430,7 +430,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
 
           {comparisonGroups.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">比較グループ</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">比較グループ</label>
               <select
                 value={formData.comparison_group_id}
                 onChange={(e) => setFormData({ ...formData, comparison_group_id: e.target.value })}
@@ -446,7 +446,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">メモ</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">メモ</label>
           <textarea
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
@@ -471,7 +471,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
           <button
             type="button"
             onClick={() => { setIsOpen(false); resetForm(); }}
-            className="px-4 py-2 text-gray- dark:text-gray-600 hover:text-gray- dark:text-gray-800"
+            className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
           >
             キャンセル
           </button>
