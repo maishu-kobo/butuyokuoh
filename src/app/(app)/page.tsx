@@ -21,7 +21,7 @@ import TrashView from '@/components/TrashView';
 import Link from 'next/link';
 import ImportWishlistModal from '@/components/ImportWishlistModal';
 import { useSwipeable } from 'react-swipeable';
-import { ignoreNewTabLinkTouches } from '@/lib/home-tab-swipe';
+import { useHomeSwipeRef } from '@/lib/home-tab-swipe';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
@@ -313,6 +313,7 @@ export default function Home() {
     swipeDuration: 500,
     touchEventOptions: { passive: false },
   });
+  const swipeRef = useHomeSwipeRef(swipeHandlers.ref);
 
   // フィルター・検索・並び順をすべて初期値に戻す
   const clearFilters = () => {
@@ -395,14 +396,7 @@ export default function Home() {
   }
 
   return (
-    <div
-      ref={(node) => {
-        // ライブラリが監視を付ける前に、新しいタブのリンクを外す。
-        if (node) ignoreNewTabLinkTouches(node);
-        swipeHandlers.ref(node);
-      }}
-      className="min-h-screen bg-[var(--kinari)] dark:bg-slate-900"
-    >
+    <div ref={swipeRef} className="min-h-screen bg-[var(--kinari)] dark:bg-slate-900">
       {/* ヘッダー */}
       <header className="bg-[var(--ai)] text-white shadow-lg">
         <div className="max-w-4xl mx-auto px-4 py-4">

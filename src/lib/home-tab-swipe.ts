@@ -1,3 +1,5 @@
+import { useCallback, useLayoutEffect, useRef } from 'react';
+
 const wrappedListeners = new WeakMap<EventListener, EventListener>();
 const filteredRoots = new WeakSet<EventTarget>();
 
@@ -41,4 +43,17 @@ export function ignoreNewTabLinkTouches(element: HTMLElement): void {
     const wrapped = typeof listener === 'function' ? wrappedListeners.get(listener) : undefined;
     remove(type, (wrapped ?? listener) as EventListener, options);
   }) as HTMLElement['removeEventListener'];
+}
+
+// 描画のたびに新しい関数を返すと、React は前の ref を null で外そうとする。
+// 同じ関数を渡し続け、中で呼ぶ監視だけ最新にする。
+export function useHomeSwipeRef(swipeRef: (node: HTMLElement | null) => void) {
+  const swipeRefHolder = useRef(swipeRef);
+  useLayoutEffect(() => {
+    swipeRefHolder.current = swipeRef;
+  });
+  return useCallback((node: HTMLElement | null) => {
+    if (node) ignoreNewTabLinkTouches(node);
+    swipeRefHolder.current(node);
+  }, []);
 }
