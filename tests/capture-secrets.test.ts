@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
@@ -323,6 +324,41 @@ test('insecure or in-repo secret files are ignored instead of crashing', () => {
   } finally {
     rmSync(outside, { recursive: true, force: true });
     rmSync(inside, { force: true });
+  }
+});
+
+test('a fifo is rejected without waiting for a writer', () => {
+  // open が fifo で止まると、このプロセスごと止まる。子プロセスの制限時間で落とす。
+  const dir = mkdtempSync(join(tmpdir(), 'capture-secrets-fifo-'));
+  const file = join(dir, 'secrets.fifo');
+  try {
+    execFileSync('mkfifo', [file]);
+    chmodSync(file, 0o600);
+    const env: NodeJS.ProcessEnv = { ...process.env, CAPTURE_SECRETS_FILE: file };
+    for (const name of ENV_NAMES) {
+      if (name !== 'CAPTURE_SECRETS_FILE') delete env[name];
+    }
+    const result = spawnSync(process.execPath, [
+      '--experimental-strip-types',
+      '--disable-warning=MODULE_TYPELESS_PACKAGE_JSON',
+      '--input-type=module',
+      '-e',
+      [
+        "import { captureAvailability, readCaptureSecrets } from './src/lib/capture-secrets.ts';",
+        "if (captureAvailability().secretsFile !== 'rejected') process.exit(2);",
+        'if (readCaptureSecrets().yahooAppId !== null) process.exit(3);',
+        'if (readCaptureSecrets().cloudflareApiToken !== null) process.exit(4);',
+      ].join('\n'),
+    ], {
+      cwd: process.cwd(),
+      env,
+      timeout: 15000,
+      encoding: 'utf8',
+    });
+    assert.equal(result.error, undefined, result.stderr || result.error?.message);
+    assert.equal(result.status, 0, result.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 
