@@ -1,7 +1,6 @@
 # pull_request だけ。
-# default setup が有効なため advanced の SARIF は拒否される。
-# SARIF の送信は default setup と衝突する。管理者が default setup を止めるまで、送信失敗ではジョブを落とさない。
-# 解析失敗と high 判定の失敗は落とす。
+# Repository settings の default setup は無効にし、この advanced setup を使う。
+# 解析、SARIF の取り込み、high 判定のいずれかが失敗したらジョブを落とす。
 # security-severity が 7.0 以上（high）は落とす。
 # // codeql コメントと SARIF の suppressions では通さない。
 # 例外は .github/codeql/suppressions.json の rule、path、行本文が一致するときだけ。
@@ -46,16 +45,28 @@ jobs:
 
       - name: Perform CodeQL Analysis
         id: codeql-analyze
-        continue-on-error: true
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           upload: always
+          wait-for-processing: true
           upload-database: false
           output: ${{ github.workspace }}/codeql-results
 
-      - name: Note the known upload conflict
-        if: ${{ !cancelled() && steps.codeql-analyze.outcome == 'failure' }}
-        run: echo "::warning::CodeQL の SARIF 送信が失敗した。default setup が advanced の結果を拒否する既知の設定で、管理者が default setup を止めるまで送信は必須にしない。high 判定は次のステップで落とす。"
+      - name: Verify CodeQL ingestion completed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SARIF_ID: ${{ steps.codeql-analyze.outputs.sarif-id }}
+        run: |
+          if [ -z "$SARIF_ID" ]; then
+            echo "::error::CodeQL did not return a SARIF upload ID."
+            exit 1
+          fi
+          status="$(gh api "repos/$GITHUB_REPOSITORY/code-scanning/sarifs/$SARIF_ID" --jq '.processing_status')"
+          if [ "$status" != "complete" ]; then
+            echo "::error::CodeQL ingestion has not completed successfully."
+            exit 1
+          fi
+          echo "CodeQL ingestion confirmed complete."
 
       - name: Fail on high severity findings
         if: ${{ !cancelled() }}
