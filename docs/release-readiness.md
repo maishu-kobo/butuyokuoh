@@ -1,6 +1,6 @@
 # feature/photo-capture を develop に入れる前の確認
 
-`origin/feature/photo-capture`（`5c5c1805decd98ff909d7a378237caf34621a090`）と `origin/develop`（`f11349adccc6580b01e440391311f42ebcb350f4`）を読んで書いた。本番、本番のデータベース、秘密は見ていない。このファイルは確認メモで、アプリの挙動は変えない。
+`origin/feature/photo-capture`（`00813a27535c4aecabf7fddd180cd75c0a76338a`）と `origin/develop`（`f11349adccc6580b01e440391311f42ebcb350f4`）を読んで書いた。本番、本番のデータベース、秘密は見ていない。このファイルは確認メモで、アプリの挙動は変えない。
 
 下の「develop との差分」は、その2つのブランチのあいだにあるものだけ。まだマージしていない PR は「未マージ」に分け、差分の中身には入れない。
 
@@ -40,13 +40,23 @@ Google のクライアント ID かシークレットが無い、または空白
 
 ### プライバシーと利用規約
 
-`/privacy` と `/terms` を足した。どちらも下書きで、画面に「確定したプライバシーポリシーではありません」「確定した利用規約ではありません」と出る。下書きの日付は 2026-10-23。同意したとみなす文は無い。
+`/privacy` と `/terms` は下書き。画面に「確定したプライバシーポリシーではありません」「確定した利用規約ではありません」と出る。下書きの日付は 2026-10-23。同意したとみなす文は無い。
+
+下書きの事実関係は、実装に合わせてある。写真はこのアプリのリクエストに届く。判定機能がオンで、使える Cloudflare のアカウント ID と API トークンが両方あるときだけ、`api.cloudflare.com` へ送る。キーが無い、または使えないときは送らない。データベースには保存しない。判定の記録には、回数に加えて各回のニューロン数も残る。ゲストのクッキー `butuyokuoh_guest` も、本番では Secure が付く。人が決める点は、下の「法的な判断が要る点」に分けた。
 
 ### 取り込み済みの不具合と、開発側の検査
 
 develop に入っている既存の修正を、このブランチへ取り込んである。購入日の暦日、統計の個数、拡張機能のゴミ箱の重複、比較グループを消したときに撮影の参照を外す、登録 API の本文サイズ、依存関係の high / critical を 0 にする、を含む。
 
-CI は、単体テスト・型・ビルド・lint・audit の速いレーンと、Playwright・CodeQL・依存差分・秘密スキャンの重いレーンに分かれる。本番の起動には使わない。
+CI は、単体テスト・型・ビルド・lint・audit の速いレーンと、Playwright・CodeQL・依存差分・秘密スキャンの重いレーンに分かれる。CodeQL は、解析と SARIF の取り込みが失敗したらジョブを落とす。本番の起動には使わない。
+
+### Chrome の起動
+
+ページ取得の Chrome は、サンドボックス付きで先に起動する。起動が `No usable sandbox!` で死んだときだけ、`--no-sandbox` と `--disable-setuid-sandbox` で一度やり直す。ほかの失敗ではやり直さない。
+
+### 既存 DB を開いたとき
+
+develop 形の DB を開いても行は減らない。`src/lib/db.ts` は無変更。テストだけ。足す列と戻し方は、下の「既存の本番 DB」。
 
 実行環境は Node.js 22.12 以上。puppeteer は 25.15.0。詳細は次の節。
 
@@ -96,7 +106,7 @@ CI は、単体テスト・型・ビルド・lint・audit の速いレーンと�
 - Chrome の取得に `unzip` が要る。`npm install`（手順は `docs/deployment.md`）と `npm ci`（`docs/development.md`、`docs/feature-branch-testing.md`）は、puppeteer 25.15.0 の postinstall（`install.mjs`）で Chrome for Testing の zip を取る。展開は `@puppeteer/browsers` 3.2.5。Linux では `unzip` コマンドを使う。`yauzl` は、そのパッケージの optional peer として `package-lock.json` に宣言がある。解決済みのパッケージとしては無い。`unzip` が PATH に無いと zip を展開できない。手順書には `unzip` とは書いていない。
 - Chrome を動かす共有ライブラリは、`docs/development.md` の「Puppeteerがクラッシュする」。Ubuntu / Debian の例は `libnss3`、`libatk1.0-0`、`libatk-bridge2.0-0`、`libcups2`、`libdrm2`、`libxkbcommon0`、`libxcomposite1`、`libxdamage1`、`libxfixes3`、`libxrandr2`、`libgbm1`、`libasound2`。本番の OS に入っているかは未確認。
 
-今の価格チェックは、Chrome をサンドボックス付きで起動する（`src/lib/page-browser.ts` は `headless: true` だけ）。`--no-sandbox` には落とさない。
+ページ取得の Chrome は、上の「Chrome の起動」と同じ。サンドボックスを先に試し、`No usable sandbox!` のときだけ `--no-sandbox` で一度落とす。
 
 ## 既存の本番 DB
 
@@ -117,7 +127,7 @@ SQLite は、外部キーを有効にしても、すでに入っている違反�
 
 戻すときはアプリを止める。`-wal` と `-shm` を消してから、取る前の `.backup` を `sqlite3` の `.backup` で `data/butuyokuoh.db` に戻し、止めていた方のコードで起動する。行を `DELETE` して戻さない。`BUTUYOKUOH_DB_PATH` を変えている場合は、そのファイルを対象にする。
 
-#209 の結論（未マージ。上の差分には入っていない）: develop 形の既存 DB を開いても行は減らない。`src/lib/db.ts` は無変更。テストだけ。起動は例外で終わらず、外部キーを切った状態で入りうる壊れた行も残る。`user_version` がすでに 1 以上なら下げない。
+develop 形の既存 DB を開いても行は減らない。`src/lib/db.ts` は無変更。足したのは `tests/develop-schema-open.test.ts` だけ。
 
 ## 登録メールの確認（#112）
 
@@ -129,7 +139,7 @@ SQLite は、外部キーを有効にしても、すでに入っている違反�
 
 - 実機。iPhone Safari、Android Chrome、デスクトップで写真の流れを通していない。手順は `docs/feature-branch-testing.md` にある。
 - 本番ホストの OS。exe.dev の VM がどの OS か、`unzip`、Chrome の共有ライブラリ、サンドボックスが通るかは見ていない。
-- 未マージの PR。#208、#209、#210、#211。中身は下の節。この確認の差分には入っていない。
+- 未マージの PR。#208 だけ。中身は下の節。この確認の差分には入っていない。
 
 ## 法的な判断が要る点
 
@@ -141,7 +151,7 @@ SQLite は、外部キーを有効にしても、すでに入っている違反�
 - Yahoo! の API クレジットを規定どおり出すか。リンクに「広告」「PR」が要るか。アフィリエイト用の ID は無い。
 - 商品リンク全般に「広告」や「PR」が要るか。下書きの外部タグの文は、広告用・解析用のスクリプトが無い、という実装の説明のまま。
 - 退会でアップロードを消す例外。他の会員が同じファイルを指しているときは残すことがある。下書きに書くか。
-- ページを取らない再取得は、ゴミ箱に無い店が2件以上の写真グループだけ。1件の登録は比較グループを作らず、店が2件未満ならページを取りに行く。下書きにその例外を書くかは人が決める。まとめてのページ取得が外すのは、商品コードがあるものと、`origin` が `photo` のグループ。未購入で、ゴミ箱に無く、商品コードが無く、写真グループに入っていない商品は対象になる。
+- ショップが2件以上の写真グループでは価格の再取得でページを取らない、という例外を下書きに書くかは人が決める。
 
 ## 未マージ
 
@@ -152,6 +162,3 @@ SQLite は、外部キーを有効にしても、すでに入っている違反�
   - 消すのは、所有記録のある十六進、その会員の `会員id_時刻.拡張子`、その会員の image_url だけが指し他の会員の参照も所有も無いファイル。十六進でも、所有記録が無くても、この条件なら消す。
   - 残すのは、参照が無く所有記録も無い十六進。ディレクトリ総当たりでは消さない。
   - 表 `member_uploads` と索引 `idx_member_uploads_user`、`sqlite_autoindex_member_uploads_1` は、Dev Lead が承認した。既存の行は消さない。記録は、この head の `scripts/diff-harness/approved-changes.json` にある。#212 はそのファイルを変えない。
-- https://github.com/maishu-kobo/butuyokuoh/pull/209 既存 DB を開いても行は減らない。`db.ts` は無変更。テストだけ
-- https://github.com/maishu-kobo/butuyokuoh/pull/210 Chrome はサンドボックスを先に試し、`No usable sandbox!` のときだけ `--no-sandbox` に一度落とす
-- https://github.com/maishu-kobo/butuyokuoh/pull/211 プライバシーと利用規約の事実関係
