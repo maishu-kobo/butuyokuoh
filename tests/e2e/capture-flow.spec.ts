@@ -130,12 +130,15 @@ test('a member can take or choose a photo, edit the name, and register a candida
   expect(searches()).toBe(searchBefore + 1);
 
   await page.getByRole('checkbox', { name: '候補を選ぶ 別のペン' }).first().check();
-  await expect(page.getByRole('textbox', { name: /^商品URL（自動入力）/ })).toHaveValue('https://store.shopping.yahoo.co.jp/example/pen');
+  await expect(page.locator('input[type="url"]')).toHaveCount(0);
   await page.getByRole('button', { name: '選んだ候補を登録' }).click();
   await expect(page.getByRole('heading', { name: '別のペン' })).toBeVisible();
+  const saved = await (await page.request.get('/api/items')).json();
+  expect(saved).toHaveLength(1);
+  expect(saved[0].url).toBe('https://store.shopping.yahoo.co.jp/example/pen');
 });
 
-test('photo selection fills product URLs and registers a group without the URL form', async ({ page }) => {
+test('photo selection saves candidate URLs without showing URL fields', async ({ page }) => {
   await page.route('https://item-shopping.c.yimg.jp/**', route => route.abort());
   await page.route('https://thumbnail.image.rakuten.co.jp/**', route => route.abort());
   await page.request.post('/api/auth/register', {
@@ -152,19 +155,16 @@ test('photo selection fills product URLs and registers a group without the URL f
   await expect(choices).toHaveCount(2);
   await expect(page.getByPlaceholder('https://www.amazon.co.jp/...')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '追加', exact: true })).toHaveCount(0);
-  const urls = page.getByRole('textbox', { name: /^商品URL（自動入力）/ });
+  const urls = page.locator('input[type="url"]');
   const register = page.getByRole('button', { name: '選んだ候補を登録' });
   await expect(register).toBeDisabled();
   await choices.first().check();
-  await expect(urls).toHaveCount(1);
-  await expect(urls.first()).toHaveValue('https://store.shopping.yahoo.co.jp/example/pen');
-  await expect(urls.first()).toHaveAttribute('readonly', '');
+  await expect(register).toBeEnabled();
+  await expect(urls).toHaveCount(0);
   await choices.nth(1).check();
-  await expect(urls).toHaveCount(2);
-  await expect(urls.nth(1)).toHaveValue('https://item.rakuten.co.jp/example/pen');
+  await expect(urls).toHaveCount(0);
   await choices.first().uncheck();
-  await expect(urls).toHaveCount(1);
-  await expect(urls.first()).toHaveValue('https://item.rakuten.co.jp/example/pen');
+  await expect(urls).toHaveCount(0);
   await choices.nth(1).uncheck();
   await expect(urls).toHaveCount(0);
   await expect(register).toBeDisabled();
@@ -191,7 +191,7 @@ test('photo selection fills product URLs and registers a group without the URL f
   expect(ordinaryRegistrations).toBe(0);
 });
 
-test('photo URLs reset on another photo and switching back restores ordinary URL entry', async ({ page }) => {
+test('photo selection resets on another photo and switching back restores ordinary URL entry', async ({ page }) => {
   await page.route('https://item-shopping.c.yimg.jp/**', route => route.abort());
   await page.route('https://thumbnail.image.rakuten.co.jp/**', route => route.abort());
   await page.request.post('/api/auth/register', {
@@ -203,8 +203,8 @@ test('photo URLs reset on another photo and switching back restores ordinary URL
   await photo.setInputFiles({ name: 'first.jpg', mimeType: 'image/jpeg', buffer: jpeg });
   const choices = page.getByRole('checkbox', { name: '候補を選ぶ テスト用ゲルボールペン 0.5' });
   await choices.first().check();
-  const urls = page.getByRole('textbox', { name: /^商品URL（自動入力）/ });
-  await expect(urls).toHaveCount(1);
+  const urls = page.locator('input[type="url"]');
+  await expect(urls).toHaveCount(0);
   await photo.setInputFiles({ name: 'second.jpg', mimeType: 'image/jpeg', buffer: jpeg });
   await expect(urls).toHaveCount(0);
   await expect(choices).toHaveCount(2);
