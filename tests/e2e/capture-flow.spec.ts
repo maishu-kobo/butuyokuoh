@@ -229,7 +229,9 @@ test('photo selection resets on another photo and switching back restores ordina
   await expect(urls).toHaveCount(0);
   await expect(choices).toHaveCount(2);
   await expect(choices.first()).not.toBeChecked();
+  await expect(page.getByRole('status').filter({ hasText: '1枚の写真を選びました' })).toBeVisible();
   await page.getByRole('button', { name: 'URL・手入力に切り替える' }).click();
+  await expect(page.getByRole('status').filter({ hasText: '1枚の写真を選びました' })).toHaveCount(0);
   const url = page.getByPlaceholder('https://www.amazon.co.jp/...');
   await expect(url).toBeVisible();
   await expect(url).toHaveValue('');
