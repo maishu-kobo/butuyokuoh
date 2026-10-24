@@ -148,6 +148,8 @@ test('a thrown shop search retries the same name and does not identify again', a
   await expect.poll(() => searches).toBe(2);
   expect(identifies).toBe(identifiesBefore);
   await expect(page.getByRole('status').filter({ hasText: '候補が' })).toBeVisible();
+  await expect(page.getByPlaceholder('商品名を入力')).toHaveCount(0);
+  await expect(page.getByPlaceholder('https://www.amazon.co.jp/...')).toHaveCount(0);
 });
 
 test('a failed shop search opens the manual form with the estimated name and no photo image', async ({ page }) => {
