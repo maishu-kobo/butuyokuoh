@@ -2,10 +2,11 @@ import { randomBytes } from 'node:crypto';
 import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { writeFile, mkdir } from 'fs/promises';
+import { writeFile, mkdir, unlink } from 'fs/promises';
 import path from 'path';
 import { existsSync } from 'fs';
 import sharp from 'sharp';
+import { rememberMemberUpload } from '@/lib/delete-member-account';
 
 // 許可する拡張子と MIME タイプの対応表（svg は XSS 対策のため明示的に除外）
 const ALLOWED_EXTENSIONS: Record<string, string[]> = {
@@ -246,6 +247,12 @@ async function handlePOST(request: NextRequest) {
 
     const filepath = path.join(uploadDir, filename);
     await writeFile(filepath, stored);
+    try {
+      rememberMemberUpload(user.id, filename);
+    } catch (error) {
+      await unlink(filepath).catch(() => undefined);
+      throw error;
+    }
 
     const imageUrl = `/uploads/${filename}`;
     return NextResponse.json({ url: imageUrl });
