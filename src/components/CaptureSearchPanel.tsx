@@ -14,6 +14,7 @@ import {
 } from '@/lib/capture/capture-flow';
 import { candidateThumbnail, formatCandidateFetchedAt } from '@/lib/capture/candidate-view';
 import { type CaptureCandidate, type ProductGuess } from '@/lib/capture/contract';
+import { amazonAffiliateLink, type SearchAttribution } from '@/lib/capture/search-attribution';
 import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
 import { useEffect, useRef, useState } from 'react';
 import { ImageOff } from 'lucide-react';
@@ -37,6 +38,7 @@ export function CaptureSearchPanel({
   const [name, setName] = useState('');
   const [candidates, setCandidates] = useState<ListedCandidate[]>([]);
   const [amazonUrl, setAmazonUrl] = useState('');
+  const [attribution, setAttribution] = useState<SearchAttribution | null>(null);
   const [sort, setSort] = useState<'recommended' | 'price'>('recommended');
   const [selected, setSelected] = useState<number[]>([]);
   const [slow, setSlow] = useState(false);
@@ -69,6 +71,7 @@ export function CaptureSearchPanel({
       setCandidates([]);
       setSelected([]);
       setAmazonUrl('');
+      setAttribution(null);
       setStatus(FLOW_STATUS.identifying);
       setIdentifyRetryable(false);
       setSearchRetryable(false);
@@ -129,6 +132,10 @@ export function CaptureSearchPanel({
     setNotice('');
     setSearchRetryable(false);
     setStatus(FLOW_STATUS.searching);
+    setAttribution(null);
+    setAmazonUrl('');
+    setCandidates([]);
+    setSelected([]);
     const same = product !== null && trimmed === product.name;
     let response: Response;
     try {
@@ -156,6 +163,8 @@ export function CaptureSearchPanel({
     const data = await response.json().catch(() => null);
     if (searchCancelled()) return;
     setBusy(false);
+    setAttribution(data?.attribution ? { yahoo: data.attribution.yahoo === true, rakuten: data.attribution.rakuten === true } : null);
+    setAmazonUrl(typeof data?.amazonUrl === 'string' ? data.amazonUrl : '');
     const decision = statusAfterSearch(data, response.ok, trimmed);
     if (decision.manual.enter) {
       setCandidates([]);
@@ -168,7 +177,6 @@ export function CaptureSearchPanel({
     searchBlockedRef.current = false;
     setSearchBlocked(false);
     setCandidates(data.candidates);
-    setAmazonUrl(typeof data.amazonUrl === 'string' ? data.amazonUrl : '');
     setSelected([]);
     setSort('recommended');
     setStatus(candidateCountStatus(data.candidates.length));
@@ -193,7 +201,8 @@ export function CaptureSearchPanel({
   if (!file && !status) return null;
 
   const listed = orderCandidates(candidates, sort);
-  const showRakutenCredit = listed.some((item) => item.site === 'rakuten');
+  const showRakutenCredit = attribution?.rakuten === true;
+  const isAmazonAffiliate = amazonAffiliateLink(amazonUrl);
 
   return (
     <div className="mb-4 space-y-3">
@@ -301,25 +310,31 @@ export function CaptureSearchPanel({
               );
             })}
           </ul>
+        </div>
+      )}
+      {(attribution || amazonUrl) && (
           <div className="flex flex-col items-start gap-4">
-            {amazonUrl && (
-              <a href={amazonUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[24px] min-w-[24px] items-center text-sm underline">Amazonで探す</a>
-            )}
-            {showRakutenCredit && (
-              <p className="text-xs text-gray-400">
-                <a href={RAKUTEN_CREDIT.url} target="_blank" rel="noopener noreferrer" className="underline">{RAKUTEN_CREDIT.label}</a>
-              </p>
-            )}
-            <button
+            <div className="w-full space-y-1 text-sm leading-6">
+              {amazonUrl && (
+                <p>
+                  <a href={amazonUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[24px] min-w-[24px] items-center underline">Amazonで探す</a>
+                </p>
+              )}
+              {isAmazonAffiliate && (
+                <p className="text-gray-700 dark:text-gray-200">
+                  広告：上のAmazonリンクはアフィリエイトリンクです。Amazonのアソシエイトとして、物欲王は適格販売により収入を得ています。
+                </p>
+              )}
+            </div>
+            {listed.length > 0 && <button
               type="button"
               onClick={() => void registerSelected()}
               disabled={selected.length === 0}
               className="min-h-[24px] min-w-[24px] px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
             >
               選んだ候補を登録
-            </button>
+            </button>}
           </div>
-        </div>
       )}
       {slow && busy && (
         <div className="rounded-md bg-amber-50 dark:bg-amber-900/30 p-3 text-sm">
@@ -331,6 +346,21 @@ export function CaptureSearchPanel({
         </div>
       )}
       {notice && <p role="alert" className="text-sm text-red-700">{notice}</p>}
+      {(attribution?.yahoo || showRakutenCredit) && (
+        <footer aria-label="検索サービスのクレジット" className="flex flex-col items-end border-t border-gray-200 pt-3 text-xs leading-6 dark:border-slate-600">
+          {attribution?.yahoo && (
+            <div className="underline">
+              {/* Yahoo!の指定HTMLと余白を保ち、操作エリアから離れた下部に配置する。 */}
+              <span style={{ margin: '15px 15px 15px 15px' }}><a href="https://developer.yahoo.co.jp/sitemap/">Webサービス by Yahoo! JAPAN</a></span>
+            </div>
+          )}
+          {showRakutenCredit && (
+            <p className="mx-[15px] underline">
+              <a href={RAKUTEN_CREDIT.url} target="_blank" rel="noopener noreferrer">{RAKUTEN_CREDIT.label}</a>
+            </p>
+          )}
+        </footer>
+      )}
     </div>
   );
 }
