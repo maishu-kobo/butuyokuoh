@@ -17,6 +17,7 @@ import { type CaptureCandidate, type ProductGuess } from '@/lib/capture/contract
 import { amazonAffiliateLink, type SearchAttribution } from '@/lib/capture/search-attribution';
 import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
 import { useEffect, useRef, useState } from 'react';
+import { ImageOff } from 'lucide-react';
 
 type ListedCandidate = CaptureCandidate & { candidateId?: number };
 
@@ -295,17 +296,7 @@ export function CaptureSearchPanel({
                   style={{ width: 24, height: 24 }}
                   className="mt-1 h-6 w-6 min-h-[24px] min-w-[24px] shrink-0"
                 />
-                {thumb && (
-                  <img
-                    src={thumb.src}
-                    alt={thumb.alt}
-                    width={64}
-                    height={64}
-                    loading="lazy"
-                    decoding="async"
-                    className="h-16 w-16 shrink-0 object-contain"
-                  />
-                )}
+                <CandidateImage key={thumb?.src ?? 'missing'} src={thumb?.src} alt={thumb?.alt ?? item.title} />
                 <div className="min-w-0 flex-1 break-words text-sm">
                   <p className="text-gray-500 dark:text-gray-400">{item.shopName}</p>
                   <p className="font-medium text-gray-900 dark:text-gray-100">{item.title}</p>
@@ -371,5 +362,29 @@ export function CaptureSearchPanel({
         </footer>
       )}
     </div>
+  );
+}
+
+function CandidateImage({ src, alt }: { src?: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return (
+      <div role="img" aria-label={`${alt}（画像なし）`} className="flex h-16 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-gray-300">
+        <ImageOff aria-hidden="true" className="h-6 w-6" />
+        <span aria-hidden="true" className="text-xs">画像なし</span>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      width={64}
+      height={64}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+      className="h-16 w-16 shrink-0 object-contain"
+    />
   );
 }
