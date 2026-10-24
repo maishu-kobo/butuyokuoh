@@ -104,7 +104,7 @@ function useCoarsePointer(): boolean | null {
   return coarse;
 }
 
-export function CapturePhotoControls({ pick }: { pick: CapturePhotoPick }) {
+export function CapturePhotoControls({ pick, file }: { pick: CapturePhotoPick; file?: File | null }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -197,7 +197,7 @@ export function CapturePhotoControls({ pick }: { pick: CapturePhotoPick }) {
         onClick={onRegister}
         className="min-h-[24px] min-w-[24px] w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm text-gray-700 dark:text-gray-200"
       >
-        写真から登録
+        {file ? '写真を変更' : '写真から登録'}
       </button>
       {open && (
         <div
@@ -218,6 +218,7 @@ export function CapturePhotoControls({ pick }: { pick: CapturePhotoPick }) {
           </button>
         </div>
       )}
+      {file && <SelectedPhotoPreview file={file} />}
       <div aria-live="polite">
         {pick.message && (
           <p role="alert" className="mt-2 rounded-md bg-red-50 dark:bg-red-950/40 p-3 text-red-700 dark:text-red-300 text-sm">
@@ -248,4 +249,33 @@ function onMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     event.preventDefault();
     items[items.length - 1]?.focus();
   }
+}
+
+
+function SelectedPhotoPreview({ file }: { file: File }) {
+  const imageRef = useRef<HTMLImageElement>(null);
+  // Preview only the prepared upload. HEIC may be sent for server-side conversion;
+  // in that case show its name rather than a broken browser image.
+  const browserImage = ['image/jpeg', 'image/png', 'image/webp'].includes(file.type);
+  useEffect(() => {
+    if (!browserImage) return;
+    const image = imageRef.current;
+    const url = URL.createObjectURL(file);
+    if (image) image.src = url;
+    return () => {
+      image?.removeAttribute('src');
+      URL.revokeObjectURL(url);
+    };
+  }, [file, browserImage]);
+  return (
+    <figure className="mt-3 flex items-center gap-3 text-sm text-gray-700 dark:text-gray-200">
+      {/* eslint-disable-next-line @next/next/no-img-element -- Local prepared blob URL; no remote image optimization or upload. */}
+      {browserImage && <img ref={imageRef} alt="選択した写真" width={96} height={96} className="h-24 w-24 shrink-0 rounded object-contain" />}
+      <figcaption className="min-w-0 break-words">
+        <p>選択した写真</p>
+        <p>{file.name}</p>
+        {!browserImage && <p>この形式はプレビューできませんが、商品を判定します。</p>}
+      </figcaption>
+    </figure>
+  );
 }
