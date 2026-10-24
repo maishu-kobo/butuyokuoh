@@ -46,7 +46,7 @@ async function member(page: Page) {
 
 test('a member can take or choose a photo, edit the name, and register a candidate', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.route('https://item-shopping.c.yimg.jp/**', (route) => route.abort());
+  await page.route('https://item-shopping.c.yimg.jp/**', route => route.fulfill({ contentType: 'image/jpeg', body: jpeg }));
   await page.route('https://thumbnail.image.rakuten.co.jp/**', (route) => route.abort());
   const calls: string[] = [];
   page.on('request', (request) => {
@@ -132,4 +132,68 @@ test('a member can take or choose a photo, edit the name, and register a candida
   await page.getByRole('checkbox', { name: '候補を選ぶ 別のペン' }).first().check();
   await page.getByRole('button', { name: '選んだ候補を登録' }).click();
   await expect(page.getByRole('heading', { name: '別のペン' })).toBeVisible();
+});
+
+test('candidate images fall back for missing, failed and undecodable images', async ({ page }, testInfo) => {
+  let mode: 'failed' | 'missing' | 'decode' | 'valid' = 'failed';
+  await page.route('**/api/capture/search', async route => {
+    const response = await route.fetch();
+    const data = await response.json();
+    data.candidates = data.candidates.map((item: { imageUrl: string | null }) => ({
+      ...item, imageUrl: mode === 'missing' ? null : `${item.imageUrl}?image-test=${mode}`,
+    }));
+    await route.fulfill({ response, json: data });
+  });
+  await page.route(/https:\/\/(item-shopping\.c\.yimg\.jp|thumbnail\.image\.rakuten\.co\.jp)\//, async route => {
+    if (mode === 'failed') {
+      if (route.request().url().includes('yimg.jp')) await route.abort();
+      else await route.fulfill({ status: 404, body: 'not found' });
+    } else if (mode === 'decode') {
+      await route.fulfill({ contentType: 'image/jpeg', body: 'invalid image' });
+    } else {
+      await route.fulfill({ contentType: 'image/jpeg', body: jpeg });
+    }
+  });
+  await member(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
+  await page.getByLabel('写真を撮る').setInputFiles({ name: 'image-test.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+  for (const next of ['failed', 'missing', 'decode', 'valid'] as const) {
+    const name = next === 'failed' ? 'テスト用ゲルボールペン 0.5' : `画像テスト ${next}`;
+    if (next !== 'failed') {
+      mode = next;
+      await page.getByLabel('探す商品名').fill(name);
+      await page.getByRole('button', { name: 'この名前で探す' }).click();
+    }
+    // Each search has a distinct name so the previous render cannot satisfy the assertions.
+    const choices = page.getByRole('checkbox', { name: `候補を選ぶ ${name}`, exact: true });
+    const fallback = page.getByRole('img', { name: `${name}（画像なし）`, exact: true });
+    await expect(choices).toHaveCount(2);
+    if (next !== 'valid') {
+      await expect(fallback).toHaveCount(2);
+      await expect(fallback.first()).toBeVisible();
+      await expect.poll(async () => {
+        const box = await fallback.first().boundingBox();
+        return box ? { width: box.width, height: box.height } : null;
+      }).toEqual({ width: 64, height: 64 });
+      await expect(page.locator('li img')).toHaveCount(0);
+      for (const choice of await choices.all()) {
+        await expect(choice.locator('..')).toContainText(name);
+      }
+      if (next === 'failed') {
+        await page.screenshot({ path: testInfo.outputPath('fallback-mobile.png'), fullPage: true });
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.evaluate(() => document.documentElement.classList.add('dark'));
+        await page.screenshot({ path: testInfo.outputPath('fallback-desktop-dark.png'), fullPage: true });
+      }
+    } else {
+      await expect(fallback).toHaveCount(0);
+      const images = page.getByRole('img', { name, exact: true });
+      await expect(images).toHaveCount(2);
+      await expect.poll(() => images.evaluateAll(elements => elements.every(el => (el as HTMLImageElement).naturalWidth > 0))).toBe(true);
+    }
+    await choices.first().check();
+    await expect(page.getByRole('button', { name: '選んだ候補を登録' })).toBeEnabled();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  }
 });
