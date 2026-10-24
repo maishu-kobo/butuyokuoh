@@ -24,6 +24,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
   const [captureEnabled, setCaptureEnabled] = useState(false);
   const captureOpen = isOpen && !isGuest;
   if (!captureOpen && captureEnabled) setCaptureEnabled(false);
+  const [photoRevision, setPhotoRevision] = useState(0);
   const [pickedFile, setPickedFile] = useState<File | null>(null);
   const [isPhotoMode, setIsPhotoMode] = useState(false);
   const [isManualMode, setIsManualMode] = useState(false);
@@ -36,6 +37,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
   const photoPick = useCapturePhotoPick(
     showPhotoPicker({ enabled: captureOpen && captureEnabled }, isGuest),
     (file) => {
+      setPhotoRevision(value => value + 1);
       setPickedFile(file);
       setIsPhotoMode(true);
       setIsManualMode(false);
@@ -241,9 +243,10 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
           <X size={20} />
         </button>
       </div>
-      <CapturePhotoControls pick={photoPick} />
+      <CapturePhotoControls pick={photoPick} file={pickedFile} />
       {photoPick.enabled && pickedFile && (
         <CaptureSearchPanel
+          key={photoRevision}
           file={pickedFile}
           onSearching={startPhotoSearch}
           onManual={enterManual}
