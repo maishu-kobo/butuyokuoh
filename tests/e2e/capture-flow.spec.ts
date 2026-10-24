@@ -130,10 +130,126 @@ test('a member can take or choose a photo, edit the name, and register a candida
   expect(searches()).toBe(searchBefore + 1);
 
   await page.getByRole('checkbox', { name: '候補を選ぶ 別のペン' }).first().check();
+  await expect(page.getByRole('textbox', { name: /^商品URL（自動入力）/ })).toHaveValue('https://store.shopping.yahoo.co.jp/example/pen');
   await page.getByRole('button', { name: '選んだ候補を登録' }).click();
   await expect(page.getByRole('heading', { name: '別のペン' })).toBeVisible();
 });
 
+test('photo selection fills product URLs and registers a group without the URL form', async ({ page }) => {
+  await page.route('https://item-shopping.c.yimg.jp/**', route => route.abort());
+  await page.route('https://thumbnail.image.rakuten.co.jp/**', route => route.abort());
+  await page.request.post('/api/auth/register', {
+    data: { email: 'photo-url-group@example.test', password: 'test-password' },
+  });
+  let ordinaryRegistrations = 0;
+  page.on('request', request => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/items') ordinaryRegistrations++;
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
+  await page.getByLabel('写真を撮る').setInputFiles({ name: 'urls.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+  const choices = page.getByRole('checkbox', { name: '候補を選ぶ テスト用ゲルボールペン 0.5' });
+  await expect(choices).toHaveCount(2);
+  await expect(page.getByPlaceholder('https://www.amazon.co.jp/...')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '追加', exact: true })).toHaveCount(0);
+  const urls = page.getByRole('textbox', { name: /^商品URL（自動入力）/ });
+  const register = page.getByRole('button', { name: '選んだ候補を登録' });
+  await expect(register).toBeDisabled();
+  await choices.first().check();
+  await expect(urls).toHaveCount(1);
+  await expect(urls.first()).toHaveValue('https://store.shopping.yahoo.co.jp/example/pen');
+  await expect(urls.first()).toHaveAttribute('readonly', '');
+  await choices.nth(1).check();
+  await expect(urls).toHaveCount(2);
+  await expect(urls.nth(1)).toHaveValue('https://item.rakuten.co.jp/example/pen');
+  await choices.first().uncheck();
+  await expect(urls).toHaveCount(1);
+  await expect(urls.first()).toHaveValue('https://item.rakuten.co.jp/example/pen');
+  await choices.nth(1).uncheck();
+  await expect(urls).toHaveCount(0);
+  await expect(register).toBeDisabled();
+  await choices.first().check();
+  await page.getByRole('button', { name: 'この名前で探す' }).click();
+  await expect(urls).toHaveCount(0);
+  await expect(register).toBeDisabled();
+  await expect(choices).toHaveCount(2);
+  await choices.first().check();
+  await choices.nth(1).check();
+  const registered = page.waitForResponse(response => response.url().endsWith('/api/capture/register') && response.request().method() === 'POST');
+  await register.click();
+  const result = await registered;
+  expect(result.ok()).toBeTruthy();
+  await expect(page.getByRole('button', { name: '新しいアイテムを追加' })).toBeVisible();
+  const itemsResponse = await page.request.get('/api/items');
+  const items = await itemsResponse.json();
+  expect(items.map((item: { url: string }) => item.url).sort()).toEqual([
+    'https://item.rakuten.co.jp/example/pen', 'https://store.shopping.yahoo.co.jp/example/pen',
+  ]);
+  expect(items).toHaveLength(2);
+  expect(items[0].comparison_group_id).toBeGreaterThan(0);
+  expect(items[1].comparison_group_id).toBe(items[0].comparison_group_id);
+  expect(ordinaryRegistrations).toBe(0);
+});
+
+test('photo URLs reset on another photo and switching back restores ordinary URL entry', async ({ page }) => {
+  await page.route('https://item-shopping.c.yimg.jp/**', route => route.abort());
+  await page.route('https://thumbnail.image.rakuten.co.jp/**', route => route.abort());
+  await page.request.post('/api/auth/register', {
+    data: { email: 'photo-url-switch@example.test', password: 'test-password' },
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
+  const photo = page.getByLabel('写真を撮る');
+  await photo.setInputFiles({ name: 'first.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+  const choices = page.getByRole('checkbox', { name: '候補を選ぶ テスト用ゲルボールペン 0.5' });
+  await choices.first().check();
+  const urls = page.getByRole('textbox', { name: /^商品URL（自動入力）/ });
+  await expect(urls).toHaveCount(1);
+  await photo.setInputFiles({ name: 'second.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+  await expect(urls).toHaveCount(0);
+  await expect(choices).toHaveCount(2);
+  await expect(choices.first()).not.toBeChecked();
+  await page.getByRole('button', { name: 'URL・手入力に切り替える' }).click();
+  const url = page.getByPlaceholder('https://www.amazon.co.jp/...');
+  await expect(url).toBeVisible();
+  await expect(url).toHaveValue('');
+  await expect(url).toHaveAttribute('required', '');
+  await expect(choices).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '選んだ候補を登録' })).toHaveCount(0);
+  await page.getByRole('button', { name: '手動で追加' }).click();
+  await expect(page.getByPlaceholder('商品名を入力')).toBeVisible();
+});
+
+
+test('leaving a pending photo search ignores its late manual fallback', async ({ page }) => {
+  await page.route('https://item-shopping.c.yimg.jp/**', route => route.abort());
+  await page.route('https://thumbnail.image.rakuten.co.jp/**', route => route.abort());
+  await page.request.post('/api/auth/register', {
+    data: { email: 'photo-url-pending@example.test', password: 'test-password' },
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
+  await page.getByLabel('写真を撮る').setInputFiles({ name: 'pending.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+  await expect(page.getByRole('checkbox', { name: '候補を選ぶ テスト用ゲルボールペン 0.5' })).toHaveCount(2);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/capture/search', async route => {
+    await gate;
+    await route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ code: 'SEARCH_FAILED', error: '検索失敗' }) });
+  });
+  const requested = page.waitForRequest('**/api/capture/search');
+  await page.getByRole('button', { name: 'この名前で探す' }).click();
+  await requested;
+  await page.getByRole('button', { name: 'URL・手入力に切り替える' }).click();
+  const url = page.getByPlaceholder('https://www.amazon.co.jp/...');
+  await url.fill('https://example.com/my-product');
+  const finished = page.waitForEvent('requestfinished', { predicate: request => request.url().endsWith('/api/capture/search') });
+  release();
+  await finished;
+  await expect(url).toHaveValue('https://example.com/my-product');
+  await expect(page.getByPlaceholder('商品名を入力')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '追加', exact: true })).toBeVisible();
+});
 
 test('search credits remain visible for empty and partial results; untagged links have no affiliate claim', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
