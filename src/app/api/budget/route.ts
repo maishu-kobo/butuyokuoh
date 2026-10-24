@@ -18,7 +18,8 @@ async function handleGET(request: NextRequest) {
   
   // 購入予定日が設定されているアイテム（ゴミ箱に入っていないもの）
   let query = `
-    SELECT i.*, g.name AS comparison_group_name, g.origin AS group_origin
+    SELECT i.*, g.name AS comparison_group_name, g.origin AS group_origin,
+      CASE WHEN g.origin = 'photo' THEN g.budget_item_id ELSE NULL END AS budget_selected_item_id
     FROM items i
     LEFT JOIN comparison_groups g ON g.id = i.comparison_group_id AND g.user_id = i.user_id
     WHERE i.is_purchased = 0
@@ -40,7 +41,8 @@ async function handleGET(request: NextRequest) {
   
   // 購入予定日が未設定のアイテム（購入時期未定）
   const undatedQuery = `
-    SELECT i.*, g.name AS comparison_group_name, g.origin AS group_origin
+    SELECT i.*, g.name AS comparison_group_name, g.origin AS group_origin,
+      CASE WHEN g.origin = 'photo' THEN g.budget_item_id ELSE NULL END AS budget_selected_item_id
     FROM items i
     LEFT JOIN comparison_groups g ON g.id = i.comparison_group_id AND g.user_id = i.user_id
     WHERE i.is_purchased = 0
