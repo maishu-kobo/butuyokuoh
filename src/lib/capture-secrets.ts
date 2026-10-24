@@ -1,4 +1,4 @@
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, constants, fstatSync, openSync, readSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 /** Names only. Values stay in the server process and are never logged. */
@@ -91,9 +91,9 @@ function isOutsideRepo(filePath: string): boolean {
 function readPermittedFile(configuredPath: string): Map<string, string> | null {
   let fd: number | null = null;
   try {
-    const listed = lstatSync(configuredPath);
-    if (listed.isSymbolicLink() || !listed.isFile()) return null;
-    fd = openSync(configuredPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    // パスを調べてから開くと、その間に差し替わる。開いた記述子を fstat する。
+    // O_NOFOLLOW はシンボリックリンクを開かず、O_NONBLOCK は fifo を待たない。
+    fd = openSync(configuredPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     const stats = fstatSync(fd);
     if (!stats.isFile()) return null;
     if ((stats.mode & 0o777) !== 0o600) return null;
