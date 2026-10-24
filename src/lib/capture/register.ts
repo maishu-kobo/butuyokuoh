@@ -56,14 +56,22 @@ const SOURCE_LABEL: Record<CaptureSite, string> = {
   rakuten: '楽天',
 };
 
-export function itemUrlTaken(db: Database.Database, userId: number, url: string): boolean {
+export type RegisteredLocation = 'list' | 'purchased' | 'trash';
+
+export function registeredCandidateLocation(db: Database.Database, userId: number, url: string): RegisteredLocation | null {
   const identity = rakutenProductIdentity(url);
-  if (identity) {
-    const rows = db.prepare('SELECT url FROM items WHERE user_id = ?').all(userId) as { url: string }[];
-    return rows.some((row) => row.url === url || rakutenProductIdentity(row.url) === identity);
-  }
-  const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ? LIMIT 1').get(userId, url);
-  return Boolean(existing);
+  type Existing = { url: string; is_purchased: number; deleted_at: string | null };
+  const columns = 'SELECT url, is_purchased, deleted_at FROM items WHERE user_id = ?';
+  const order = ' ORDER BY (deleted_at IS NULL) DESC, is_purchased ASC, id ASC';
+  const rows = identity
+    ? db.prepare(columns + order).all(userId) as Existing[]
+    : db.prepare(columns + ' AND url = ?' + order + ' LIMIT 1').all(userId, url) as Existing[];
+  const item = rows.find(row => row.url === url || (identity !== null && rakutenProductIdentity(row.url) === identity));
+  return item ? item.deleted_at ? 'trash' : item.is_purchased ? 'purchased' : 'list' : null;
+}
+
+export function itemUrlTaken(db: Database.Database, userId: number, url: string): boolean {
+  return registeredCandidateLocation(db, userId, url) !== null;
 }
 
 export function candidateRegistration(db: Database.Database, userId: number, url: string): CandidateChoice {

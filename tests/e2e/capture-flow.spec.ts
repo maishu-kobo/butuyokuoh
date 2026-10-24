@@ -461,6 +461,7 @@ for (const mixed of [false,true]) {
     await choices.first().check();
     if(mixed) await choices.nth(1).check();
     existingCandidate(userId);
+    if (!mixed) await page.getByLabel('探す商品名').fill('');
     await page.getByRole('button',{name:'選んだ候補を登録'}).click();
     if(mixed) {
       await expect(page.getByRole('status').filter({hasText:'1件を登録しました。1件は登録済みのため追加していません。'})).toBeVisible();
@@ -468,8 +469,10 @@ for (const mixed of [false,true]) {
     } else {
       await expect(choices.first()).toBeDisabled();
       await expect(page.getByRole('button',{name:'選んだ候補を登録'})).toBeDisabled();
-      await expect(page.getByRole('alert')).toContainText('登録済み');
+      await expect(page.getByRole('alert').filter({hasText:'選んだ候補は登録済みです'})).toBeVisible();
       const items=await (await page.request.get('/api/items')).json(); expect(items).toHaveLength(1);
+      await page.getByRole('button',{name:'ほしいものリストを見る',exact:true}).click();
+      await expect(page.getByText('既存のペン',{exact:true})).toBeVisible();
     }
   });
 }
