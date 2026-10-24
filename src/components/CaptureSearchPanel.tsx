@@ -24,10 +24,12 @@ type ListedCandidate = CaptureCandidate & { candidateId?: number };
 export function CaptureSearchPanel({
   file,
   onManual,
+  onSearching,
   onRegistered,
 }: {
   file: File | null;
   onManual: (name: string) => void;
+  onSearching: () => void;
   onRegistered: () => void;
 }) {
   const [status, setStatus] = useState('');
@@ -47,6 +49,7 @@ export function CaptureSearchPanel({
   const [searchRetryable, setSearchRetryable] = useState(false);
   const [searchBlocked, setSearchBlocked] = useState(false);
   const searchBlockedRef = useRef(false);
+  const searchVersionRef = useRef(0);
   const searchRetryRef = useRef<{ product: ProductGuess | null; name: string } | null>(null);
 
   useEffect(() => {
@@ -60,6 +63,7 @@ export function CaptureSearchPanel({
     void (async () => {
       await Promise.resolve();
       if (cancelled) return;
+      onSearching();
       setSlow(false);
       setBusy(true);
       setNotice('');
@@ -111,14 +115,18 @@ export function CaptureSearchPanel({
 
     return () => {
       cancelled = true;
+      searchVersionRef.current += 1;
       clearTimeout(timer);
     };
-  }, [file, attempt]);
+  }, [file, attempt, onSearching]);
 
   async function runSearch(product: ProductGuess | null, queryName: string, cancelled: () => boolean = () => false) {
     if (searchBlockedRef.current) return;
     const trimmed = queryName.trim();
     if (!trimmed) return;
+    const version = ++searchVersionRef.current;
+    const searchCancelled = () => cancelled() || version !== searchVersionRef.current;
+    onSearching();
     setBusy(true);
     setSlow(false);
     setNotice('');
@@ -142,7 +150,7 @@ export function CaptureSearchPanel({
         }),
       }, { notifyError: false });
     } catch {
-      if (cancelled()) return;
+      if (searchCancelled()) return;
       const retry = thrownCaptureRetry(true);
       searchRetryRef.current = { product, name: trimmed };
       setBusy(false);
@@ -153,7 +161,7 @@ export function CaptureSearchPanel({
       return;
     }
     const data = await response.json().catch(() => null);
-    if (cancelled()) return;
+    if (searchCancelled()) return;
     setBusy(false);
     setAttribution(data?.attribution ? { yahoo: data.attribution.yahoo === true, rakuten: data.attribution.rakuten === true } : null);
     setAmazonUrl(typeof data?.amazonUrl === 'string' ? data.amazonUrl : '');

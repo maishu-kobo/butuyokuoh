@@ -9,6 +9,7 @@ export type CapturePhotoPick = {
   message: string;
   selected: boolean;
   acceptFiles: (files: File[]) => void;
+  clear: () => void;
   onDragOver: (event: DragEvent) => void;
   onDrop: (event: DragEvent) => void;
 };
@@ -64,6 +65,11 @@ export function useCapturePhotoPick(
     message,
     selected,
     acceptFiles,
+    clear() {
+      requestRef.current += 1;
+      setSelected(false);
+      setMessage('');
+    },
     onDragOver(event) {
       if (!enabled) return;
       event.preventDefault();
