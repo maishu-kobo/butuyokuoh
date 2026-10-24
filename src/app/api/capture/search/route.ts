@@ -6,6 +6,7 @@ import { searchWithPorts } from '@/lib/capture/fakes';
 import { httpsReferer, resolveSearchPorts, saveSearchCandidates } from '@/lib/capture/live-search';
 import { portsForRequest } from '@/lib/capture/ports';
 import { amazonAssociateTag, readCaptureSecrets } from '@/lib/capture-secrets';
+import { searchAttribution } from '@/lib/capture/search-attribution';
 import { getDb } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -44,11 +45,13 @@ async function handlePOST(request: NextRequest) {
         referer: httpsReferer(request.headers.get('origin')),
       });
   const result = await searchWithPorts(parsed.value, ports, amazonAssociateTag());
-  if (!result.ok) return errorResponse(result.error, result.status);
+  const attribution = searchAttribution(result);
+  if (!result.ok) return NextResponse.json({ ...result.error, attribution }, { status: result.status });
   const saved = saveSearchCandidates(getDb(), user.id, parsed.value, result.value);
-  if (!saved) return NextResponse.json(result.value);
+  if (!saved) return NextResponse.json({ ...result.value, attribution });
   return NextResponse.json({
     ...result.value,
+    attribution,
     captureId: saved.captureId,
     candidates: result.value.candidates.map((candidate, index) => ({
       ...candidate,
