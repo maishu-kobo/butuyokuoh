@@ -1,8 +1,8 @@
 # feature/photo-capture を develop に入れる前の確認
 
-`origin/feature/photo-capture`（`00813a27535c4aecabf7fddd180cd75c0a76338a`）と `origin/develop`（`f11349adccc6580b01e440391311f42ebcb350f4`）を読んで書いた。本番、本番のデータベース、秘密は見ていない。このファイルは確認メモで、アプリの挙動は変えない。
+`origin/feature/photo-capture`（`af0fc97b6a0e572a4deb678d2e15c3b52adf1f84`）と `origin/develop`（`f11349adccc6580b01e440391311f42ebcb350f4`）を読んで書いた。本番、本番のデータベース、秘密は見ていない。このファイルは確認メモで、アプリの挙動は変えない。
 
-下の「develop との差分」は、その2つのブランチのあいだにあるものだけ。まだマージしていない PR は「未マージ」に分け、差分の中身には入れない。
+下の「develop との差分」は、その2つのブランチのあいだにあるものだけ。未マージのコード PR は無い。
 
 ## develop との差分
 
@@ -34,7 +34,7 @@
 
 Google のクライアント ID かシークレットが無い、または空白だけのときは、「Googleでログイン」を出さない。両方あるときは今までどおり。メールとパスワードのログインは残る。Google で同じメールの会員に結ぶと、その会員のパスワードは消し、ログインの世代を進めて、それまでのトークンを使えなくする。
 
-退会は、その会員の行（商品、価格履歴、撮影、候補、カテゴリ、比較グループ、通知設定、判定の回数）を消す。ゲストの行は消さない。ファイルは、その DB トランザクションの前に消す。消すのは、その会員の `会員id_時刻.拡張子` と、その会員の image_url が指し、他の会員の image_url が指していないファイル。他の会員の `会員id_時刻.拡張子` は、この会員の image_url だけが指していても消さない。十六進名でも、image_url が指していて他の会員が指していなければ消す。残るのは、参照の無い十六進。`unlinkSync` は失敗すると投げる。ログはしない。トランザクションが戻っても、消したファイルは戻らない。
+退会は、その会員の行（商品、価格履歴、撮影、候補、カテゴリ、比較グループ、通知設定、判定の回数、所有記録）を消す。ゲストの行は消さない。消すファイルのパスは、その DB トランザクションの中で集める。commit のあと、`removeUploadsBestEffort` で消す。失敗はログして throw しない。commit しなければファイルは残る。消すのは、所有記録のある十六進、その会員の `会員id_時刻.拡張子`、その会員の image_url が指し他の会員の参照も所有も無いファイル。十六進で所有記録が無くても、この条件なら消す。残すのは、参照も所有記録も無い十六進。その十六進はディレクトリを走査して消さない。その会員の `会員id_時刻.拡張子` だけ、アップロードディレクトリの名前から集める。
 
 本番（`NODE_ENV` が production）では、会員のクッキー `butuyokuoh_token` とゲストのクッキー `butuyokuoh_guest` の両方に Secure が付く。
 
@@ -56,7 +56,7 @@ CI は、単体テスト・型・ビルド・lint・audit の速いレーンと�
 
 ### 既存 DB を開いたとき
 
-develop 形の DB を開いても行は減らない。`src/lib/db.ts` は無変更。テストだけ。足す列と戻し方は、下の「既存の本番 DB」。
+develop 形の DB を開いても行は減らない。#209 のテストは `src/lib/db.ts` を変えていない。足す列と戻し方は、下の「既存の本番 DB」。
 
 実行環境は Node.js 22.12 以上。puppeteer は 25.15.0。詳細は次の節。
 
@@ -118,6 +118,7 @@ develop 形の DB を開いても行は減らない。`src/lib/db.ts` は無変�
 - `comparison_groups` の `origin`、`capture_id`、`budget_item_id`
 - `items` の `source_item_code`、`price_fetched_at`
 - 表 `captures`、`capture_candidates`、`capture_ai_usage` と、その索引
+- 表 `member_uploads`（`name` が主キー）と索引 `idx_member_uploads_user`、`sqlite_autoindex_member_uploads_1`。足すだけ。既存の行は消さない
 - `PRAGMA user_version` を、今より小さいときだけ 1 にする。すでに 1 以上なら下げない
 - 接続のたびに `foreign_keys = ON`。ファイルには残らない
 
@@ -127,7 +128,7 @@ SQLite は、外部キーを有効にしても、すでに入っている違反�
 
 戻すときはアプリを止める。`-wal` と `-shm` を消してから、取る前の `.backup` を `sqlite3` の `.backup` で `data/butuyokuoh.db` に戻し、止めていた方のコードで起動する。行を `DELETE` して戻さない。`BUTUYOKUOH_DB_PATH` を変えている場合は、そのファイルを対象にする。
 
-develop 形の既存 DB を開いても行は減らない。`src/lib/db.ts` は無変更。足したのは `tests/develop-schema-open.test.ts` だけ。
+develop 形の既存 DB を開いても行は減らない。#209 は `src/lib/db.ts` を変えず、`tests/develop-schema-open.test.ts` だけを足した。上の `member_uploads` も、既存の行は消さない。
 
 ## 登録メールの確認（#112）
 
@@ -139,7 +140,6 @@ develop 形の既存 DB を開いても行は減らない。`src/lib/db.ts` は�
 
 - 実機。iPhone Safari、Android Chrome、デスクトップで写真の流れを通していない。手順は `docs/feature-branch-testing.md` にある。
 - 本番ホストの OS。exe.dev の VM がどの OS か、`unzip`、Chrome の共有ライブラリ、サンドボックスが通るかは見ていない。
-- 未マージの PR。#208 だけ。中身は下の節。この確認の差分には入っていない。
 
 ## 法的な判断が要る点
 
@@ -155,10 +155,4 @@ develop 形の既存 DB を開いても行は減らない。`src/lib/db.ts` は�
 
 ## 未マージ
 
-次の PR は `feature/photo-capture` にまだ入っていない。develop との差分には混ぜない。
-
-- https://github.com/maishu-kobo/butuyokuoh/pull/208 退会時、その会員のアップロードだけ消す。未マージ。head は `d9f91ff16310c957baf5d48b5f5840953915bf25`（`cursor/delete-owned-uploads-3c9b`）。上の差分には入っていない。
-  - ファイル削除は、退会の DB トランザクションが commit したあとだけ。失敗はログして throw しない。ロールバックしてもファイルは残る。
-  - 消すのは、所有記録のある十六進、その会員の `会員id_時刻.拡張子`、その会員の image_url だけが指し他の会員の参照も所有も無いファイル。十六進でも、所有記録が無くても、この条件なら消す。
-  - 残すのは、参照が無く所有記録も無い十六進。ディレクトリ総当たりでは消さない。
-  - 表 `member_uploads` と索引 `idx_member_uploads_user`、`sqlite_autoindex_member_uploads_1` は、Dev Lead が承認した。既存の行は消さない。記録は、この head の `scripts/diff-harness/approved-changes.json` にある。#212 はそのファイルを変えない。
+未マージのコード PR は無い。この文書の PR 自体は未マージのまま。
