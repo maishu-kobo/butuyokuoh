@@ -317,24 +317,13 @@ export function CaptureSearchPanel({
           <div className="flex flex-col items-start gap-4">
             <div className="w-full space-y-1 text-sm leading-6">
               {amazonUrl && (
-                <p className="px-[15px]">
+                <p>
                   <a href={amazonUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[24px] min-w-[24px] items-center underline">Amazonで探す</a>
                 </p>
               )}
               {isAmazonAffiliate && (
-                <p className="px-[15px] text-gray-700 dark:text-gray-200">
+                <p className="text-gray-700 dark:text-gray-200">
                   広告：上のAmazonリンクはアフィリエイトリンクです。Amazonのアソシエイトとして、物欲王は適格販売により収入を得ています。
-                </p>
-              )}
-              {attribution?.yahoo && (
-                <div className="min-h-[24px] underline">
-                  {/* Yahoo!の指定HTMLを保ち、ほかのリンクを同じ15pxの字下げにそろえる。 */}
-                  <span style={{ margin: '15px 15px 15px 15px' }}><a href="https://developer.yahoo.co.jp/sitemap/">Webサービス by Yahoo! JAPAN</a></span>
-                </div>
-              )}
-              {showRakutenCredit && (
-                <p className="px-[15px]">
-                  <a href={RAKUTEN_CREDIT.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[24px] min-w-[24px] items-center underline">{RAKUTEN_CREDIT.label}</a>
                 </p>
               )}
             </div>
@@ -358,6 +347,21 @@ export function CaptureSearchPanel({
         </div>
       )}
       {notice && <p role="alert" className="text-sm text-red-700">{notice}</p>}
+      {(attribution?.yahoo || showRakutenCredit) && (
+        <footer aria-label="検索サービスのクレジット" className="flex flex-col items-end border-t border-gray-200 pt-3 text-xs leading-6 dark:border-slate-600">
+          {attribution?.yahoo && (
+            <div className="underline">
+              {/* Yahoo!の指定HTMLと余白を保ち、操作エリアから離れた下部に配置する。 */}
+              <span style={{ margin: '15px 15px 15px 15px' }}><a href="https://developer.yahoo.co.jp/sitemap/">Webサービス by Yahoo! JAPAN</a></span>
+            </div>
+          )}
+          {showRakutenCredit && (
+            <p className="mx-[15px] underline">
+              <a href={RAKUTEN_CREDIT.url} target="_blank" rel="noopener noreferrer">{RAKUTEN_CREDIT.label}</a>
+            </p>
+          )}
+        </footer>
+      )}
     </div>
   );
 }

@@ -13,7 +13,7 @@ async function expectCandidateControls(page: Page) {
   const register = await page.getByRole('button', { name: '選んだ候補を登録' }).boundingBox();
   expect(amazon).toBeTruthy();
   expect(register).toBeTruthy();
-  expect(register!.y - (amazon!.y + amazon!.height)).toBeGreaterThanOrEqual(40);
+  expect(register!.y - (amazon!.y + amazon!.height)).toBeGreaterThanOrEqual(16);
 
   const searchName = await page.getByRole('button', { name: 'この名前で探す' }).boundingBox();
   const nameField = await page.getByLabel('探す商品名').boundingBox();
