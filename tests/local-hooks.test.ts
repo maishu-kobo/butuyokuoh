@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync, chmodSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync, chmodSync, symlinkSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -7,17 +7,28 @@ import test from 'node:test';
 
 const script = resolve('scripts/hooks/pre-commit.mjs');
 const installer = resolve('scripts/hooks/install.mjs');
-function fixture() {
+function fixture(inheritedEnv: NodeJS.ProcessEnv = process.env) {
   const dir = mkdtempSync(join(tmpdir(), 'butuyokuoh-hooks-'));
-  const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };
+  // Each fixture owns its repository and index; never inherit the caller's Git overrides.
+  const env = { ...inheritedEnv };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('GIT_')) delete env[key];
+  }
+  env.GIT_CONFIG_GLOBAL = '/dev/null';
+  env.GIT_CONFIG_SYSTEM = '/dev/null';
   const run = (cmd: string, args: string[]) => spawnSync(cmd, args, { cwd: dir, env, encoding: 'utf8' });
   const git = (...args: string[]) => { const r = run('git', args); assert.equal(r.status, 0, r.stderr); return r.stdout; };
-  git('init', '-q'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.test');
-  writeFileSync(join(dir, 'eslint.config.mjs'), "export default [{files:['**/*.js'],rules:{'no-debugger':'error'}}];\n");
-  writeFileSync(join(dir, 'package.json'), '{}\n');
-  writeFileSync(join(dir, 'file with spaces.js'), 'export const value = 1;\n');
-  git('add', '.'); git('commit', '-qm', 'fixture');
-  return { dir, run, git, clean: () => rmSync(dir, { recursive: true, force: true }) };
+  try {
+    git('init', '-q'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.test');
+    writeFileSync(join(dir, 'eslint.config.mjs'), "export default [{files:['**/*.js'],rules:{'no-debugger':'error'}}];\n");
+    writeFileSync(join(dir, 'package.json'), '{}\n');
+    writeFileSync(join(dir, 'file with spaces.js'), 'export const value = 1;\n');
+    git('add', '.'); git('commit', '-qm', 'fixture');
+    return { dir, run, git, clean: () => rmSync(dir, { recursive: true, force: true }) };
+  } catch (error) {
+    rmSync(dir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 test('pre-commit checks index content without changing partial staging, renamed files or deletes', () => {
@@ -98,4 +109,59 @@ test('worktree hook overrides cannot hide or replace repository-local settings',
     assert.equal(f.git('config', '--worktree', '--get', 'core.hooksPath').trim(), '.githooks');
     assert.equal(f.git('config', '--local', '--get', 'core.hooksPath').trim(), '.githooks');
   } finally { f.clean(); }
+});
+
+
+test('git commit invokes the installed hook and preserves partial staging on failure', () => {
+  const f = fixture();
+  try {
+    mkdirSync(join(f.dir, '.githooks'));
+    writeFileSync(join(f.dir, '.githooks/pre-commit'), readFileSync(resolve('.githooks/pre-commit')));
+    chmodSync(join(f.dir, '.githooks/pre-commit'), 0o755);
+    mkdirSync(join(f.dir, 'scripts/hooks'), { recursive: true });
+    writeFileSync(join(f.dir, 'scripts/hooks/pre-commit.mjs'), readFileSync(script));
+    symlinkSync(resolve('node_modules'), join(f.dir, 'node_modules'), 'dir');
+    const installed = f.run(process.execPath, [installer, 'install']);
+    assert.equal(installed.status, 0, installed.stderr);
+    const path = join(f.dir, 'file with spaces.js');
+    writeFileSync(path, 'debugger;\n'); f.git('add', '--', 'file with spaces.js');
+    writeFileSync(path, 'export const value = 2;\n');
+    const head = f.git('rev-parse', 'HEAD');
+    const index = f.git('write-tree');
+    const failed = f.run('git', ['commit', '-qm', 'must be rejected']);
+    assert.notEqual(failed.status, 0);
+    assert.match(failed.stdout + failed.stderr, /no-debugger/);
+    assert.equal(f.git('rev-parse', 'HEAD'), head);
+    assert.equal(f.git('write-tree'), index);
+    assert.equal(readFileSync(path, 'utf8'), 'export const value = 2;\n');
+    f.git('add', '--', 'file with spaces.js');
+    f.git('commit', '-qm', 'valid staged content');
+    assert.notEqual(f.git('rev-parse', 'HEAD'), head);
+    assert.equal(f.git('show', 'HEAD:file with spaces.js'), 'export const value = 2;\n');
+  } finally { f.clean(); }
+});
+
+test('fixtures ignore inherited Git repository, index and configuration overrides', () => {
+  const outer = fixture();
+  let inner: ReturnType<typeof fixture> | undefined;
+  try {
+    const head = outer.git('rev-parse', 'HEAD');
+    const index = outer.git('write-tree');
+    const config = readFileSync(join(outer.dir, '.git/config'), 'utf8');
+    inner = fixture({
+      ...process.env,
+      GIT_DIR: join(outer.dir, '.git'),
+      GIT_COMMON_DIR: join(outer.dir, '.git'),
+      GIT_WORK_TREE: outer.dir,
+      GIT_INDEX_FILE: join(outer.dir, '.git/index'),
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'user.name',
+      GIT_CONFIG_VALUE_0: 'Inherited name',
+    });
+    assert.equal(realpathSync(inner.git('rev-parse', '--show-toplevel').trim()), realpathSync(inner.dir));
+    assert.equal(inner.git('config', 'user.name').trim(), 'Test');
+    assert.equal(outer.git('rev-parse', 'HEAD'), head);
+    assert.equal(outer.git('write-tree'), index);
+    assert.equal(readFileSync(join(outer.dir, '.git/config'), 'utf8'), config);
+  } finally { inner?.clean(); outer.clean(); }
 });
