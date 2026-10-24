@@ -4,7 +4,17 @@ import type Database from 'better-sqlite3';
 import { getDb } from './db';
 
 const UPLOAD_NAME = /^(\d+)_(\d+)\.(jpg|jpeg|png|webp|gif|avif)$/;
+// アップロードが付ける名前。32 バイトの十六進なので、会員 id は名前に入らない。
+const STORED_UPLOAD_NAME = /^[0-9a-f]{64}\.(jpg|jpeg|png|webp|gif|avif)$/;
 const uploadRoot = path.join(process.cwd(), 'public', 'uploads');
+
+// アップロードに成功した十六進ファイルを、その会員の所有として記録する。
+export function rememberMemberUpload(userId: number, name: string, database: Database.Database = getDb()): void {
+  if (!STORED_UPLOAD_NAME.test(name)) {
+    throw new Error('invalid upload name');
+  }
+  database.prepare('INSERT INTO member_uploads (name, user_id) VALUES (?, ?)').run(name, userId);
+}
 
 // リンク自体だけを外す。参照先は消さない。ディレクトリと、ディレクトリの外は触らない。
 function removeUploadEntry(full: string): void {
@@ -77,17 +87,54 @@ function imageUrlsFor(db: Database.Database, userId: number, others: boolean): s
   return rows.map((row) => row.url);
 }
 
-// 会員行を消す前に、その会員の image_url が指す public/uploads のファイルを消す。
-// 他の会員の古い名前、他の会員が指しているファイル、ディレクトリの外は残す。
-function deleteReferencedUploads(db: Database.Database, userId: number): void {
-  const others = new Set<string>();
+// 記録された十六進名が public/uploads の直下を指すときだけ、そのパスを返す。
+// 名前が十六進でないもの、.. や区切りを含むものは所有者不明として扱わない。
+function uploadPathFromOwnedName(name: string): string | null {
+  if (!STORED_UPLOAD_NAME.test(name)) return null;
+  const root = path.resolve(uploadRoot);
+  const full = path.resolve(root, name);
+  if (path.dirname(full) !== root) return null;
+  return full;
+}
+
+function ownedNames(db: Database.Database, userId: number, others: boolean): string[] {
+  const compare = others ? '!=' : '=';
+  const rows = db.prepare(
+    `SELECT name FROM member_uploads WHERE user_id ${compare} ? AND typeof(name) = 'text'`,
+  ).all(userId) as { name: string }[];
+  return rows.map((row) => row.name);
+}
+
+// 他の会員が参照しているファイルと、他の会員の所有記録にあるファイル。
+function reservedUploadPaths(db: Database.Database, userId: number): Set<string> {
+  const reserved = new Set<string>();
   for (const url of imageUrlsFor(db, userId, true)) {
     const full = uploadPathFromStoredUrl(url);
-    if (full) others.add(full);
+    if (full) reserved.add(full);
   }
+  for (const name of ownedNames(db, userId, true)) {
+    const full = uploadPathFromOwnedName(name);
+    if (full) reserved.add(full);
+  }
+  return reserved;
+}
+
+// 所有記録にある十六進ファイルを消す。ディレクトリは走査しない。
+function deleteOwnedUploads(db: Database.Database, userId: number, reserved: Set<string>): void {
+  for (const name of ownedNames(db, userId, false)) {
+    const full = uploadPathFromOwnedName(name);
+    if (!full || reserved.has(full)) continue;
+    removeUploadEntry(full);
+  }
+}
+
+// 会員行を消す前に、その会員の image_url が指す public/uploads のファイルを消す。
+// 記録が無い既存ファイルは、この参照から辿れるものだけを消す。
+// 他の会員の古い名前、他の会員が指しているファイル、他の会員の所有、ディレクトリの外は残す。
+function deleteReferencedUploads(db: Database.Database, userId: number, reserved: Set<string>): void {
   for (const url of imageUrlsFor(db, userId, false)) {
     const full = uploadPathFromStoredUrl(url);
-    if (!full || others.has(full)) continue;
+    if (!full || reserved.has(full)) continue;
     const legacy = UPLOAD_NAME.exec(path.basename(full));
     if (legacy && Number(legacy[1]) !== userId) continue;
     removeUploadEntry(full);
@@ -96,7 +143,9 @@ function deleteReferencedUploads(db: Database.Database, userId: number): void {
 
 function deleteMemberUploads(db: Database.Database, userId: number): void {
   deleteLegacyMemberUploads(userId);
-  deleteReferencedUploads(db, userId);
+  const reserved = reservedUploadPaths(db, userId);
+  deleteOwnedUploads(db, userId, reserved);
+  deleteReferencedUploads(db, userId, reserved);
 }
 
 // 会員の行と、その会員に紐づくデータを消す。ゲスト行は消さない。
@@ -127,6 +176,7 @@ export function deleteMemberAccount(userId: number, db: Database.Database = getD
     db.prepare('DELETE FROM guest_sessions WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM guest_rate_limits WHERE bucket IN (?, ?)').run(`write:${userId}`, `scrape:${userId}`);
     db.prepare('DELETE FROM capture_ai_usage WHERE user_key = ?').run(String(userId));
+    db.prepare('DELETE FROM member_uploads WHERE user_id = ?').run(userId);
     const result = db.prepare(
       "DELETE FROM users WHERE id = ? AND account_type = 'member'",
     ).run(userId);
