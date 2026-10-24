@@ -480,3 +480,53 @@ test('each open shop can be deleted to the trash, and two shops become one regis
   await expect(page.getByRole('heading', { name: '手入力ペン', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '単品ショップ', exact: true })).toHaveCount(0);
 });
+
+
+test('budget override persists, reports failures, and can return to automatic cheapest selection', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.request.post('/api/auth/register', { data: { email: 'budget-reset@example.test', password: 'test-password' } });
+  const userId = (await (await page.request.get('/api/auth/me')).json()).user.id as number;
+  const db = new Database(process.env.E2E_DB_PATH!);
+  db.pragma('busy_timeout = 5000');
+  try {
+    const group = Number(db.prepare("INSERT INTO comparison_groups (user_id, name, origin) VALUES (?, '解除テスト', 'photo')").run(userId).lastInsertRowid);
+    const insert = db.prepare("INSERT INTO items (user_id, name, url, current_price, comparison_group_id, priority) VALUES (?, ?, ?, ?, ?, 3)");
+    const cheap = Number(insert.run(userId, '安い候補', 'manual://cheap-reset', 100, group).lastInsertRowid);
+    const dear = Number(insert.run(userId, '高い候補', 'manual://dear-reset', 900, group).lastInsertRowid);
+    await page.goto('/');
+    await page.getByRole('button', { name: '出費予定' }).click();
+    const row = (name: string) => page.locator('div.cursor-pointer').filter({ has: page.getByText(name, { exact: true }) });
+    const reset = page.getByRole('button', { name: '解除テストを自動（最安）に戻す' });
+    await expect(reset).toHaveCount(0);
+    await row('高い候補').getByRole('button', { name: '合計に数える' }).click();
+    await expect(reset).toBeVisible();
+    expect((await page.getByText('安い候補', { exact: true }).boundingBox())!.width).toBeGreaterThan(60);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+    await page.screenshot({ path: testInfo.outputPath('budget-override-mobile.png'), fullPage: true });
+    await page.reload();
+    await page.getByRole('button', { name: '出費予定' }).click();
+    await expect(row('高い候補').getByRole('button', { name: '合計に数える' })).toHaveAttribute('aria-pressed', 'true');
+    expect(db.prepare('SELECT budget_item_id FROM comparison_groups WHERE id = ?').get(group)).toEqual({ budget_item_id: dear });
+    await page.route(`**/api/comparison-groups/${group}`, (route) => route.abort());
+    await reset.click();
+    await expect(page.getByRole('alert').filter({ hasText: '保存できませんでした' })).toBeVisible();
+    await expect(reset).toBeEnabled();
+    expect(db.prepare('SELECT budget_item_id FROM comparison_groups WHERE id = ?').get(group)).toEqual({ budget_item_id: dear });
+    await page.unroute(`**/api/comparison-groups/${group}`);
+    await reset.click();
+    await expect(reset).toHaveCount(0);
+    await expect(row('安い候補').getByRole('button', { name: '合計に数える' })).toHaveAttribute('aria-pressed', 'true');
+    expect(db.prepare('SELECT budget_item_id FROM comparison_groups WHERE id = ?').get(group)).toEqual({ budget_item_id: null });
+    let budget = await (await page.request.get('/api/budget')).json();
+    expect(budget.undated.total).toBe(100);
+    db.prepare('UPDATE items SET current_price = 50 WHERE id = ?').run(dear);
+    await page.reload();
+    await page.getByRole('button', { name: '出費予定' }).click();
+    await expect(reset).toHaveCount(0);
+    await expect(row('高い候補').getByRole('button', { name: '合計に数える' })).toHaveAttribute('aria-pressed', 'true');
+    budget = await (await page.request.get('/api/budget')).json();
+    expect(budget.undated.total).toBe(50);
+    expect(budget.undated.items.find((item: { id: number }) => item.id === cheap).countsInTotal).toBe(false);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  } finally { db.close(); }
+});
