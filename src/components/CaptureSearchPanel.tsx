@@ -14,6 +14,7 @@ import {
 } from '@/lib/capture/capture-flow';
 import { candidateThumbnail, formatCandidateFetchedAt } from '@/lib/capture/candidate-view';
 import { type CaptureCandidate, type ProductGuess } from '@/lib/capture/contract';
+import { openAmazonSearchTab } from '@/lib/capture/amazon-tab';
 import { amazonAffiliateLink, type SearchAttribution } from '@/lib/capture/search-attribution';
 import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
 import type { RegisteredLocation, RegisteredCandidateLocation } from '@/lib/capture/register';
@@ -359,7 +360,15 @@ export function CaptureSearchPanel({
             <div className="w-full space-y-1 text-sm leading-6">
               {amazonUrl && (
                 <p>
-                  <a href={amazonUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[24px] min-w-[24px] items-center underline">Amazonで探す</a>
+                  <a
+                    href={amazonUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex min-h-[24px] min-w-[24px] items-center underline"
+                    onClick={(event) => openAmazonSearchTab(event, amazonUrl)}
+                  >
+                    Amazonで探す
+                  </a>
                 </p>
               )}
               {isAmazonAffiliate && (
