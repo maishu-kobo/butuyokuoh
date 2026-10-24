@@ -33,6 +33,20 @@ async function swipe(target: Locator, deltaX: number) {
     const startX = rect.left + rect.width / 2;
     const y = rect.top + rect.height / 2;
     const endX = startX + delta;
+    const legacy = document as Document & {
+      createTouch?: (
+        view: Window,
+        target: EventTarget,
+        identifier: number,
+        pageX: number,
+        pageY: number,
+        screenX: number,
+        screenY: number,
+        clientX: number,
+        clientY: number,
+      ) => Touch;
+      createTouchList?: (...touches: Touch[]) => Touch[];
+    };
     const touchAt = (x: number) => {
       try {
         return new Touch({
@@ -50,11 +64,11 @@ async function swipe(target: Locator, deltaX: number) {
           force: 1,
         });
       } catch {
-        return document.createTouch(window, el, 1, x, y, x, y, x, y);
+        return legacy.createTouch!(window, el, 1, x, y, x, y, x, y);
       }
     };
     const listOf = (touches: Touch[]) => {
-      if (typeof document.createTouchList === 'function') return document.createTouchList(...touches);
+      if (typeof legacy.createTouchList === 'function') return legacy.createTouchList(...touches);
       return touches;
     };
     const fire = (type: string, x: number, ended: boolean) => {
@@ -123,8 +137,10 @@ test('iPhone Safari-like WebKit keeps Amazon search off the current tab', async 
   const page = await context.newPage();
   try {
     await showAmazonSearch(page);
-    const link = amazonLink(page);
     await expectListStaysAndAmazonOpens(page, async () => {
+      const link = amazonLink(page);
+      // iPhone 13 の画面ではリンクが下に隠れる。見えていない場所をタップしても届かない。
+      await link.scrollIntoViewIfNeeded();
       const box = await link.boundingBox();
       expect(box).toBeTruthy();
       await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2);
