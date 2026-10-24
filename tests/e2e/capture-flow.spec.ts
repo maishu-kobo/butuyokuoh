@@ -36,6 +36,26 @@ async function expectCandidateControls(page: Page) {
   expect(border.search).toBe(border.sort);
 }
 
+async function expectCreditLayout(page: Page) {
+  const footer = page.getByLabel('検索サービスのクレジット', { exact: true });
+  const yahoo = footer.getByRole('link', { name: 'Webサービス by Yahoo! JAPAN' });
+  const rakuten = footer.getByRole('link', { name: 'Supported by Rakuten Developers' });
+  await expect(yahoo).toBeVisible();
+  await expect(rakuten).toBeVisible();
+  for (const link of [yahoo, rakuten]) {
+    await expect(link).toHaveCSS('font-size', '12px');
+  }
+  const [frame, y, r, button] = await Promise.all([
+    footer.boundingBox(), yahoo.boundingBox(), rakuten.boundingBox(),
+    page.getByRole('button', { name: '選んだ候補を登録' }).boundingBox(),
+  ]);
+  expect(frame && y && r && button).toBeTruthy();
+  expect(frame!.y).toBeGreaterThanOrEqual(button!.y + button!.height + 8);
+  expect(Math.abs(y!.x + y!.width - r!.x - r!.width)).toBeLessThanOrEqual(2);
+  expect(frame!.x + frame!.width - y!.x - y!.width).toBeCloseTo(15, 0);
+  expect(await footer.evaluate(el => Number.parseFloat(getComputedStyle(el).borderTopWidth))).toBeGreaterThanOrEqual(1);
+}
+
 async function member(page: Page) {
   const response = await page.request.post('/api/auth/register', {
     data: { email: `flow-${Date.now()}-${Math.random().toString(16).slice(2)}@example.test`, password: 'test-password' },
@@ -258,13 +278,17 @@ test('search credits remain visible for empty and partial results; untagged link
   await page.route('https://thumbnail.image.rakuten.co.jp/**', (route) => route.abort());
   let scenario = 'default';
   let untagged = false;
+  let unavailable = false;
+  let services: { yahoo: boolean; rakuten: boolean } | null = null;
   await page.route('**/api/capture/search', async (route) => {
+    if (unavailable) { await route.abort('failed'); return; }
     const response = await route.fetch({ headers: { ...route.request().headers(), 'x-capture-fake-scenario': scenario } });
     const data = await response.json();
     expect(data.attribution).toEqual({ yahoo: true, rakuten: true });
     // Only this UI case substitutes the optional link configuration. The search
     // itself, including empty/failed providers and attribution, uses the server.
     if (untagged) data.amazonUrl = 'https://www.amazon.co.jp/s?k=pen';
+    if (services) data.attribution = services;
     await route.fulfill({ response, json: data });
   });
   await page.goto('/');
@@ -272,6 +296,12 @@ test('search credits remain visible for empty and partial results; untagged link
   await page.getByLabel('写真を撮る').setInputFiles({ name: 'credit.jpg', mimeType: 'image/jpeg', buffer: jpeg });
   const credit = page.getByRole('link', { name: 'Webサービス by Yahoo! JAPAN' });
   await expect(credit).toHaveAttribute('href', 'https://developer.yahoo.co.jp/sitemap/');
+  const rakutenCredit = page.getByRole('link', { name: 'Supported by Rakuten Developers' });
+  await expect(rakutenCredit).toHaveAttribute('href', 'https://webservice.rakuten.co.jp/');
+  await expectCreditLayout(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expectCreditLayout(page);
+  await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByText('Amazonのアソシエイトとして', { exact: false })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('attribution-mobile.png'), fullPage: true });
   for (const next of ['empty', 'yahoo-down', 'rakuten-down', 'both-down']) {
@@ -281,12 +311,35 @@ test('search credits remain visible for empty and partial results; untagged link
     await page.getByRole('button', { name: 'この名前で探す' }).click();
     await searched;
     await expect(credit).toBeVisible();
+    await expect(rakutenCredit).toBeVisible();
     if (next !== 'both-down') await expect(page.getByRole('link', { name: 'Amazonで探す' })).toBeVisible();
   }
   scenario = 'default'; untagged = true;
   await page.getByRole('button', { name: 'この名前で探す' }).click();
   await expect(page.getByRole('link', { name: 'Amazonで探す' })).toHaveAttribute('href', 'https://www.amazon.co.jp/s?k=pen');
   await expect(page.getByText('Amazonのアソシエイトとして', { exact: false })).toHaveCount(0);
+  // The backend flags are tested separately; render each configured-service combination.
+  for (const config of [{ yahoo: true, rakuten: false }, { yahoo: false, rakuten: true }, { yahoo: false, rakuten: false }]) {
+    services = config;
+    await page.getByLabel('探す商品名').fill(`設定 ${config.yahoo}-${config.rakuten}`);
+    const searched = page.waitForResponse('**/api/capture/search');
+    await page.getByRole('button', { name: 'この名前で探す' }).click();
+    await searched;
+    await expect(credit).toHaveCount(config.yahoo ? 1 : 0);
+    await expect(rakutenCredit).toHaveCount(config.rakuten ? 1 : 0);
+  }
+  await page.getByRole('checkbox', { name: /^候補を選ぶ/ }).first().check();
+  unavailable = true;
+  await page.getByLabel('探す商品名').fill('通信失敗後のペン');
+  await page.getByRole('button', { name: 'この名前で探す' }).click();
+  await expect(page.getByPlaceholder('商品名を入力')).toHaveValue('通信失敗後のペン');
+  await expect(page.getByRole('checkbox', { name: /^候補を選ぶ/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '選んだ候補を登録' })).toHaveCount(0);
+  unavailable = false;
+  await page.getByRole('button', { name: 'もう一度探す' }).click();
+  const recovered = page.getByRole('checkbox', { name: /^候補を選ぶ/ });
+  await expect(recovered).toHaveCount(2);
+  await expect(recovered.first()).not.toBeChecked();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
 
