@@ -18,17 +18,23 @@
 
 ### 価格
 
-写真から登録した商品は、ページを取りに行く価格チェックと再取得の対象から外す。楽天の商品コードがある未購入の商品は、`scripts/check-prices.ts` が24時間ごとに楽天の API で価格を取り直す。この取り直しは `CAPTURE_ENABLED` を見ない。`RAKUTEN_APP_ID` と `RAKUTEN_ACCESS_KEY` が両方あるときだけ動く。止めるには、その2つの鍵を外す。
+定期のページ取得（`priceCheckItems`）が外すのは、商品コードがあるものと、`origin` が `photo` の比較グループに入っているもの。1件の登録は比較グループを作らない。商品コードが空なら、この定期の対象に残る。
+
+手動の再取得は、店が2件未満ならページを取りに行く。ページを取らない再取得は、ゴミ箱に無い店が2件以上の写真グループだけ。
+
+楽天の商品コードがある未購入の商品は、`scripts/check-prices.ts` が24時間ごとに楽天の API で価格を取り直す。この取り直しは `CAPTURE_ENABLED` を見ない。`RAKUTEN_APP_ID` と `RAKUTEN_ACCESS_KEY` が両方あるときだけ動く。止めるには、その2つの鍵を外す。
 
 `RAKUTEN_AFFILIATE_ID` があるとき、楽天の検索の商品 URL はアフィリエイトのリンクになり得る。無いときは付けない。`AMAZON_ASSOCIATE_TAG` があるときだけ、Amazon の検索リンクに `tag` が付く。
 
-写真から作ったグループの出費は、候補を全部足さない。購入済みがあればそれ、なければ選んだ候補、それもなければ最安を1件だけ数える。出費予定の行は、複数店でも見出しやインデントを付けない。
+### 出費
+
+写真グループの出費は、購入済みが複数あれば、その購入済みを全部数える。`tests/capture-photo-spend.test.ts` は2件で700。未購入のときは、選んだ候補か、最安の1件。候補を全部は足さない。出費予定の行は、複数店でも見出しやインデントを付けない。
 
 ### 会員、ログイン、退会
 
 Google のクライアント ID かシークレットが無い、または空白だけのときは、「Googleでログイン」を出さない。両方あるときは今までどおり。メールとパスワードのログインは残る。Google で同じメールの会員に結ぶと、その会員のパスワードは消し、ログインの世代を進めて、それまでのトークンを使えなくする。
 
-退会は、その会員の行（商品、価格履歴、撮影、候補、カテゴリ、比較グループ、通知設定、判定の回数）と、`public/uploads` のうち今の実装がその会員のファイルだと判定したものを消す。古い `会員id_時刻.拡張子` と、その会員の画像 URL が指し、他の会員が指していないファイル。ゲストの行は消さない。
+退会は、その会員の行（商品、価格履歴、撮影、候補、カテゴリ、比較グループ、通知設定、判定の回数）を消す。ゲストの行は消さない。ファイルは、その DB トランザクションの前に消す。消すのは、その会員の `会員id_時刻.拡張子` と、その会員の image_url が指し、他の会員の image_url が指していないファイル。他の会員の `会員id_時刻.拡張子` は、この会員の image_url だけが指していても消さない。十六進名でも、image_url が指していて他の会員が指していなければ消す。残るのは、参照の無い十六進。`unlinkSync` は失敗すると投げる。ログはしない。トランザクションが戻っても、消したファイルは戻らない。
 
 本番（`NODE_ENV` が production）では、会員のクッキー `butuyokuoh_token` とゲストのクッキー `butuyokuoh_guest` の両方に Secure が付く。
 
@@ -87,7 +93,7 @@ CI は、単体テスト・型・ビルド・lint・audit の速いレーンと�
 システム側:
 
 - Node.js は 22.12 以上。`package.json` の engines、`docs/deployment.md`、`docs/development.md`、`docs/feature-branch-testing.md` が同じ。本番 VM が Node.js 20 のままだと、puppeteer 25 の価格チェック用ブラウザは起動しない。上げる作業はこのリポジトリの外。
-- Chrome の取得に `unzip` が要る。`npm install`（手順は `docs/deployment.md`）と `npm ci`（`docs/development.md`、`docs/feature-branch-testing.md`）は、puppeteer 25.15.0 の postinstall（`install.mjs`）で Chrome for Testing の zip を取る。展開は `@puppeteer/browsers` 3.2.5。Linux では `unzip` コマンドを使う。`yauzl` は任意の peer で、`package-lock.json` には入っていない。`unzip` が PATH に無いと zip を展開できない。手順書には `unzip` とは書いていない。
+- Chrome の取得に `unzip` が要る。`npm install`（手順は `docs/deployment.md`）と `npm ci`（`docs/development.md`、`docs/feature-branch-testing.md`）は、puppeteer 25.15.0 の postinstall（`install.mjs`）で Chrome for Testing の zip を取る。展開は `@puppeteer/browsers` 3.2.5。Linux では `unzip` コマンドを使う。`yauzl` は、そのパッケージの optional peer として `package-lock.json` に宣言がある。解決済みのパッケージとしては無い。`unzip` が PATH に無いと zip を展開できない。手順書には `unzip` とは書いていない。
 - Chrome を動かす共有ライブラリは、`docs/development.md` の「Puppeteerがクラッシュする」。Ubuntu / Debian の例は `libnss3`、`libatk1.0-0`、`libatk-bridge2.0-0`、`libcups2`、`libdrm2`、`libxkbcommon0`、`libxcomposite1`、`libxdamage1`、`libxfixes3`、`libxrandr2`、`libgbm1`、`libasound2`。本番の OS に入っているかは未確認。
 
 今の価格チェックは、Chrome をサンドボックス付きで起動する（`src/lib/page-browser.ts` は `headless: true` だけ）。`--no-sandbox` には落とさない。
@@ -135,16 +141,17 @@ SQLite は、外部キーを有効にしても、すでに入っている違反�
 - Yahoo! の API クレジットを規定どおり出すか。リンクに「広告」「PR」が要るか。アフィリエイト用の ID は無い。
 - 商品リンク全般に「広告」や「PR」が要るか。下書きの外部タグの文は、広告用・解析用のスクリプトが無い、という実装の説明のまま。
 - 退会でアップロードを消す例外。他の会員が同じファイルを指しているときは残すことがある。下書きに書くか。
-- ショップが2件以上の写真グループでは、価格の再取得でその URL のページを取らない。下書きにその例外を書くか。まとめての価格確認（未購入、ゴミ箱に無い、商品コードが無い、写真グループに入っていない）は実装と合う。
+- ページを取らない再取得は、ゴミ箱に無い店が2件以上の写真グループだけ。1件の登録は比較グループを作らず、店が2件未満ならページを取りに行く。下書きにその例外を書くかは人が決める。まとめてのページ取得が外すのは、商品コードがあるものと、`origin` が `photo` のグループ。未購入で、ゴミ箱に無く、商品コードが無く、写真グループに入っていない商品は対象になる。
 
 ## 未マージ
 
 次の PR は `feature/photo-capture` にまだ入っていない。develop との差分には混ぜない。
 
-- https://github.com/maishu-kobo/butuyokuoh/pull/208 退会時、その会員のアップロードだけ消す。未マージなので、上の差分には入っていない。
-  - このリリースでは、所有記録の無い古い十六進ファイルは消さない。残す。
+- https://github.com/maishu-kobo/butuyokuoh/pull/208 退会時、その会員のアップロードだけ消す。未マージ。head は `d9f91ff16310c957baf5d48b5f5840953915bf25`（`cursor/delete-owned-uploads-3c9b`）。上の差分には入っていない。
   - ファイル削除は、退会の DB トランザクションが commit したあとだけ。失敗はログして throw しない。ロールバックしてもファイルは残る。
-  - スキーマの追加（表 `member_uploads` と索引 2 つ）は Dev Lead が承認した。既存の行は消さない。
+  - 消すのは、所有記録のある十六進、その会員の `会員id_時刻.拡張子`、その会員の image_url だけが指し他の会員の参照も所有も無いファイル。十六進でも、所有記録が無くても、この条件なら消す。
+  - 残すのは、参照が無く所有記録も無い十六進。ディレクトリ総当たりでは消さない。
+  - 表 `member_uploads` と索引 `idx_member_uploads_user`、`sqlite_autoindex_member_uploads_1` は、Dev Lead が承認した。既存の行は消さない。記録は、この head の `scripts/diff-harness/approved-changes.json` にある。#212 はそのファイルを変えない。
 - https://github.com/maishu-kobo/butuyokuoh/pull/209 既存 DB を開いても行は減らない。`db.ts` は無変更。テストだけ
 - https://github.com/maishu-kobo/butuyokuoh/pull/210 Chrome はサンドボックスを先に試し、`No usable sandbox!` のときだけ `--no-sandbox` に一度落とす
 - https://github.com/maishu-kobo/butuyokuoh/pull/211 プライバシーと利用規約の事実関係
