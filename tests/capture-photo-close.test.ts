@@ -181,7 +181,7 @@ function jpeg(name: string) {
   return new File([Uint8Array.of(0xff, 0xd8, 0xff, 0xd9)], name, { type: 'image/jpeg' });
 }
 
-test('closing the add card while a photo is shrinking drops the result instead of sending it', async () => {
+test('closing or clearing the photo pick drops pending results and permits another photo', async () => {
   const document = installDom();
   const queued: Array<(value: Awaited<ReturnType<typeof photoForUpload>>) => void> = [];
   const upload: typeof photoForUpload = () => new Promise(resolve => {
@@ -235,6 +235,15 @@ test('closing the add card while a photo is shrinking drops the result instead o
     });
     assert.deepEqual(accepted.map(file => file.name), ['after.jpg']);
     assert.equal(pickRef.current?.selected, true);
+
+    await act(async () => { pickRef.current?.clear(); });
+    assert.equal(pickRef.current?.selected, false);
+    assert.equal(pickRef.current?.message, '');
+    await act(async () => { pickRef.current?.acceptFiles([jpeg('pending.jpg')]); });
+    await act(async () => { pickRef.current?.clear(); });
+    await act(async () => { queued[2]({ ok: true, file: jpeg('pending.jpg') }); });
+    assert.deepEqual(accepted.map(file => file.name), ['after.jpg']);
+    assert.equal(pickRef.current?.selected, false);
   } finally {
     await act(async () => {
       root?.unmount();

@@ -251,7 +251,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
         <div className="flex justify-between gap-3 mt-4">
           <button
             type="button"
-            onClick={() => { setPickedFile(null); setIsPhotoMode(false); setIsManualMode(false); setError(''); setCanAddManually(false); }}
+            onClick={() => { photoPick.clear(); setPickedFile(null); setIsPhotoMode(false); setIsManualMode(false); setError(''); setCanAddManually(false); }}
             className="min-h-[24px] text-sm text-blue-600 dark:text-blue-300 underline"
           >URL・手入力に切り替える</button>
           <button
