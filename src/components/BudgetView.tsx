@@ -153,10 +153,10 @@ export default function BudgetView() {
         key={item.id}
         onClick={() => toggleSelect(item.id)}
         className={`flex flex-wrap items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors ${
-          isSelected ? 'bg-blue-50' : 'hover:bg-gray-50 dark:bg-slate-700'
+          isSelected ? 'bg-blue-50 dark:bg-blue-900' : 'hover:bg-gray-50 dark:bg-slate-700 dark:hover:bg-slate-600'
         }`}
       >
-        <span className={isSelected ? 'text-blue-600' : 'text-gray-300'}>
+        <span className={isSelected ? 'text-blue-600 dark:text-blue-300' : 'text-gray-300'}>
           {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
         </span>
         {chooseGroupId != null && (
@@ -176,7 +176,7 @@ export default function BudgetView() {
             <Check size={10} />
           </button>
         )}
-        <span className={`flex-1 truncate ${isSelected ? 'text-blue-700' : 'text-gray-700 dark:text-gray-200'}`}>
+        <span className={`flex-1 truncate ${isSelected ? 'text-blue-700 dark:text-blue-100' : 'text-gray-700 dark:text-gray-200'}`}>
           {item.name}
           {(item.quantity || 1) > 1 && (
             <span className="text-xs text-gray-400 ml-1">×{item.quantity}</span>
@@ -187,7 +187,7 @@ export default function BudgetView() {
         )}
         <PriceWithNote
           item={item}
-          className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}
+          className={`ml-2 whitespace-nowrap ${isSelected ? 'text-blue-600 dark:text-blue-200 font-medium' : 'text-gray-600 dark:text-gray-300'}`}
         />
         {showReset && (
           <div className="flex basis-full justify-end">
