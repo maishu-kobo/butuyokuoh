@@ -21,7 +21,7 @@ function PriceWithNote({ item, className }: { item: Item; className: string }) {
     <span className={className}>
       {priceText(item)}
       {caption && (
-        <span className="block text-xs font-normal text-gray-400 dark:text-gray-500">
+        <span className="block text-xs font-normal text-gray-400 dark:text-gray-300">
           {caption.fetchedAt} {caption.note}
         </span>
       )}
