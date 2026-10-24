@@ -273,6 +273,7 @@ test('leaving a pending photo search ignores its late manual fallback', async ({
   await expect(page.getByRole('button', { name: '追加', exact: true })).toBeVisible();
 });
 
+
 test('search credits remain visible for empty and partial results; untagged links have no affiliate claim', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.request.post('/api/auth/register', { data: { email: 'attribution@example.test', password: 'test-password' } });
