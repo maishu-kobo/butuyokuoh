@@ -29,7 +29,7 @@ export default function PrivacyPage() {
 
         <h2 className="text-lg font-semibold pt-2">画像と写真</h2>
         <p>会員がアップロードした画像は、位置情報などの付随データを落としてから保存します。退会すると、その会員のアップロードファイルも消します。</p>
-        <p>写真から商品を判定するときは、写真をCloudflareのWorkers AI（api.cloudflare.com）へ送ります。写真そのものはこのアプリのデータベースに保存しません。残すのは、推定した商品名、JAN、判定回数の記録です。検索で見つけた候補は30分で消します。候補の画像URLは店舗の商品画像です。</p>
+        <p>写真から商品を判定するとき、写真はこのアプリへ届きます。写真の判定機能がオンで、使えるCloudflareのアカウントIDとAPIトークンが両方あるときだけ、その写真をCloudflareのWorkers AI（api.cloudflare.com）へ送ります。キーが無いとき、または使えないときは、写真をそこへは送りません。写真そのものはこのアプリのデータベースに保存しません。残すのは、推定した商品名、JAN、判定の回数と、各回のニューロン数です。検索で見つけた候補は30分で消します。候補の画像URLは店舗の商品画像です。</p>
         <p>商品名から候補を探すとき、設定がある店の検索へ検索語を送ります。いまのアプリでは、Yahoo!ショッピング（shopping.yahooapis.jp）と楽天市場（openapi.rakuten.co.jp）です。キーが無い店は使いません。URLから商品を追加したり、価格を取り直したりするときは、そのURLのページを取得します。</p>
 
         <h2 className="text-lg font-semibold pt-2">ゲスト</h2>
@@ -37,7 +37,7 @@ export default function PrivacyPage() {
 
         <h2 className="text-lg font-semibold pt-2">クッキーとブラウザ</h2>
         <p>メールとパスワードのログインは、クッキー butuyokuoh_token に会員ID、メールアドレス、ログインの世代を入れます。httpOnly、SameSite=Lax、有効期限は7日です。本番ではSecureを付けます。</p>
-        <p>ゲストはクッキー butuyokuoh_guest です。httpOnly、SameSite=Laxで、体験の期限までです。サーバに残すのはトークンのハッシュです。</p>
+        <p>ゲストはクッキー butuyokuoh_guest です。httpOnly、SameSite=Laxで、体験の期限までです。本番ではSecureを付けます。サーバに残すのはトークンのハッシュです。</p>
         <p>Googleログインのあいだは、ログイン状態を保つ別のクッキーをブラウザに置きます。</p>
         <p>表示テーマはブラウザのlocalStorageに保存することがあります。サーバには送りません。</p>
 

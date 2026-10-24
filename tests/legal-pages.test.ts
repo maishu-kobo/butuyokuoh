@@ -52,7 +52,11 @@ test('プライバシーポリシーは下書きで、アプリの扱いだけ�
   assert.match(page, /まとめて行う価格の確認は、会員の未購入で、ゴミ箱に無く、商品コードが無く、写真の比較グループに入っていない商品が対象です。/);
   assert.match(page, /保存したSlackまたはDiscordのウェブフックがあり、通知がオンのときは、その宛先へ価格の通知を送ることがあります。/);
   assert.match(page, /会員がアップロードした画像は、位置情報などの付随データを落としてから保存します。/);
-  assert.match(page, /写真から商品を判定するときは、写真をCloudflareのWorkers AI（api.cloudflare.com）へ送ります。写真そのものはこのアプリのデータベースに保存しません。/);
+  assert.match(page, /写真から商品を判定するとき、写真はこのアプリへ届きます。/);
+  assert.match(page, /使えるCloudflareのアカウントIDとAPIトークンが両方あるときだけ、その写真をCloudflareのWorkers AI（api.cloudflare.com）へ送ります。/);
+  assert.match(page, /キーが無いとき、または使えないときは、写真をそこへは送りません。/);
+  assert.match(page, /写真そのものはこのアプリのデータベースに保存しません。/);
+  assert.match(page, /各回のニューロン数/);
   assert.match(page, /検索で見つけた候補は30分で消します。/);
   assert.match(page, /Yahoo!ショッピング（shopping.yahooapis.jp）と楽天市場（openapi.rakuten.co.jp）/);
   assert.match(page, /キーが無い店は使いません。/);
@@ -61,6 +65,7 @@ test('プライバシーポリシーは下書きで、アプリの扱いだけ�
   assert.match(page, /butuyokuoh_token/);
   assert.match(page, /httpOnly、SameSite=Lax、有効期限は7日です。本番ではSecureを付けます。/);
   assert.match(page, /butuyokuoh_guest/);
+  assert.match(page, /httpOnly、SameSite=Laxで、体験の期限までです。本番ではSecureを付けます。/);
   assert.match(page, /サーバに残すのはトークンのハッシュです。/);
   assert.match(page, /Googleログインのあいだは、ログイン状態を保つ別のクッキーをブラウザに置きます。/);
   assert.match(page, /表示テーマはブラウザのlocalStorageに保存することがあります。サーバには送りません。/);
@@ -83,7 +88,10 @@ test('利用規約は下書きで、アプリがしていること以上の法�
   assert.match(page, /会員がログアウトすると、それまでのログインは使えなくなります。/);
   assert.match(page, /設定の退会は、アカウントと登録したデータを消します。元に戻す操作はありません。/);
   assert.match(page, /商品URLを登録したり価格を取り直したりすると、そのURLのページを取得します。/);
-  assert.match(page, /写真から探すと、写真を判定先へ送り、写真自体は保存しません。/);
+  assert.match(page, /写真から探すと、写真はこのアプリへ届きます。/);
+  assert.match(page, /使えるCloudflareのアカウントIDとAPIトークンが両方あるときだけ、写真をCloudflareのWorkers AI（api.cloudflare.com）へ送ります。/);
+  assert.match(page, /キーが無いとき、または使えないときは、そこへは送りません。/);
+  assert.match(page, /写真自体は保存しません。/);
   assert.match(page, /このアプリの中に、代金を払う機能はありません。/);
   assert.match(page, /会員は自分のデータをCSVで書き出せます。/);
   assert.match(page, /下書きの日付は2026-10-23です。/);
