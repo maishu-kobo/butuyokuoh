@@ -16,11 +16,11 @@ import { candidateThumbnail, formatCandidateFetchedAt } from '@/lib/capture/cand
 import { type CaptureCandidate, type ProductGuess } from '@/lib/capture/contract';
 import { amazonAffiliateLink, type SearchAttribution } from '@/lib/capture/search-attribution';
 import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
-import type { RegisteredLocation } from '@/lib/capture/register';
+import type { RegisteredLocation, RegisteredCandidateLocation } from '@/lib/capture/register';
 import { useEffect, useRef, useState } from 'react';
 import { ImageOff } from 'lucide-react';
 
-type ListedCandidate = CaptureCandidate & { candidateId?: number; registeredIn?: RegisteredLocation | null };
+type ListedCandidate = CaptureCandidate & { candidateId?: number; registeredIn?: RegisteredCandidateLocation | null };
 
 export function CaptureSearchPanel({
   file,
@@ -207,7 +207,7 @@ export function CaptureSearchPanel({
       if (response.ok) {
         const added = Array.isArray(data?.itemIds) ? data.itemIds.length : 0;
         const skipped = Array.isArray(data?.skipped) ? data.skipped.length : 0;
-        onRegistered(`${added}件を登録しました。${skipped ? `${skipped}件は登録済みのため追加していません。` : ''}`);
+        onRegistered(`${added}件を登録しました。${skipped ? `${skipped}件は同じ商品の重複を避けるため追加していません。` : ''}`);
         return;
       }
       if (data?.code === 'ALREADY_REGISTERED') {
@@ -336,7 +336,8 @@ export function CaptureSearchPanel({
                   {item.registeredIn && <div className="text-gray-700 dark:text-gray-200">
                     <p>登録済み</p>
                     {item.registeredIn === 'trash' && <p>ゴミ箱から復元できます</p>}
-                    {onViewRegistered && <button type="button" className="min-h-[24px] underline text-blue-700 dark:text-blue-300" onClick={() => onViewRegistered(item.registeredIn!)}>
+                    {item.registeredIn === 'expired-trash' && <p>ゴミ箱の保存期間が過ぎています</p>}
+                    {onViewRegistered && item.registeredIn !== 'expired-trash' && <button type="button" className="min-h-[24px] underline text-blue-700 dark:text-blue-300" onClick={() => { if (item.registeredIn && item.registeredIn !== 'expired-trash') onViewRegistered(item.registeredIn); }}>
                       {{ list: 'ほしいものリストを見る', purchased: '購入済みを見る', trash: 'ゴミ箱を見る' }[item.registeredIn]}
                     </button>}
                   </div>}
