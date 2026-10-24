@@ -35,6 +35,13 @@ function assertSandboxEnvUntouched(): void {
   assert.equal(process.env.PUPPETEER_DANGEROUS_NO_SANDBOX, undefined);
 }
 
+// puppeteer.launch は受け取ったオブジェクトに logger を足す。呼び出した時点の引数を残す。
+function remember(calls: LaunchOptions[], options: LaunchOptions): void {
+  const snapshot: LaunchOptions = { ...options };
+  if (options.args !== undefined) snapshot.args = [...options.args];
+  calls.push(snapshot);
+}
+
 async function captureWarn<T>(run: (warnings: unknown[][]) => Promise<T>): Promise<T> {
   const warnings: unknown[][] = [];
   const original = console.warn;
@@ -158,15 +165,13 @@ test('サンドボックスで起動できたときは --no-sandbox を付けず
     const browser = { process: () => null } as Browser;
     const opened = await launchPageBrowser({
       launch: async (options) => {
-        calls.push(options);
+        remember(calls, options);
         assertSandboxEnvUntouched();
         return browser;
       },
     });
     assert.equal(opened, browser);
     assert.deepEqual(calls, [{ headless: true }]);
-    assert.equal(calls[0]?.args?.includes('--no-sandbox') ?? false, false);
-    assert.equal(calls[0]?.args?.includes('--disable-setuid-sandbox') ?? false, false);
     assert.deepEqual(warnings, []);
   });
   assertSandboxEnvUntouched();
@@ -183,7 +188,7 @@ test('No usable sandbox! のときだけ --no-sandbox で一度だけ起動し�
     try {
       opened = await launchPageBrowser({
         launch: async (options) => {
-          calls.push(options);
+          remember(calls, options);
           assertSandboxEnvUntouched();
           if (calls.length === 1) throw first;
           return browser;
@@ -196,7 +201,6 @@ test('No usable sandbox! のときだけ --no-sandbox で一度だけ起動し�
     assert.equal(opened, browser);
     assert.equal(calls.length, 2);
     assert.deepEqual(calls[0], { headless: true });
-    assert.equal(calls[0]?.args?.includes('--no-sandbox') ?? false, false);
     assert.deepEqual(calls[1], UNSANDBOXED);
     assert.equal(FALLBACK_WARNING.includes('\n'), false);
     assert.deepEqual(warnings, [[FALLBACK_WARNING]]);
@@ -213,7 +217,7 @@ test('フォールバックの起動も No usable sandbox! なら、もう一度
     try {
       await launchPageBrowser({
         launch: async (options) => {
-          calls.push(options);
+          remember(calls, options);
           assertSandboxEnvUntouched();
           throw calls.length === 1 ? sandboxLaunchError() : second;
         },
@@ -245,7 +249,7 @@ test('別の起動エラーではサンドボックスを外して再試行し�
       try {
         await launchPageBrowser({
           launch: async (options) => {
-            calls.push(options);
+            remember(calls, options);
             assertSandboxEnvUntouched();
             throw expected;
           },
@@ -256,7 +260,6 @@ test('別の起動エラーではサンドボックスを外して再試行し�
       assert.equal(thrown, expected, message);
       assert.equal(calls.length, 1, message);
       assert.deepEqual(calls[0], { headless: true }, message);
-      assert.equal(calls[0]?.args?.includes('--no-sandbox') ?? false, false, message);
       assert.deepEqual(warnings, [], message);
     });
     assertSandboxEnvUntouched();
@@ -269,7 +272,7 @@ test('No usable sandbox! のあとでも価格の文字を読む', { timeout: 30
     const calls: LaunchOptions[] = [];
     await withPricePage(async () => launchPageBrowser({
       launch: async (options) => {
-        calls.push(options);
+        remember(calls, options);
         assertSandboxEnvUntouched();
         if (calls.length === 1) throw sandboxLaunchError();
         return puppeteer.launch(options);
@@ -288,7 +291,6 @@ test('No usable sandbox! のあとでも価格の文字を読む', { timeout: 30
     });
     assert.equal(calls.length, 2);
     assert.deepEqual(calls[0], { headless: true });
-    assert.equal(calls[0]?.args?.includes('--no-sandbox') ?? false, false);
     assert.deepEqual(calls[1], UNSANDBOXED);
     assert.equal(FALLBACK_WARNING.includes('\n'), false);
     assert.deepEqual(warnings, [[FALLBACK_WARNING]]);
