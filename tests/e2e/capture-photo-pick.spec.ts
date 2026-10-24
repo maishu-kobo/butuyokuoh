@@ -223,3 +223,41 @@ test('the photo picker stays closed when capture is switched off', async ({ page
   await expect(page.getByRole('heading', { name: '新しいアイテムを追加' })).toBeVisible();
   await expect(page.getByRole('button', { name: '写真から登録' })).toHaveCount(0);
 });
+
+test('selected photo preview is replaced and released when leaving photo mode', async ({ page }) => {
+  await page.request.post('/api/auth/register', { data: { email: 'photo-preview@example.test', password: 'test-password' } });
+  await page.addInitScript(() => {
+    const revoked: string[] = [];
+    const original = URL.revokeObjectURL.bind(URL);
+    URL.revokeObjectURL = url => { revoked.push(url); original(url); };
+    Object.assign(window, { revokedPhotoUrls: revoked });
+  });
+  await page.route('https://item-shopping.c.yimg.jp/**', route => route.abort());
+  await page.route('https://thumbnail.image.rakuten.co.jp/**', route => route.abort());
+  await page.goto('/');
+  await openAdd(page);
+  await page.getByLabel('写真ファイル').setInputFiles({ name: 'first.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(readableJpeg) });
+  const preview = page.getByRole('img', { name: '選択した写真', exact: true });
+  await expect(preview).toBeVisible();
+  await expect(preview).toHaveJSProperty('naturalWidth', 8);
+  const first = await preview.getAttribute('src');
+  expect(first).toMatch(/^blob:/);
+  const choices = page.getByRole('checkbox', { name: '候補を選ぶ テスト用ゲルボールペン 0.5' });
+  await expect(choices).toHaveCount(2);
+  await choices.first().check();
+  await expect(page.getByRole('button', { name: '写真を変更', exact: true })).toBeVisible();
+  await page.getByLabel('写真ファイル').setInputFiles({ name: 'second.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(readableJpeg) });
+  await expect(preview).not.toHaveAttribute('src', first!);
+  await expect(preview).toHaveJSProperty('naturalWidth', 8);
+  await expect(choices.first()).not.toBeChecked();
+  await expect(page.getByRole('button', { name: '選んだ候補を登録' })).toBeDisabled();
+  expect(await page.evaluate(url => (window as unknown as {revokedPhotoUrls: string[]}).revokedPhotoUrls.includes(url!), first)).toBe(true);
+  const second = await preview.getAttribute('src');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect((await preview.boundingBox())!.width).toBeLessThanOrEqual(96);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  await page.getByRole('button', { name: 'URL・手入力に切り替える' }).click();
+  await expect(preview).toHaveCount(0);
+  expect(await page.evaluate(url => (window as unknown as {revokedPhotoUrls: string[]}).revokedPhotoUrls.includes(url!), second)).toBe(true);
+  await expect(page.getByRole('button', { name: '写真から登録', exact: true })).toBeVisible();
+});
