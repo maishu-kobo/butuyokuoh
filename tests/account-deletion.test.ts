@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { NextRequest } from 'next/server';
 import { encode } from 'next-auth/jwt';
 import { call, db, setTestUser } from './regression-harness';
+import { deleteMemberAccount } from '../src/lib/delete-member-account';
 
 const registerPath = '../src/app/api/auth/register/route.ts';
 const loginPath = '../src/app/api/auth/login/route.ts';
@@ -645,6 +646,77 @@ test('退会は所有記録のパストラバーサルとシンボリックリ�
     assert.deepEqual(ownedCounts(database, other.user.id), full);
   } finally {
     for (const file of [outside, linkTarget, linkPath, otherLegacyFile, keptNote]) {
+      try { unlinkSync(file); } catch { /* 退会が消したファイルや、最初から無いファイル */ }
+    }
+  }
+}));
+
+test('退会のトランザクションが戻ると、所有ファイルも他会員のファイルもパストラバーサルも残る', () => serial(async () => {
+  await resetAuth();
+  await memberCookieJar();
+  const owner = await register('Rollback-Owner@Example.TEST');
+  const other = await register('rollback-other@example.test');
+  const database = await db();
+  const uploadDir = join(process.cwd(), 'public', 'uploads');
+  mkdirSync(uploadDir, { recursive: true });
+  const ownedName = `${'1'.repeat(64)}.jpg`;
+  const ownedFile = join(uploadDir, ownedName);
+  const otherName = `${'2'.repeat(64)}.png`;
+  const otherFile = join(uploadDir, otherName);
+  const orphanName = `${'3'.repeat(64)}.webp`;
+  const orphanFile = join(uploadDir, orphanName);
+  const legacyName = `${owner.user.id}_1710000000002.jpg`;
+  const legacyFile = join(uploadDir, legacyName);
+  const outside = join(process.cwd(), 'public', 'rollback-upload-escape.txt');
+  const linkTarget = join(process.cwd(), 'public', 'rollback-upload-symlink-target.txt');
+  const linkName = `${'4'.repeat(64)}.gif`;
+  const linkPath = join(uploadDir, linkName);
+  writeFileSync(ownedFile, 'owned');
+  writeFileSync(otherFile, 'other');
+  writeFileSync(orphanFile, 'orphan');
+  writeFileSync(legacyFile, 'legacy');
+  writeFileSync(outside, 'keep-outside');
+  writeFileSync(linkTarget, 'keep-symlink-target');
+  symlinkSync(linkTarget, linkPath);
+  database.prepare('INSERT INTO member_uploads (name, user_id) VALUES (?, ?)').run(ownedName, owner.user.id);
+  database.prepare('INSERT INTO member_uploads (name, user_id) VALUES (?, ?)').run(otherName, other.user.id);
+  database.prepare(
+    'INSERT INTO items (user_id, name, url, image_url) VALUES (?, ?, ?, ?)',
+  ).run(owner.user.id, 'old-hex', 'https://example.test/rollback-old-hex', `/uploads/${orphanName}`);
+  database.prepare(
+    'INSERT INTO items (user_id, name, url, image_url) VALUES (?, ?, ?, ?)',
+  ).run(owner.user.id, 'escape', 'https://example.test/rollback-escape', '/uploads/../rollback-upload-escape.txt');
+  database.prepare(
+    'INSERT INTO items (user_id, name, url, image_url) VALUES (?, ?, ?, ?)',
+  ).run(owner.user.id, 'symlink', 'https://example.test/rollback-symlink', `/uploads/${linkName}`);
+  database.exec(`
+    CREATE TRIGGER member_delete_abort
+    BEFORE DELETE ON users
+    BEGIN
+      SELECT RAISE(ABORT, 'test rollback');
+    END
+  `);
+
+  try {
+    assert.throws(() => deleteMemberAccount(owner.user.id, database));
+    assert.equal(existsSync(ownedFile), true);
+    assert.equal(existsSync(legacyFile), true);
+    assert.equal(existsSync(otherFile), true);
+    assert.equal(existsSync(orphanFile), true);
+    assert.equal(existsSync(outside), true);
+    assert.equal(existsSync(linkTarget), true);
+    assert.equal(linkGone(linkPath), false);
+    assert.equal(
+      (database.prepare("SELECT id FROM users WHERE id = ? AND account_type = 'member'").get(owner.user.id) as { id: number }).id,
+      owner.user.id,
+    );
+    assert.equal(
+      (database.prepare('SELECT COUNT(*) AS n FROM member_uploads WHERE user_id = ?').get(owner.user.id) as { n: number }).n,
+      1,
+    );
+  } finally {
+    database.exec('DROP TRIGGER IF EXISTS member_delete_abort');
+    for (const file of [ownedFile, otherFile, orphanFile, legacyFile, outside, linkTarget, linkPath]) {
       try { unlinkSync(file); } catch { /* 退会が消したファイルや、最初から無いファイル */ }
     }
   }
