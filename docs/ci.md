@@ -20,7 +20,7 @@
 | チェック名 | ファイル | 中身 |
 | --- | --- | --- |
 | `playwright` | `.github/workflows/playwright.yml` | e2e。ジョブの時間制限は 30 分 |
-| `analyze` | `.github/workflows/codeql.yml` | CodeQL。high は `.github/codeql/high_gate.py` が落とす |
+| `analyze` | `.github/workflows/codeql.yml` | CodeQL。解析・取り込み失敗で停止。high は `.github/codeql/high_gate.py` で判定 |
 
 ほかの必須ゲートもそのまま止める。
 
@@ -28,6 +28,16 @@
 | --- | --- |
 | `dependency review` | high |
 | `gitleaks` | 秘密の検出 |
+
+## CodeQL の結果取り込み
+
+CodeQL は `.github/workflows/codeql.yml` の advanced setup を使う。GitHub のリポジトリ設定にある Default setup を同時に有効にすると、advanced setup の SARIF が拒否される。Default setup は無効に保ち、このワークフローから送信する。切り替えはリポジトリ全体に適用される。
+
+`analyze` は SARIF の送信だけでなく取り込み完了を待つ。actionは待機時間切れや状態取得エラーを警告だけで終える場合があるため、後続ステップでアップロードIDの状態を再取得し、`complete` 以外・ID欠落・APIエラーを失敗にする。解析・取り込みの失敗はジョブを失敗させる。取り込みが失敗しても、既存の high 判定は引き続き実行する。重大度、クエリ、例外リストは取り込みの設定とは別に管理する。
+
+確認するときは、対象コミットのログで `Analysis upload status is complete`、CodeQLチェックで正常な取り込み、Code scanningの解析一覧で対象のrefとcommit SHAおよび空のerrorを確認する。単に `Successfully uploaded results` と出ただけでは完了としない。
+
+このワークフローの対象は冒頭の3ブランチ向けPR。mainの既存解析は、[PR #206](https://github.com/maishu-kobo/butuyokuoh/pull/206) の `codeql-main.yml` へ引き継ぐ。main向けPR・push・週次・手動の解析を持ち、JS/TSと既定クエリを維持する。Default setupの解除とmain用ワークフローの適用を両方完了させること。PRを作っただけではmainの継続解析は復旧しない。ブランチ保護は変更しない。
 
 ## Playwright のブラウザ
 
