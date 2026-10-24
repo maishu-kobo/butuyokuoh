@@ -7,6 +7,7 @@ import { httpsReferer, resolveSearchPorts, saveSearchCandidates } from '@/lib/ca
 import { portsForRequest } from '@/lib/capture/ports';
 import { amazonAssociateTag, readCaptureSecrets } from '@/lib/capture-secrets';
 import { searchAttribution } from '@/lib/capture/search-attribution';
+import { registeredCandidateLocation } from '@/lib/capture/register';
 import { getDb } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -56,6 +57,7 @@ async function handlePOST(request: NextRequest) {
     candidates: result.value.candidates.map((candidate, index) => ({
       ...candidate,
       candidateId: saved.storedIds[index],
+      registeredIn: registeredCandidateLocation(getDb(), user.id, candidate.url),
     })),
   });
 }
