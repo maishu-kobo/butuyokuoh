@@ -254,10 +254,13 @@ test('a Rakuten affiliate itemUrl with an m.rakuten.co.jp mobile link is kept an
     const mobile = stored.searchParams.get('m');
     assert.equal(pc, product);
     assert.equal(mobile, product);
-    assert.equal(new URL(pc ?? '').hostname, 'item.rakuten.co.jp');
-    assert.equal(new URL(mobile ?? '').protocol, 'https:');
-    assert.equal(new URL(mobile ?? '').hostname, 'item.rakuten.co.jp');
-    assert.equal(entry.url.includes('m.rakuten.co.jp'), false);
+    const pcUrl = new URL(pc ?? '');
+    const mobileUrl = new URL(mobile ?? '');
+    assert.equal(pcUrl.protocol, 'https:');
+    assert.equal(pcUrl.hostname, 'item.rakuten.co.jp');
+    assert.equal(mobileUrl.protocol, 'https:');
+    assert.equal(mobileUrl.hostname, 'item.rakuten.co.jp');
+    assert.equal([stored.hostname, pcUrl.hostname, mobileUrl.hostname].includes('m.rakuten.co.jp'), false);
     assert.equal(entry.url.includes('evil.example'), false);
     assert.equal(entry.url.includes('http://'), false);
     assert.equal(entry.url.includes(`/hgc/${affiliateId}/`), true);
