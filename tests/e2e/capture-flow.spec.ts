@@ -314,21 +314,28 @@ test('candidate images fall back for missing, failed and undecodable images', as
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
   await page.getByLabel('写真を撮る').setInputFiles({ name: 'image-test.jpg', mimeType: 'image/jpeg', buffer: jpeg });
-  const fallback = page.getByRole('img', { name: 'テスト用ゲルボールペン 0.5（画像なし）', exact: true });
-  const choices = page.getByRole('checkbox', { name: '候補を選ぶ テスト用ゲルボールペン 0.5' });
   for (const next of ['failed', 'missing', 'decode', 'valid'] as const) {
+    const name = next === 'failed' ? 'テスト用ゲルボールペン 0.5' : `画像テスト ${next}`;
     if (next !== 'failed') {
       mode = next;
+      await page.getByLabel('探す商品名').fill(name);
       await page.getByRole('button', { name: 'この名前で探す' }).click();
     }
+    // Each search has a distinct name so the previous render cannot satisfy the assertions.
+    const choices = page.getByRole('checkbox', { name: `候補を選ぶ ${name}`, exact: true });
+    const fallback = page.getByRole('img', { name: `${name}（画像なし）`, exact: true });
+    await expect(choices).toHaveCount(2);
     if (next !== 'valid') {
       await expect(fallback).toHaveCount(2);
       await expect(fallback.first()).toBeVisible();
-      const box = await fallback.first().boundingBox();
-      expect(box?.width).toBe(64);
-      expect(box?.height).toBe(64);
+      await expect.poll(async () => {
+        const box = await fallback.first().boundingBox();
+        return box ? { width: box.width, height: box.height } : null;
+      }).toEqual({ width: 64, height: 64 });
       await expect(page.locator('li img')).toHaveCount(0);
-      await expect(page.getByText('テスト用ゲルボールペン 0.5', { exact: true })).toHaveCount(3);
+      for (const choice of await choices.all()) {
+        await expect(choice.locator('..')).toContainText(name);
+      }
       if (next === 'failed') {
         await page.screenshot({ path: testInfo.outputPath('fallback-mobile.png'), fullPage: true });
         await page.setViewportSize({ width: 1280, height: 900 });
@@ -337,7 +344,7 @@ test('candidate images fall back for missing, failed and undecodable images', as
       }
     } else {
       await expect(fallback).toHaveCount(0);
-      const images = page.getByRole('img', { name: 'テスト用ゲルボールペン 0.5', exact: true });
+      const images = page.getByRole('img', { name, exact: true });
       await expect(images).toHaveCount(2);
       await expect.poll(() => images.evaluateAll(elements => elements.every(el => (el as HTMLImageElement).naturalWidth > 0))).toBe(true);
     }
