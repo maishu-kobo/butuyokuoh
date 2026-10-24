@@ -124,7 +124,7 @@ function reservedUploadPaths(db: Database.Database, userId: number): Set<string>
 }
 
 // 退会が commit したあとに消すパス。ここでは消さない。
-// 十六進は所有記録にあるものだけ。記録の無い古い十六進は、ディレクトリを走査して消さない。
+// 十六進は、その会員の image_url か所有記録からだけ消す。参照も記録も無い十六進はディレクトリを走査して消さない。
 function uploadPathsForWithdrawal(db: Database.Database, userId: number): string[] {
   const reserved = reservedUploadPaths(db, userId);
   const planned = new Set<string>(legacyUploadPaths(userId));
@@ -136,9 +136,7 @@ function uploadPathsForWithdrawal(db: Database.Database, userId: number): string
   for (const url of imageUrlsFor(db, userId, false)) {
     const full = uploadPathFromStoredUrl(url);
     if (!full || reserved.has(full)) continue;
-    const base = path.basename(full);
-    if (STORED_UPLOAD_NAME.test(base)) continue;
-    const legacy = UPLOAD_NAME.exec(base);
+    const legacy = UPLOAD_NAME.exec(path.basename(full));
     if (legacy && Number(legacy[1]) !== userId) continue;
     planned.add(full);
   }
