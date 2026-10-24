@@ -216,6 +216,102 @@ test('a Rakuten affiliate link is a candidate only when pc and any m stay on the
   assert.equal(JSON.stringify(dropped).includes(affiliateId), false);
 });
 
+test('a Rakuten affiliate itemUrl with an m.rakuten.co.jp mobile link is kept and that link is rewritten to the product host', async () => {
+  const affiliateId = 'example-rakuten-affiliate';
+  const product = 'https://item.rakuten.co.jp/example-shop/gel-pen_05/';
+  const wrap = (pc: string, mobile: string) => {
+    const url = new URL(`https://hb.afl.rakuten.co.jp/hgc/${affiliateId}/`);
+    url.searchParams.set('pc', pc);
+    url.searchParams.append('m', mobile);
+    return url.toString();
+  };
+  const httpMobile = wrap(product, 'http://m.rakuten.co.jp/example-shop/gel-pen_05/');
+  const httpsMobile = wrap(product, 'https://m.rakuten.co.jp/example-shop/gel-pen_05/');
+  const queriedMobile = wrap(product, 'http://m.rakuten.co.jp/example-shop/gel-pen_05/?url=https://evil.example/phish');
+  const expected = wrap(product, product);
+  const { search } = harness({
+    affiliateId,
+    http: okHttp({
+      items: [
+        item({ itemUrl: httpMobile, itemCode: 'example:http-mobile' }),
+        item({ itemUrl: httpsMobile, itemCode: 'example:https-mobile' }),
+        item({ itemUrl: queriedMobile, itemCode: 'example:queried-mobile' }),
+      ],
+    }),
+  });
+  const result = await search.search(query);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value.map((entry) => entry.url), [expected, expected, expected]);
+  for (const entry of result.value) {
+    const stored = new URL(entry.url);
+    assert.equal(stored.protocol, 'https:');
+    assert.equal(stored.hostname, 'hb.afl.rakuten.co.jp');
+    assert.equal(stored.username, '');
+    assert.equal(stored.password, '');
+    assert.equal(stored.port, '');
+    const pc = stored.searchParams.get('pc');
+    const mobile = stored.searchParams.get('m');
+    assert.equal(pc, product);
+    assert.equal(mobile, product);
+    const pcUrl = new URL(pc ?? '');
+    const mobileUrl = new URL(mobile ?? '');
+    assert.equal(pcUrl.protocol, 'https:');
+    assert.equal(pcUrl.hostname, 'item.rakuten.co.jp');
+    assert.equal(mobileUrl.protocol, 'https:');
+    assert.equal(mobileUrl.hostname, 'item.rakuten.co.jp');
+    assert.equal([stored.hostname, pcUrl.hostname, mobileUrl.hostname].includes('m.rakuten.co.jp'), false);
+    assert.equal(entry.url.includes('evil.example'), false);
+    assert.equal(entry.url.includes('http://'), false);
+    assert.equal(entry.url.includes(`/hgc/${affiliateId}/`), true);
+  }
+});
+
+test('a Rakuten affiliate itemUrl is dropped when its mobile link is not a product on m.rakuten.co.jp', async () => {
+  const affiliateId = 'example-rakuten-affiliate';
+  const product = 'https://item.rakuten.co.jp/example-shop/gel-pen_05/';
+  const wrap = (pc: string, ...mobiles: string[]) => {
+    const url = new URL(`https://hb.afl.rakuten.co.jp/hgc/${affiliateId}/`);
+    url.searchParams.set('pc', pc);
+    for (const mobile of mobiles) url.searchParams.append('m', mobile);
+    return url.toString();
+  };
+  const bad = [
+    wrap('http://m.rakuten.co.jp/example-shop/gel-pen_05/', 'http://m.rakuten.co.jp/example-shop/gel-pen_05/'),
+    wrap(product, 'http://evil.example/phish'),
+    wrap(product, 'https://evil.example/phish'),
+    wrap(product, 'http://m.rakuten.co.jp.evil.example/example-shop/gel-pen_05/'),
+    wrap(product, 'http://www.m.rakuten.co.jp/example-shop/gel-pen_05/'),
+    wrap(product, 'http://m.rakuten.co.jp./example-shop/gel-pen_05/'),
+    wrap(product, 'http://m.rakuten.co.jp@evil.example/example-shop/gel-pen_05/'),
+    wrap(product, 'http://user:pw@m.rakuten.co.jp/example-shop/gel-pen_05/'),
+    wrap(product, 'http://m.rakuten.co.jp:8080/example-shop/gel-pen_05/'),
+    wrap(product, 'http://m.rakuten.co.jp/example-shop/../../evil.example/phish'),
+    wrap(product, 'http://m.rakuten.co.jp//evil.example'),
+    wrap(product, 'http://m.rakuten.co.jp/example-shop/gel-pen_05/extra'),
+    wrap(product, 'https://item.rakuten.co.jp.evil.example/example-shop/gel-pen_05/'),
+    wrap(product, 'http://169.254.169.254/latest/meta-data'),
+    wrap(product, 'http://m.rakuten.co.jp/example-shop/gel-pen_05/', 'https://evil.example/phish'),
+    wrap(product, 'javascript:alert(1)'),
+    wrap(product, 'http://m.rakuten.co.jp/example-shop/gel-pen_05/\n@evil.example'),
+    wrap(product, 'http://m.rakuten.co.jp\\@evil.example/example-shop/gel-pen_05/'),
+  ];
+  const { search } = harness({
+    affiliateId,
+    http: okHttp({
+      items: bad.map((itemUrl, index) => item({ itemUrl, itemCode: `example:bad-${index}` })),
+    }),
+  });
+  const dropped = await search.search(query);
+  assert.equal(dropped.ok, false);
+  if (!dropped.ok) assert.equal(dropped.error.code, 'SEARCH_FAILED');
+  const body = JSON.stringify(dropped);
+  assert.equal(body.includes('evil.example'), false);
+  assert.equal(body.includes('169.254.169.254'), false);
+  assert.equal(body.includes('m.rakuten.co.jp'), false);
+  assert.equal(body.includes(affiliateId), false);
+});
+
 test('without a JAN the keyword is the name, brand, and model, and a missing key does not call Rakuten', async () => {
   const named = harness();
   const result = await named.search.search({ name: 'ペン', brand: '物欲文具', model: null, jan: null });
