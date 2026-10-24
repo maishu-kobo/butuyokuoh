@@ -3,7 +3,7 @@
 import { apiFetch } from '@/lib/api-fetch';
 
 import { useAuth } from './AuthProvider';
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { Plus, X, Upload, Link, Edit3 } from 'lucide-react';
 import { ComparisonGroup, Category } from '@/types';
 import { showPhotoPicker } from '@/lib/capture/photo-pick';
@@ -23,16 +23,23 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
   const captureOpen = isOpen && !isGuest;
   if (!captureOpen && captureEnabled) setCaptureEnabled(false);
   const [pickedFile, setPickedFile] = useState<File | null>(null);
-  const photoPick = useCapturePhotoPick(
-    showPhotoPicker({ enabled: captureOpen && captureEnabled }, isGuest),
-    (file) => setPickedFile(file),
-  );
+  const [isPhotoMode, setIsPhotoMode] = useState(false);
   const [isManualMode, setIsManualMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [canAddManually, setCanAddManually] = useState(false);
   const [successNote, setSuccessNote] = useState(''); // 追加成功時の注意メッセージ
   const [uploading, setUploading] = useState(false);
+  const photoPick = useCapturePhotoPick(
+    showPhotoPicker({ enabled: captureOpen && captureEnabled }, isGuest),
+    (file) => {
+      setPickedFile(file);
+      setIsPhotoMode(true);
+      setIsManualMode(false);
+      setError('');
+    },
+  );
+  const startPhotoSearch = useCallback(() => setIsPhotoMode(true), []);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState({
@@ -82,9 +89,11 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
     setError('');
     setCanAddManually(false);
     setPickedFile(null);
+    setIsPhotoMode(false);
   };
 
   const enterManual = (name: string) => {
+    setIsPhotoMode(false);
     setIsManualMode(true);
     setFormData((current) => ({ ...current, name, image_url: '' }));
     setError('');
@@ -222,21 +231,36 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
       onDrop={photoPick.onDrop}
       className="bg-white dark:bg-slate-800 rounded-lg shadow-md p-4"
     >
-      <CapturePhotoControls pick={photoPick} />
-      {photoPick.enabled && (
-        <CaptureSearchPanel
-          file={pickedFile}
-          onManual={enterManual}
-          onRegistered={() => { resetForm(); setIsOpen(false); onAdd(); }}
-        />
-      )}
       <div className="flex justify-between items-center mb-4">
         <h3 className="font-semibold text-lg">新しいアイテムを追加</h3>
         <button onClick={() => { setIsOpen(false); resetForm(); }} className="text-gray- dark:text-gray-400 hover:text-gray- dark:text-gray-600">
           <X size={20} />
         </button>
       </div>
+      <CapturePhotoControls pick={photoPick} />
+      {photoPick.enabled && pickedFile && (
+        <CaptureSearchPanel
+          file={pickedFile}
+          onSearching={startPhotoSearch}
+          onManual={enterManual}
+          onRegistered={() => { resetForm(); setIsOpen(false); onAdd(); }}
+        />
+      )}
 
+      {isPhotoMode ? (
+        <div className="flex justify-between gap-3 mt-4">
+          <button
+            type="button"
+            onClick={() => { setPickedFile(null); setIsPhotoMode(false); setIsManualMode(false); setError(''); setCanAddManually(false); }}
+            className="min-h-[24px] text-sm text-blue-600 dark:text-blue-300 underline"
+          >URL・手入力に切り替える</button>
+          <button
+            type="button"
+            onClick={() => { setIsOpen(false); resetForm(); }}
+            className="min-h-[24px] text-sm text-gray-600 dark:text-gray-300"
+          >キャンセル</button>
+        </div>
+      ) : <>
       {/* モード切り替え */}
       <div className="mb-4 flex items-center justify-end">
         <button
@@ -457,6 +481,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
           </button>
         </div>
       </form>
+      </>}
     </div>
   );
 }
