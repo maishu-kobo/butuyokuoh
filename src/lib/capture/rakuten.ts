@@ -170,13 +170,6 @@ export function createRakutenSearch(options: {
       }
       const variants = textQueryVariants(query).filter((variant) => rakutenKeyword(variant));
       if (variants.length === 0) return captureFailure('SEARCH_FAILED', RakutenMessages.failed, 400);
-      const slot = options.limiter.tryAcquire(userId, now().getTime());
-      if (!slot.ok) {
-        return reportStoreAttempt('rakuten', {
-          result: captureFailure('SEARCH_FAILED', slot.reason, 429),
-          httpStatus: null,
-        });
-      }
 
       let lastEmpty: CaptureResult<CaptureCandidate[]> | null = null;
       const seen = new Set<string>();
@@ -184,8 +177,19 @@ export function createRakutenSearch(options: {
         const keyword = rakutenKeyword(variant);
         if (!keyword || seen.has(keyword)) continue;
         seen.add(keyword);
+        const slot = options.limiter.tryAcquire(userId, now().getTime());
+        if (!slot.ok) {
+          if (lastEmpty) return lastEmpty;
+          return reportStoreAttempt('rakuten', {
+            result: captureFailure('SEARCH_FAILED', slot.reason, 429),
+            httpStatus: null,
+          });
+        }
         const result = reportStoreAttempt('rakuten', await requestOnce(credentials, referer, variant));
-        if (!result.ok) return result;
+        if (!result.ok) {
+          if (lastEmpty && result.status === 429) return lastEmpty;
+          return result;
+        }
         if (result.value.length > 0) return result;
         lastEmpty = result;
       }

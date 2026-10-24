@@ -82,12 +82,13 @@ function assertLogShape(event: Record<string, unknown>) {
 test('zero hits for Mnemosyne human A5 are searched again as Mnemosyne A5 and then stop', async () => {
   const yahooQueries: string[] = [];
   const rakutenKeywords: string[] = [];
+  const rakutenAt = steppingNow();
   const lines = await withInfo(async () => {
     const yahoo = createYahooSearch({
       appId: YAHOO_APP_ID,
       userId: 'mnemosyne',
       gate: createYahooRateGate(),
-      now: () => NOW,
+      now: steppingNow(),
       schedule: () => () => {},
       fetch: (async (url) => {
         const query = new URL(url).searchParams.get('query') ?? '';
@@ -101,7 +102,7 @@ test('zero hits for Mnemosyne human A5 are searched again as Mnemosyne A5 and th
       credentials: { applicationId: RAKUTEN_APP_ID, accessKey: RAKUTEN_ACCESS_KEY },
       limiter: createRakutenLimiter(),
       userId: 'mnemosyne',
-      now: () => new Date(NOW),
+      now: () => new Date(rakutenAt()),
       http: (async (request) => {
         const keyword = new URL(request.url).searchParams.get('keyword') ?? '';
         rakutenCalls.push(keyword);
@@ -143,7 +144,7 @@ test('zero hits on the name and model are searched again as the name only', asyn
     appId: YAHOO_APP_ID,
     userId: 'mnemosyne-name',
     gate: createYahooRateGate(),
-    now: () => NOW,
+    now: steppingNow(),
     schedule: () => () => {},
     fetch: (async (url) => {
       const query = new URL(url).searchParams.get('query') ?? '';
@@ -259,6 +260,121 @@ test('a name that already has hits is not searched with a shorter query', async 
   assert.equal(events[0].errorCode, null);
   assert.equal(events[0].hitCount, 1);
   assert.equal(JSON.stringify(events).includes('Mnemosyne'), false);
+});
+
+function steppingNow(start = NOW): () => number {
+  let at = start;
+  return () => {
+    const value = at;
+    at += 1000;
+    return value;
+  };
+}
+
+test('a frozen clock keeps the first zero-hit and does not send the shorter queries', async () => {
+  const yahooQueries: string[] = [];
+  const rakutenKeywords: string[] = [];
+  const lines = await withInfo(async () => {
+    const yahoo = createYahooSearch({
+      appId: YAHOO_APP_ID,
+      userId: 'frozen-yahoo',
+      gate: createYahooRateGate(),
+      now: () => NOW,
+      schedule: () => () => {},
+      fetch: (async (url) => {
+        yahooQueries.push(new URL(url).searchParams.get('query') ?? '');
+        return jsonResponse({ hits: [] });
+      }) as YahooFetch,
+    });
+    const rakuten = createRakutenSearch({
+      credentials: { applicationId: RAKUTEN_APP_ID, accessKey: RAKUTEN_ACCESS_KEY },
+      limiter: createRakutenLimiter(),
+      userId: 'frozen-rakuten',
+      now: () => new Date(NOW),
+      http: async (request) => {
+        rakutenKeywords.push(new URL(request.url).searchParams.get('keyword') ?? '');
+        return rakutenResponse({ items: [] });
+      },
+    });
+
+    const yahooResult = await yahoo.search(MNEMOSYNE);
+    const rakutenResult = await rakuten.search(MNEMOSYNE);
+    assert.equal(yahooResult.ok, true);
+    assert.equal(rakutenResult.ok, true);
+    if (yahooResult.ok) assert.deepEqual(yahooResult.value, []);
+    if (rakutenResult.ok) assert.deepEqual(rakutenResult.value, []);
+  });
+
+  assert.deepEqual(yahooQueries, ['Mnemosyne human A5']);
+  assert.deepEqual(rakutenKeywords, ['Mnemosyne human A5']);
+  const events = logEvents(lines);
+  assert.equal(events.length, 2);
+  assert.deepEqual(events.map((event) => event.provider), ['yahoo', 'rakuten']);
+  assert.deepEqual(events.map((event) => event.httpStatus), [200, 200]);
+  assert.deepEqual(events.map((event) => event.errorCode), [null, null]);
+  assert.deepEqual(events.map((event) => event.hitCount), [0, 0]);
+});
+
+test('a later upstream 429 keeps the first zero-hit and does not try a shorter query', async () => {
+  const yahooNow = steppingNow();
+  const rakutenNow = steppingNow();
+  const yahooQueries: string[] = [];
+  const rakutenKeywords: string[] = [];
+  const yahoo = createYahooSearch({
+    appId: YAHOO_APP_ID,
+    userId: 'later-429-yahoo',
+    gate: createYahooRateGate(),
+    now: yahooNow,
+    schedule: () => () => {},
+    fetch: (async (url) => {
+      const query = new URL(url).searchParams.get('query') ?? '';
+      yahooQueries.push(query);
+      if (yahooQueries.length === 1) return jsonResponse({ hits: [] });
+      return jsonResponse({ error: 'limited' }, 429);
+    }) as YahooFetch,
+  });
+  const rakuten = createRakutenSearch({
+    credentials: { applicationId: RAKUTEN_APP_ID, accessKey: RAKUTEN_ACCESS_KEY },
+    limiter: createRakutenLimiter(),
+    userId: 'later-429-rakuten',
+    now: () => new Date(rakutenNow()),
+    http: async (request) => {
+      const keyword = new URL(request.url).searchParams.get('keyword') ?? '';
+      rakutenKeywords.push(keyword);
+      if (rakutenKeywords.length === 1) return rakutenResponse({ items: [] });
+      return rakutenResponse({ error: 'limited' }, 429);
+    },
+  });
+
+  const yahooResult = await yahoo.search(MNEMOSYNE);
+  const rakutenResult = await rakuten.search(MNEMOSYNE);
+  assert.deepEqual(yahooQueries, ['Mnemosyne human A5', 'Mnemosyne A5']);
+  assert.deepEqual(rakutenKeywords, ['Mnemosyne human A5', 'Mnemosyne A5']);
+  assert.equal(yahooResult.ok, true);
+  assert.equal(rakutenResult.ok, true);
+  if (yahooResult.ok) assert.deepEqual(yahooResult.value, []);
+  if (rakutenResult.ok) assert.deepEqual(rakutenResult.value, []);
+});
+
+test('a later provider failure stays a failure and is not searched shorter', async () => {
+  const queries: string[] = [];
+  const yahoo = createYahooSearch({
+    appId: YAHOO_APP_ID,
+    userId: 'later-500-yahoo',
+    gate: createYahooRateGate(),
+    now: steppingNow(),
+    schedule: () => () => {},
+    fetch: (async (url) => {
+      const query = new URL(url).searchParams.get('query') ?? '';
+      queries.push(query);
+      if (queries.length === 1) return jsonResponse({ hits: [] });
+      return jsonResponse({ error: 'down' }, 500);
+    }) as YahooFetch,
+  });
+  const result = await yahoo.search(MNEMOSYNE);
+  assert.deepEqual(queries, ['Mnemosyne human A5', 'Mnemosyne A5']);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, 'SEARCH_FAILED');
 });
 
 test('zero hits stay editable and a shop failure keeps its message', () => {

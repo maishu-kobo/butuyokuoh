@@ -386,14 +386,6 @@ export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
       }
       const variants = textQueryVariants(query).filter((variant) => yahooAttemptKey(appId, variant));
       if (variants.length === 0) return captureFailure('INVALID_INPUT', CaptureMessages.searchInput, 400);
-      const at = now();
-      const limit = gate.take(userId, at);
-      if (limit) {
-        return reportStoreAttempt('yahoo', {
-          result: captureFailure('SEARCH_FAILED', LIMIT_MESSAGE[limit], 429),
-          httpStatus: null,
-        });
-      }
 
       let lastEmpty: CaptureResult<CaptureCandidate[]> | null = null;
       const seen = new Set<string>();
@@ -401,8 +393,20 @@ export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
         const key = yahooAttemptKey(appId, variant);
         if (!key || seen.has(key)) continue;
         seen.add(key);
+        const at = now();
+        const limit = gate.take(userId, at);
+        if (limit) {
+          if (lastEmpty) return lastEmpty;
+          return reportStoreAttempt('yahoo', {
+            result: captureFailure('SEARCH_FAILED', LIMIT_MESSAGE[limit], 429),
+            httpStatus: null,
+          });
+        }
         const result = reportStoreAttempt('yahoo', await requestOnce(appId, variant, at));
-        if (!result.ok) return result;
+        if (!result.ok) {
+          if (lastEmpty && result.status === 429) return lastEmpty;
+          return result;
+        }
         if (result.value.length > 0) return result;
         lastEmpty = result;
       }
