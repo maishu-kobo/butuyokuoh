@@ -125,9 +125,11 @@ function compare(a: Row, b: Row, sortBy: HomeSortBy): number {
 
 test('filter keeps the same item objects and the current sort rules', () => {
   fc.assert(fc.property(fc.array(rowArb, { maxLength: 12 }), queryArb, (items, query) => {
-    const before = items.map((item) => ({ ...item }));
+    const order = items.slice();
+    const fields = items.map((item) => JSON.stringify(item));
     const result = filterHomeItems(items, query);
-    assert.deepEqual(items, before);
+    assert.deepEqual(items, order);
+    assert.deepEqual(items.map((item) => JSON.stringify(item)), fields);
 
     const expected = items.filter((item) => matches(item, query)).sort((a, b) => compare(a, b, query.sortBy));
     assert.equal(result.length, expected.length);

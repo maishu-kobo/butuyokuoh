@@ -4,13 +4,13 @@ import { apiFetch } from '@/lib/api-fetch';
 import { formatYen, type WishlistRow } from '@/lib/capture/list-card';
 import { photoGroupDeleteIds, photoShopDeleteIds } from '@/lib/capture/photo-group-actions';
 import { formatListTimestamp, offersPriceRefresh, photoImageUrl, shopBadgeText, uniqueShopTags } from '@/lib/capture/photo-card-view';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import SortableItemCard from './SortableItemCard';
 import type { Category, ComparisonGroup, Item } from '@/types';
 
 type PhotoCard = Extract<WishlistRow, { kind: 'photo' }>;
 
-export default function PhotoGroupCard({
+function PhotoGroupCard({
   card,
   item,
   onUpdate,
@@ -159,3 +159,6 @@ export default function PhotoGroupCard({
     </div>
   );
 }
+
+// 検索の1文字で、中身が変わっていない写真グループまで描き直さない。
+export default memo(PhotoGroupCard);
