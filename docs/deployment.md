@@ -8,7 +8,7 @@ exe.dev環境への本番デプロイ手順。
 - Node.js 22.12 以上、npm 10.x インストール済み
 - systemdが利用可能
 
-**本番反映前に、アプリを起動する Node.js を 22.12 以上へ上げること。** puppeteer 25 は `engines.node >=22.12.0` を要求する。本番が Node.js 20 のままだと、価格チェックのブラウザが起動しない。この変更では本番環境、本番データベース、秘密情報はいじらない。上げる作業は本番コードの切り替え前に、このリポジトリの外で行う。
+**develop にマージする前に、本番 VM の Node.js を 22.12 以上へ上げること。** puppeteer 25 は `engines.node >=22.12.0` を要求する。本番が Node.js 20 のままだと、価格チェックのブラウザが起動しない。この変更では本番環境、本番データベース、秘密情報はいじらない。上げる作業は develop へ入れる前に、このリポジトリの外で行う。
 
 価格取得の Chrome は、まずサンドボックス付きで起動する。Ubuntu 23.10 以降で非特権の user namespace が禁止されているとき、または systemd の `RestrictNamespaces=true` のとき、Chrome は起動前に `No usable sandbox!` で止まる。その失敗のときだけ `--no-sandbox` と `--disable-setuid-sandbox` で一度だけ起動し直す。ほかの起動失敗ではやり直さない。`PUPPETEER_DANGEROUS_NO_SANDBOX` は置かない。
 
