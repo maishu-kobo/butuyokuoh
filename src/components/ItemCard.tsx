@@ -44,6 +44,9 @@ interface ItemCardProps {
 
 const SEVERAL_SHOPS_PURCHASE = 'ショップが複数あります。ショップ一覧から購入したショップを選んで購入済みにしてください';
 
+// アクションバー（light: gray-50 / dark: slate-700）の上で、通常・hover・focus が 4.5:1 を超える一色ずつ。
+const auxiliaryActionClass = 'text-gray-600 hover:text-blue-700 focus:text-blue-700 dark:text-gray-300 dark:hover:text-blue-300 dark:focus:text-blue-300';
+
 export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, info, displayImageUrl, groupMemberIds, offerPriceRefresh = true, shopCount, shopTags }: ItemCardProps) {
   const { isGuest } = useAuth();
   const [showChart, setShowChart] = useState(false);
@@ -351,7 +354,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             </div>
           )}
 
-          <div className="mt-1 flex flex-wrap gap-3 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
+          <div className="mt-1 flex flex-wrap gap-3 text-sm text-gray-600 dark:text-gray-300">
             {item.planned_purchase_date && (
               <span className="flex items-center gap-1">
                 <Calendar size={14} />
@@ -381,20 +384,20 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
               disabled={refreshing || !linkableHttpUrl(item.url)}
               aria-label="価格を更新"
               title={linkableHttpUrl(item.url) ? "商品名・価格・画像をURLから更新" : "商品URLを登録すると更新できます"}
-              className="text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500 disabled:opacity-50"
+              className={`${auxiliaryActionClass} disabled:opacity-50`}
             >
               <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
             </button>
           )}
           <button
             onClick={() => setShowChart(!showChart)}
-            className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500"
+            className={`text-sm ${auxiliaryActionClass}`}
           >
             価格推移
           </button>
           <button
             onClick={() => { setSaveError(''); if (!editing) setEditData(initialEditData()); setEditing(!editing); }}
-            className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500"
+            className={`text-sm ${auxiliaryActionClass}`}
           >
             編集
           </button>
