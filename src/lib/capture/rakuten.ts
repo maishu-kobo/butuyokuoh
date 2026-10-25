@@ -2,6 +2,7 @@
 import { preferMainProduct, preferMainProducts } from './accessory';
 import {
   acceptCandidate,
+  rakutenApiItemCode,
   captureFailure,
   isValidJan,
   type CaptureCandidate,
@@ -379,6 +380,8 @@ function toCandidate(item: Record<string, unknown> | null, index: number, used: 
     fetchedAt,
     shopName: truncateChars(shopName, 80),
   };
+  const sourceItemCode = rakutenApiItemCode(item.itemCode);
+  if (sourceItemCode) candidate.sourceItemCode = sourceItemCode;
   const jan = text(item.janCode);
   if (jan && isValidJan(jan)) candidate.jan = jan;
   const imageUrl = firstImage(item.mediumImageUrls);

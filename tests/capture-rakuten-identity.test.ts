@@ -63,3 +63,22 @@ test('a URL edit during a price request prevents stale prices and history from b
   assert.equal((database.prepare('SELECT current_price FROM items WHERE id=?').get(id) as {current_price:number}).current_price, 9000);
   assert.deepEqual(database.prepare('SELECT price FROM price_history WHERE item_id=?').all(id), [{ price: 9000 }]);
 });
+
+
+test('refresh ignores legacy display IDs and prices returned for a different item code', async () => {
+  const member = await createMember('code-response');
+  const database = await db();
+  const add = (code: string) => Number(database.prepare("INSERT INTO items (user_id,name,url,current_price,source_item_code) VALUES (?, 'pen', ?,100,?)").run(member.id, `https://item.rakuten.co.jp/shop/${encodeURIComponent(code)}/`, code).lastInsertRowid);
+  const legacy = add('rakuten:shop-pen');
+  const valid = add('rakuten:shop:pen');
+  const requests: string[] = [];
+  await refreshDueRakutenPrices(database, { credentials, limiter, now: () => new Date(NOW), http: async request => {
+    requests.push(new URL(request.url).searchParams.get('itemCode')!);
+    return response('another:product', 999);
+  } });
+  assert.deepEqual(requests, ['shop:pen']);
+  for (const id of [legacy, valid]) {
+    assert.deepEqual(database.prepare('SELECT current_price, price_fetched_at FROM items WHERE id=?').get(id), { current_price: 100, price_fetched_at: null });
+    assert.deepEqual(database.prepare('SELECT price FROM price_history WHERE item_id=?').all(id), []);
+  }
+});

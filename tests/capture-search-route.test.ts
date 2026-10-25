@@ -187,7 +187,7 @@ test('search calls Yahoo and Rakuten, keeps the Amazon link, and stores the cand
       assert.equal(capture.status, 'open');
       const rows = candidateRows(database, owner.id);
       assert.equal(rows.length, 2);
-      assert.deepEqual(rows.map((row) => row.source_item_code), ['yahoo:example-pen', 'rakuten:example-pen']);
+      assert.deepEqual(rows.map((row) => row.source_item_code), ['yahoo:example-pen', 'rakuten:example:pen']);
       assert.equal(rows[0].source, 'yahoo');
       assert.equal(rows[0].source_name, 'Yahoo!ショッピング');
       assert.equal(rows[0].shop_name, 'テストショップ');
