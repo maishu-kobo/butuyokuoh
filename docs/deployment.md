@@ -216,10 +216,15 @@ npm install
 npm rebuild better-sqlite3
 npm run build
 
+# $PREV.new が残っているときは消さない。data を動かす前に確認する。
+# ここで止まれば、サービスは動いたままで、DB は元のディレクトリにある。
+test ! -e "$PREV.new"
+
 # 準備が終わってから、短い停止で入れ替える。
 sudo systemctl stop butuyokuoh-price-check.timer
 sudo systemctl stop butuyokuoh-price-check.service
 sudo systemctl stop butuyokuoh-guest-cleanup.timer || true
+sudo systemctl stop butuyokuoh-guest-cleanup.service || true
 sudo systemctl stop butuyokuoh
 
 sqlite3 "$APP/data/butuyokuoh.db" ".backup '$APP/data/butuyokuoh.db.pre-update.backup'"
@@ -231,8 +236,6 @@ if [ -d "$APP/public/uploads" ]; then
   mv "$APP/public/uploads" "$NEXT/public/uploads"
 fi
 
-# $PREV.new が残っているときは消さない。前回の入れ替えが途中で止まっていないか確認する。
-test ! -e "$PREV.new"
 mv "$APP" "$PREV.new"
 mv "$NEXT" "$APP"
 rm -rf "$PREV"
@@ -241,10 +244,21 @@ mv "$PREV.new" "$PREV"
 sudo systemctl start butuyokuoh
 sudo systemctl start butuyokuoh-price-check.timer
 sudo systemctl start butuyokuoh-guest-cleanup.timer || true
-curl -fsS http://localhost:8000 >/dev/null
+
+# Type=simple は next start がポート 8000 を開く前に返る。
+# 起動中の接続失敗では戻さない。30秒まで待って、それでも応答が無いときだけ失敗にする。
+ready=0
+for _ in $(seq 1 30); do
+  if curl -fsS http://localhost:8000 >/dev/null; then
+    ready=1
+    break
+  fi
+  sleep 1
+done
+test "$ready" = 1
 ```
 
-ゲスト清掃のユニットを入れていない VM では、その `systemctl` の行は失敗する。その行だけ飛ばしてよい。価格チェックのタイマーは、このガイドで有効にしていれば止めて、入れ替えのあとで戻す。`curl` が失敗したときは、次の戻し方にする。戻すと、新しいコードが起動したあとの書き込みは、止めた直後の `.backup` に戻る。スキーマが変わった DB は、コードを戻すだけでは戻らない。起動する前に、その写しから `.backup` で戻す。
+ゲスト清掃のタイマーとサービスは、この手順に入っている。ユニットを入れていない VM では `|| true` で続ける。入れている VM では、入れ替えの前にタイマーと実行中の oneshot を止め、入れ替えのあとと戻しのあとにタイマーを起動する。価格チェックのタイマーは、このガイドで有効にしていれば止めて、入れ替えのあとで戻す。`butuyokuoh` は Type=simple なので、`systemctl start` は `next start` がポート 8000 を開く前に返る。応答があるまで 30 秒を上限に待つ。その上限まで応答が無いときだけ、次の戻し方にする。起動の途中の接続失敗では戻さない。戻すと、新しいコードが起動したあとの書き込みは、止めた直後の `.backup` に戻る。スキーマが変わった DB は、コードを戻すだけでは戻らない。起動する前に、その写しから `.backup` で戻す。
 
 ```bash
 set -euo pipefail
@@ -252,6 +266,7 @@ set -euo pipefail
 sudo systemctl stop butuyokuoh-price-check.timer
 sudo systemctl stop butuyokuoh-price-check.service
 sudo systemctl stop butuyokuoh-guest-cleanup.timer || true
+sudo systemctl stop butuyokuoh-guest-cleanup.service || true
 sudo systemctl stop butuyokuoh
 
 rm -rf /home/exedev/butuyokuoh.prev/data
@@ -271,6 +286,7 @@ test "$(sqlite3 /home/exedev/butuyokuoh/data/butuyokuoh.db "PRAGMA integrity_che
 
 sudo systemctl start butuyokuoh
 sudo systemctl start butuyokuoh-price-check.timer
+sudo systemctl start butuyokuoh-guest-cleanup.timer || true
 ```
 
 ---
