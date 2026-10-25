@@ -213,6 +213,15 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
     assert.equal(memberFail.status, 422, memberFail.text);
     assert.equal(bodyOf(memberFail.json).code, 'SCRAPE_FAILED');
     assert.equal(database.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(member.id, fixtures.EMPTY_URL), undefined);
+    const deadShort = 'https://amzn.asia/d/expand-fail';
+    const deadPreview = await call(preview, 'POST', '/api/items/preview', { url: deadShort });
+    assert.equal(deadPreview.status, 422, deadPreview.text);
+    assert.equal(bodyOf(deadPreview.json).code, 'SCRAPE_FAILED');
+    assert.match(String(bodyOf(deadPreview.json).error), new RegExp(help));
+    assert.equal(bodyOf(deadPreview.json).name, undefined);
+    const deadAdd = await call(items, 'POST', '/api/items', { url: deadShort, notes: '残すメモ' });
+    assert.equal(deadAdd.status, 422, deadAdd.text);
+    assert.equal(database.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(member.id, deadShort), undefined);
     const memberKeptId = Number(database.prepare(`
       INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source)
       VALUES (?, '会員の残す商品', ?, 'https://cdn.example.com/member.webp', 800, 800, 'amazon')

@@ -218,7 +218,7 @@ function rakutenAffiliateProductUrl(value: string): string | null | undefined {
 export function isUnusableScrape(scraped: { name?: string | null }): boolean {
   const name = scraped.name?.trim() || '';
   if (!name || name === '不明な商品' || name === '取得失敗' || name === '無効なURL') return true;
-  return name.includes('取得できません') || name.includes('失敗しました');
+  return name.includes('取得できません') || name.includes('失敗しました') || name.includes('展開できませんでした');
 }
 
 const PRICE_LATER_NOTE = '価格は取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
