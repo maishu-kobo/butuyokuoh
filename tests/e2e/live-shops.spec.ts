@@ -60,7 +60,9 @@ test('live Amazon short link registers product metadata even without a published
   const items = await (await browser.request.get('/api/items')).json();
   const item = items.find((row: { url: string }) => row.url === url);
   expect(item).toMatchObject({ source: 'amazon', source_name: 'Amazon' });
-  expect(item.image_url).toMatch(/^https:\/\/.*media-amazon.com\//);
+  const image = new URL(item.image_url);
+  expect(image.protocol).toBe('https:');
+  expect(image.hostname === 'media-amazon.com' || image.hostname.endsWith('.media-amazon.com')).toBe(true);
   expect(item.name).toContain('NIMASO');
   if (item.current_price === null) await expect(page.getByText(/商品を追加しました。価格は取得できませんでした/)).toBeVisible();
   const card = page.locator('div.rounded-lg.shadow-md').filter({ has: page.getByRole('heading', { name: item.name, exact: true }) }).first();
