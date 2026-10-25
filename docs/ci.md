@@ -17,6 +17,7 @@
 
 `test, types, build` の実行先だけをブランチ単位で切り替えられる。
 Repository Actions variables の `BLACKSMITH_NO_CHARGE_CONFIRMED` が文字列 `true` で、`BLACKSMITH_CI_BRANCH` にブランチ名を指定した場合だけ、同一リポジトリのそのブランチからの PR と、既存のトリガーに合うそのブランチへの push で `blacksmith-4vcpu-ubuntu-2404` を使う。
+[GitHub Actions の文字列比較](https://docs.github.com/en/actions/reference/workflows-and-actions/expressions) は大小文字を区別しないため、指定した名前と大小文字だけが異なるブランチを併用しない。
 無課金の確認が済んでいない場合、ブランチ変数が未設定または空、対象外のブランチ、fork からの PR は `ubuntu-latest` を使う。
 `BLACKSMITH_NO_CHARGE_CONFIRMED` は人間が確認結果を記録するスイッチであり、Blacksmith の予算上限を設定したり、利用量を監視して自動停止したりする機能ではない。
 この変数は新しいトリガーを追加しない。
