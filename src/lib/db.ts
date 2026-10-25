@@ -199,6 +199,7 @@ function initDb(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_items_priority ON items(priority);
     CREATE INDEX IF NOT EXISTS idx_items_planned_date ON items(planned_purchase_date);
     CREATE INDEX IF NOT EXISTS idx_price_history_item ON price_history(item_id, recorded_at);
+    CREATE INDEX IF NOT EXISTS idx_price_history_item_recorded_id ON price_history(item_id, recorded_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS idx_comparison_groups_user ON comparison_groups(user_id);
     CREATE INDEX IF NOT EXISTS idx_categories_user ON categories(user_id);
     CREATE INDEX IF NOT EXISTS idx_items_user_status ON items(user_id, is_purchased, deleted_at);
@@ -242,6 +243,9 @@ function migrateDb(db: Database.Database) {
   normalizeUserEmails(db);
   // LOWER(email) 照合の全表走査を解消する関数インデックス
   db.prepare('CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email))').run();
+  // 一覧の前回価格は表示中の商品だけを recorded_at DESC, id DESC で読む。
+  // 既存ファイルにも同じ索引を足す。列や行は消さない。
+  db.exec('CREATE INDEX IF NOT EXISTS idx_price_history_item_recorded_id ON price_history(item_id, recorded_at DESC, id DESC)');
 
   // 写真から登録。足すだけで、既存の列や表は消さない。
   // budget_item_id は出費予定で選んだ候補の items.id。NULL は未選択。

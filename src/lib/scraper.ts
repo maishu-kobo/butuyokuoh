@@ -10,6 +10,34 @@ import { productFetchDeps } from './product-fetch-port';
 export { HttpError };
 export type FetchWithRetryOptions = MemberFetchDeps;
 
+// 価格取得のブラウザ。本番は launchPageBrowser。テストは起動したかと、
+// 画像・フォント・メディアを止めたかをここから見る。
+export interface AmazonBrowserRequest {
+  url(): string;
+  resourceType(): string;
+  isNavigationRequest(): boolean;
+  continue(): Promise<void>;
+  abort(errorCode?: string): Promise<void>;
+}
+
+export interface AmazonBrowserPage {
+  setUserAgent(userAgent: string): Promise<void>;
+  setExtraHTTPHeaders(headers: Record<string, string>): Promise<void>;
+  setRequestInterception(enabled: boolean): Promise<void>;
+  on(event: 'request', handler: (request: AmazonBrowserRequest) => Promise<void> | void): void;
+  goto(url: string, options: { waitUntil: 'networkidle2'; timeout: number }): Promise<unknown>;
+  content(): Promise<string>;
+}
+
+export interface AmazonBrowser {
+  newPage(): Promise<AmazonBrowserPage>;
+  close(): Promise<void>;
+}
+
+export type ScrapeDeps = MemberFetchDeps & {
+  launchBrowser?: (options: { headless: true }) => Promise<AmazonBrowser>;
+};
+
 export interface ScrapedItem {
   name: string;
   price: number | null;
@@ -195,13 +223,13 @@ export function isUnusableScrape(scraped: { name?: string | null }): boolean {
 
 const PRICE_LATER_NOTE = '価格は取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
 
-export async function scrapeUrl(url: string, deps?: MemberFetchDeps): Promise<ScrapedItem> {
+export async function scrapeUrl(url: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
   const result = await scrapeUrlFromPage(url, deps ?? productFetchDeps());
   if (!result.price && !result.note && !isUnusableScrape(result)) result.note = PRICE_LATER_NOTE;
   return result;
 }
 
-async function scrapeUrlFromPage(url: string, deps?: MemberFetchDeps): Promise<ScrapedItem> {
+async function scrapeUrlFromPage(url: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
   // Amazonの短縮リンクの場合、展開を試みる
   if (isAmazonShortUrl(url)) {
     console.log('Detected Amazon short URL, attempting to expand:', url);
@@ -296,13 +324,18 @@ function isAmazonBlockedHtml(html: string): boolean {
   );
 }
 
+// 価格の抽出に要らない。定期取得の待ちと転送を減らす。
+const PUPPETEER_SKIPPED_RESOURCES = new Set(['image', 'font', 'media']);
+
 /**
  * Puppeteer（ヘッドレスブラウザ）でAmazon商品ページを取得するフォールバック
  * 素のfetchがAmazonのボット対策に弾かれた場合に使用する
  * @returns 取得したScrapedItem（ボット検知された場合はnull）
  */
-async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: MemberFetchDeps): Promise<ScrapedItem | null> {
-  const browser = await launchPageBrowser();
+async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: ScrapeDeps): Promise<ScrapedItem | null> {
+  const browser: AmazonBrowser = deps?.launchBrowser
+    ? await deps.launchBrowser({ headless: true })
+    : (await launchPageBrowser()) as AmazonBrowser;
 
   try {
     const page = await browser.newPage();
@@ -315,6 +348,10 @@ async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: MemberFetc
     await page.setRequestInterception(true);
     page.on('request', async (request) => {
       try {
+        if (PUPPETEER_SKIPPED_RESOURCES.has(request.resourceType())) {
+          await request.abort();
+          return;
+        }
         if (request.isNavigationRequest()) {
           const target = new URL(request.url());
           if (target.protocol === 'http:' || target.protocol === 'https:') {
@@ -356,7 +393,7 @@ async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: MemberFetc
   }
 }
 
-async function scrapeAmazon(sanitizedUrl: string, deps?: MemberFetchDeps): Promise<ScrapedItem> {
+async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
   // SSRF対策: fetch直前にホスト名を再検証
   const hostname = getHostname(sanitizedUrl);
   if (!hostname || !AMAZON_DOMAINS.has(hostname)) {
@@ -405,13 +442,10 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: MemberFetchDeps): Promi
         sourceName: 'Amazon',
       };
 
-      // 価格が取得できた場合はそのまま返す
-      if (price !== null) {
-        return result;
-      }
-
-      // 価格が抽出できなかった場合はPuppeteerフォールバックを試す
-      fallbackResult = result;
+      // 商品ページは取れている。価格があっても無くてもここで返す。
+      // 価格が無い（在庫切れ、未発売、バリエーション未選択）ときも、ボット検知でも
+      // HTTP 失敗でもないのでブラウザは起動しない。
+      return result;
     }
   } catch (error) {
     if (error instanceof BlockedTargetError) {
@@ -445,10 +479,11 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: MemberFetchDeps): Promi
     };
   }
 
-  // テストがHTTP応答を渡したときは、実ブラウザで店へ出ない。
-  if (deps?.request) return fallbackResult;
+  // 注入した HTTP だけを見るときは、実ブラウザで店へ出ない。
+  // launchBrowser があるときは、ボット検知と HTTP 失敗でそのブラウザを起動する。
+  if (deps?.request && !deps.launchBrowser) return fallbackResult;
 
-  // Puppeteerフォールバック: ボット検知・fetch失敗・価格抽出失敗のいずれかで発動
+  // Puppeteerフォールバック: ボット検知か、再試行しても取れなかった HTTP 失敗で起動する。
   console.log('Falling back to Puppeteer for Amazon scraping:', sanitizedUrl);
   try {
     const puppeteerResult = await scrapeAmazonWithPuppeteer(sanitizedUrl, deps);
