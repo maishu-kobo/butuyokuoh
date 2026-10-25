@@ -34,7 +34,16 @@ concurrency:
 jobs:
   check:
     name: test, types, build
-    runs-on: ubuntu-latest
+    # App 導入後、指定した同一リポジトリのブランチだけで試す。未設定と fork PR は従来どおり。
+    # 有効化と復旧の手順は docs/ci.md。障害時の自動切り戻しではない。
+    runs-on: >-
+      ${{ vars.BLACKSMITH_CI_BRANCH != '' &&
+          ((github.event_name == 'pull_request' &&
+            github.event.pull_request.head.repo.full_name == github.repository &&
+            github.head_ref == vars.BLACKSMITH_CI_BRANCH) ||
+           (github.event_name == 'push' && github.ref_type == 'branch' &&
+            github.ref_name == vars.BLACKSMITH_CI_BRANCH)) &&
+          'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
       NEXT_TELEMETRY_DISABLED: "1"

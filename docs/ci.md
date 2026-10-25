@@ -13,6 +13,87 @@
 
 単体テストは `node scripts/test-lanes.mjs blocking-unit`。隔離リストが空なら `npm test` と同じファイルを実行する。`tsc` と `next build` は並べない。両方とも `.next/types` を触る。
 
+### Blacksmith の限定導入
+
+`test, types, build` の実行先だけをブランチ単位で切り替えられる。
+Repository Actions variable の `BLACKSMITH_CI_BRANCH` にブランチ名を指定すると、同一リポジトリのそのブランチからの PR と、既存のトリガーに合うそのブランチへの push で `blacksmith-4vcpu-ubuntu-2404` を使う。
+変数が未設定または空、対象外のブランチ、fork からの PR は `ubuntu-latest` を使う。
+この変数は新しいトリガーを追加しない。
+
+テスト内容、ジョブ名、権限、時間制限、Action の SHA、Node.js の版を維持する。
+`npm audit`、Playwright、CodeQL、dependency review、gitleaks、隔離テスト、差分検証は GitHub ランナーのままとする。
+Blacksmith の障害を検出して自動的に GitHub へ切り戻す仕組みではないため、有効化後に起動しない場合は下記の復旧手順を使う。
+
+#### 適用範囲と費用
+
+2026-10-25 に確認した時点では、CI のある統合ブランチは `feature/photo-capture`。
+リポジトリに Dockerfile、Compose、Docker イメージのビルドや push の定義はなく、デプロイ手順は exe.dev VM 上の Node.js と systemd である。
+この導入では Docker layer cache、Sticky Disks、固定 IP を追加しない。
+本番 VM の Node.js やデプロイ手順にも変更を加えない。
+
+物欲王は公開リポジトリなので、現在の [GitHub 標準ランナーの実行料は無料](https://docs.github.com/en/billing/concepts/product-billing/github-actions)。
+導入の目的は CI の待ち時間を短くできるか確かめること。
+公開リポジトリ向け Linux ランナーの [4 CPU / 16 GB](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) に合わせ、Blacksmith も [4 vCPU / 16 GB / Ubuntu 24.04 x64](https://docs.blacksmith.sh/blacksmith-runners/overview) を選ぶ。
+2 vCPU への縮小や ARM への変更は、この試行に含めない。
+
+2026-10-25 の [公式料金](https://www.blacksmith.sh/pricing) は x64 2 vCPU が $0.004/分、今回の 4 vCPU が $0.008/分。
+[無料枠](https://docs.blacksmith.sh/blacksmith-runners/overview) は組織全体で月 3,000 分（x64 2 vCPU 換算）なので、4 vCPU だけを使う場合は実行時間 1,500 分に相当する。
+同じ組織の他リポジトリも無料枠を消費する。
+他の利用がなければ月額の概算は `max(0, 4vCPUの月間実行分数 - 1500) × $0.008`。
+例えば月 1,000 分は $0、月 2,000 分は $4、月 5,000 分は $28（税、端数処理、追加サービスを除く）。
+無料枠を使い切った後の20分のジョブは約 $0.16 で、並列実行や繰り返し実行の回数に応じて増える。
+20分の時間制限は月額上限ではない。
+
+Actions cache は [追加料金なし](https://docs.blacksmith.sh/blacksmith-caching/dependencies-actions) で、公式の `actions/setup-node` や `actions/cache` が自動的に Blacksmith の保存先を使う。
+既存の SHA を維持し、廃止された `useblacksmith/setup-node` や `useblacksmith/cache` へ置き換えない。
+Docker layer cache と Sticky Disks は $0.50/GB/月、固定 IP は $100/IP/月の別料金。
+[Spending Alerts](https://docs.blacksmith.sh/introduction/settings) はメール通知であり、自動停止する予算上限として扱わない。
+請求画面で無料枠の残量、支払条件、組織内の他の利用を確認してから有効化する。
+
+#### 認証とセキュリティ
+
+[Quickstart](https://docs.blacksmith.sh/introduction/quickstart) のとおり、GitHub 組織への Blacksmith GitHub App 導入が必要。
+個人所有のリポジトリは対象外で、ログインは GitHub を使う。
+組織の管理者または App をインストールできる担当者が `maishu-kobo` に導入し、対象リポジトリを `butuyokuoh` に限定する。
+SSO や IP allowlist がある組織では、その認証と通信許可も確認する。
+このランナー導入のために PAT や Blacksmith API キーを CI Secrets に追加する必要はない。
+
+[App の権限](https://docs.blacksmith.sh/blacksmith-administration/github-app) には Actions、Contents、Workflows、Pull requests、Checks の読み書き、Issues と Metadata の読み取り、組織ランナーの管理、Members の読み取りがある。
+ランナー利用だけでもインストール時に表示される権限全体を確認する。
+Secrets API で秘密の値を読む権限がないことと、実行時に秘密を扱わないことは別である。
+チェックアウトしたコード、ジョブに渡したトークンや環境変数、ログ、キャッシュは外部の実行基盤で処理される。
+今回のジョブは `contents: read` を維持し、本番 Secrets、OIDC、デプロイ資格情報を追加しない。
+
+[公式セキュリティ説明](https://www.blacksmith.sh/security) は、ジョブごとの Firecracker microVM と終了後の破棄、キャッシュの分離と暗号化、SOC 2 Type II を掲げている。
+同ページの更新日は 2025-08-08 で、監査報告書自体は今回確認していない。
+ログとキャッシュは VM の破棄後も残り得るため、保存期間と削除方法は別途確認する。
+キャッシュの Branch Protected Caches は有効のまま使い、組織の閲覧権限は [権限表](https://docs.blacksmith.sh/blacksmith-administration/permissions) で確認する。
+実行地域は米国または欧州で、日本リージョンの記載はない。
+AI 機能や Testboxes はこの試行の対象外とし、必要になった場合に [処理委託先](https://docs.blacksmith.sh/about/sub-processors) と送信対象を確認する。
+
+fork 判定はこのワークフローの実行先を制限するもので、組織ランナー全体のアクセス制御ではない。
+App 導入時には runner group の公開リポジトリ利用、対象リポジトリ、利用可能なワークフローの設定も確認し、他のワークフローからの無制限な利用を許可しない。
+`pull_request_target` や `self-hosted` ラベルの追加、PR の承認設定の緩和は行わない。
+
+#### 有効化と比較
+
+1. ワークフロー変更について人間の承認と `REVIEW.md` のレビューを得る。
+2. 組織に App を導入し、対象リポジトリ、公開リポジトリの runner group、請求条件を確認する。
+3. Repository の Settings → Secrets and variables → Actions → Variables で `BLACKSMITH_CI_BRANCH` に試行する PR の head ブランチ名を指定する。例は `codex/blacksmith-ci-pilot`。Secret ではない。組織変数から同名の値を継承していないことも確認する。
+4. 該当 PR の CI を再実行し、job の labels と runner 名が Blacksmith になったことを確認する。GitHub のままなら、PR 更新などで新しい run を起動して再確認する。
+5. 同一 SHA について GitHub と Blacksmith の成功結果、待ち時間と実行時間、キャッシュの初回と再利用時を比較する。`npm ci`、Puppeteer、Chrome の `sysctl`、単体テスト、型検査、本番ビルド、lint が通ることを確認する。公式の速度倍率は実測値として扱わない。
+6. 効果と費用を確認後、統合ブランチへ広げる場合は `BLACKSMITH_CI_BRANCH` を `feature/photo-capture` に変更する。その場合、既存トリガーの push と、このブランチから develop への PR が対象になる。他の head ブランチの PR は GitHub のまま。
+
+#### 復旧
+
+対象の待機中または実行中の run を取り消し、Repository variable `BLACKSMITH_CI_BRANCH` を空にする。
+変数を削除する場合は、同名の組織変数が再び適用されないことを確認する。
+新しい CI run で `ubuntu-latest` と成功結果を確認する。
+値を変えても、既に実行中のジョブは移動しない。
+App 未導入、課金停止、障害でランナーが起動しない場合も、この手順を使う。
+`timeout-minutes: 20` は実行開始後の制限なので、待機中のジョブを20分で回復させる保証にはならない。
+恒久的に撤回する場合は、`check.runs-on` を `ubuntu-latest` に戻す。
+
 ## 重いレーン
 
 毎回走り、失敗すると止める。速いレーンの完了を待たない。
