@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3';
 import { captureCandidateExpiresAt } from '../db';
 import {
   acceptCandidate,
+  rakutenApiItemCode,
   type CaptureCandidate,
   type CapturePorts,
   type SearchQuery,
@@ -129,7 +130,8 @@ export function saveSearchCandidates(
       item.url,
       item.imageUrl ?? null,
       item.price,
-      item.id,
+      item.site === 'rakuten' && rakutenApiItemCode(item.sourceItemCode)
+        ? `rakuten:${item.sourceItemCode}` : item.id,
       item.fetchedAt,
       item.jan ?? null,
       expiresAt,

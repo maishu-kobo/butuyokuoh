@@ -1,3 +1,4 @@
+import { rakutenApiItemCode } from './contract';
 // 楽天の商品コードがある未購入商品だけ、24時間ごとに商品検索APIで価格を取り直す。
 // 失敗しても自動ではやり直さない。Yahoo! と、商品コードの無い手入力はここへ載せない。
 import type Database from 'better-sqlite3';
@@ -15,6 +16,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 interface DueItem {
   id: number;
   user_id: number;
+  url: string;
   current_price: number | null;
   source_item_code: string;
   price_fetched_at: string | null;
@@ -41,7 +43,7 @@ export async function refreshDueRakutenPrices(
     if (started && options.pause) await options.pause();
     started = true;
     const itemCode = apiItemCode(item.source_item_code);
-    if (!itemCode) continue;
+    if (!itemCode || !unchangedActiveItem(db, item)) continue;
     const slot = options.limiter.tryAcquire(String(item.user_id), now().getTime());
     if (!slot.ok) continue;
 
@@ -60,17 +62,19 @@ export async function refreshDueRakutenPrices(
         signal: controller.signal,
       });
       if (controller.signal.aborted) continue;
-      const price = readPrice(response.status, response.body);
+      const price = readPrice(response.status, response.body, itemCode);
       if (price === null) continue;
       const fetchedAt = now().toISOString();
-      db.prepare(`
-        UPDATE items
-        SET current_price = ?,
-            price_fetched_at = ?,
-            updated_at = datetime('now')
-        WHERE id = ?
-      `).run(price, fetchedAt, item.id);
-      recordPriceIfChanged(db, item.id, price);
+      db.transaction(() => {
+        // API取得中にURL、価格、購入状態などが変わったら古い応答を捨てる。
+        if (!unchangedActiveItem(db, item)) return;
+        db.prepare(`
+          UPDATE items
+          SET current_price = ?, price_fetched_at = ?, updated_at = datetime('now')
+          WHERE id = ?
+        `).run(price, fetchedAt, item.id);
+        recordPriceIfChanged(db, item.id, price);
+      }).immediate();
     } catch {
       continue;
     } finally {
@@ -81,7 +85,7 @@ export async function refreshDueRakutenPrices(
 
 function dueItems(db: Database.Database, nowMs: number): DueItem[] {
   const rows = db.prepare(`
-    SELECT i.id, i.user_id, i.current_price, i.source_item_code, i.price_fetched_at
+    SELECT i.id, i.user_id, i.url, i.current_price, i.source_item_code, i.price_fetched_at
     FROM items i
     JOIN users u ON u.id = i.user_id
     WHERE u.account_type = 'member'
@@ -104,8 +108,7 @@ function isDue(fetchedAt: string | null, nowMs: number): boolean {
 function apiItemCode(stored: string | null): string | null {
   if (!stored?.startsWith('rakuten:')) return null;
   const code = stored.slice('rakuten:'.length).trim();
-  if (!code || /[\u0000-\u0020]/.test(code)) return null;
-  return code;
+  return rakutenApiItemCode(code);
 }
 
 function normalizeCredentials(value: RakutenCredentials | null): RakutenCredentials | null {
@@ -117,7 +120,7 @@ function normalizeCredentials(value: RakutenCredentials | null): RakutenCredenti
   return { applicationId, accessKey };
 }
 
-function readPrice(status: number, body: string): number | null {
+function readPrice(status: number, body: string, expectedCode: string): number | null {
   if (status < 200 || status >= 300) return null;
   let parsed: unknown;
   try {
@@ -132,7 +135,8 @@ function readPrice(status: number, body: string): number | null {
   if (!Array.isArray(list)) return null;
   for (const entry of list) {
     const item = unwrap(entry);
-    const price = item?.itemPrice;
+    if (item?.itemCode !== expectedCode) continue;
+    const price = item.itemPrice;
     if (typeof price === 'number' && Number.isSafeInteger(price) && price >= 0) return price;
   }
   return null;
@@ -144,4 +148,13 @@ function unwrap(value: unknown): Record<string, unknown> | null {
   const nested = record.item ?? record.Item;
   if (nested && typeof nested === 'object') return nested as Record<string, unknown>;
   return record;
+}
+
+function unchangedActiveItem(db: Database.Database, item: DueItem): boolean {
+  return Boolean(db.prepare(`
+    SELECT 1 FROM items
+    WHERE id = ? AND user_id = ? AND url = ? AND source_item_code = ?
+      AND current_price IS ? AND price_fetched_at IS ?
+      AND is_purchased = 0 AND deleted_at IS NULL
+  `).get(item.id, item.user_id, item.url, item.source_item_code, item.current_price, item.price_fetched_at));
 }
