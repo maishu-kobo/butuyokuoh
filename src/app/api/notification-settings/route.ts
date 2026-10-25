@@ -1,9 +1,11 @@
+import { validateMemberInput, withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
+import { isAllowedWebhookUrl } from '@/lib/url-validator';
 import { UserNotificationSettings } from '@/types';
 
-export async function GET() {
+async function handleGET() {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -27,14 +29,30 @@ export async function GET() {
   return NextResponse.json(settings);
 }
 
-export async function PUT(request: NextRequest) {
+async function handlePUT(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
   }
 
   const body = await request.json();
+  validateMemberInput(body, 'PUT');
   const { slack_webhook, discord_webhook, notify_on_price_drop, notify_on_target_price } = body;
+
+  // Webhook URLの検証（SSRF対策）
+  // 非空の場合のみ検証。空文字/null/undefinedは「未設定」として許可（通知は送られないだけ）。
+  if (slack_webhook && !isAllowedWebhookUrl(slack_webhook, 'slack')) {
+    return NextResponse.json(
+      { error: 'Slack Webhook URL が不正です。https://hooks.slack.com/... の形式で入力してください' },
+      { status: 400 }
+    );
+  }
+  if (discord_webhook && !isAllowedWebhookUrl(discord_webhook, 'discord')) {
+    return NextResponse.json(
+      { error: 'Discord Webhook URL が不正です。https://discord.com/api/webhooks/... の形式で入力してください' },
+      { status: 400 }
+    );
+  }
 
   const db = getDb();
 
@@ -62,3 +80,6 @@ export async function PUT(request: NextRequest) {
 
   return NextResponse.json(settings);
 }
+
+export const GET = withAccess(handleGET, false);
+export const PUT = withAccess(handlePUT, false);

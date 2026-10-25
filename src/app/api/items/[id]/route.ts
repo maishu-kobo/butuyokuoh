@@ -1,8 +1,13 @@
+import { assertGuestCapacity } from '@/lib/guest';
+import { assertOwnedRelations } from '@/lib/api-access';
+import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
+import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
+import { localCalendarDate } from '@/lib/local-date';
 
-export async function GET(
+async function handleGET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -22,7 +27,7 @@ export async function GET(
   return NextResponse.json(item);
 }
 
-export async function PATCH(
+async function handlePATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -35,11 +40,16 @@ export async function PATCH(
   const body = await request.json();
   const db = getDb();
 
-  const item = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id) as { current_price?: number } | undefined;
+  const item = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id) as { current_price?: number; url: string } | undefined;
   if (!item) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
 
+  if (typeof body.url === 'string' && body.url && !isStorableItemUrl(body.url)) {
+    return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
+  }
+
+  assertOwnedRelations(db, user.id, body);
   // 価格が変更された場合、価格履歴に記録
   const oldPrice = item.current_price;
   const newPrice = body.current_price;
@@ -47,6 +57,12 @@ export async function PATCH(
 
   const updates: string[] = [];
   const values: unknown[] = [];
+
+  // 購入日を送らない購入操作は、サーバのタイムゾーンではなく日本の暦日にする。
+  // 明示した日付と、購入取消の null はそのまま残す。
+  if ((body.is_purchased === true || body.is_purchased === 1) && body.purchased_at === undefined) {
+    body.purchased_at = localCalendarDate(new Date(), 'Asia/Tokyo');
+  }
 
   const allowedFields = ['name', 'url', 'priority', 'planned_purchase_date', 'comparison_group_id', 'category_id', 'notes', 'is_purchased', 'purchased_at', 'target_price', 'target_currency', 'quantity', 'image_url', 'current_price', 'sort_order'];
   
@@ -62,6 +78,11 @@ export async function PATCH(
     }
   }
 
+  // 商品URLを変えたら、以前の検索APIの商品コードと取得時刻を引き継がない。
+  if (body.url !== undefined && body.url !== item.url) {
+    updates.push('source_item_code = NULL', 'price_fetched_at = NULL');
+  }
+
   if (updates.length === 0) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
   }
@@ -69,18 +90,21 @@ export async function PATCH(
   updates.push("updated_at = datetime('now')");
   values.push(id);
 
-  db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  return db.transaction(() => {
+    if (priceChanged) assertGuestCapacity(user, 'price_history', db);
+    db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...values);
 
-  // 価格が変更された場合、価格履歴に記録
-  if (priceChanged) {
-    db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(id, newPrice);
-  }
+    // 価格が変更された場合、価格履歴に記録
+    if (priceChanged) {
+      db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(id, newPrice);
+    }
 
-  const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
-  return NextResponse.json(updated);
+    const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id);
+    return NextResponse.json(updated);
+  }).immediate();
 }
 
-export async function DELETE(
+async function handleDELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -101,3 +125,7 @@ export async function DELETE(
   db.prepare("UPDATE items SET deleted_at = datetime('now') WHERE id = ?").run(id);
   return NextResponse.json({ success: true });
 }
+
+export const GET = withAccess(handleGET, true);
+export const PATCH = withAccess(handlePATCH, true);
+export const DELETE = withAccess(handleDELETE, true);

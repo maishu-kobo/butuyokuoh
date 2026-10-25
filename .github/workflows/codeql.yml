@@ -1,0 +1,67 @@
+# pull_request だけ。
+# Repository settings の default setup は無効にし、この advanced setup を使う。
+# 解析、SARIF の取り込み、high 判定のいずれかが失敗したらジョブを落とす。
+# security-severity が 7.0 以上（high）は落とす。
+# // codeql コメントと SARIF の suppressions では通さない。
+# 例外は .github/codeql/suppressions.json の rule、path、行本文が一致するときだけ。
+# default setup だけにすると feature/photo-capture 向け PR はスキャンされない。
+name: CodeQL
+
+on:
+  pull_request:
+    branches:
+      - feature/photo-capture
+      - feature/capture-existing-bugfixes
+      - develop
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Test the high-severity gate
+        run: python3 .github/codeql/high_gate_test.py
+
+      - name: Test ingestion verification
+        run: python3 .github/codeql/verify_ingestion_test.py
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      - name: Perform CodeQL Analysis
+        id: codeql-analyze
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          upload: always
+          wait-for-processing: true
+          upload-database: false
+          output: ${{ github.workspace }}/codeql-results
+
+      - name: Verify CodeQL ingestion completed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SARIF_ID: ${{ steps.codeql-analyze.outputs.sarif-id }}
+        run: bash .github/codeql/verify_ingestion.sh
+
+      - name: Fail on high severity findings
+        if: ${{ !cancelled() }}
+        run: python3 .github/codeql/high_gate.py codeql-results .github/codeql/suppressions.json .

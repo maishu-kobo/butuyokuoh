@@ -1,0 +1,10 @@
+[Unit]
+Description=Clean expired Butuyokuoh guest data hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=butuyokuoh-guest-cleanup.service
+
+[Install]
+WantedBy=timers.target

@@ -2,15 +2,16 @@ import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import Credentials from 'next-auth/providers/credentials';
 import { getDb } from '@/lib/db';
-import { verifyPassword, User } from '@/lib/auth';
+import { confirmVerifiedPassword, sessionGenerationMatches, User } from '@/lib/auth';
+import { linkGoogleAccount } from '@/lib/link-google-account';
+import { googleClientConfig } from '@/lib/google-login';
+
+const google = googleClientConfig();
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
   providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
+    ...(google ? [Google({ clientId: google.clientId, clientSecret: google.clientSecret })] : []),
     Credentials({
       credentials: {
         email: { label: 'Email', type: 'email' },
@@ -23,73 +24,95 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         const db = getDb();
         const user = db
-          .prepare('SELECT * FROM users WHERE email = ?')
+          .prepare("SELECT * FROM users WHERE email = ? AND account_type = 'member'")
           .get(credentials.email as string) as (User & { password_hash: string | null }) | undefined;
 
         if (!user || !user.password_hash) {
           return null;
         }
 
-        const isValid = await verifyPassword(
+        const sessionGeneration = await confirmVerifiedPassword(
+          user.id,
           credentials.password as string,
           user.password_hash
         );
-
-        if (!isValid) {
-          return null;
-        }
+        if (sessionGeneration == null) return null;
 
         return {
           id: String(user.id),
           email: user.email,
           name: user.name,
+          sessionGeneration,
         };
       },
     }),
   ],
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user, account, profile }) {
       if (account?.provider === 'google') {
-        const db = getDb();
-        const email = user.email!;
-        const googleId = account.providerAccountId;
-        const name = user.name || null;
+        const googleProfile = profile as { email?: string; email_verified?: boolean } | undefined;
+        const email = (googleProfile?.email ?? user.email ?? '').trim().toLowerCase();
+        if (!email || email.endsWith('@guest.invalid')) return false;
 
-        // 既存ユーザーをチェック
-        const existingUser = db
-          .prepare('SELECT * FROM users WHERE email = ? OR google_id = ?')
-          .get(email, googleId) as (User & { google_id: string | null }) | undefined;
+        const result = linkGoogleAccount(getDb(), {
+          email,
+          googleId: account.providerAccountId,
+          name: user.name || null,
+          emailVerified: googleProfile?.email_verified === true,
+        });
 
-        if (existingUser) {
-          // google_idを更新（メールで登録済みだがgoogle_idがない場合）
-          if (!existingUser.google_id) {
-            db.prepare('UPDATE users SET google_id = ?, name = COALESCE(name, ?) WHERE id = ?').run(
-              googleId,
-              name,
-              existingUser.id
-            );
-          }
-          // セッション用にユーザーIDをセット
-          user.id = String(existingUser.id);
-        } else {
-          // 新規ユーザー作成
-          const result = db
-            .prepare('INSERT INTO users (email, password_hash, google_id, name) VALUES (?, NULL, ?, ?)')
-            .run(email, googleId, name);
-          user.id = String(result.lastInsertRowid);
+        if (!result.ok) {
+          return false;
         }
+
+        user.id = String(result.userId);
       }
       return true;
     },
-    async jwt({ token, user }) {
-      if (user) {
-        token.userId = user.id;
+    async jwt({ token, user, account }) {
+      // Credentials はパスワード確認と同じ読み取りの世代だけを載せる。
+      // ここで DB を読み直すと、確認のあと進んだ世代で署名できる。
+      if (user?.id && account?.provider === 'credentials') {
+        const pinned = user.sessionGeneration;
+        if (typeof pinned !== 'number' || !Number.isInteger(pinned) || pinned < 0) {
+          delete token.userId;
+          delete token.sessionGeneration;
+          return token;
+        }
+        token.userId = String(user.id);
+        token.sessionGeneration = pinned;
+        return token;
       }
+      const userId = user?.id ?? token.userId;
+      if (!userId) return token;
+      const row = getDb().prepare(
+        "SELECT session_generation FROM users WHERE id = ? AND account_type = 'member'"
+      ).get(Number(userId)) as { session_generation: number } | undefined;
+      if (!row) {
+        delete token.userId;
+        delete token.sessionGeneration;
+        return token;
+      }
+      const current = row.session_generation ?? 0;
+      if (user?.id) {
+        token.userId = String(user.id);
+        token.sessionGeneration = current;
+        return token;
+      }
+      if (!sessionGenerationMatches(token.sessionGeneration, current)) {
+        delete token.userId;
+        delete token.sessionGeneration;
+        return token;
+      }
+      token.sessionGeneration = current;
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.userId) {
         session.user.id = token.userId as string;
+        session.user.sessionGeneration = typeof token.sessionGeneration === 'number'
+          ? token.sessionGeneration
+          : 0;
       }
       return session;
     },

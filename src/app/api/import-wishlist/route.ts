@@ -1,7 +1,9 @@
+import { validateMemberInput, withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { scrapeWishlist } from '@/lib/wishlist-scraper';
 import { getCurrentUser } from '@/lib/auth';
+import { isStorableItemUrl } from '@/lib/http-url';
 
 // URLを正規化する関数
 function normalizeAmazonUrl(url: string): string {
@@ -27,13 +29,14 @@ interface SkippedItem {
   reason: string;
 }
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
   }
 
   const body = await request.json();
+  validateMemberInput(body, 'POST');
   const { url } = body;
 
   if (!url) {
@@ -89,6 +92,15 @@ export async function POST(request: NextRequest) {
           skippedItems.push({
             name: item.name || 'Unknown',
             reason: '商品名またはURLが取得できませんでした',
+          });
+          continue;
+        }
+
+        if (!isStorableItemUrl(normalizedUrl)) {
+          skipped++;
+          skippedItems.push({
+            name: item.name.substring(0, 50),
+            reason: 'URLは http または https だけ保存できます',
           });
           continue;
         }
@@ -172,3 +184,5 @@ export async function POST(request: NextRequest) {
     }, { status: 500 });
   }
 }
+
+export const POST = withAccess(handlePOST, false);

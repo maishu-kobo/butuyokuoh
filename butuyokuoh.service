@@ -8,6 +8,9 @@ User=exedev
 WorkingDirectory=/home/exedev/butuyokuoh
 Environment=PORT=8000
 Environment=NODE_ENV=production
+# JWT_SECRET は本番で必須（未設定だとトークン発行/検証がエラーになる）。
+# .env.local に設定するか、以下のコメントを外して実際の値を設定すること。
+# Environment=JWT_SECRET=<openssl rand -base64 32 で生成した値>
 ExecStart=/usr/bin/npm run start
 Restart=on-failure
 RestartSec=5

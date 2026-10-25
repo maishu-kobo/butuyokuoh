@@ -1,5 +1,7 @@
 'use client';
 
+import { apiFetch } from '@/lib/api-fetch';
+
 import { useEffect, useState } from 'react';
 import { BarChart3, PieChart, TrendingUp, Package, ShoppingCart } from 'lucide-react';
 
@@ -28,6 +30,7 @@ const priorityLabels: Record<number, string> = {
 const sourceLabels: Record<string, string> = {
   amazon: 'Amazon',
   rakuten: '楽天',
+  yahoo: 'Yahoo!ショッピング',
   other: 'その他',
 };
 
@@ -37,7 +40,7 @@ export default function StatsView() {
 
   useEffect(() => {
     const fetchStats = async () => {
-      const res = await fetch('/api/stats');
+      const res = await apiFetch('/api/stats');
       const data = await res.json();
       setStats(data);
       setLoading(false);
@@ -166,6 +169,7 @@ export default function StatsView() {
                   <span className={`px-2 py-1 rounded text-sm ${
                     s.source === 'amazon' ? 'bg-orange-100 text-orange-700' :
                     s.source === 'rakuten' ? 'bg-red-100 text-red-700' :
+                    s.source === 'yahoo' ? 'bg-purple-100 text-purple-800' :
                     'bg-slate-200 text-slate-700 dark:bg-slate-600 dark:text-slate-200'
                   }`}>
                     {sourceLabels[s.source] || s.source}

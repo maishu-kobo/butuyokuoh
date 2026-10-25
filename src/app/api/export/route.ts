@@ -1,6 +1,8 @@
+import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
+import { escapeCsvCell } from '@/lib/csv';
 
 interface ExportItem {
   name: string;
@@ -17,7 +19,7 @@ interface ExportItem {
   purchased_at: string | null;
 }
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -28,7 +30,8 @@ export async function GET(request: NextRequest) {
 
   const db = getDb();
 
-  let whereClause = 'WHERE i.user_id = ?';
+  // ゴミ箱（論理削除済み）のアイテムはエクスポート対象から除外する
+  let whereClause = 'WHERE i.user_id = ? AND i.deleted_at IS NULL';
   if (filter === 'wishlist') {
     whereClause += ' AND i.is_purchased = 0';
   } else if (filter === 'purchased') {
@@ -94,17 +97,9 @@ export async function GET(request: NextRequest) {
     item.purchased_at || '',
   ]);
 
-  // CSVエスケープ処理
-  const escapeCSV = (value: string): string => {
-    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-      return `"${value.replace(/"/g, '""')}"`;
-    }
-    return value;
-  };
-
   const csvContent = [
-    headers.map(escapeCSV).join(','),
-    ...rows.map((row) => row.map(escapeCSV).join(',')),
+    headers.map(escapeCsvCell).join(','),
+    ...rows.map((row) => row.map(escapeCsvCell).join(',')),
   ].join('\n');
 
   // BOM付きUTF-8でExcel対応
@@ -120,3 +115,5 @@ export async function GET(request: NextRequest) {
     },
   });
 }
+
+export const GET = withAccess(handleGET, true);

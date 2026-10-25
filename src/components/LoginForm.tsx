@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { useAuth } from './AuthProvider';
 import { signIn } from 'next-auth/react';
 import { Crown, Mail, Lock, User, Loader2 } from 'lucide-react';
+import LegalLinks from './LegalLinks';
 
 export default function LoginForm() {
-  const { login, register } = useAuth();
+  const { login, register, startGuest, guestEnabled, ttlHours, googleLogin } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -59,6 +60,16 @@ export default function LoginForm() {
 
         {/* フォーム */}
         <div className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
+          {guestEnabled && <div className="mb-6">
+            <button disabled={loading} onClick={async () => {
+              setLoading(true); setError('');
+              try { await startGuest(); } catch (err) { setError(err instanceof Error ? err.message : '体験を開始できませんでした'); }
+              finally { setLoading(false); }
+            }} className="w-full rounded-md bg-amber-600 text-white font-bold py-3 disabled:opacity-50">{loading ? '処理中...' : 'ゲストで試す'}</button>
+            <p className="text-xs text-gray-500 dark:text-gray-300 mt-2">登録不要で{ttlHours}時間体験。データは期限・体験終了後に削除され、ログイン後には引き継がれません。</p>
+          </div>}
+          {error && <p role="alert" className="text-red-600 mb-4">{error}</p>}
+          {googleLogin && <>
           {/* Googleログインボタン */}
           <button
             onClick={handleGoogleLogin}
@@ -94,6 +105,7 @@ export default function LoginForm() {
               <span className="px-2 bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400">または</span>
             </div>
           </div>
+          </>}
 
           <div className="flex mb-6">
             <button
@@ -174,11 +186,7 @@ export default function LoginForm() {
               </div>
             </div>
 
-            {error && (
-              <div className="text-red-500 text-sm bg-red-50 p-3 rounded-md">
-                {error}
-              </div>
-            )}
+
 
             <button
               type="submit"
@@ -197,6 +205,9 @@ export default function LoginForm() {
               )}
             </button>
           </form>
+        </div>
+        <div className="mt-6 flex justify-center">
+          <LegalLinks />
         </div>
       </div>
     </div>

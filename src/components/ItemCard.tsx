@@ -1,9 +1,29 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { apiFetch } from '@/lib/api-fetch';
+import { photoGroupSaveWrites } from '@/lib/capture/photo-group-actions';
+import { sourceBadgeClass } from '@/lib/capture/photo-card-view';
+import { linkableHttpUrl } from '@/lib/http-url';
+
+import { useId, useState, useRef, type ReactNode } from 'react';
 import { Item, Category, ComparisonGroup } from '@/types';
-import { Trash2, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Calendar, Flag, Upload, ImageIcon } from 'lucide-react';
+import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
+import { rakutenPriceCaption } from '@/lib/capture/rakuten-price-note';
+import { Trash2, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Calendar, Flag, Upload, ImageIcon, Clock, AlertTriangle } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import { ja } from 'date-fns/locale';
+import { useAuth } from './AuthProvider';
 import PriceChart from './PriceChart';
+
+// SQLite の datetime('now') 形式（UTC、'YYYY-MM-DD HH:MM:SS'）を UTC として Date にパースする。
+// タイムゾーン指定なしのまま new Date() に渡すとローカル時刻と解釈され経過時間がずれるため、
+// オフセットが無い場合は末尾に 'Z' を付与して UTC として扱う。
+function parseUtcDateTime(value: string): Date | null {
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+  const withZone = /Z$|[+-]\d{2}:?\d{2}$/.test(normalized) ? normalized : `${normalized}Z`;
+  const date = new Date(withZone);
+  return isNaN(date.getTime()) ? null : date;
+}
 
 interface ItemCardProps {
   item: Item;
@@ -12,13 +32,24 @@ interface ItemCardProps {
   categories?: Category[];
   comparisonGroups?: ComparisonGroup[];
   isLowestPrice?: boolean;
+  heading?: string;
+  extra?: ReactNode;
+  info?: ReactNode;
+  displayImageUrl?: string | null;
+  groupMemberIds?: readonly number[];
+  offerPriceRefresh?: boolean;
+  shopCount?: number;
+  shopTags?: readonly { label: string; source: string }[];
 }
 
-export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false }: ItemCardProps) {
+const SEVERAL_SHOPS_PURCHASE = 'ショップが複数あります。ショップ一覧から購入したショップを選んで購入済みにしてください';
+
+export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, info, displayImageUrl, groupMemberIds, offerPriceRefresh = true, shopCount, shopTags }: ItemCardProps) {
+  const { isGuest } = useAuth();
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [editData, setEditData] = useState({
+  const initialEditData = () => ({
     name: item.name || '',
     url: item.url || '',
     priority: item.priority,
@@ -32,16 +63,30 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     image_url: item.image_url || '',
     current_price: item.current_price || '',
   });
+  const [editData, setEditData] = useState(initialEditData);
+  const [refreshMessage, setRefreshMessage] = useState('');
   const [refreshingUrl, setRefreshingUrl] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [showImageEdit, setShowImageEdit] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const purchaseLocked = shopCount != null && shopCount >= 2;
+  const purchaseHintId = useId();
+  const [purchaseHint, setPurchaseHint] = useState(false);
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    setRefreshMessage('');
     try {
-      await fetch(`/api/items/${item.id}/refresh`, { method: 'POST' });
+      const response = await apiFetch(`/api/items/${item.id}/refresh`, { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || '商品情報を取得できませんでした');
+      setRefreshMessage(data.note || '商品情報を更新しました');
+      setEditing(false);
       onUpdate();
+    } catch (error) {
+      setRefreshMessage(error instanceof Error ? error.message : '商品情報を取得できませんでした');
     } finally {
       setRefreshing(false);
     }
@@ -56,7 +101,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch('/api/upload', {
+      const res = await apiFetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
@@ -71,27 +116,55 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   };
 
   const handleSave = async () => {
-    await fetch(`/api/items/${item.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    // 多重送信ガード: disabled 属性だけに依存せず、保存中は早期 return する
+    if (saving) return;
+    setSaving(true);
+    setSaveError('');
+    try {
+      const payload = {
         name: editData.name || item.name,
         url: editData.url || item.url,
         priority: editData.priority,
         planned_purchase_date: editData.planned_purchase_date || null,
         notes: editData.notes || null,
-        target_price: editData.target_price || null,
+        target_price: editData.target_price ? Number(editData.target_price) : null,
         target_currency: editData.target_currency,
         category_id: editData.category_id ? Number(editData.category_id) : null,
         comparison_group_id: editData.comparison_group_id ? Number(editData.comparison_group_id) : null,
         quantity: Number(editData.quantity) || 1,
-        image_url: editData.image_url || null,
+        ...(!isGuest ? { image_url: editData.image_url || null } : {}),
         current_price: editData.current_price ? Number(editData.current_price) : null,
-      }),
-    });
-    setEditing(false);
-    setShowImageEdit(false);
-    onUpdate();
+      };
+      const writes = groupMemberIds && groupMemberIds.length >= 2
+        ? photoGroupSaveWrites(groupMemberIds, item.id, payload)
+        : [{ id: item.id, body: payload }];
+      const faceFirst = [
+        ...writes.filter((write) => write.id === item.id),
+        ...writes.filter((write) => write.id !== item.id),
+      ];
+      for (const write of faceFirst) {
+        const res = await apiFetch(`/api/items/${write.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(write.body),
+        });
+        if (!res.ok) {
+          // 失敗時はフォームを閉じず、APIのエラーメッセージがあればそれを優先表示する
+          const data = await res.json().catch(() => null);
+          setSaveError(data?.error || '保存に失敗しました。もう一度お試しください');
+          return;
+        }
+      }
+      // 成功時のみフォームを閉じる
+      setEditing(false);
+      setShowImageEdit(false);
+      onUpdate();
+    } catch {
+      // ネットワーク例外時もフォームを開いたまま入力値を保持する
+      setSaveError('保存に失敗しました。もう一度お試しください');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // URLを変更して再取得
@@ -101,13 +174,13 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     setRefreshingUrl(true);
     try {
       // まずURLを更新
-      await fetch(`/api/items/${item.id}`, {
+      await apiFetch(`/api/items/${item.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: editData.url }),
       });
       // その後再取得
-      await fetch(`/api/items/${item.id}/refresh`, { method: 'POST' });
+      await apiFetch(`/api/items/${item.id}/refresh`, { method: 'POST' });
       onUpdate();
       setEditing(false);
     } finally {
@@ -116,44 +189,51 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   };
 
   const handlePurchased = async () => {
-    await fetch(`/api/items/${item.id}`, {
+    await apiFetch(`/api/items/${item.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        is_purchased: true,
-        purchased_at: new Date().toISOString().split('T')[0],
-      }),
+      body: JSON.stringify({ is_purchased: true }),
     });
     onUpdate();
   };
 
   // 前回価格との差分（previous_priceがあればそれを使用、なければoriginal_price）
   const previousPrice = item.previous_price ?? item.original_price;
-  const priceChange = previousPrice && item.current_price 
-    ? item.current_price - previousPrice 
+  const priceChange = previousPrice && item.current_price
+    ? item.current_price - previousPrice
     : 0;
+
+  // 価格更新ステータス（last_scraped_at が無い手動アイテム等は表示しない）
+  const lastScrapedDate = item.last_scraped_at ? parseUtcDateTime(item.last_scraped_at) : null;
+  const rakutenPrice = rakutenPriceCaption(item);
+  const scrapeFailed = item.scrape_status === 'failed';
 
   const sourceColors: Record<string, string> = {
     amazon: 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200',
     rakuten: 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200',
+    yahoo: 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200',
     other: 'bg-gray-100 text-gray-800 dark:bg-slate-600 dark:text-gray-100',
   };
 
   const sourceNames: Record<string, string> = {
     amazon: 'Amazon',
     rakuten: '楽天',
+    yahoo: 'Yahoo!ショッピング',
     other: 'その他',
   };
+  const shownImage = displayImageUrl !== undefined ? displayImageUrl : item.image_url;
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
       <div className="flex">
         {/* 画像 */}
         <div className="w-32 h-32 flex-shrink-0 bg-gray-100 dark:bg-slate-700">
-          {item.image_url ? (
-            <img 
-              src={item.image_url} 
-              alt={item.name}
+          {shownImage ? (
+            <img
+              src={shownImage}
+              alt={heading || item.name}
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-contain"
             />
           ) : (
@@ -168,9 +248,15 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1 flex-wrap">
-                <span className={`text-xs px-2 py-0.5 rounded ${sourceColors[item.source] || sourceColors.other}`}>
-                  {item.source_name || sourceNames[item.source] || 'その他'}
-                </span>
+                {shopTags && shopTags.length > 0 ? shopTags.map((tag) => (
+                  <span key={tag.label} className={`text-xs px-2 py-0.5 rounded ${sourceBadgeClass(tag.source)}`}>
+                    {tag.label}
+                  </span>
+                )) : (
+                  <span className={`text-xs px-2 py-0.5 rounded ${sourceColors[item.source] || sourceColors.other}`}>
+                    {item.source_name || sourceNames[item.source] || 'その他'}
+                  </span>
+                )}
                 {item.category_name && item.category_color && (
                   <span
                     className="text-xs px-2 py-0.5 rounded"
@@ -196,22 +282,36 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   {['', '最高', '高', '普通', '低', '最低'][item.priority]}
                 </div>
               </div>
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">{item.name}</h3>
+              {Boolean(item.is_demo_sample) && <span className="text-xs text-amber-700 dark:text-amber-300">デモ商品・参考価格</span>}
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">{heading || item.name}</h3>
             </div>
-            <a
-              href={item.url}
+              {linkableHttpUrl(item.url) && <a
+              href={linkableHttpUrl(item.url)!}
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-400 dark:text-gray-500 hover:text-blue-500 ml-2"
             >
               <ExternalLink size={18} />
-            </a>
+            </a>}
           </div>
 
           <div className="mt-2 flex items-baseline gap-2 flex-wrap">
             <span className={`text-xl font-bold ${isLowestPrice ? 'text-green-600' : 'text-gray-900 dark:text-gray-100'}`}>
               ¥{item.current_price?.toLocaleString() || '---'}
             </span>
+            {rakutenPrice && (
+              <span className="basis-full text-xs text-gray-400 dark:text-gray-500">
+                更新 {rakutenPrice.fetchedAt}。{rakutenPrice.note}{' '}
+                <a href={RAKUTEN_CREDIT.url} target="_blank" rel="noopener noreferrer" className="underline">
+                  {RAKUTEN_CREDIT.label}
+                </a>
+              </span>
+            )}
+            {item.totalLabel && (
+              <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300 rounded-full">
+                {item.totalLabel}
+              </span>
+            )}
             {isLowestPrice && (
               <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">
                 🏷️ 最安
@@ -230,6 +330,27 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             )}
           </div>
 
+          {/* 価格更新ステータス（経過時間・失敗警告） */}
+          {(lastScrapedDate || scrapeFailed) && (
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+              {lastScrapedDate && (
+                <span className="flex items-center gap-1" title={lastScrapedDate.toLocaleString('ja-JP')}>
+                  <Clock size={12} />
+                  価格更新: {formatDistanceToNow(lastScrapedDate, { addSuffix: true, locale: ja })}
+                </span>
+              )}
+              {scrapeFailed && (
+                <span
+                  className="flex items-center gap-1 text-amber-600 dark:text-amber-400"
+                  title={item.scrape_error || '価格の取得に失敗しました'}
+                >
+                  <AlertTriangle size={12} />
+                  価格を更新できていません
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="mt-1 flex flex-wrap gap-3 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
             {item.planned_purchase_date && (
               <span className="flex items-center gap-1">
@@ -247,19 +368,24 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           {item.notes && (
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-1">{item.notes}</p>
           )}
+          {info}
         </div>
       </div>
 
       {/* アクション */}
       <div className="px-4 py-2 bg-gray-50 dark:bg-slate-700 flex items-center justify-between border-t">
         <div className="flex gap-2">
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500 disabled:opacity-50"
-          >
-            <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-          </button>
+          {offerPriceRefresh && (
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing || !linkableHttpUrl(item.url)}
+              aria-label="価格を更新"
+              title={linkableHttpUrl(item.url) ? "商品名・価格・画像をURLから更新" : "商品URLを登録すると更新できます"}
+              className="text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500 disabled:opacity-50"
+            >
+              <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+          )}
           <button
             onClick={() => setShowChart(!showChart)}
             className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500"
@@ -267,21 +393,47 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             価格推移
           </button>
           <button
-            onClick={() => setEditing(!editing)}
+            onClick={() => { setSaveError(''); if (!editing) setEditData(initialEditData()); setEditing(!editing); }}
             className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500"
           >
             編集
           </button>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={handlePurchased}
-            className="text-sm px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
-          >
-            購入済みにする
-          </button>
+          {purchaseLocked ? (
+            <span className="relative group">
+              <button
+                type="button"
+                aria-disabled="true"
+                aria-describedby={purchaseHintId}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setPurchaseHint((current) => !current);
+                }}
+                className="cursor-not-allowed rounded bg-gray-200 px-3 py-1 text-sm text-gray-500"
+              >
+                購入済みにする
+              </button>
+              <span
+                id={purchaseHintId}
+                role="tooltip"
+                className={`${purchaseHint ? 'block' : 'hidden'} group-hover:block group-focus-within:block pointer-events-none absolute bottom-full right-0 z-20 mb-2 w-64 rounded-md bg-gray-900 px-2 py-1 text-left text-xs font-normal leading-snug text-white shadow-lg`}
+              >
+                {SEVERAL_SHOPS_PURCHASE}
+              </span>
+            </span>
+          ) : (
+            <button
+              onClick={handlePurchased}
+              className="text-sm px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
+            >
+              購入済みにする
+            </button>
+          )}
           <button
             onClick={() => onDelete(item.id)}
+            aria-label="削除"
             className="text-red-400 hover:text-red-600"
           >
             <Trash2 size={18} />
@@ -292,9 +444,17 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
       {/* 価格チャート */}
       {showChart && (
         <div className="p-4 border-t">
-          <PriceChart itemId={item.id} url={item.url} source={item.source} />
+          <PriceChart
+            itemId={item.id}
+            url={item.url}
+            source={item.source}
+            targetPrice={item.target_price}
+            targetCurrency={item.target_currency}
+          />
         </div>
       )}
+
+      {refreshMessage && <p role="status" className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300">{refreshMessage}</p>}
 
       {/* 編集フォーム */}
       {editing && (
@@ -436,7 +596,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             <details className="border-l-2 border-orange-500 pl-3 group">
               <summary className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                メモ・画像
+                {isGuest ? 'メモ（画像追加はログイン後）' : 'メモ・画像'}
               </summary>
               <div className="mt-2 space-y-2">
                 <textarea
@@ -449,6 +609,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                 <div className="flex gap-2">
                   <input
                     type="text"
+                    disabled={isGuest}
                     value={editData.image_url}
                     onChange={(e) => setEditData({ ...editData, image_url: e.target.value })}
                     placeholder="画像URL"
@@ -456,6 +617,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   />
                   <input
                     type="file"
+                    disabled={isGuest}
                     ref={fileInputRef}
                     onChange={handleImageUpload}
                     accept="image/*"
@@ -464,7 +626,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
+                    disabled={uploading || isGuest}
                     className="px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-600 disabled:opacity-50"
                     title="画像アップロード"
                   >
@@ -477,24 +639,31 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
               </div>
             </details>
 
+            {/* 保存エラー */}
+            {saveError && (
+              <div role="alert" className="text-red-500 text-sm">{saveError}</div>
+            )}
+
             {/* ボタン */}
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
-                onClick={() => setEditing(false)}
+                onClick={() => { setSaveError(''); setEditing(false); }}
                 className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 キャンセル
               </button>
               <button
                 onClick={handleSave}
-                className="px-4 py-1.5 text-sm bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 font-medium shadow-sm"
+                disabled={saving}
+                className="px-4 py-1.5 text-sm bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 font-medium shadow-sm disabled:opacity-50"
               >
-                保存
+                {saving ? '保存中...' : '保存'}
               </button>
             </div>
           </div>
         </div>
       )}
+      {extra}
     </div>
   );
 }

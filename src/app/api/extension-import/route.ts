@@ -1,6 +1,9 @@
+import { validateMemberInput } from '@/lib/api-access';
+import { GuestError } from '@/lib/guest';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getUserIdFromToken } from '@/lib/auth';
+import { isStorableItemUrl } from '@/lib/http-url';
 
 interface ImportItem {
   name: string;
@@ -58,6 +61,17 @@ export async function POST(request: NextRequest) {
 
     for (const item of items) {
       try {
+        if (!item.url || !isStorableItemUrl(item.url)) {
+          skipped++;
+          continue;
+        }
+
+        const fields: Record<string, unknown> = { url: item.url };
+        if (item.name !== undefined) fields.name = item.name;
+        if (item.price !== undefined) fields.price = item.price;
+        if (item.imageUrl !== undefined) fields.image_url = item.imageUrl;
+        validateMemberInput(fields, 'POST');
+
         // 既存チェック
         const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, item.url);
         if (existing) {
@@ -84,6 +98,10 @@ export async function POST(request: NextRequest) {
           }
         }
       } catch (e) {
+        if (e instanceof GuestError) {
+          skipped++;
+          continue;
+        }
         console.error('Error inserting item:', e);
       }
     }
