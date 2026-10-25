@@ -126,6 +126,13 @@
         "idx_member_uploads_user",
         "sqlite_autoindex_member_uploads_1"
       ]
+    },
+    {
+      "id": "price-history-recorded-index",
+      "reason": "一覧の前回価格は、表示中の商品の履歴を recorded_at DESC, id DESC で読む。その索引を足す。行は増えない。",
+      "indexesAdded": [
+        "idx_price_history_item_recorded_id"
+      ]
     }
   ]
 }
