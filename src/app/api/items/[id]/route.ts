@@ -40,7 +40,7 @@ async function handlePATCH(
   const body = await request.json();
   const db = getDb();
 
-  const item = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id) as { current_price?: number } | undefined;
+  const item = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id) as { current_price?: number; url: string } | undefined;
   if (!item) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
@@ -76,6 +76,11 @@ async function handlePATCH(
       }
       values.push(value);
     }
+  }
+
+  // 商品URLを変えたら、以前の検索APIの商品コードと取得時刻を引き継がない。
+  if (body.url !== undefined && body.url !== item.url) {
+    updates.push('source_item_code = NULL', 'price_fetched_at = NULL');
   }
 
   if (updates.length === 0) {

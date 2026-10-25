@@ -67,6 +67,8 @@ export interface CaptureCandidate {
   shopName: string;
   jan?: string;
   imageUrl?: string;
+  // API再取得用の商品コード。表示用idとは別に保持する。
+  sourceItemCode?: string;
 }
 
 export interface ProductGuess {
@@ -282,10 +284,20 @@ export function acceptCandidate(item: CaptureCandidate): CaptureCandidate | null
     fetchedAt: item.fetchedAt,
     shopName: item.shopName,
   };
+  if (item.site === 'rakuten') {
+    const code = rakutenApiItemCode(item.sourceItemCode);
+    if (code) accepted.sourceItemCode = code;
+  }
   if (item.jan) accepted.jan = item.jan;
   if (typeof item.imageUrl === 'string') {
     const image = canonicalCandidateImageUrl(item.site, item.imageUrl);
     if (image) accepted.imageUrl = image;
   }
   return accepted;
+}
+
+export function rakutenApiItemCode(value: unknown): string | null {
+  return typeof value === 'string' && value.length <= 190
+    && /^[^\s\u0000-\u001f\u007f:]+:[^\s\u0000-\u001f\u007f:]+$/.test(value)
+    ? value : null;
 }
