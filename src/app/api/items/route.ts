@@ -18,10 +18,22 @@ async function handleGET() {
   }
 
   const db = getDb();
-  // previous_price は行ごとの相関サブクエリではなく、ウィンドウ関数で
-  // 各アイテムの「2番目に新しい価格履歴」を一括導出して LEFT JOIN する。
-  // ORDER BY の id DESC は recorded_at 同値時の結果を決定的にするため。
+  // previous_price は表示中の商品に絞ってから、その履歴だけを順位付けする。
+  // 全履歴を先に MATERIALIZE しない。recorded_at が同じときは id DESC で決める。
   const items = db.prepare(`
+    WITH visible AS (
+      SELECT i.*
+      FROM items i
+      WHERE i.is_purchased = 0 AND i.user_id = ? AND i.deleted_at IS NULL
+    ),
+    ranked AS (
+      SELECT
+        h.item_id,
+        h.price,
+        ROW_NUMBER() OVER (PARTITION BY h.item_id ORDER BY h.recorded_at DESC, h.id DESC) AS rn
+      FROM price_history h
+      WHERE h.item_id IN (SELECT id FROM visible)
+    )
     SELECT
       i.*,
       cg.name as comparison_group_name,
@@ -31,17 +43,10 @@ async function handleGET() {
       cat.name as category_name,
       cat.color as category_color,
       prev.price as previous_price
-    FROM items i
+    FROM visible i
     LEFT JOIN comparison_groups cg ON i.comparison_group_id = cg.id
     LEFT JOIN categories cat ON i.category_id = cat.id
-    LEFT JOIN (
-      SELECT item_id, price FROM (
-        SELECT item_id, price,
-               ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY recorded_at DESC, id DESC) AS rn
-        FROM price_history
-      ) WHERE rn = 2
-    ) prev ON prev.item_id = i.id
-    WHERE i.is_purchased = 0 AND i.user_id = ? AND i.deleted_at IS NULL
+    LEFT JOIN ranked prev ON prev.item_id = i.id AND prev.rn = 2
     ORDER BY
       COALESCE(cg.priority, i.priority) ASC,
       i.sort_order ASC,
