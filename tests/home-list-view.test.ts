@@ -102,6 +102,7 @@ test('an empty wishlist still shows the count, total, and the empty message', ()
   assert.match(html, /検索・フィルター/);
   assert.match(html, /インポートはログイン後に利用できます/);
   assert.doesNotMatch(html, /適用中/);
+  assert.doesNotMatch(html, /もっと見る/);
 });
 
 test('a filtered-out wishlist offers the same clear action', () => {
@@ -136,4 +137,46 @@ test('a failed load still offers retry instead of the empty list', () => {
   assert.match(html, /読み込みに失敗しました/);
   assert.match(html, /再試行/);
   assert.doesNotMatch(html, /まだアイテムがありません/);
+  assert.doesNotMatch(html, /もっと見る/);
+});
+
+test('the first paint shows 50 filtered items, keeps the full count, and offers もっと見る', () => {
+  const items = Array.from({ length: 51 }, (_, index) => item({
+    id: index + 1,
+    name: `品${String(index + 1).padStart(4, '0')}`,
+  }));
+  const html = markup(createElement(HomeListView, {
+    ...quiet,
+    items,
+    filteredItems: items,
+    wishlist: items.map((entry) => ({ kind: 'item' as const, item: entry })),
+    totalAmount: 5100,
+    loading: false,
+    loadError: false,
+  }));
+  assert.match(html, /ほしいものリスト \(51件/);
+  assert.match(html, /品0001/);
+  assert.match(html, /品0050/);
+  assert.doesNotMatch(html, /品0051/);
+  assert.match(html, /もっと見る/);
+});
+
+test('もっと見る is gone when the filtered list already fits on the first page', () => {
+  const items = Array.from({ length: 50 }, (_, index) => item({
+    id: index + 1,
+    name: `品${String(index + 1).padStart(4, '0')}`,
+  }));
+  const html = markup(createElement(HomeListView, {
+    ...quiet,
+    items,
+    filteredItems: items,
+    wishlist: items.map((entry) => ({ kind: 'item' as const, item: entry })),
+    totalAmount: 5000,
+    loading: false,
+    loadError: false,
+  }));
+  assert.match(html, /品0001/);
+  assert.match(html, /品0050/);
+  assert.match(html, /ほしいものリスト \(50件/);
+  assert.doesNotMatch(html, /もっと見る/);
 });
