@@ -182,7 +182,9 @@ export function deleteMemberAccount(userId: number, db: Database.Database = getD
     db.prepare('DELETE FROM user_notification_settings WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM guest_sessions WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM guest_rate_limits WHERE bucket IN (?, ?)').run(`write:${userId}`, `scrape:${userId}`);
-    db.prepare('DELETE FROM capture_ai_usage WHERE user_key = ?').run(String(userId));
+    // 全体の日次費用と処理中の予約は退会でも消さない。IDは後続精算用に保持し、
+    // 会員との紐付けと実行時刻だけを除く。非数値キーは会員IDには使われない。
+    db.prepare("UPDATE capture_ai_usage SET user_key = '@withdrawn', at_ms = 0 WHERE user_key = ?").run(String(userId));
     db.prepare('DELETE FROM member_uploads WHERE user_id = ?').run(userId);
     const result = db.prepare(
       "DELETE FROM users WHERE id = ? AND account_type = 'member'",
