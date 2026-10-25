@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useSensors, useSensor, PointerSensor, KeyboardSensor, DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CheckSquare, RefreshCw, Upload, X } from 'lucide-react';
@@ -10,6 +11,14 @@ import HomeFilterPanel from '@/components/home/HomeFilterPanel';
 import { photoFaceItemId } from '@/lib/capture/photo-card-view';
 import type { WishlistRow } from '@/lib/capture/list-card';
 import type { RegisteredLocation } from '@/lib/capture/register';
+import {
+  alignHomeListPage,
+  createHomeListPage,
+  homeListHasMore,
+  homeListQueryPageKey,
+  reduceHomeListPage,
+  visibleWishlistRows,
+} from '@/lib/home-list-page';
 import type { HomeSortBy } from '@/lib/home-wishlist';
 import type { Category, ComparisonGroup, Item } from '@/types';
 
@@ -107,6 +116,27 @@ export default function HomeListView({
     }),
   );
   const cardDragEnabled = dragEnabled && !selectionMode;
+  const queryKey = homeListQueryPageKey({
+    selectedCategory,
+    selectedPriority,
+    selectedGroup,
+    searchQuery,
+    sortBy,
+  });
+  const [listWindow, setListWindow] = useState(() => ({ key: queryKey, page: createHomeListPage() }));
+  const alignedWindow = alignHomeListPage(listWindow, queryKey);
+  if (alignedWindow !== listWindow) setListWindow(alignedWindow);
+  const visibleRows = visibleWishlistRows(filteredItems, wishlist, alignedWindow.page);
+  const hasMore = homeListHasMore(alignedWindow.page, filteredItems.length);
+  const showMore = () => {
+    setListWindow((current) => {
+      const page = current.key === queryKey ? current.page : createHomeListPage();
+      return {
+        key: queryKey,
+        page: reduceHomeListPage(page, { type: 'show-more', total: filteredItems.length }),
+      };
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -236,47 +266,60 @@ export default function HomeListView({
           </button>
         </div>
       ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={onDragEnd}
-        >
-          <SortableContext
-            items={wishlist.flatMap((row) => row.kind === 'item' ? [row.item.id] : [photoFaceItemId(row)])}
-            strategy={verticalListSortingStrategy}
+        <>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={onDragEnd}
           >
-            <div className="space-y-3">
-              {wishlist.map((row) => row.kind === 'item' ? (
-                <SortableItemCard
-                  key={row.item.id}
-                  item={row.item}
-                  onUpdate={onItemsChanged}
-                  onDelete={onDelete}
-                  categories={categories}
-                  comparisonGroups={groups}
-                  isLowestPrice={selectedGroup !== null && lowestPriceInGroup !== null && row.item.current_price === lowestPriceInGroup}
-                  isDragEnabled={cardDragEnabled}
-                  selectionMode={selectionMode}
-                  isSelected={selectedItems.has(row.item.id)}
-                  onToggleSelect={onToggleSelect}
-                />
-              ) : (
-                <PhotoGroupCard
-                  key={`photo-${row.groupId}`}
-                  card={row}
-                  item={filteredItems.find((entry) => entry.id === photoFaceItemId(row))!}
-                  onUpdate={onPhotoChanged}
-                  categories={categories}
-                  comparisonGroups={groups}
-                  isDragEnabled={cardDragEnabled}
-                  selectionMode={selectionMode}
-                  isSelected={selectedItems.has(photoFaceItemId(row))}
-                  onToggleSelect={onToggleSelect}
-                />
-              ))}
+            <SortableContext
+              items={visibleRows.flatMap((row) => row.kind === 'item' ? [row.item.id] : [photoFaceItemId(row)])}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-3">
+                {visibleRows.map((row) => row.kind === 'item' ? (
+                  <SortableItemCard
+                    key={row.item.id}
+                    item={row.item}
+                    onUpdate={onItemsChanged}
+                    onDelete={onDelete}
+                    categories={categories}
+                    comparisonGroups={groups}
+                    isLowestPrice={selectedGroup !== null && lowestPriceInGroup !== null && row.item.current_price === lowestPriceInGroup}
+                    isDragEnabled={cardDragEnabled}
+                    selectionMode={selectionMode}
+                    isSelected={selectedItems.has(row.item.id)}
+                    onToggleSelect={onToggleSelect}
+                  />
+                ) : (
+                  <PhotoGroupCard
+                    key={`photo-${row.groupId}`}
+                    card={row}
+                    item={filteredItems.find((entry) => entry.id === photoFaceItemId(row))!}
+                    onUpdate={onPhotoChanged}
+                    categories={categories}
+                    comparisonGroups={groups}
+                    isDragEnabled={cardDragEnabled}
+                    selectionMode={selectionMode}
+                    isSelected={selectedItems.has(photoFaceItemId(row))}
+                    onToggleSelect={onToggleSelect}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+          {hasMore && (
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={showMore}
+                className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
+              >
+                もっと見る
+              </button>
             </div>
-          </SortableContext>
-        </DndContext>
+          )}
+        </>
       )}
     </div>
   );

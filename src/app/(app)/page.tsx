@@ -8,7 +8,7 @@ import { useSwipeable } from 'react-swipeable';
 import { Item, ComparisonGroup, Category } from '@/types';
 import { sumCountedPrices } from '@/lib/photo-spend';
 import { wishlistRows } from '@/lib/capture/list-card';
-import { nextSortOrders } from '@/lib/capture/list-order';
+import { homeListDragOrders, selectAllFilteredIds } from '@/lib/home-list-page';
 import BudgetView from '@/components/BudgetView';
 import PurchasedHistory from '@/components/PurchasedHistory';
 import StatsView from '@/components/StatsView';
@@ -162,7 +162,7 @@ export default function Home() {
 
     if (!over || active.id === over.id) return;
 
-    const newSortOrders = nextSortOrders(filteredItems, Number(active.id), Number(over.id));
+    const newSortOrders = homeListDragOrders(filteredItems, Number(active.id), Number(over.id));
     if (!newSortOrders) return;
 
     // 楽観的更新: 即座にローカル状態を更新
@@ -207,9 +207,9 @@ export default function Home() {
     });
   }, []);
 
-  // 全選択
+  // 全選択。画面に出ていない絞り込み結果も含む。
   const selectAll = () => {
-    setSelectedItems(new Set(filteredItems.map(item => item.id)));
+    setSelectedItems(new Set(selectAllFilteredIds(filteredItems)));
   };
 
   // 選択解除
