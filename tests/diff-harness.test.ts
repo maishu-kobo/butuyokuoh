@@ -133,7 +133,7 @@ test('a linked generation other than 1, or a token generation other than 0, stay
   const step = candidate.steps['auth.login.success'];
   assert.ok(step);
   step.json = { token };
-  step.cookies = [{ op: 'set', name: 'auth', value: token, options: null }];
+  step.cookies = [{ op: 'set', name: 'butuyokuoh_token', value: token, options: null }];
   const wrongToken = compareSnapshots(baseline, candidate, rules);
   assert.equal(wrongToken.ok, false);
   assert.ok(wrongToken.unexpected.some((entry) => entry.path.includes('sessionGeneration')));
@@ -175,7 +175,7 @@ function baselineSnapshot(): Snapshot {
       'auth.login.success': {
         status: 200,
         json: { token },
-        cookies: [{ op: 'set', name: 'auth', value: token, options: null }],
+        cookies: [{ op: 'set', name: 'butuyokuoh_token', value: token, options: null }],
       },
       'auth.credentials.success': {
         available: true,
@@ -231,7 +231,7 @@ function candidateSnapshot(): Snapshot {
   snapshot.steps['auth.login.success'] = {
     status: 200,
     json: { token },
-    cookies: [{ op: 'set', name: 'auth', value: token, options: null }],
+    cookies: [{ op: 'set', name: 'butuyokuoh_token', value: token, options: null }],
   };
   snapshot.steps['auth.google.unverified'] = {
     allowed: false,

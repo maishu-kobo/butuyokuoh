@@ -1,6 +1,6 @@
 # CI
 
-`feature/photo-capture`、`feature/capture-existing-bugfixes`、`develop` 向けの pull request で走る。path フィルタは付けない。必須のジョブが skip になると、その SHA のチェックが pending のままになる。権限は `contents: read`。アクションはコミット SHA でピンする。
+`feature/photo-capture`、`feature/capture-existing-bugfixes`、`develop`、`main` 向けの pull request で走る。path フィルタは付けない。必須のジョブが skip になると、その SHA のチェックが pending のままになる。権限は `contents: read`。アクションはコミット SHA でピンする。
 
 ## 速いレーン
 
@@ -37,7 +37,7 @@ CodeQL は `.github/workflows/codeql.yml` の advanced setup を使う。GitHub 
 
 確認するときは、対象コミットのログで `Analysis upload status is complete`、CodeQLチェックで正常な取り込み、Code scanningの解析一覧で対象のrefとcommit SHAおよび空のerrorを確認する。単に `Successfully uploaded results` と出ただけでは完了としない。
 
-このワークフローの対象は冒頭の3ブランチ向けPR。mainの既存解析は、[PR #206](https://github.com/maishu-kobo/butuyokuoh/pull/206) の `codeql-main.yml` へ引き継ぐ。main向けPR・push・週次・手動の解析を持ち、JS/TSと既定クエリを維持する。Default setupの解除とmain用ワークフローの適用を両方完了させること。PRを作っただけではmainの継続解析は復旧しない。ブランチ保護は変更しない。
+このワークフローの対象は冒頭の4ブランチ向けPR。mainの既存解析は、[PR #206](https://github.com/maishu-kobo/butuyokuoh/pull/206) の `codeql-main.yml` へ引き継ぐ。main向けPR・push・週次・手動の解析を持ち、JS/TSと既定クエリを維持する。Default setupの解除とmain用ワークフローの適用を両方完了させること。PRを作っただけではmainの継続解析は復旧しない。ブランチ保護は変更しない。
 
 ## Playwright のブラウザ
 
@@ -83,3 +83,10 @@ tests/e2e/guest.spec.ts
 隔離ジョブのチェック名は `quarantined tests`（`.github/workflows/quarantine.yml`）。毎回実行する。失敗するとそのチェックは赤になる。この名前は `test, types, build`、`npm audit`、`playwright`、`analyze`、`dependency review`、`gitleaks` ではない。0 件のときは `npm ci` しない。e2e が 1 件でもあるときだけ、必須レーンと同じブラウザキャッシュを使い、ヒットでも実体を検査してから実行する。
 
 ローカルの `npm test` と `npm run test:e2e` はリストを見ない。手元では全部走る。
+
+
+## develop との動作比較
+
+`npm run test:diff` は `origin/develop` と候補コミットに同じ入力を渡し、一時 SQLite の状態と応答を比較する。外部 API と本番 DB は使わない。想定した差分だけを `scripts/diff-harness/approved-changes.json` で承認する。
+
+`required` の認証保護は、差分がなくても必須。develop へ取り込み済みの場合は、両方のスナップショットでパスワード無効化・セッション世代・未確認 Google の拒否を直接確認し、「維持」と表示する。両方が同じ危険な動作へ戻った場合も失敗する。未対応の必須ルールは失敗させるため、必須ルールを足す際は比較処理の不変条件と回帰テストも追加する。

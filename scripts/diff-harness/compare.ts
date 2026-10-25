@@ -189,7 +189,7 @@ function requiredBehaviorPresent(snapshot: Snapshot, rule: ChangeRule, rules: Ch
       const step = snapshot.steps['auth.login.success'];
       const token = isPlain(step?.json) ? step.json.token : null;
       const cookies = Array.isArray(step?.cookies)
-        ? step.cookies.filter((cookie) => isPlain(cookie) && cookie.op === 'set' && cookie.name === 'auth') : [];
+        ? step.cookies.filter((cookie) => isPlain(cookie) && cookie.op === 'set' && cookie.name === 'butuyokuoh_token') : [];
       return step?.status === 200 && isPlain(token) && cookies.length === 1
         && isPlain(cookies[0].value) && Boolean(rule.responseFieldsAdded?.length)
         && rule.responseFieldsAdded!.every((field) => same(token[field.field], field.equals)
