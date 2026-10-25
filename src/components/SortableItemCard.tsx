@@ -3,7 +3,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Check } from 'lucide-react';
-import { type ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import ItemCard from './ItemCard';
 import { Item, Category, ComparisonGroup } from '@/types';
 
@@ -28,7 +28,7 @@ interface SortableItemCardProps {
   shopTags?: readonly { label: string; source: string }[];
 }
 
-export default function SortableItemCard({
+function SortableItemCard({
   item,
   onUpdate,
   onDelete,
@@ -129,3 +129,6 @@ export default function SortableItemCard({
     </div>
   );
 }
+
+// 検索の1文字で、中身が変わっていないカードまで描き直さない。
+export default memo(SortableItemCard);
