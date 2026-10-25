@@ -20,7 +20,7 @@
     },
     {
       "rule": "js/incomplete-hostname-regexp",
-      "path": "tests/e2e/guest.spec.ts",
+      "path": "tests/e2e/live-shops.spec.ts",
       "line": "  expect(item.image_url).toMatch(/^https:\\/\\/.*media-amazon.com\\//);",
       "reason": "本番のホスト検証ではない。任意の実店舗テストが画像 URL を確認する"
     },
