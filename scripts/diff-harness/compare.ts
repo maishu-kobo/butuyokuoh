@@ -60,6 +60,7 @@ export type Approval = {
   id: string;
   reason: string;
   applied: number;
+  retained?: boolean;
   detail: string;
 };
 
@@ -94,16 +95,28 @@ export function loadApprovals(file: string): ChangeRule[] {
 export function compareSnapshots(baseline: Snapshot, candidate: Snapshot, rules: ChangeRule[]): Report {
   const left = normalize(structuredClone(baseline));
   const right = normalize(structuredClone(candidate));
+  // 承認適用はスナップショットを加工するため、不変条件は加工前に検査する。
+  const retained = new Set(rules.filter((rule) => rule.required
+    && requiredBehaviorPresent(left, rule, rules)
+    && requiredBehaviorPresent(right, rule, rules)).map((rule) => rule.id));
+  const validCandidate = new Set(rules.filter((rule) => rule.required
+    && requiredBehaviorPresent(right, rule, rules)).map((rule) => rule.id));
   const approvals = applyApprovals(left, right, rules);
   const unexpected: Difference[] = [];
   collect(left, right, '', unexpected);
   for (const approval of approvals) {
     const rule = rules.find((item) => item.id === approval.id);
-    if (!rule?.required || approval.applied > 0) continue;
+    if (!rule?.required) continue;
+    if (validCandidate.has(rule.id) && approval.applied > 0) continue;
+    if (retained.has(rule.id)) {
+      approval.retained = true;
+      approval.detail = 'baseline と candidate の両方で必須の安全な動作を確認した';
+      continue;
+    }
     unexpected.push({
       path: `approvals.${approval.id}.required`,
       kind: 'removed',
-      baseline: 'この差分は候補に残っている必要がある',
+      baseline: '必須の安全な動作が候補で確認できる必要がある',
     });
   }
   const noise = new Set(['side', 'sha']);
@@ -125,7 +138,7 @@ export function formatReport(report: Report): string {
     `承認 ${report.approvals.length} 件`,
   ];
   for (const approval of report.approvals) {
-    lines.push(`- [${approval.applied > 0 ? '適用' : '該当なし'}] ${approval.id} (${approval.applied})`);
+    lines.push(`- [${approval.applied > 0 ? '適用' : approval.retained ? '維持' : '該当なし'}] ${approval.id} (${approval.applied})`);
     lines.push(`  理由: ${approval.reason}`);
     lines.push(`  内容: ${approval.detail}`);
   }
@@ -139,6 +152,55 @@ export function formatReport(report: Report): string {
     if (entry.kind !== 'removed') lines.push(`  candidate: ${show(entry.candidate)}`);
   });
   return lines.join('\n');
+}
+
+// required は差分の有無ではなく、driver の固定シナリオの結果を保証する。
+// 未対応の必須ルールは通さない。追加時はその不変条件と回帰テストも追加する。
+function requiredBehaviorPresent(snapshot: Snapshot, rule: ChangeRule, rules: ChangeRule[]): boolean {
+  const users = snapshot.db.rows.users || [];
+  const rejected = (step: string) => snapshot.steps[step]?.allowed === false
+    && snapshot.steps[step]?.assignedUserId === null;
+  switch (rule.id) {
+    case 'verified-link-retires-password':
+      return Boolean(rule.passwordRetired?.length) && rule.passwordRetired!.every((entry) => {
+        const user = onlyUser(users, entry.email);
+        return user?.password_hash === null && user.session_generation === entry.generation;
+      });
+    case 'unverified-existing-rejected':
+      return Boolean(rule.rejectedUnverifiedExisting?.length) && rule.rejectedUnverifiedExisting!.every((entry) => {
+        const user = onlyUser(users, entry.email);
+        return rejected(entry.step) && user?.google_id === null
+          && user.password_hash === PASSWORD_HASH && user.session_generation === 0;
+      });
+    case 'session-generation-column': {
+      const retired = rules.flatMap((entry) => entry.passwordRetired || []);
+      return Boolean(rule.columnsAdded?.length) && rule.columnsAdded!.every((entry) =>
+        entry.table === 'users' && entry.column === 'session_generation'
+        && snapshot.db.columns.users?.includes(entry.column) && users.length > 0
+        && users.every((user) => user[entry.column] ===
+          (retired.find((linked) => linked.email === user.email)?.generation ?? entry.value)));
+    }
+    case 'credentials-session-generation':
+      return Boolean(rule.credentialsGeneration?.length) && rule.credentialsGeneration!.every((entry) => {
+        const step = snapshot.steps[entry.step];
+        return step?.available === true && step.user?.sessionGeneration === entry.generation;
+      });
+    case 'session-generation-token': {
+      const step = snapshot.steps['auth.login.success'];
+      const token = isPlain(step?.json) ? step.json.token : null;
+      const cookies = Array.isArray(step?.cookies)
+        ? step.cookies.filter((cookie) => isPlain(cookie) && cookie.op === 'set' && cookie.name === 'auth') : [];
+      return step?.status === 200 && isPlain(token) && cookies.length === 1
+        && isPlain(cookies[0].value) && Boolean(rule.responseFieldsAdded?.length)
+        && rule.responseFieldsAdded!.every((field) => same(token[field.field], field.equals)
+          && same(cookies[0].value[field.field], field.equals));
+    }
+    case 'unverified-google-rejected':
+      return Boolean(rule.rejectedUnverifiedGoogle?.length) && rule.rejectedUnverifiedGoogle!.every((entry) =>
+        rejected(entry.step) && !users.some((user) => user.email === entry.email || user.google_id === entry.googleId));
+    default:
+      return false;
+  }
 }
 
 function normalize(snapshot: Snapshot): Snapshot {
