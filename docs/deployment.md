@@ -167,7 +167,7 @@ journalctl -u butuyokuoh-price-check -f
 
 ### ブランチの昇格
 
-機能は `feature/* → develop → main` の順でPRを作り、CIとレビューを確認して統合する。本番へ配置するコードは `main` の検証済みコミットにそろえる。`main` 向けPRにも単体・型・Lint・ビルド・Playwright・依存・秘密情報・CodeQL検査を実行する。main側に先行した更新がある場合は、準備ブランチで競合を解消し、develop向けPRで検証してから昇格する。
+機能は `feature/* → develop → main` の順でPRを作り、CIとレビューを確認して統合する。本番へ配置するコードは `main` の検証済みコミットにそろえる。`main` 向けPRにも単体・型・Lint・ビルド・Playwright・依存・秘密情報・CodeQL検査を実行する。main側に先行した更新があり、squashマージ後にも競合が残る場合は、developから昇格用ブランチを作る。そのブランチへmainを取り込み、両方の更新を保持して競合を解消したうえでmain向けPRを作り、CIとレビューを確認する。
 
 写真APIのキーはソースに含めず、本番VMの `CAPTURE_SECRETS_FILE` に設定する。コードの配置と写真機能の有効化は別々に確認する。
 
