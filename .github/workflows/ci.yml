@@ -34,10 +34,11 @@ concurrency:
 jobs:
   check:
     name: test, types, build
-    # App 導入後、指定した同一リポジトリのブランチだけで試す。未設定と fork PR は従来どおり。
+    # 無課金の条件を確認し、App 導入後に指定ブランチだけで試す。未確認と fork PR は従来どおり。
     # 有効化と復旧の手順は docs/ci.md。障害時の自動切り戻しではない。
     runs-on: >-
-      ${{ vars.BLACKSMITH_CI_BRANCH != '' &&
+      ${{ vars.BLACKSMITH_NO_CHARGE_CONFIRMED == 'true' &&
+          vars.BLACKSMITH_CI_BRANCH != '' &&
           ((github.event_name == 'pull_request' &&
             github.event.pull_request.head.repo.full_name == github.repository &&
             github.head_ref == vars.BLACKSMITH_CI_BRANCH) ||

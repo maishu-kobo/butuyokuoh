@@ -13,11 +13,12 @@
 
 単体テストは `node scripts/test-lanes.mjs blocking-unit`。隔離リストが空なら `npm test` と同じファイルを実行する。`tsc` と `next build` は並べない。両方とも `.next/types` を触る。
 
-### Blacksmith の限定導入
+### Blacksmith の限定導入（無課金の条件を確認するまで無効）
 
 `test, types, build` の実行先だけをブランチ単位で切り替えられる。
-Repository Actions variable の `BLACKSMITH_CI_BRANCH` にブランチ名を指定すると、同一リポジトリのそのブランチからの PR と、既存のトリガーに合うそのブランチへの push で `blacksmith-4vcpu-ubuntu-2404` を使う。
-変数が未設定または空、対象外のブランチ、fork からの PR は `ubuntu-latest` を使う。
+Repository Actions variables の `BLACKSMITH_NO_CHARGE_CONFIRMED` が文字列 `true` で、`BLACKSMITH_CI_BRANCH` にブランチ名を指定した場合だけ、同一リポジトリのそのブランチからの PR と、既存のトリガーに合うそのブランチへの push で `blacksmith-4vcpu-ubuntu-2404` を使う。
+無課金の確認が済んでいない場合、ブランチ変数が未設定または空、対象外のブランチ、fork からの PR は `ubuntu-latest` を使う。
+`BLACKSMITH_NO_CHARGE_CONFIRMED` は人間が確認結果を記録するスイッチであり、Blacksmith の予算上限を設定したり、利用量を監視して自動停止したりする機能ではない。
 この変数は新しいトリガーを追加しない。
 
 テスト内容、ジョブ名、権限、時間制限、Action の SHA、Node.js の版を維持する。
@@ -26,7 +27,8 @@ Blacksmith の障害を検出して自動的に GitHub へ切り戻す仕組み�
 
 #### 適用範囲と費用
 
-2026-10-25 に確認した時点では、CI のある統合ブランチは `feature/photo-capture`。
+2026-10-25 に `feature/photo-capture` は [PR #175](https://github.com/maishu-kobo/butuyokuoh/pull/175) で `develop` に取り込まれた。
+この設定も `develop` に置き、同ブランチ向けの試行用 PR で評価する。
 リポジトリに Dockerfile、Compose、Docker イメージのビルドや push の定義はなく、デプロイ手順は exe.dev VM 上の Node.js と systemd である。
 この導入では Docker layer cache、Sticky Disks、固定 IP を追加しない。
 本番 VM の Node.js やデプロイ手順にも変更を加えない。
@@ -48,7 +50,22 @@ Actions cache は [追加料金なし](https://docs.blacksmith.sh/blacksmith-cac
 既存の SHA を維持し、廃止された `useblacksmith/setup-node` や `useblacksmith/cache` へ置き換えない。
 Docker layer cache と Sticky Disks は $0.50/GB/月、固定 IP は $100/IP/月の別料金。
 [Spending Alerts](https://docs.blacksmith.sh/introduction/settings) はメール通知であり、自動停止する予算上限として扱わない。
-請求画面で無料枠の残量、支払条件、組織内の他の利用を確認してから有効化する。
+
+#### 無料枠を超えた場合
+
+2026-10-25 の公開資料からは、無料枠到達時に必ず自動停止し、超過分を請求しないことを確認できていない。
+[利用規約](https://docs.blacksmith.sh/about/terms-of-service) は利用料金の支払いを定めており、カード未登録を請求されない保証として扱わない。
+Blacksmith の担当者は [2026-06 の説明](https://news.ycombinator.com/item?id=48476323) で、カード未登録でも無料枠の超過後に実行を継続する方針を述べ、その後 [無料枠を使い切った際の停止スイッチを追加中](https://news.ycombinator.com/item?id=48482211) と報告した。
+これは過去の実装状況であり、現在の提供状況、既定値、実行中ジョブの超過分の扱いを保証するものではない。
+
+課金を許容しない運用では、次の条件を確認できるまで App とランナーを有効化せず、両変数を未設定のままにする。
+
+- 管理画面または提供元の回答で、無料枠終了時に実行を停止する設定と、超過分を請求しない条件を確認する。
+- 組織全体にその設定を適用し、実行中・並列ジョブと計測の遅延でも課金が発生しないことを確認する。
+- 自動チャージ、従量課金への自動移行、有料の追加サービスを無効にする。
+
+Spending Alerts、20分のジョブ制限、CI 側で残量を定期取得する方法だけでは、請求額をゼロに固定できない。
+無課金の条件が確認できない場合は、無料の GitHub 標準ランナーを継続する。
 
 #### 認証とセキュリティ
 
@@ -77,16 +94,16 @@ App 導入時には runner group の公開リポジトリ利用、対象リポ�
 
 #### 有効化と比較
 
-1. ワークフロー変更について人間の承認と `REVIEW.md` のレビューを得る。
-2. 組織に App を導入し、対象リポジトリ、公開リポジトリの runner group、請求条件を確認する。
-3. Repository の Settings → Secrets and variables → Actions → Variables で `BLACKSMITH_CI_BRANCH` に試行する PR の head ブランチ名を指定する。例は `codex/blacksmith-ci-pilot`。Secret ではない。組織変数から同名の値を継承していないことも確認する。
+1. ワークフロー変更について人間の承認と `REVIEW.md` のレビューを得る。上記の無課金の条件を確認し、設定・適用範囲・確認日を Issue #232 に記録する。
+2. 組織に App を導入し、対象リポジトリ、公開リポジトリの runner group、無課金の設定を確認する。
+3. Repository の Settings → Secrets and variables → Actions → Variables で `BLACKSMITH_CI_BRANCH` に試行する PR の head ブランチ名を指定し、`BLACKSMITH_NO_CHARGE_CONFIRMED` を `true` にする。どちらも Secret ではない。組織変数から同名の値を継承していないことも確認する。
 4. 該当 PR の CI を再実行し、job の labels と runner 名が Blacksmith になったことを確認する。GitHub のままなら、PR 更新などで新しい run を起動して再確認する。
 5. 同一 SHA について GitHub と Blacksmith の成功結果、待ち時間と実行時間、キャッシュの初回と再利用時を比較する。`npm ci`、Puppeteer、Chrome の `sysctl`、単体テスト、型検査、本番ビルド、lint が通ることを確認する。公式の速度倍率は実測値として扱わない。
-6. 効果と費用を確認後、統合ブランチへ広げる場合は `BLACKSMITH_CI_BRANCH` を `feature/photo-capture` に変更する。その場合、既存トリガーの push と、このブランチから develop への PR が対象になる。他の head ブランチの PR は GitHub のまま。
+6. 対象を広げる場合も無課金の条件を維持する。`BLACKSMITH_CI_BRANCH` は PR の head を選ぶため、`develop` を指定しても develop 向けのすべての PR は切り替わらない。既存の push トリガーは `feature/photo-capture` だけで、develop への push は新設していない。
 
 #### 復旧
 
-対象の待機中または実行中の run を取り消し、Repository variable `BLACKSMITH_CI_BRANCH` を空にする。
+対象の待機中または実行中の run を取り消し、Repository variable `BLACKSMITH_NO_CHARGE_CONFIRMED` を `false` にし、`BLACKSMITH_CI_BRANCH` を空にする。
 変数を削除する場合は、同名の組織変数が再び適用されないことを確認する。
 新しい CI run で `ubuntu-latest` と成功結果を確認する。
 値を変えても、既に実行中のジョブは移動しない。
