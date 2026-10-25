@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
+import { filesForLane } from '../scripts/e2e-lanes.mjs';
 import {
   listUnitTests,
   parseQuarantine,
@@ -130,16 +132,8 @@ test('live playwright discovery is the required e2e set', async () => {
   const result = spawnSync('npx', ['playwright', 'test', '--list', '--reporter=json'], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   const files = mod.e2eFilesFromPlaywrightReport(JSON.parse(result.stdout), process.cwd());
-  assert.deepEqual(files, [
-    'tests/e2e/capture-amazon-tab.spec.ts',
-    'tests/e2e/capture-flow.spec.ts',
-    'tests/e2e/capture-hydration.spec.ts',
-    'tests/e2e/capture-manual.spec.ts',
-    'tests/e2e/capture-photo-group.spec.ts',
-    'tests/e2e/capture-photo-pick.spec.ts',
-    'tests/e2e/capture.spec.ts',
-    'tests/e2e/guest.spec.ts',
-  ]);
+  const names = readdirSync('tests/e2e').filter((name: string) => name.endsWith('.spec.ts'));
+  assert.deepEqual(files, filesForLane(names, 'default').map((name: string) => `tests/e2e/${name}`));
 });
 
 test('a quarantine failure is a failed check', () => {

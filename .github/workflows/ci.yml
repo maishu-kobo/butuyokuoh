@@ -10,7 +10,8 @@
 # フレークの隔離は quarantine.yml。失敗すると赤になる。チェック名は必須の名前ではない。
 # 保護したテストは .github/test-quarantine.txt に書けない。このレーンが拒否する。
 # 実店舗の e2e（E2E_LIVE_SCRAPE / E2E_LIVE_AMAZON / E2E_LIVE_RAKUTEN）は環境変数を付けない。
-# develop への push と、マージ条件への組み込みはここではしない。
+# develop への push でも実行する。
+# マージ条件（必須ステータスチェック）はリポジトリ設定なので、このファイルではしない。
 # path フィルタは付けない。必須ジョブが skip になると、その SHA のチェックが pending のままマージを止める。
 name: CI
 
@@ -24,6 +25,7 @@ on:
   push:
     branches:
       - feature/photo-capture
+      - develop
 
 permissions:
   contents: read
@@ -73,6 +75,10 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      # 既存の警告は残す。新しい警告だけを落とす。警告の一括修正はしない。
+      - name: Lint warning baseline
+        run: node scripts/lint-warnings.mjs check
 
   audit:
     name: npm audit

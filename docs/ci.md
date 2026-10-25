@@ -1,6 +1,8 @@
 # CI
 
-`feature/photo-capture`、`feature/capture-existing-bugfixes`、`develop`、`main` 向けの pull request で走る。path フィルタは付けない。必須のジョブが skip になると、その SHA のチェックが pending のままになる。権限は `contents: read`。アクションはコミット SHA でピンする。
+`feature/photo-capture`、`feature/capture-existing-bugfixes`、`develop`、`main` 向けの pull request で走る。`ci.yml`、`playwright.yml`、`quarantine.yml` は `develop` への push でも走る。path フィルタは付けない。必須のジョブが skip になると、その SHA のチェックが pending のままになる。権限は `contents: read` だけ。失敗した Playwright の結果は `actions/upload-artifact` v4 が上げる。`actions: write` は付けない。アクションはコミット SHA でピンする。
+
+マージを赤で止める必須ステータスチェックは、GitHub のブランチ保護と ruleset で設定する。このリポジトリのファイルだけでは有効にならない。
 
 ## 速いレーン
 
@@ -8,7 +10,7 @@
 
 | チェック名 | 中身 |
 | --- | --- |
-| `test, types, build` | 単体テスト、`tsc --noEmit`、本番ビルド、lint |
+| `test, types, build` | 単体テスト、`tsc --noEmit`、本番ビルド、lint。警告は `.github/lint-warning-baseline.json` を超えると落とす |
 | `npm audit` | `npm run audit:high`。high は落とす |
 
 単体テストは `node scripts/test-lanes.mjs blocking-unit`。隔離リストが空なら `npm test` と同じファイルを実行する。`tsc` と `next build` は並べない。両方とも `.next/types` を触る。
@@ -19,7 +21,9 @@
 
 | チェック名 | ファイル | 中身 |
 | --- | --- | --- |
-| `playwright` | `.github/workflows/playwright.yml` | e2e。ジョブの時間制限は 30 分 |
+| `playwright` | `.github/workflows/playwright.yml` | 開発サーバの e2e。固定の商品ページ。ジョブの時間制限は 30 分 |
+| `production smoke` | 同じファイル | `npm run build` のあと `next start`。キャプチャのテスト用フックは渡さない |
+| `guest disabled` | 同じファイル | `GUEST_MODE_ENABLED=false` の `disabled.spec.ts` |
 | `analyze` | `.github/workflows/codeql.yml` | CodeQL。解析・取り込み失敗で停止。high は `.github/codeql/high_gate.py` で判定 |
 
 ほかの必須ゲートもそのまま止める。
@@ -44,6 +48,8 @@ CodeQL は `.github/workflows/codeql.yml` の advanced setup を使う。GitHub 
 キャッシュは `~/.cache/ms-playwright`。キーは OS、インストール済み Playwright の版、`package-lock.json`。別の版を復元しないので `restore-keys` は付けない。
 
 ミスのときだけ `npx playwright install chromium`（時間制限 5 分）。`--with-deps` は使わない。`ubuntu-24.04` には chromium の共有ライブラリが入っていて、apt が 30 分で打ち切られるまで止まっていた。
+
+失敗したときは `test-results`（trace、スクリーンショット、JSON）を artifact に残す。成功した実行は残さない。
 
 ヒットでもミスでも、そのあと `node scripts/verify-playwright-browsers.mjs` を実行する。`playwright install chromium --dry-run` はブラウザが無くても成功するので、それだけでは足りない。dry-run が出した Install location ごとに、次を見て欠けるとジョブを落とす。
 
