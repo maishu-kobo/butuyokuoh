@@ -248,7 +248,7 @@ async function openCards(): Promise<Page> {
   return page;
 }
 
-async function useTheme(page: Page, theme: ThemeName): Promise<void> {
+async function applyTheme(page: Page, theme: ThemeName): Promise<void> {
   await page.evaluate((next) => {
     document.documentElement.classList.toggle('dark', next === 'dark');
   }, theme);
@@ -293,7 +293,7 @@ async function sampleAt(page: Page, selector: string, state: StateName): Promise
 async function readable(page: Page, root: string, label: string, states: readonly StateName[]): Promise<string[]> {
   const failures: string[] = [];
   for (const theme of THEMES) {
-    await useTheme(page, theme);
+    await applyTheme(page, theme);
     const selector = await target(page, root, label);
     for (const state of states) {
       const sample = await sampleAt(page, selector, state);
@@ -337,7 +337,7 @@ test('a refresh without a linkable url is dimmer than an available refresh, and 
   const page = await openCards();
   try {
     for (const theme of THEMES) {
-      await useTheme(page, theme);
+      await applyTheme(page, theme);
       const available = await sampleAt(page, await target(page, '#linked', '価格を更新'), 'normal');
       const unavailable = await sampleAt(page, await target(page, '#manual', '価格を更新'), 'normal');
       assert.equal(available.disabled, false);
