@@ -1,8 +1,13 @@
 import { extractAmazonProduct } from './amazon-product';
 import { parseProductHtml } from './product-html';
 import { readHtmlResponse } from './html-encoding';
-import puppeteer from 'puppeteer';
+import { launchPageBrowser } from './page-browser';
 import { validateAndSanitizeUrl, sanitizeGenericUrl } from './url-validator';
+import { canonicalRakutenAffiliateUrl, rakutenProductIdentity } from './capture/rakuten-link';
+import { BlockedTargetError, fetchPublicMember, HttpError, resolvedPublicAddress, type MemberFetchDeps } from './member-fetch';
+
+export { HttpError };
+export type FetchWithRetryOptions = MemberFetchDeps;
 
 export interface ScrapedItem {
   name: string;
@@ -54,96 +59,13 @@ const RAKUTEN_DOMAINS = new Set([
   'product.rakuten.co.jp',
 ]);
 
-export interface FetchWithRetryOptions {
-  maxRetries?: number; // 最大リトライ回数（デフォルト: 3）
-  baseDelayMs?: number; // リトライ間隔の基準ミリ秒（デフォルト: 1000）
-  timeoutMs?: number; // 各fetch attemptのタイムアウト（デフォルト: 15000）
-}
-
-// リトライ間隔の倍率（baseDelayMs=1000の場合: 1秒 → 5秒 → 15秒）
-const RETRY_DELAY_MULTIPLIERS = [1, 5, 15];
-
-// 各fetch attemptのデフォルトタイムアウト（TCP/HTTPのハングで定期ジョブが無限に止まるのを防ぐ）
-const DEFAULT_TIMEOUT_MS = 15000;
-
-/**
- * HTTPステータスコードを持つエラー
- * fetchWithRetryがHTTPエラー応答でthrowする際に使用し、
- * 呼び出し元がステータスに応じてフォールバック要否を判断できるようにする
- */
-export class HttpError extends Error {
-  status: number;
-
-  constructor(status: number, url: string) {
-    super(`HTTP error ${status}: ${url}`);
-    this.name = 'HttpError';
-    this.status = status;
-  }
-}
-
-/**
- * HTTPステータス確認と指数バックオフリトライ付きのfetch
- * - 各attemptにtimeoutMsのタイムアウトを設定し、TCP/HTTPのハングを中断してリトライする
- * - 429 / 5xx 応答とネットワークエラー（タイムアウト含む）時に最大maxRetries回リトライする
- * - 404等の4xx（429除く）はリトライせず即座にHttpErrorを投げる
- * - リトライが尽きた場合は最後のエラーを投げる
- */
+// 名前解決とリダイレクトのたびに内部アドレスを拒否する。リトライ条件は以前と同じ。
 export async function fetchWithRetry(
   url: string,
   init?: RequestInit,
-  options?: FetchWithRetryOptions
+  options?: FetchWithRetryOptions,
 ): Promise<Response> {
-  const maxRetries = options?.maxRetries ?? 3;
-  const baseDelayMs = options?.baseDelayMs ?? 1000;
-  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    let response: Response | null = null;
-    try {
-      // per-attemptタイムアウトのシグナルを構築
-      // 呼び出し元がinit.signalを渡している場合は合成し、既存のキャンセル機能を壊さない
-      const timeoutSignal = AbortSignal.timeout(timeoutMs);
-      const signal = init?.signal
-        ? AbortSignal.any([init.signal, timeoutSignal])
-        : timeoutSignal;
-      response = await fetch(url, { ...init, signal });
-    } catch (error) {
-      // ネットワークエラー・タイムアウトはリトライ対象
-      lastError = error instanceof Error ? error : new Error(String(error));
-    }
-
-    if (response) {
-      if (response.ok) {
-        return response;
-      }
-
-      // 429（レート制限）と5xx（サーバーエラー）のみリトライ対象
-      const isRetryable = response.status === 429 || response.status >= 500;
-      if (!isRetryable) {
-        // 404等の4xx（429除く）はリトライせず即座に失敗
-        // 未消費のbodyを破棄してソケットリークを防ぐ
-        await response.body?.cancel();
-        throw new HttpError(response.status, url);
-      }
-      // リトライ前に未消費のbodyを破棄してソケットリークを防ぐ
-      await response.body?.cancel();
-      lastError = new HttpError(response.status, url);
-    }
-
-    // リトライ回数が残っていれば指数バックオフで待機
-    if (attempt < maxRetries) {
-      const multiplier =
-        RETRY_DELAY_MULTIPLIERS[Math.min(attempt, RETRY_DELAY_MULTIPLIERS.length - 1)];
-      const delayMs = baseDelayMs * multiplier;
-      console.log(
-        `Fetch failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delayMs}ms: ${url}`
-      );
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-    }
-  }
-
-  throw lastError ?? new Error(`Fetch failed after ${maxRetries + 1} attempts: ${url}`);
+  return (await fetchPublicMember(url, init, options)).response;
 }
 
 /**
@@ -217,7 +139,7 @@ function buildSafeShortUrl(url: string): string | null {
  * @param url 短縮リンクURL（事前にisAmazonShortUrlで検証済み）
  * @returns 展開後のURL（失敗した場合はnull）
  */
-async function expandShortUrl(url: string): Promise<string | null> {
+async function expandShortUrl(url: string, deps?: MemberFetchDeps): Promise<string | null> {
   // SSRF対策: ホワイトリストのドメインから安全なURLを構築
   const safeUrl = buildSafeShortUrl(url);
   if (!safeUrl) {
@@ -226,17 +148,15 @@ async function expandShortUrl(url: string): Promise<string | null> {
   }
   
   try {
-    // redirect: 'follow'で自動的にリダイレクトを追跡し、最終URLを取得
-    // safeUrlはホワイトリストから構築された安全なURL
-    const response = await fetchWithRetry(safeUrl, {
+    // 転送のたびに公開アドレスか確認し、確認したアドレスへだけ接続する
+    const response = await fetchPublicMember(safeUrl, {
       method: 'GET',
-      redirect: 'follow',
       headers: {
         'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'ja-JP,ja;q=0.9',
       },
-    });
+    }, deps);
     
     // 最終的なリダイレクト先URLを取得
     const finalUrl = response.url;
@@ -255,11 +175,22 @@ async function expandShortUrl(url: string): Promise<string | null> {
   }
 }
 
-export async function scrapeUrl(url: string): Promise<ScrapedItem> {
+function rakutenAffiliateProductUrl(value: string): string | null | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return undefined;
+  }
+  if (parsed.hostname !== 'hb.afl.rakuten.co.jp') return undefined;
+  return canonicalRakutenAffiliateUrl(value) ? rakutenProductIdentity(value) : null;
+}
+
+export async function scrapeUrl(url: string, deps?: MemberFetchDeps): Promise<ScrapedItem> {
   // Amazonの短縮リンクの場合、展開を試みる
   if (isAmazonShortUrl(url)) {
     console.log('Detected Amazon short URL, attempting to expand:', url);
-    const expandedUrl = await expandShortUrl(url);
+    const expandedUrl = await expandShortUrl(url, deps);
     
     if (expandedUrl) {
       console.log('Expanded to:', expandedUrl);
@@ -267,7 +198,7 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
       // 展開後のURLが商品ページかチェック
       if (isAmazonProductUrl(expandedUrl)) {
         // 展開成功 - 通常のAmazonスクレイピングを実行
-        const result = await scrapeAmazon(expandedUrl);
+        const result = await scrapeAmazon(expandedUrl, deps);
         // 短縮リンクからの登録の場合、価格が取得できない可能性があることを伝える
         if (!result.price) {
           result.note = '短縮リンクからの登録のため価格を取得できませんでした。商品ページのフルURLで登録し直すと価格を取得できる場合があります。';
@@ -297,14 +228,28 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
     }
   }
 
+  const affiliateProduct = rakutenAffiliateProductUrl(url);
+  if (affiliateProduct !== undefined) {
+    if (!affiliateProduct) {
+      return {
+        name: '無効なURL',
+        price: null,
+        imageUrl: null,
+        source: 'rakuten',
+        sourceName: '楽天市場',
+      };
+    }
+    url = affiliateProduct;
+  }
+
   const validation = validateAndSanitizeUrl(url);
 
   if (validation.isValid) {
     // 許可されたドメインの場合
     if (validation.source === 'amazon') {
-      return scrapeAmazon(validation.sanitizedUrl);
+      return scrapeAmazon(validation.sanitizedUrl, deps);
     } else if (validation.source === 'rakuten') {
-      return scrapeRakuten(validation.sanitizedUrl);
+      return scrapeRakuten(validation.sanitizedUrl, deps);
     }
   }
 
@@ -320,7 +265,7 @@ export async function scrapeUrl(url: string): Promise<ScrapedItem> {
     };
   }
 
-  return scrapeGeneric(genericValidation.sanitizedUrl);
+  return scrapeGeneric(genericValidation.sanitizedUrl, deps);
 }
 
 /**
@@ -341,11 +286,8 @@ function isAmazonBlockedHtml(html: string): boolean {
  * 素のfetchがAmazonのボット対策に弾かれた場合に使用する
  * @returns 取得したScrapedItem（ボット検知された場合はnull）
  */
-async function scrapeAmazonWithPuppeteer(sanitizedUrl: string): Promise<ScrapedItem | null> {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: MemberFetchDeps): Promise<ScrapedItem | null> {
+  const browser = await launchPageBrowser();
 
   try {
     const page = await browser.newPage();
@@ -354,6 +296,24 @@ async function scrapeAmazonWithPuppeteer(sanitizedUrl: string): Promise<ScrapedI
     );
     await page.setExtraHTTPHeaders({
       'Accept-Language': 'ja-JP,ja;q=0.9',
+    });
+    await page.setRequestInterception(true);
+    page.on('request', async (request) => {
+      try {
+        if (request.isNavigationRequest()) {
+          const target = new URL(request.url());
+          if (target.protocol === 'http:' || target.protocol === 'https:') {
+            await resolvedPublicAddress(target, deps?.resolve);
+          }
+        }
+        await request.continue();
+      } catch (error) {
+        if (error instanceof BlockedTargetError) {
+          await request.abort('blockedbyclient');
+          return;
+        }
+        try { await request.continue(); } catch { /* the request was already settled */ }
+      }
     });
 
     await page.goto(sanitizedUrl, { waitUntil: 'networkidle2', timeout: 30000 });
@@ -381,7 +341,7 @@ async function scrapeAmazonWithPuppeteer(sanitizedUrl: string): Promise<ScrapedI
   }
 }
 
-async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
+async function scrapeAmazon(sanitizedUrl: string, deps?: MemberFetchDeps): Promise<ScrapedItem> {
   // SSRF対策: fetch直前にホスト名を再検証
   const hostname = getHostname(sanitizedUrl);
   if (!hostname || !AMAZON_DOMAINS.has(hostname)) {
@@ -405,7 +365,7 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
         'Accept-Language': 'ja-JP,ja;q=0.9',
         'Cookie': 'i18n-prefs=JPY; lc-acbjp=ja_JP',
       },
-    });
+    }, deps);
     const html = await readHtmlResponse(response);
 
     // Amazonのボット対策ページやエラーページを検出
@@ -439,6 +399,9 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
       fallbackResult = result;
     }
   } catch (error) {
+    if (error instanceof BlockedTargetError) {
+      return { name: '無効なURL', price: null, imageUrl: null, source: 'amazon', sourceName: 'Amazon' };
+    }
     // fetchWithRetryのリトライが尽きた場合もPuppeteerフォールバックを試す
     console.error('Amazon scraping error:', error);
 
@@ -470,7 +433,7 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
   // Puppeteerフォールバック: ボット検知・fetch失敗・価格抽出失敗のいずれかで発動
   console.log('Falling back to Puppeteer for Amazon scraping:', sanitizedUrl);
   try {
-    const puppeteerResult = await scrapeAmazonWithPuppeteer(sanitizedUrl);
+    const puppeteerResult = await scrapeAmazonWithPuppeteer(sanitizedUrl, deps);
     if (puppeteerResult && puppeteerResult.price !== null) {
       return puppeteerResult;
     }
@@ -482,7 +445,7 @@ async function scrapeAmazon(sanitizedUrl: string): Promise<ScrapedItem> {
   return fallbackResult;
 }
 
-async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
+async function scrapeRakuten(sanitizedUrl: string, deps?: MemberFetchDeps): Promise<ScrapedItem> {
   // SSRF対策: fetch直前にホスト名を再検証
   const hostname = getHostname(sanitizedUrl);
   if (!hostname || !RAKUTEN_DOMAINS.has(hostname)) {
@@ -501,7 +464,7 @@ async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
       },
-    });
+    }, deps);
     const html = await readHtmlResponse(response);
 
     // Share the structured price / OG image / title fallback used by guests.
@@ -529,6 +492,9 @@ async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
       sourceName: '楽天市場',
     };
   } catch (error) {
+    if (error instanceof BlockedTargetError) {
+      return { name: '無効なURL', price: null, imageUrl: null, source: 'rakuten', sourceName: '楽天市場' };
+    }
     console.error('Rakuten scraping error:', error);
     return {
       name: '取得失敗',
@@ -540,7 +506,7 @@ async function scrapeRakuten(sanitizedUrl: string): Promise<ScrapedItem> {
   }
 }
 
-async function scrapeGeneric(sanitizedUrl: string): Promise<ScrapedItem> {
+async function scrapeGeneric(sanitizedUrl: string, deps?: MemberFetchDeps): Promise<ScrapedItem> {
   // SSRF対策: fetch直前にホスト名を再検証（ローカルIPをブロック）
   const actualHostname = getHostname(sanitizedUrl);
   if (!actualHostname ||
@@ -567,11 +533,14 @@ async function scrapeGeneric(sanitizedUrl: string): Promise<ScrapedItem> {
         // Shopifyサイトで日本円価格を取得するためのクッキー
         'Cookie': 'localization=JP; cart_currency=JPY',
       },
-    });
+    }, deps);
     const html = await readHtmlResponse(response);
 
     return parseProductHtml(html, sanitizedUrl);
   } catch (error) {
+    if (error instanceof BlockedTargetError) {
+      return { name: '無効なURL', price: null, imageUrl: null, source: 'other', sourceName: null };
+    }
     console.error('Generic scraping error:', error);
     return {
       name: '取得失敗',

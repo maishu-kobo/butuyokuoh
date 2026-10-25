@@ -1,7 +1,10 @@
-import { priceCheckItems } from '../src/lib/price-check-items';
+import { priceCheckItems, priceDropNotification, recordPriceIfChanged } from '../src/lib/price-check-items';
 import { getDb } from '../src/lib/db';
 import { scrapeUrl, deriveScrapeOutcome } from '../src/lib/scraper';
 import { sendSlackNotification, sendDiscordNotification, NotificationPayload } from '../src/lib/notifier';
+import { readCaptureSecrets } from '../src/lib/capture-secrets';
+import { createRakutenLimiter, type RakutenHttpRequest, type RakutenHttpResponse } from '../src/lib/capture/rakuten';
+import { refreshDueRakutenPrices } from '../src/lib/capture/rakuten-price';
 
 // getDb() 経由で取得することで initDb/migrateDb が実行され、
 // 新カラム（last_scraped_at/scrape_status/scrape_error）への UPDATE が
@@ -75,23 +78,8 @@ async function checkPrices() {
       `).run(newPrice, outcome.status, outcome.error, item.id);
       statusRecorded = true;
 
-      // 価格履歴に追加（直近履歴と同値ならスキップ）。
-      // 同一価格で毎回 INSERT すると /api/items の previous_price（2番目に新しい履歴）が
-      // 常に現在価格と同値になり、値下がり表示が機能しなくなるため。
-      // 履歴が無い初回、または直近履歴と価格が異なる場合のみ追加する。
-      const lastHistory = db.prepare(`
-        SELECT price FROM price_history
-        WHERE item_id = ?
-        ORDER BY recorded_at DESC, id DESC
-        LIMIT 1
-      `).get(item.id) as { price: number } | undefined;
-
-      if (!lastHistory || lastHistory.price !== newPrice) {
-        db.prepare(`
-          INSERT INTO price_history (item_id, price)
-          VALUES (?, ?)
-        `).run(item.id, newPrice);
-      }
+      // 価格履歴に追加（直近履歴と同値ならスキップ）。判定は recordPriceIfChanged。
+      recordPriceIfChanged(db, item.id, newPrice);
 
       console.log(`  - Price: ¥${oldPrice?.toLocaleString() || '---'} -> ¥${newPrice.toLocaleString()}`);
 
@@ -101,40 +89,24 @@ async function checkPrices() {
           SELECT * FROM user_notification_settings WHERE user_id = ?
         `).get(item.user_id) as UserSettings | undefined;
 
-        if (userSettings) {
+        const kind = priceDropNotification(oldPrice, newPrice, item.target_price, userSettings);
+        if (kind && userSettings) {
           const payload: NotificationPayload = {
-            item: item as any,
+            item,
             oldPrice,
             newPrice,
             targetPrice: item.target_price || undefined,
-            type: item.target_price && newPrice <= item.target_price ? 'target_reached' : 'price_drop',
+            type: kind,
           };
 
-          // 目標価格到達通知
-          if (item.target_price && newPrice <= item.target_price && userSettings.notify_on_target_price) {
-            console.log(`  - Target price reached! Sending notifications...`);
-            
-            if (userSettings.slack_webhook) {
-              await sendSlackNotification(userSettings.slack_webhook, payload);
-              console.log(`    - Slack: sent`);
-            }
-            if (userSettings.discord_webhook) {
-              await sendDiscordNotification(userSettings.discord_webhook, payload);
-              console.log(`    - Discord: sent`);
-            }
+          console.log(`  - ${kind === 'target_reached' ? 'Target price reached' : 'Price dropped'}! Sending notifications...`);
+          if (userSettings.slack_webhook) {
+            await sendSlackNotification(userSettings.slack_webhook, payload);
+            console.log(`    - Slack: sent`);
           }
-          // 価格下落通知
-          else if (userSettings.notify_on_price_drop) {
-            console.log(`  - Price dropped! Sending notifications...`);
-            
-            if (userSettings.slack_webhook) {
-              await sendSlackNotification(userSettings.slack_webhook, payload);
-              console.log(`    - Slack: sent`);
-            }
-            if (userSettings.discord_webhook) {
-              await sendDiscordNotification(userSettings.discord_webhook, payload);
-              console.log(`    - Discord: sent`);
-            }
+          if (userSettings.discord_webhook) {
+            await sendDiscordNotification(userSettings.discord_webhook, payload);
+            console.log(`    - Discord: sent`);
           }
         }
       }
@@ -165,7 +137,26 @@ async function checkPrices() {
     }
   }
 
+  const secrets = readCaptureSecrets();
+  await refreshDueRakutenPrices(db, {
+    credentials: secrets.rakutenAppId && secrets.rakutenAccessKey
+      ? { applicationId: secrets.rakutenAppId, accessKey: secrets.rakutenAccessKey }
+      : null,
+    http: rakutenHttp,
+    limiter: createRakutenLimiter(),
+    pause: () => new Promise((resolve) => setTimeout(resolve, 1000)),
+  });
+
   console.log(`[${new Date().toISOString()}] Price check completed`);
+}
+
+async function rakutenHttp(request: RakutenHttpRequest): Promise<RakutenHttpResponse> {
+  const response = await fetch(request.url, {
+    method: 'GET',
+    headers: request.headers,
+    signal: request.signal,
+  });
+  return { status: response.status, body: await response.text() };
 }
 
 checkPrices().then(() => {

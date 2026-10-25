@@ -5,8 +5,11 @@ import { assertOwnedRelations } from '@/lib/api-access';
 import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { itemUrlTaken } from '@/lib/capture/register';
 import { scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
+import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
+import { annotateSpend, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
 
 async function handleGET() {
   const user = await getCurrentUser();
@@ -22,6 +25,8 @@ async function handleGET() {
     SELECT
       i.*,
       cg.name as comparison_group_name,
+      cg.origin as comparison_group_origin,
+      cg.origin as group_origin,
       cg.priority as group_priority,
       cat.name as category_name,
       cat.color as category_color,
@@ -41,9 +46,10 @@ async function handleGET() {
       COALESCE(cg.priority, i.priority) ASC,
       i.sort_order ASC,
       i.created_at DESC
-  `).all(user.id);
+  `).all(user.id) as { id: number }[];
 
-  return NextResponse.json(items);
+  const [spendItems, spendGroups] = userSpendInput(db, user.id);
+  return NextResponse.json(annotateSpend(items, photoSpendDecisions(spendItems, spendGroups)));
 }
 
 async function handlePOST(request: NextRequest) {
@@ -69,6 +75,10 @@ async function handlePOST(request: NextRequest) {
   } = body;
 
   const db = getDb();
+
+  if (typeof url === 'string' && url && !isStorableItemUrl(url)) {
+    return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
+  }
 
   assertOwnedRelations(db, user.id, body);
 
@@ -117,9 +127,8 @@ async function handlePOST(request: NextRequest) {
     return NextResponse.json({ error: 'URL is required' }, { status: 400 });
   }
 
-  // 重複チェック（同じユーザー内で）
-  const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(user.id, url);
-  if (existing) {
+  // 重複チェック（同じユーザー内で）。楽天は包装を解いた商品ページが同じなら登録済み。
+  if (itemUrlTaken(db, user.id, url)) {
     return NextResponse.json({ error: 'このURLは既に登録されています' }, { status: 400 });
   }
 

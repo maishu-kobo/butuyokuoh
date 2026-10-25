@@ -1,9 +1,14 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { photoGroupSaveWrites } from '@/lib/capture/photo-group-actions';
+import { sourceBadgeClass } from '@/lib/capture/photo-card-view';
+import { linkableHttpUrl } from '@/lib/http-url';
 
-import { useState, useRef } from 'react';
+import { useId, useState, useRef, type ReactNode } from 'react';
 import { Item, Category, ComparisonGroup } from '@/types';
+import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
+import { rakutenPriceCaption } from '@/lib/capture/rakuten-price-note';
 import { Trash2, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Calendar, Flag, Upload, ImageIcon, Clock, AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -27,9 +32,19 @@ interface ItemCardProps {
   categories?: Category[];
   comparisonGroups?: ComparisonGroup[];
   isLowestPrice?: boolean;
+  heading?: string;
+  extra?: ReactNode;
+  info?: ReactNode;
+  displayImageUrl?: string | null;
+  groupMemberIds?: readonly number[];
+  offerPriceRefresh?: boolean;
+  shopCount?: number;
+  shopTags?: readonly { label: string; source: string }[];
 }
 
-export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false }: ItemCardProps) {
+const SEVERAL_SHOPS_PURCHASE = 'ショップが複数あります。ショップ一覧から購入したショップを選んで購入済みにしてください';
+
+export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, info, displayImageUrl, groupMemberIds, offerPriceRefresh = true, shopCount, shopTags }: ItemCardProps) {
   const { isGuest } = useAuth();
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -56,6 +71,9 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   const [showImageEdit, setShowImageEdit] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const purchaseLocked = shopCount != null && shopCount >= 2;
+  const purchaseHintId = useId();
+  const [purchaseHint, setPurchaseHint] = useState(false);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -103,29 +121,39 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     setSaving(true);
     setSaveError('');
     try {
-      const res = await apiFetch(`/api/items/${item.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editData.name || item.name,
-          url: editData.url || item.url,
-          priority: editData.priority,
-          planned_purchase_date: editData.planned_purchase_date || null,
-          notes: editData.notes || null,
-          target_price: editData.target_price ? Number(editData.target_price) : null,
-          target_currency: editData.target_currency,
-          category_id: editData.category_id ? Number(editData.category_id) : null,
-          comparison_group_id: editData.comparison_group_id ? Number(editData.comparison_group_id) : null,
-          quantity: Number(editData.quantity) || 1,
-          ...(!isGuest ? { image_url: editData.image_url || null } : {}),
-          current_price: editData.current_price ? Number(editData.current_price) : null,
-        }),
-      });
-      if (!res.ok) {
-        // 失敗時はフォームを閉じず、APIのエラーメッセージがあればそれを優先表示する
-        const data = await res.json().catch(() => null);
-        setSaveError(data?.error || '保存に失敗しました。もう一度お試しください');
-        return;
+      const payload = {
+        name: editData.name || item.name,
+        url: editData.url || item.url,
+        priority: editData.priority,
+        planned_purchase_date: editData.planned_purchase_date || null,
+        notes: editData.notes || null,
+        target_price: editData.target_price ? Number(editData.target_price) : null,
+        target_currency: editData.target_currency,
+        category_id: editData.category_id ? Number(editData.category_id) : null,
+        comparison_group_id: editData.comparison_group_id ? Number(editData.comparison_group_id) : null,
+        quantity: Number(editData.quantity) || 1,
+        ...(!isGuest ? { image_url: editData.image_url || null } : {}),
+        current_price: editData.current_price ? Number(editData.current_price) : null,
+      };
+      const writes = groupMemberIds && groupMemberIds.length >= 2
+        ? photoGroupSaveWrites(groupMemberIds, item.id, payload)
+        : [{ id: item.id, body: payload }];
+      const faceFirst = [
+        ...writes.filter((write) => write.id === item.id),
+        ...writes.filter((write) => write.id !== item.id),
+      ];
+      for (const write of faceFirst) {
+        const res = await apiFetch(`/api/items/${write.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(write.body),
+        });
+        if (!res.ok) {
+          // 失敗時はフォームを閉じず、APIのエラーメッセージがあればそれを優先表示する
+          const data = await res.json().catch(() => null);
+          setSaveError(data?.error || '保存に失敗しました。もう一度お試しください');
+          return;
+        }
       }
       // 成功時のみフォームを閉じる
       setEditing(false);
@@ -164,10 +192,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     await apiFetch(`/api/items/${item.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        is_purchased: true,
-        purchased_at: new Date().toISOString().split('T')[0],
-      }),
+      body: JSON.stringify({ is_purchased: true }),
     });
     onUpdate();
   };
@@ -180,29 +205,33 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
 
   // 価格更新ステータス（last_scraped_at が無い手動アイテム等は表示しない）
   const lastScrapedDate = item.last_scraped_at ? parseUtcDateTime(item.last_scraped_at) : null;
+  const rakutenPrice = rakutenPriceCaption(item);
   const scrapeFailed = item.scrape_status === 'failed';
 
   const sourceColors: Record<string, string> = {
     amazon: 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200',
     rakuten: 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200',
+    yahoo: 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200',
     other: 'bg-gray-100 text-gray-800 dark:bg-slate-600 dark:text-gray-100',
   };
 
   const sourceNames: Record<string, string> = {
     amazon: 'Amazon',
     rakuten: '楽天',
+    yahoo: 'Yahoo!ショッピング',
     other: 'その他',
   };
+  const shownImage = displayImageUrl !== undefined ? displayImageUrl : item.image_url;
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
       <div className="flex">
         {/* 画像 */}
         <div className="w-32 h-32 flex-shrink-0 bg-gray-100 dark:bg-slate-700">
-          {item.image_url ? (
+          {shownImage ? (
             <img
-              src={item.image_url}
-              alt={item.name}
+              src={shownImage}
+              alt={heading || item.name}
               loading="lazy"
               decoding="async"
               className="w-full h-full object-contain"
@@ -219,9 +248,15 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1 flex-wrap">
-                <span className={`text-xs px-2 py-0.5 rounded ${sourceColors[item.source] || sourceColors.other}`}>
-                  {item.source_name || sourceNames[item.source] || 'その他'}
-                </span>
+                {shopTags && shopTags.length > 0 ? shopTags.map((tag) => (
+                  <span key={tag.label} className={`text-xs px-2 py-0.5 rounded ${sourceBadgeClass(tag.source)}`}>
+                    {tag.label}
+                  </span>
+                )) : (
+                  <span className={`text-xs px-2 py-0.5 rounded ${sourceColors[item.source] || sourceColors.other}`}>
+                    {item.source_name || sourceNames[item.source] || 'その他'}
+                  </span>
+                )}
                 {item.category_name && item.category_color && (
                   <span
                     className="text-xs px-2 py-0.5 rounded"
@@ -248,10 +283,10 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                 </div>
               </div>
               {Boolean(item.is_demo_sample) && <span className="text-xs text-amber-700 dark:text-amber-300">デモ商品・参考価格</span>}
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">{item.name}</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">{heading || item.name}</h3>
             </div>
-            {/^https?:\/\//i.test(item.url) && <a
-              href={item.url}
+              {linkableHttpUrl(item.url) && <a
+              href={linkableHttpUrl(item.url)!}
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-400 dark:text-gray-500 hover:text-blue-500 ml-2"
@@ -264,6 +299,19 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             <span className={`text-xl font-bold ${isLowestPrice ? 'text-green-600' : 'text-gray-900 dark:text-gray-100'}`}>
               ¥{item.current_price?.toLocaleString() || '---'}
             </span>
+            {rakutenPrice && (
+              <span className="basis-full text-xs text-gray-400 dark:text-gray-500">
+                更新 {rakutenPrice.fetchedAt}。{rakutenPrice.note}{' '}
+                <a href={RAKUTEN_CREDIT.url} target="_blank" rel="noopener noreferrer" className="underline">
+                  {RAKUTEN_CREDIT.label}
+                </a>
+              </span>
+            )}
+            {item.totalLabel && (
+              <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300 rounded-full">
+                {item.totalLabel}
+              </span>
+            )}
             {isLowestPrice && (
               <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">
                 🏷️ 最安
@@ -320,21 +368,24 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           {item.notes && (
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-1">{item.notes}</p>
           )}
+          {info}
         </div>
       </div>
 
       {/* アクション */}
       <div className="px-4 py-2 bg-gray-50 dark:bg-slate-700 flex items-center justify-between border-t">
         <div className="flex gap-2">
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing || !/^https?:\/\//i.test(item.url)}
-            aria-label="価格を更新"
-            title={/^https?:\/\//i.test(item.url) ? "商品名・価格・画像をURLから更新" : "商品URLを登録すると更新できます"}
-            className="text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500 disabled:opacity-50"
-          >
-            <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-          </button>
+          {offerPriceRefresh && (
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing || !linkableHttpUrl(item.url)}
+              aria-label="価格を更新"
+              title={linkableHttpUrl(item.url) ? "商品名・価格・画像をURLから更新" : "商品URLを登録すると更新できます"}
+              className="text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500 disabled:opacity-50"
+            >
+              <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+          )}
           <button
             onClick={() => setShowChart(!showChart)}
             className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500"
@@ -349,14 +400,40 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           </button>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={handlePurchased}
-            className="text-sm px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
-          >
-            購入済みにする
-          </button>
+          {purchaseLocked ? (
+            <span className="relative group">
+              <button
+                type="button"
+                aria-disabled="true"
+                aria-describedby={purchaseHintId}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setPurchaseHint((current) => !current);
+                }}
+                className="cursor-not-allowed rounded bg-gray-200 px-3 py-1 text-sm text-gray-500"
+              >
+                購入済みにする
+              </button>
+              <span
+                id={purchaseHintId}
+                role="tooltip"
+                className={`${purchaseHint ? 'block' : 'hidden'} group-hover:block group-focus-within:block pointer-events-none absolute bottom-full right-0 z-20 mb-2 w-64 rounded-md bg-gray-900 px-2 py-1 text-left text-xs font-normal leading-snug text-white shadow-lg`}
+              >
+                {SEVERAL_SHOPS_PURCHASE}
+              </span>
+            </span>
+          ) : (
+            <button
+              onClick={handlePurchased}
+              className="text-sm px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
+            >
+              購入済みにする
+            </button>
+          )}
           <button
             onClick={() => onDelete(item.id)}
+            aria-label="削除"
             className="text-red-400 hover:text-red-600"
           >
             <Trash2 size={18} />
@@ -586,6 +663,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           </div>
         </div>
       )}
+      {extra}
     </div>
   );
 }

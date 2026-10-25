@@ -1,4 +1,4 @@
-import { withAccess } from '@/lib/api-access';
+import { validateMemberInput, withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
@@ -36,6 +36,7 @@ async function handlePUT(request: NextRequest) {
   }
 
   const body = await request.json();
+  validateMemberInput(body, 'PUT');
   const { slack_webhook, discord_webhook, notify_on_price_drop, notify_on_target_price } = body;
 
   // Webhook URLの検証（SSRF対策）

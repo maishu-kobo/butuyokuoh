@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { linkableHttpUrl } from '@/lib/http-url';
 
 import { useEffect, useState } from 'react';
 import { Item } from '@/types';
@@ -21,19 +22,30 @@ interface PurchasedData {
   };
 }
 
+async function requestPurchased(): Promise<PurchasedData> {
+  const res = await apiFetch('/api/purchased');
+  return res.json();
+}
+
 export default function PurchasedHistory() {
   const [data, setData] = useState<PurchasedData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
-    const res = await apiFetch('/api/purchased');
-    const json = await res.json();
-    setData(json);
+    setData(await requestPurchased());
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchData();
+    let cancelled = false;
+    requestPurchased().then((json) => {
+      if (cancelled) return;
+      setData(json);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleUndo = async (id: number) => {
@@ -148,8 +160,9 @@ export default function PurchasedHistory() {
 
                 {/* アクション */}
                 <div className="flex items-center gap-2">
+                  {linkableHttpUrl(item.url) && (
                   <a
-                    href={item.url}
+                    href={linkableHttpUrl(item.url)!}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-gray-400 hover:text-blue-500"
@@ -157,6 +170,7 @@ export default function PurchasedHistory() {
                   >
                     <ExternalLink size={18} />
                   </a>
+                  )}
                   <button
                     onClick={() => handleUndo(item.id)}
                     className="text-gray-400 hover:text-orange-500"

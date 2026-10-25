@@ -1,9 +1,10 @@
-import { assertOwnedRelations, guestErrorResponse } from '@/lib/api-access';
+import { assertOwnedRelations, guestErrorResponse, validateMemberInput } from '@/lib/api-access';
 import { GuestError } from '@/lib/guest';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getUserIdFromToken } from '@/lib/auth';
 import { validateAndSanitizeUrl } from '@/lib/url-validator';
+import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
 
 interface AddItemRequest {
   token: string;
@@ -51,11 +52,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!isStorableItemUrl(item.url)) {
+      return NextResponse.json(
+        { error: ITEM_URL_ERROR },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    const fields: Record<string, unknown> = { name: item.name, url: item.url };
+    if (item.price !== undefined) fields.price = item.price;
+    if (item.imageUrl !== undefined) fields.image_url = item.imageUrl;
+    if (item.priority !== undefined) fields.priority = item.priority;
+    validateMemberInput(fields, 'POST');
+
     const db = getDb();
     assertOwnedRelations(db, userId, { category_id: item.categoryId ? Number(item.categoryId) : null });
 
     // 重複チェック
-    const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ? AND deleted_at IS NULL').get(userId, item.url) as { id: number } | undefined;
+    // ゴミ箱の行も UNIQUE(user_id, url) に残る。ここを外すと INSERT が 500 になる。
+    const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, item.url) as { id: number } | undefined;
     if (existing) {
       return NextResponse.json(
         { error: 'この商品はすでに登録されています' },

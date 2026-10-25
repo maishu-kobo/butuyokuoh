@@ -3,25 +3,48 @@
 import { apiFetch } from '@/lib/api-fetch';
 
 import { useAuth } from './AuthProvider';
-import { useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { Plus, X, Upload, Link, Edit3 } from 'lucide-react';
 import { ComparisonGroup, Category } from '@/types';
+import { showPhotoPicker } from '@/lib/capture/photo-pick';
+import { CapturePhotoControls, useCapturePhotoPick } from './CapturePhotoPicker';
+import type { RegisteredLocation } from '@/lib/capture/register';
+import { CaptureSearchPanel } from './CaptureSearchPanel';
 
 interface AddItemFormProps {
   onAdd: () => void;
+  onViewRegistered?: (location: RegisteredLocation) => void;
   comparisonGroups: ComparisonGroup[];
   categories: Category[];
 }
 
-export default function AddItemForm({ onAdd, comparisonGroups, categories }: AddItemFormProps) {
+export default function AddItemForm({ onAdd, comparisonGroups, categories, onViewRegistered }: AddItemFormProps) {
   const { isGuest } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+  const [captureEnabled, setCaptureEnabled] = useState(false);
+  const captureOpen = isOpen && !isGuest;
+  if (!captureOpen && captureEnabled) setCaptureEnabled(false);
+  const [photoRevision, setPhotoRevision] = useState(0);
+  const [pickedFile, setPickedFile] = useState<File | null>(null);
+  const [isPhotoMode, setIsPhotoMode] = useState(false);
   const [isManualMode, setIsManualMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [canAddManually, setCanAddManually] = useState(false);
+  const [photoSuccess, setPhotoSuccess] = useState('');
   const [successNote, setSuccessNote] = useState(''); // 追加成功時の注意メッセージ
   const [uploading, setUploading] = useState(false);
+  const photoPick = useCapturePhotoPick(
+    showPhotoPicker({ enabled: captureOpen && captureEnabled }, isGuest),
+    (file) => {
+      setPhotoRevision(value => value + 1);
+      setPickedFile(file);
+      setIsPhotoMode(true);
+      setIsManualMode(false);
+      setError('');
+    },
+  );
+  const startPhotoSearch = useCallback(() => setIsPhotoMode(true), []);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState({
@@ -38,6 +61,22 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
     image_url: '',
   });
 
+  useEffect(() => {
+    if (!captureOpen) return;
+    let cancelled = false;
+    apiFetch('/api/capture', undefined, { notifyError: false })
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {
+        if (!cancelled) setCaptureEnabled(data?.enabled === true);
+      })
+      .catch(() => {
+        if (!cancelled) setCaptureEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [captureOpen]);
+
   const resetForm = () => {
     setFormData({
       url: '',
@@ -52,6 +91,16 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
       image_url: '',
     });
     setIsManualMode(false);
+    setError('');
+    setCanAddManually(false);
+    setPickedFile(null);
+    setIsPhotoMode(false);
+  };
+
+  const enterManual = (name: string) => {
+    setIsPhotoMode(false);
+    setIsManualMode(true);
+    setFormData((current) => ({ ...current, name, image_url: '' }));
     setError('');
     setCanAddManually(false);
   };
@@ -151,6 +200,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
   if (!isOpen) {
     return (
       <>
+        {photoSuccess && <p role="status" className="mb-4 text-sm text-green-800 dark:text-green-200">{photoSuccess}</p>}
         {/* 追加成功時の注意メッセージ */}
         {successNote && (
           <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg">
@@ -170,8 +220,8 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
           </div>
         )}
         <button
-          onClick={() => setIsOpen(true)}
-          className="w-full py-4 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-lg text-gray- dark:text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors flex items-center justify-center gap-2"
+          onClick={() => { setPhotoSuccess(''); setIsOpen(true); }}
+          className="w-full py-4 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-lg text-gray-600 dark:text-gray-300 hover:border-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors flex items-center justify-center gap-2"
         >
           <Plus size={20} />
           新しいアイテムを追加
@@ -181,20 +231,50 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
   }
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md p-4">
+    <div
+      data-testid="capture-photo-card"
+      onDragOver={photoPick.onDragOver}
+      onDrop={photoPick.onDrop}
+      className="bg-white dark:bg-slate-800 rounded-lg shadow-md p-4"
+    >
       <div className="flex justify-between items-center mb-4">
         <h3 className="font-semibold text-lg">新しいアイテムを追加</h3>
-        <button onClick={() => { setIsOpen(false); resetForm(); }} className="text-gray- dark:text-gray-400 hover:text-gray- dark:text-gray-600">
+        <button onClick={() => { setIsOpen(false); resetForm(); }} aria-label="追加フォームを閉じる" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100">
           <X size={20} />
         </button>
       </div>
+      <CapturePhotoControls pick={photoPick} file={pickedFile} />
+      {photoPick.enabled && pickedFile && (
+        <CaptureSearchPanel
+          key={photoRevision}
+          file={pickedFile}
+          onSearching={startPhotoSearch}
+          onManual={enterManual}
+          onRegistered={(summary) => { resetForm(); setIsOpen(false); setPhotoSuccess(summary); onAdd(); }}
+          onViewRegistered={(location) => { resetForm(); setIsOpen(false); onViewRegistered?.(location); }}
+        />
+      )}
 
+      {isPhotoMode ? (
+        <div className="flex justify-between gap-3 mt-4">
+          <button
+            type="button"
+            onClick={() => { photoPick.clear(); setPickedFile(null); setIsPhotoMode(false); setIsManualMode(false); setError(''); setCanAddManually(false); }}
+            className="min-h-[24px] text-sm text-blue-600 dark:text-blue-300 underline"
+          >URL・手入力に切り替える</button>
+          <button
+            type="button"
+            onClick={() => { setIsOpen(false); resetForm(); }}
+            className="min-h-[24px] text-sm text-gray-600 dark:text-gray-300"
+          >キャンセル</button>
+        </div>
+      ) : <>
       {/* モード切り替え */}
       <div className="mb-4 flex items-center justify-end">
         <button
           type="button"
           onClick={() => { setIsManualMode(!isManualMode); setError(''); setCanAddManually(false); }}
-          className="text-xs text-gray- dark:text-gray-400 hover:text-gray- dark:text-gray-600 flex items-center gap-1"
+          className="text-xs text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 flex items-center gap-1"
         >
           {isManualMode ? (
             <><Link size={12} /> URLから追加</>
@@ -209,7 +289,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
           /* 手動追加モード */
           <>
             <div>
-              <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
                 商品名 <span className="text-red-500">*</span>
               </label>
               <input
@@ -224,7 +304,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">価格</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">価格</label>
                 <input
                   type="number"
                   value={formData.price}
@@ -234,7 +314,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">URL（任意）</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">URL（任意）</label>
                 <input
                   type="url"
                   value={formData.url}
@@ -247,7 +327,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
 
             {/* 画像アップロード */}
             {!isGuest && <div>
-              <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">画像</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">画像</label>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -267,7 +347,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
-                  className="px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1 text-sm text-gray- dark:text-gray-600"
+                  className="px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300"
                 >
                   <Upload size={14} />
                   {uploading ? '...' : 'アップロード'}
@@ -284,7 +364,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
         ) : (
           /* URLモード（通常） */
           <div>
-            <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
               商品URL <span className="text-red-500">*</span>
             </label>
             <input
@@ -300,7 +380,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">優先度</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">優先度</label>
             <select
               value={formData.priority}
               onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) })}
@@ -315,7 +395,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">購入予定日</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">購入予定日</label>
             <input
               type="date"
               value={formData.planned_purchase_date}
@@ -325,7 +405,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">個数</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">個数</label>
             <input
               type="number"
               min="1"
@@ -339,7 +419,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
         <div className="grid grid-cols-2 gap-4">
           {categories.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">カテゴリ</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">カテゴリ</label>
               <select
                 value={formData.category_id}
                 onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
@@ -355,7 +435,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
 
           {comparisonGroups.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">比較グループ</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">比較グループ</label>
               <select
                 value={formData.comparison_group_id}
                 onChange={(e) => setFormData({ ...formData, comparison_group_id: e.target.value })}
@@ -371,7 +451,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray- dark:text-gray-700 mb-1">メモ</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">メモ</label>
           <textarea
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
@@ -396,7 +476,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
           <button
             type="button"
             onClick={() => { setIsOpen(false); resetForm(); }}
-            className="px-4 py-2 text-gray- dark:text-gray-600 hover:text-gray- dark:text-gray-800"
+            className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
           >
             キャンセル
           </button>
@@ -409,6 +489,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories }: Add
           </button>
         </div>
       </form>
+      </>}
     </div>
   );
 }

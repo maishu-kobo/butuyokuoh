@@ -1,0 +1,96 @@
+# Issue #85。feature/photo-capture、feature/capture-existing-bugfixes、develop 向け PR の速いレーン。
+# 単体テスト、型、lint、本番ビルド、npm audit。キャッシュが温かいときの目標は 2 分未満。
+# 同じコマンドをこのファイルに重ねない。重い検査は別ファイルで、毎回走り、失敗すると止める。
+#
+# - playwright.yml（e2e。ジョブ名 playwright）
+# - codeql.yml（analyze の high）
+# - dependency-review.yml
+# - gitleaks.yml
+#
+# フレークの隔離は quarantine.yml。失敗すると赤になる。チェック名は必須の名前ではない。
+# 保護したテストは .github/test-quarantine.txt に書けない。このレーンが拒否する。
+# 実店舗の e2e（E2E_LIVE_SCRAPE / E2E_LIVE_AMAZON / E2E_LIVE_RAKUTEN）は環境変数を付けない。
+# develop への push と、マージ条件への組み込みはここではしない。
+# path フィルタは付けない。必須ジョブが skip になると、その SHA のチェックが pending のままマージを止める。
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - feature/photo-capture
+      - feature/capture-existing-bugfixes
+      - develop
+  push:
+    branches:
+      - feature/photo-capture
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: test, types, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          # puppeteer 25 は Node.js 22.12 以上。本番を 22 に上げてから develop に入れる（docs/deployment.md）。
+          node-version: "22"
+          # lockfile をキーにする。pull_request の cache はマージ ref に閉じ、トークンは contents: read のまま。
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Chrome のサンドボックスは非特権 user namespace を使う。
+      # Ubuntu 23.10 以降は AppArmor がそれを止め、No usable sandbox! で起動前に死ぬ。
+      # --no-sandbox は付けない。この捨てるランナーで、その制限だけを外す。
+      - name: Allow the Chrome sandbox user namespace
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      # 隔離リストに入った単体テストだけ外す。0 件のときは npm test と同じファイル。
+      # ローカルの npm test はリストを見ない。
+      - name: Unit tests
+        run: node scripts/test-lanes.mjs blocking-unit
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Production build
+        run: npm run build
+
+      - name: Lint
+        run: npm run lint
+
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          # puppeteer 25 は Node.js 22.12 以上。本番を 22 に上げてから develop に入れる（docs/deployment.md）。
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # braces は開発依存だけの期限つき例外。.github/audit-exceptions.json を見る。
+      - name: npm audit
+        run: npm run audit:high

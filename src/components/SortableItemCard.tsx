@@ -3,6 +3,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Check } from 'lucide-react';
+import { type ReactNode } from 'react';
 import ItemCard from './ItemCard';
 import { Item, Category, ComparisonGroup } from '@/types';
 
@@ -17,6 +18,14 @@ interface SortableItemCardProps {
   selectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (id: number) => void;
+  heading?: string;
+  extra?: ReactNode;
+  info?: ReactNode;
+  displayImageUrl?: string | null;
+  groupMemberIds?: readonly number[];
+  offerPriceRefresh?: boolean;
+  shopCount?: number;
+  shopTags?: readonly { label: string; source: string }[];
 }
 
 export default function SortableItemCard({
@@ -30,6 +39,14 @@ export default function SortableItemCard({
   selectionMode = false,
   isSelected = false,
   onToggleSelect,
+  heading,
+  extra,
+  info,
+  displayImageUrl,
+  groupMemberIds,
+  offerPriceRefresh,
+  shopCount,
+  shopTags,
 }: SortableItemCardProps) {
   const {
     attributes,
@@ -85,6 +102,7 @@ export default function SortableItemCard({
           {...attributes}
           {...listeners}
           className="absolute left-0 top-0 bottom-0 w-8 flex items-center justify-center bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 cursor-grab active:cursor-grabbing rounded-l-lg z-10 touch-none"
+          aria-label="ドラッグして並び替え"
           title="ドラッグして並び替え"
         >
           <GripVertical size={18} className="text-slate-400" />
@@ -98,6 +116,14 @@ export default function SortableItemCard({
           categories={categories}
           comparisonGroups={comparisonGroups}
           isLowestPrice={isLowestPrice}
+          heading={heading}
+          extra={extra}
+          info={info}
+          displayImageUrl={displayImageUrl}
+          groupMemberIds={groupMemberIds}
+          offerPriceRefresh={offerPriceRefresh}
+          shopCount={shopCount}
+          shopTags={shopTags}
         />
       </div>
     </div>

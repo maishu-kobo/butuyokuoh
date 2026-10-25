@@ -1,7 +1,9 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, Fragment, ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import { useSession, signOut as nextAuthSignOut } from 'next-auth/react';
+import { googleListed } from '@/lib/google-listed';
 
 interface User {
   id: number;
@@ -18,27 +20,33 @@ interface AuthContextType {
   isGuest: boolean;
   guestEnabled: boolean;
   ttlHours: number;
+  googleLogin: boolean;
   startGuest: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+export const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { status } = useSession();
+  const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [guestEnabled, setGuestEnabled] = useState(false);
   const [ttlHours, setTtlHours] = useState(24);
+  const [googleLogin, setGoogleLogin] = useState(false);
   const [notice, setNotice] = useState('');
   const revision = useRef(0);
   const currentUser = useRef<User | null>(null);
 
   const refresh = useCallback(async () => {
     const version = ++revision.current;
+    const providersTask = fetch('/api/auth/providers', { cache: 'no-store' })
+      .then(async (response) => (response.ok ? googleListed(await response.json()) : false))
+      .catch(() => false);
     try {
       const res = await fetch('/api/auth/me', { cache: 'no-store' });
       if (!res.ok && res.status !== 401) throw new Error('ログイン状態を確認できません。画面を再読み込みしてください。');
@@ -64,12 +72,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setNotice(error instanceof Error ? error.message : '通信に失敗しました');
     } finally {
-      if (version === revision.current) setLoading(false);
+      const nextGoogleLogin = await providersTask;
+      if (version === revision.current) {
+        setGoogleLogin(nextGoogleLogin);
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (status !== 'loading') void refresh();
+    // refresh の setState は fetch のあと。直接呼ぶと新しい react-hooks が同期 setState と誤認する。revision の加算順は変えない。
+    if (status !== 'loading') void (async () => { await refresh(); })();
     // Invalidate the latest request, including refreshes triggered by tab focus.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { revision.current++; };
@@ -137,12 +150,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, isGuest: user?.account_type === 'guest', guestEnabled, ttlHours,
+    <AuthContext.Provider value={{ user, token, loading, isGuest: user?.account_type === 'guest', guestEnabled, ttlHours, googleLogin,
       startGuest: () => authenticate('/api/auth/guest'),
       login: (email, password) => authenticate('/api/auth/login', { email, password }),
       register: (email, password, name) => authenticate('/api/auth/register', { email, password, name }), logout }}>
       {notice && <div role="alert" className="bg-amber-100 text-amber-950 p-3 flex justify-between gap-4"><span>{notice}</span><button onClick={() => setNotice('')} aria-label="お知らせを閉じる">×</button></div>}
-      {loading ? <div className="p-12 text-center" role="status">読み込み中...</div> :
+      {/* 読み込み中は中身を出さない。水和の回帰ページだけは、サーバHTMLにピッカーを載せる。 */}
+      {(loading && pathname !== '/capture-hydration') ? <div className="p-12 text-center" role="status">読み込み中...</div> :
         <Fragment key={user ? `${user.account_type}:${user.id}` : 'anonymous'}>{children}</Fragment>}
     </AuthContext.Provider>
   );
