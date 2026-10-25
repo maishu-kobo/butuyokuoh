@@ -1,7 +1,7 @@
 # 重いレーン。feature/photo-capture、feature/capture-existing-bugfixes、develop、main 向け PR で毎回走る。
 # develop への push でも実行する。失敗すると止める。既定ジョブ名は playwright のまま。
 # path フィルタは付けない。
-# 権限は contents: read。失敗時の artifact だけ actions: write をジョブに足す。
+# 権限は contents: read だけ。失敗時の artifact は upload-artifact v4 が上げる。actions: write は付けない。
 #
 # 実店舗の e2e（E2E_LIVE_SCRAPE / E2E_LIVE_AMAZON / E2E_LIVE_RAKUTEN）は環境変数を付けない。
 # 実店舗は tests/e2e/live-shops.spec.ts。CI のレーンには入れない。
@@ -34,7 +34,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      actions: write
     strategy:
       fail-fast: false
       matrix:
