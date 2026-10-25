@@ -69,8 +69,8 @@ test('production does not install product fetch fixtures', () => {
 });
 
 test('fixed shop fixtures register, refresh and fail for guests and members without a shop connection', async () => {
-  const fixtures = await import('../src/lib/product-regression-fixtures.ts');
-  const port = await import('../src/lib/product-fetch-port.ts');
+  const fixtures = await import('../src/lib/product-regression-fixtures');
+  const port = await import('../src/lib/product-fetch-port');
   const { getDb } = await import('../src/lib/db');
   const { installAuthTestHooks } = await import('../src/lib/auth');
   const { startGuest } = await import('../src/lib/guest');
@@ -82,6 +82,7 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
   const help = '商品情報を自動取得できませんでした';
 
   port.installProductFetchPort(fixtures.regressionFetchPort());
+  installAuthTestHooks({ user: null });
   try {
     assert.notEqual(port.productFetchDeps(), undefined);
     const privatePreview = await call(preview, 'POST', '/api/items/preview', { url: 'http://127.0.0.1/secret' });
@@ -159,7 +160,7 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
     assert.equal(restoredRow.image_url, fixtures.RAKUTEN_IMAGE);
 
     const beforeFail = database.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id = ?').get(guest.user.id) as { n: number };
-    for (const url of [fixtures.FAIL_URL, fixtures.EMPTY_URL, fixtures.BOT_URL, fixtures.TIMEOUT_URL]) {
+    for (const url of [fixtures.FAIL_URL, fixtures.EMPTY_URL, fixtures.BOT_URL]) {
       const response = await call(preview, 'POST', '/api/items/preview', { url });
       assert.notEqual(response.status, 200, `${url} ${response.text}`);
       const payload = bodyOf(response.json);
@@ -169,6 +170,11 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
       const saved = await call(items, 'POST', '/api/items', { url, notes: '残すメモ' });
       assert.notEqual(saved.status, 201, `${url} ${saved.text}`);
     }
+    const timedOut = await call(preview, 'POST', '/api/items/preview', { url: fixtures.TIMEOUT_URL });
+    assert.equal(timedOut.status, 504, timedOut.text);
+    assert.equal(bodyOf(timedOut.json).code, 'SCRAPE_FAILED');
+    assert.match(String(bodyOf(timedOut.json).error), /再試行/);
+    assert.notEqual((await call(items, 'POST', '/api/items', { url: fixtures.TIMEOUT_URL })).status, 201);
     const afterFail = database.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id = ?').get(guest.user.id) as { n: number };
     assert.equal(afterFail.n, beforeFail.n);
 
@@ -178,14 +184,13 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
     `).run(guest.user.id, fixtures.FAIL_URL).lastInsertRowid);
     database.prepare('INSERT INTO price_history (item_id, price) VALUES (?, 1200)').run(preservedId);
     const failedRefresh = await call(refresh, 'POST', `/api/items/${preservedId}/refresh`, undefined, { id: String(preservedId) });
-    assert.notEqual(failedRefresh.status, 201, failedRefresh.text);
-    const preserved = database.prepare('SELECT name, current_price, image_url, scrape_status FROM items WHERE id = ?').get(preservedId) as {
-      name: string; current_price: number; image_url: string; scrape_status: string;
+    assert.notEqual(failedRefresh.status, 200, failedRefresh.text);
+    const preserved = database.prepare('SELECT name, current_price, image_url FROM items WHERE id = ?').get(preservedId) as {
+      name: string; current_price: number; image_url: string;
     };
     assert.equal(preserved.name, '残す商品');
     assert.equal(preserved.current_price, 1200);
     assert.equal(preserved.image_url, 'https://cdn.example.com/keep.webp');
-    assert.equal(preserved.scrape_status, 'failed');
     const history = database.prepare('SELECT COUNT(*) AS n FROM price_history WHERE item_id = ?').get(preservedId) as { n: number };
     assert.equal(history.n, 1);
 
@@ -208,6 +213,21 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
     assert.equal(memberFail.status, 422, memberFail.text);
     assert.equal(bodyOf(memberFail.json).code, 'SCRAPE_FAILED');
     assert.equal(database.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(member.id, fixtures.EMPTY_URL), undefined);
+    const memberKeptId = Number(database.prepare(`
+      INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source)
+      VALUES (?, '会員の残す商品', ?, 'https://cdn.example.com/member.webp', 800, 800, 'amazon')
+    `).run(member.id, fixtures.FAIL_URL).lastInsertRowid);
+    database.prepare('INSERT INTO price_history (item_id, price) VALUES (?, 800)').run(memberKeptId);
+    const memberRefresh = await call(refresh, 'POST', `/api/items/${memberKeptId}/refresh`, undefined, { id: String(memberKeptId) });
+    assert.equal(memberRefresh.status, 200, memberRefresh.text);
+    const memberKept = database.prepare('SELECT name, current_price, image_url, scrape_status FROM items WHERE id = ?').get(memberKeptId) as {
+      name: string; current_price: number; image_url: string; scrape_status: string;
+    };
+    assert.equal(memberKept.name, '会員の残す商品');
+    assert.equal(memberKept.current_price, 800);
+    assert.equal(memberKept.image_url, 'https://cdn.example.com/member.webp');
+    assert.equal(memberKept.scrape_status, 'failed');
+    assert.equal((database.prepare('SELECT COUNT(*) AS n FROM price_history WHERE item_id = ?').get(memberKeptId) as { n: number }).n, 1);
     const relative = await call(preview, 'POST', '/api/items/preview', { url: fixtures.RELATIVE_IMAGE_URL });
     assert.equal(relative.status, 200, relative.text);
     assert.equal(bodyOf(relative.json).image_url, 'https://cdn.example.com/a.webp');

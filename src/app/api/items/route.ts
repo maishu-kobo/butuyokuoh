@@ -6,9 +6,10 @@ import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { itemUrlTaken } from '@/lib/capture/register';
-import { scrapeUrl } from '@/lib/scraper';
+import { isUnusableScrape, scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
+import { PRODUCT_FETCH_HELP } from '@/lib/public-page';
 import { annotateSpend, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
 
 async function handleGET() {
@@ -135,6 +136,9 @@ async function handlePOST(request: NextRequest) {
   // スクレイピング
   assertGuestCapacity(user, 'items', db);
   const scraped = user.account_type === 'guest' ? await scrapeGuestUrl(url, user.id) : await scrapeUrl(url);
+  if (isUnusableScrape(scraped)) {
+    return NextResponse.json({ error: PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' }, { status: 422 });
+  }
 
   return db.transaction(() => {
     assertGuestSessionActive(user, db);

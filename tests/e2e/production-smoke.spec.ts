@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-test('production server keeps guest entry and hides the capture test page', async ({ page, request }) => {
+test('production server keeps guest entry and hides the capture test page', async ({ page, context }) => {
+  const request = context.request;
   expect((await request.get('/capture-hydration')).status()).toBe(404);
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'ゲストで試す', exact: true })).toBeVisible();

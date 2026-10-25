@@ -6,8 +6,8 @@ import { spawnSync } from 'node:child_process';
 import { filesForLane, laneOfSpec } from '../scripts/e2e-lanes.mjs';
 import { e2eFilesFromPlaywrightReport } from '../scripts/test-lanes.mjs';
 
-function walkTestFiles(dir) {
-  const found = [];
+function walkTestFiles(dir: string): string[] {
+  const found: string[] = [];
   for (const name of readdirSync(dir)) {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) found.push(...walkTestFiles(path));

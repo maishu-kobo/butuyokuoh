@@ -8,7 +8,8 @@ const rakutenName = '日本語の商品';
 const failUrl = 'https://example.com/products/fetch-failed';
 const origin = 'http://localhost:3107';
 
-test('guest fixture URL shows the price and image, and editing keeps the image', async ({ page, request }) => {
+test('guest fixture URL shows the price and image, and editing keeps the image', async ({ page, context }) => {
+  const request = context.request;
   await page.goto('/');
   await page.getByRole('button', { name: 'ゲストで試す', exact: true }).click();
   await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
@@ -40,7 +41,8 @@ test('guest fixture URL shows the price and image, and editing keeps the image',
   });
 });
 
-test('server-side fetch failure keeps the form and explains manual entry once', async ({ page, request }) => {
+test('server-side fetch failure keeps the form and explains manual entry once', async ({ page, context }) => {
+  const request = context.request;
   await page.goto('/');
   await page.getByRole('button', { name: 'ゲストで試す', exact: true }).click();
   await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
@@ -75,7 +77,8 @@ test('server-side fetch failure keeps the form and explains manual entry once', 
   expect(saved.comparison_group_id).toEqual(expect.any(Number));
 });
 
-test('member fixture decodes the Rakuten name on add and refresh', async ({ page, request }) => {
+test('member fixture decodes the Rakuten name on add and refresh', async ({ page, context }) => {
+  const request = context.request;
   const registered = await request.post('/api/auth/register', {
     data: { email: `rakuten-fixture-${Date.now()}@example.test`, password: 'test-password' },
   });

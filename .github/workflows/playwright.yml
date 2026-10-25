@@ -1,9 +1,11 @@
-# 重いレーン。feature/photo-capture、feature/capture-existing-bugfixes、develop 向け PR で毎回走る。
-# 失敗すると止める。ジョブ名は playwright のまま。path フィルタは付けない。
-# 権限は contents: read。actions: write は足さない。キャッシュの保存は pull_request の既定。
+# 重いレーン。feature/photo-capture、feature/capture-existing-bugfixes、develop、main 向け PR で毎回走る。
+# develop への push でも実行する。失敗すると止める。既定ジョブ名は playwright のまま。
+# path フィルタは付けない。
+# 権限は contents: read。失敗時の artifact だけ actions: write をジョブに足す。
 #
 # 実店舗の e2e（E2E_LIVE_SCRAPE / E2E_LIVE_AMAZON / E2E_LIVE_RAKUTEN）は環境変数を付けない。
-# develop への push と、マージ条件への組み込みはここではしない。
+# 実店舗は tests/e2e/live-shops.spec.ts。CI のレーンには入れない。
+# マージ条件（必須ステータスチェック）はリポジトリ設定なので、このファイルではしない。
 name: playwright
 
 on:
@@ -16,6 +18,7 @@ on:
   push:
     branches:
       - feature/photo-capture
+      - develop
 
 permissions:
   contents: read
@@ -26,11 +29,35 @@ concurrency:
 
 jobs:
   e2e:
-    name: playwright
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: playwright
+            slug: default
+            production: ''
+            guest_disabled: ''
+            build: 'false'
+          - name: production smoke
+            slug: production
+            production: '1'
+            guest_disabled: ''
+            build: 'true'
+          - name: guest disabled
+            slug: guest-disabled
+            production: ''
+            guest_disabled: '1'
+            build: 'false'
     env:
-      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_TELEMETRY_DISABLED: '1'
+      E2E_PRODUCTION: ${{ matrix.production }}
+      E2E_GUEST_DISABLED: ${{ matrix.guest_disabled }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,11 +66,15 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # puppeteer 25 は Node.js 22.12 以上。本番を 22 に上げてから develop に入れる（docs/deployment.md）。
-          node-version: "22"
+          node-version: '22'
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Production build
+        if: matrix.build == 'true'
+        run: npm run build
 
       - name: Resolve Playwright version
         id: playwright-version
@@ -74,5 +105,15 @@ jobs:
         run: node scripts/verify-playwright-browsers.mjs
 
       # playwright test --list のファイルから、隔離分だけを引く。0 件でも同じコマンド。
+      # レーンは E2E_PRODUCTION / E2E_GUEST_DISABLED。既定は開発サーバと固定fixture。
       - name: E2E tests
         run: node scripts/test-lanes.mjs blocking-e2e
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-${{ matrix.slug }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: ignore
+          retention-days: 7
