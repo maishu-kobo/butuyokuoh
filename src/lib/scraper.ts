@@ -9,6 +9,34 @@ import { BlockedTargetError, fetchPublicMember, HttpError, resolvedPublicAddress
 export { HttpError };
 export type FetchWithRetryOptions = MemberFetchDeps;
 
+// 価格取得のブラウザ。本番は launchPageBrowser。テストは起動したかと、
+// 画像・フォント・メディアを止めたかをここから見る。
+export interface AmazonBrowserRequest {
+  url(): string;
+  resourceType(): string;
+  isNavigationRequest(): boolean;
+  continue(): Promise<void>;
+  abort(errorCode?: string): Promise<void>;
+}
+
+export interface AmazonBrowserPage {
+  setUserAgent(userAgent: string): Promise<void>;
+  setExtraHTTPHeaders(headers: Record<string, string>): Promise<void>;
+  setRequestInterception(enabled: boolean): Promise<void>;
+  on(event: 'request', handler: (request: AmazonBrowserRequest) => Promise<void> | void): void;
+  goto(url: string, options: { waitUntil: 'networkidle2'; timeout: number }): Promise<unknown>;
+  content(): Promise<string>;
+}
+
+export interface AmazonBrowser {
+  newPage(): Promise<AmazonBrowserPage>;
+  close(): Promise<void>;
+}
+
+export type ScrapeDeps = MemberFetchDeps & {
+  launchBrowser?: (options: { headless: true }) => Promise<AmazonBrowser>;
+};
+
 export interface ScrapedItem {
   name: string;
   price: number | null;
@@ -186,7 +214,7 @@ function rakutenAffiliateProductUrl(value: string): string | null | undefined {
   return canonicalRakutenAffiliateUrl(value) ? rakutenProductIdentity(value) : null;
 }
 
-export async function scrapeUrl(url: string, deps?: MemberFetchDeps): Promise<ScrapedItem> {
+export async function scrapeUrl(url: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
   // Amazonの短縮リンクの場合、展開を試みる
   if (isAmazonShortUrl(url)) {
     console.log('Detected Amazon short URL, attempting to expand:', url);
@@ -286,8 +314,10 @@ function isAmazonBlockedHtml(html: string): boolean {
  * 素のfetchがAmazonのボット対策に弾かれた場合に使用する
  * @returns 取得したScrapedItem（ボット検知された場合はnull）
  */
-async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: MemberFetchDeps): Promise<ScrapedItem | null> {
-  const browser = await launchPageBrowser();
+async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: ScrapeDeps): Promise<ScrapedItem | null> {
+  const browser = deps?.launchBrowser
+    ? await deps.launchBrowser({ headless: true })
+    : await launchPageBrowser();
 
   try {
     const page = await browser.newPage();
@@ -341,7 +371,7 @@ async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: MemberFetc
   }
 }
 
-async function scrapeAmazon(sanitizedUrl: string, deps?: MemberFetchDeps): Promise<ScrapedItem> {
+async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
   // SSRF対策: fetch直前にホスト名を再検証
   const hostname = getHostname(sanitizedUrl);
   if (!hostname || !AMAZON_DOMAINS.has(hostname)) {
