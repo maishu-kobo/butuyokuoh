@@ -1,6 +1,6 @@
-# feature/photo-capture を develop に入れる前の確認
+# main に入った写真登録の確認メモ
 
-`origin/feature/photo-capture`（`44e1b2d1c1670084ed53c10d9b8dafa94f581a59`）と `origin/develop`（`f11349adccc6580b01e440391311f42ebcb350f4`）を読んで書いた。本番、本番のデータベース、秘密は見ていない。このファイルは確認メモで、アプリの挙動は変えない。
+このメモは、`origin/feature/photo-capture`（`44e1b2d1c1670084ed53c10d9b8dafa94f581a59`）と `origin/develop`（`f11349adccc6580b01e440391311f42ebcb350f4`）を、develop に入れる前に読んで書いた。写真登録を含むその内容は、その後 `288596e8b11d05139bafe91ce841d793bdb00787`（#235）で main にある。本番、本番のデータベース、秘密は見ていない。このファイルは確認メモで、アプリの挙動は変えない。
 
 下の「develop との差分」は、その2つのブランチのあいだにあるものだけ。まだマージしていない PR は「未マージ」に分け、中身は差分に入れない。
 
