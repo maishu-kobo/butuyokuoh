@@ -5,6 +5,7 @@ import { launchPageBrowser } from './page-browser';
 import { validateAndSanitizeUrl, sanitizeGenericUrl } from './url-validator';
 import { canonicalRakutenAffiliateUrl, rakutenProductIdentity } from './capture/rakuten-link';
 import { BlockedTargetError, fetchPublicMember, HttpError, resolvedPublicAddress, type MemberFetchDeps } from './member-fetch';
+import { productFetchDeps } from './product-fetch-port';
 
 export { HttpError };
 export type FetchWithRetryOptions = MemberFetchDeps;
@@ -214,7 +215,21 @@ function rakutenAffiliateProductUrl(value: string): string | null | undefined {
   return canonicalRakutenAffiliateUrl(value) ? rakutenProductIdentity(value) : null;
 }
 
+export function isUnusableScrape(scraped: { name?: string | null }): boolean {
+  const name = scraped.name?.trim() || '';
+  if (!name || name === '不明な商品' || name === '取得失敗' || name === '無効なURL') return true;
+  return name.includes('取得できません') || name.includes('失敗しました') || name.includes('展開できませんでした');
+}
+
+const PRICE_LATER_NOTE = '価格は取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
+
 export async function scrapeUrl(url: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
+  const result = await scrapeUrlFromPage(url, deps ?? productFetchDeps());
+  if (!result.price && !result.note && !isUnusableScrape(result)) result.note = PRICE_LATER_NOTE;
+  return result;
+}
+
+async function scrapeUrlFromPage(url: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
   // Amazonの短縮リンクの場合、展開を試みる
   if (isAmazonShortUrl(url)) {
     console.log('Detected Amazon short URL, attempting to expand:', url);
@@ -463,6 +478,10 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
       sourceName: 'Amazon',
     };
   }
+
+  // 注入した HTTP だけを見るときは、実ブラウザで店へ出ない。
+  // launchBrowser があるときは、ボット検知と HTTP 失敗でそのブラウザを起動する。
+  if (deps?.request && !deps.launchBrowser) return fallbackResult;
 
   // Puppeteerフォールバック: ボット検知か、再試行しても取れなかった HTTP 失敗で起動する。
   console.log('Falling back to Puppeteer for Amazon scraping:', sanitizedUrl);

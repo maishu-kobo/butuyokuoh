@@ -12,6 +12,7 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "test:diff": "node --import tsx scripts/diff-harness/run.ts",
     "test:e2e": "playwright test",
+    "test:e2e:live": "E2E_LIVE_LANE=1 playwright test",
     "audit:high": "node scripts/audit-high.mjs",
     "hooks:install": "node scripts/hooks/install.mjs install",
     "hooks:uninstall": "node scripts/hooks/install.mjs uninstall",

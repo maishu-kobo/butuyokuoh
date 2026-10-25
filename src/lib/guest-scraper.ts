@@ -1,6 +1,7 @@
 import { getDb } from './db';
 import { consumeGuestRate, guestLimit, GuestError } from './guest';
 import { fetchPublicPage, publicPageUrl, PublicPageError, PRODUCT_FETCH_HELP } from './public-page';
+import { productFetchGuestDeps } from './product-fetch-port';
 import { parseProductHtml } from './product-html';
 import { extractAmazonProduct, isAmazonHost, isAmazonProductPage } from './amazon-product';
 
@@ -12,7 +13,7 @@ export async function scrapeGuestUrl(url: string, userId: number) {
     consumeGuestRate('scrape:global', guestLimit('GLOBAL_SCRAPES_PER_MINUTE', 30), db);
   }).immediate();
   try {
-    const page = await fetchPublicPage(url);
+    const page = await fetchPublicPage(url, productFetchGuestDeps() ?? {});
     const resolvedUrl = new URL(page.url);
     if (isAmazonHost(resolvedUrl.hostname) && !isAmazonProductPage(resolvedUrl)) {
       throw new GuestError(422, 'SCRAPE_FAILED', 'Amazonの商品ページを確認できませんでした。商品ページをブラウザで開き、そのURLを貼り直してください。');

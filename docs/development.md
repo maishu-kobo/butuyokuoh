@@ -73,6 +73,32 @@ http://localhost:3000 でアクセス。
 
 CI の速いレーンと重いレーン、フレークしたテストの隔離は [docs/ci.md](ci.md)。
 
+## テストの置き場
+
+単体テストは `tests/*.test.ts` だけ。`npm test` と CI の必須レーンは、この直下のファイルだけを実行する。サブディレクトリに置くと両方から漏れる。
+
+e2e は `tests/e2e/*.spec.ts`。既定の `npm run test:e2e` は、別レーンに名前が書いていない spec をすべて実行する。別レーンは `scripts/e2e-lanes.mjs` の `OTHER_LANE_FILES`。
+
+| ファイル | レーン | 実行 |
+| --- | --- | --- |
+| それ以外の `*.spec.ts` | 既定 | `npm run test:e2e`。店の代わりに固定ページ |
+| `disabled.spec.ts` | ゲスト無効 | `E2E_GUEST_DISABLED=1 npx playwright test` |
+| `production-smoke.spec.ts` | 本番スモーク | `npm run build` のあと `E2E_PRODUCTION=1 npx playwright test` |
+| `live-shops.spec.ts` | 実店舗 | `npm run test:e2e:live`。三つの環境変数が揃わないと失敗する |
+
+固定ページを足すときは `src/lib/product-regression-fixtures.ts` に URL と応答を足す。期待する商品名・価格・画像は fixture に書き、パーサの戻り値から作らない。本番の `NODE_ENV` ではこの差し替えは動かない。公開IP・DNS・転送先の検査は外さない。
+
+## URL取得の回帰
+
+| 事象 | 固定データで見るテスト |
+| --- | --- |
+| ゲストの PITAKA 風ページ（#76） | `tests/url-regression.test.ts`、`tests/e2e/url-regression.spec.ts` |
+| Amazon の大きさ、価格の取り違え（#77） | `tests/product-fetch.test.ts`。API の価格なし・失敗は `tests/url-regression.test.ts` |
+| 取得失敗と手入力の保持（#77） | `tests/e2e/url-regression.spec.ts`。ブラウザで API を差し替えるテストは `tests/e2e/guest.spec.ts` に残す |
+| 楽天の文字コード（#78） | `tests/html-encoding.test.ts`、`tests/url-regression.test.ts`、会員の画面は `tests/e2e/url-regression.spec.ts` |
+| 失敗で既存商品を壊さない | `tests/url-regression.test.ts` |
+| 実店舗 | `tests/e2e/live-shops.spec.ts`。通常の CI では走らない |
+
 ---
 
 ## Chrome拡張機能の開発
