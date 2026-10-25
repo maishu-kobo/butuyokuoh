@@ -256,15 +256,27 @@ sudo systemctl start butuyokuoh
 
 ## バックアップ
 
-スキーマ変更の前は、上の `.backup` を使う。停止中のファイルをコピーする場合だけ、次でも戻せる。
+日常の写しも、スキーマを変える前も、SQLite の `.backup` を使う。`data/butuyokuoh.db` のファイルコピーは使わない。WAL の更新が `-wal` に残っていると、本体ファイルだけのコピーは途中の状態になる。
+
+アプリを動かしたまま取れる。`.backup` はバックアップ API で、一貫した1つのファイルを作る。本番の更新で、動いているディレクトリの外に新しいコードを準備する手順は `docs/deployment.md` の「安全な更新」。
 
 ```bash
-# バックアップ
-cp data/butuyokuoh.db data/butuyokuoh.db.backup
-
-# リストア
-cp data/butuyokuoh.db.backup data/butuyokuoh.db
+sqlite3 data/butuyokuoh.db ".backup 'data/butuyokuoh.db.backup'"
+sqlite3 data/butuyokuoh.db.backup "PRAGMA integrity_check;"
 ```
+
+`integrity_check` が `ok` でないファイルは、戻しに使わない。
+
+戻すときはアプリを止める。`-wal` と `-shm` が残っていると、戻したファイルよりそちらが優先される。
+
+```bash
+sudo systemctl stop butuyokuoh
+rm -f data/butuyokuoh.db-wal data/butuyokuoh.db-shm
+sqlite3 data/butuyokuoh.db.backup ".backup 'data/butuyokuoh.db'"
+sudo systemctl start butuyokuoh
+```
+
+`BUTUYOKUOH_DB_PATH` を変えている場合は、そのファイルを対象にする。
 
 ## マイグレーション
 

@@ -5,10 +5,12 @@ exe.dev環境への本番デプロイ手順。
 ## 前提
 
 - exe.dev VMにSSHアクセス可能
-- Node.js 22.12 以上、npm 10.x インストール済み
+- Node.js 22.12 以上、npm 10.x インストール済み。22.12 未満では `npm install` に進まない
 - systemdが利用可能
 
 **develop にマージする前に、本番 VM の Node.js を 22.12 以上へ上げること。** puppeteer 25 は `engines.node >=22.12.0` を要求する。本番が Node.js 20 のままだと、価格チェックのブラウザが起動しない。この変更では本番環境、本番データベース、秘密情報はいじらない。上げる作業は develop へ入れる前に、このリポジトリの外で行う。
+
+`npm install` の直後は、同じディレクトリで `npm rebuild better-sqlite3` を実行する。better-sqlite3 はネイティブアドオンで、今の Node.js 向けに作り直してからビルドと起動をする。更新では、この2つを動いているアプリのディレクトリでは実行しない。手順は「安全な更新」。
 
 価格取得の Chrome は、まずサンドボックス付きで起動する。Ubuntu 23.10 以降で非特権の user namespace が禁止されているとき、または systemd の `RestrictNamespaces=true` のとき、Chrome は起動前に `No usable sandbox!` で止まる。その失敗のときだけ `--no-sandbox` と `--disable-setuid-sandbox` で一度だけ起動し直す。ほかの起動失敗ではやり直さない。`PUPPETEER_DANGEROUS_NO_SANDBOX` は置かない。
 
@@ -26,8 +28,12 @@ cd butuyokuoh
 
 ### 2. 依存関係のインストール
 
+Node.js 22.12 以上を確認してから入れる。未満ならここで止める。`npm install` の直後に `npm rebuild better-sqlite3` を実行する。
+
 ```bash
+node -e 'const p=process.versions.node.split(".").map(Number); if (p[0] < 22 || (p[0] === 22 && p[1] < 12)) { console.error("Node.js 22.12 以上が必要です: " + process.versions.node); process.exit(1); }'
 npm install
+npm rebuild better-sqlite3
 ```
 
 ### 3. 環境変数の設定
@@ -171,20 +177,100 @@ journalctl -u butuyokuoh-price-check -f
 
 写真APIのキーはソースに含めず、本番VMの `CAPTURE_SECRETS_FILE` に設定する。コードの配置と写真機能の有効化は別々に確認する。
 
-### 通常の更新
+### 安全な更新
+
+動いている DB は、ファイルのコピーではなく SQLite の `.backup` で写す。`.backup` はバックアップ API を使い、WAL にだけある更新も一貫した1つのファイルに入る。`data/butuyokuoh.db` だけをコピーすると、`-wal` に残った分が写らない。
+
+準備のあいだアプリは止めない。`git pull`、`npm install`、`npm run build` は、動いているディレクトリ `/home/exedev/butuyokuoh` では実行しない。ここで `npm install` すると、動いているプロセスが使っている `node_modules` が途中で入れ替わり、更新の途中でアプリが落ちる。依存のインストールとビルドは `/home/exedev/butuyokuoh-next` で終わらせ、そのあと短い停止でディレクトリを入れ替える。
+
+Node.js は 22.12 以上が必要である。`package.json` の `engines.node` は `>=22.12.0`。22.12 未満では、下のインストールに進まない。`npm install` の直後に、同じ別ディレクトリで `npm rebuild better-sqlite3` を実行してから `npm run build` する。
+
+写真 API のキーはソースに含めず、本番 VM の `CAPTURE_SECRETS_FILE` に置いたままにする。このファイルはリポジトリの外なので、ディレクトリの入れ替えでは動かさない。
+
+`PRAGMA integrity_check` が `ok` 以外なら、そこで止める。インストールかビルドが失敗したときは、サービスはまだ止めていない。`/home/exedev/butuyokuoh-next` を消して、動いているディレクトリはそのままにする。
+
+配置するコミットは、CI とレビューを終えた main のコミットに合わせる。main の先端でなければ、clone のあと `git -C "$NEXT" checkout --detach <SHA>` でそのコミットにする。
 
 ```bash
-cd /home/exedev/butuyokuoh
-git pull
+set -euo pipefail
+
+# Node.js 22.12 以上。未満ならここで止める。アプリは動かしたまま。
+node -e 'const p=process.versions.node.split(".").map(Number); if (p[0] < 22 || (p[0] === 22 && p[1] < 12)) { console.error("Node.js 22.12 以上が必要です: " + process.versions.node); process.exit(1); }'
+
+APP=/home/exedev/butuyokuoh
+NEXT=/home/exedev/butuyokuoh-next
+PREV=/home/exedev/butuyokuoh.prev
+
+# アプリは動かしたまま写す。ファイルのコピーは使わない。
+sqlite3 "$APP/data/butuyokuoh.db" ".backup '$APP/data/butuyokuoh.db.pre-update.online.backup'"
+test "$(sqlite3 "$APP/data/butuyokuoh.db.pre-update.online.backup" "PRAGMA integrity_check;")" = "ok"
+
+# 別ディレクトリへ新しい main を置く。動いている作業ツリーは checkout しない。
+rm -rf "$NEXT"
+git clone --branch main https://github.com/maishu-kobo/butuyokuoh.git "$NEXT"
+cp -a "$APP/.env.local" "$NEXT/.env.local"
+
+# 依存とビルドは別ディレクトリだけ。npm install の直後にネイティブアドオンを作り直す。
+cd "$NEXT"
 npm install
+npm rebuild better-sqlite3
 npm run build
-sudo systemctl restart butuyokuoh
+
+# 準備が終わってから、短い停止で入れ替える。
+sudo systemctl stop butuyokuoh-price-check.timer
+sudo systemctl stop butuyokuoh-price-check.service
+sudo systemctl stop butuyokuoh-guest-cleanup.timer || true
+sudo systemctl stop butuyokuoh
+
+sqlite3 "$APP/data/butuyokuoh.db" ".backup '$APP/data/butuyokuoh.db.pre-update.backup'"
+test "$(sqlite3 "$APP/data/butuyokuoh.db.pre-update.backup" "PRAGMA integrity_check;")" = "ok"
+
+mv "$APP/data" "$NEXT/data"
+if [ -d "$APP/public/uploads" ]; then
+  rm -rf "$NEXT/public/uploads"
+  mv "$APP/public/uploads" "$NEXT/public/uploads"
+fi
+
+# $PREV.new が残っているときは消さない。前回の入れ替えが途中で止まっていないか確認する。
+test ! -e "$PREV.new"
+mv "$APP" "$PREV.new"
+mv "$NEXT" "$APP"
+rm -rf "$PREV"
+mv "$PREV.new" "$PREV"
+
+sudo systemctl start butuyokuoh
+sudo systemctl start butuyokuoh-price-check.timer
+sudo systemctl start butuyokuoh-guest-cleanup.timer || true
+curl -fsS http://localhost:8000 >/dev/null
 ```
 
-### ワンライナー
+ゲスト清掃のユニットを入れていない VM では、その `systemctl` の行は失敗する。その行だけ飛ばしてよい。価格チェックのタイマーは、このガイドで有効にしていれば止めて、入れ替えのあとで戻す。`curl` が失敗したときは、次の戻し方にする。戻すと、新しいコードが起動したあとの書き込みは、止めた直後の `.backup` に戻る。スキーマが変わった DB は、コードを戻すだけでは戻らない。起動する前に、その写しから `.backup` で戻す。
 
 ```bash
-cd /home/exedev/butuyokuoh && git pull && npm install && npm run build && sudo systemctl restart butuyokuoh
+set -euo pipefail
+
+sudo systemctl stop butuyokuoh-price-check.timer
+sudo systemctl stop butuyokuoh-price-check.service
+sudo systemctl stop butuyokuoh-guest-cleanup.timer || true
+sudo systemctl stop butuyokuoh
+
+rm -rf /home/exedev/butuyokuoh.prev/data
+mv /home/exedev/butuyokuoh/data /home/exedev/butuyokuoh.prev/data
+if [ -d /home/exedev/butuyokuoh/public/uploads ]; then
+  rm -rf /home/exedev/butuyokuoh.prev/public/uploads
+  mv /home/exedev/butuyokuoh/public/uploads /home/exedev/butuyokuoh.prev/public/uploads
+fi
+
+rm -rf /home/exedev/butuyokuoh-failed
+mv /home/exedev/butuyokuoh /home/exedev/butuyokuoh-failed
+mv /home/exedev/butuyokuoh.prev /home/exedev/butuyokuoh
+
+rm -f /home/exedev/butuyokuoh/data/butuyokuoh.db-wal /home/exedev/butuyokuoh/data/butuyokuoh.db-shm
+sqlite3 /home/exedev/butuyokuoh/data/butuyokuoh.db.pre-update.backup ".backup '/home/exedev/butuyokuoh/data/butuyokuoh.db'"
+test "$(sqlite3 /home/exedev/butuyokuoh/data/butuyokuoh.db "PRAGMA integrity_check;")" = "ok"
+
+sudo systemctl start butuyokuoh
+sudo systemctl start butuyokuoh-price-check.timer
 ```
 
 ---
@@ -209,8 +295,7 @@ sudo systemctl stop butuyokuoh
 sqlite3 data/butuyokuoh.db ".backup 'data/butuyokuoh.db.pre-migrate.backup'"
 sqlite3 data/butuyokuoh.db.pre-migrate.backup "PRAGMA integrity_check;"
 
-# 停止中のファイルコピー。スキーマ変更の前のバックアップには使わない
-cp data/butuyokuoh.db data/butuyokuoh.db.backup.$(date +%Y%m%d)
+# ファイルコピーは使わない。WAL が別ファイルに残る。通常の更新の写しは「安全な更新」
 
 # 確認
 sqlite3 data/butuyokuoh.db "SELECT COUNT(*) FROM items;"
