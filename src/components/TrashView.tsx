@@ -1,5 +1,8 @@
 'use client';
 
+import { apiFetch } from '@/lib/api-fetch';
+import { linkableHttpUrl } from '@/lib/http-url';
+
 import { useEffect, useState } from 'react';
 import { Item } from '@/types';
 import { Trash2, Undo2, X, ExternalLink } from 'lucide-react';
@@ -11,37 +14,70 @@ interface TrashItem extends Item {
 export default function TrashView() {
   const [items, setItems] = useState<TrashItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const fetchItems = async () => {
-    const res = await fetch('/api/trash');
-    const data = await res.json();
-    setItems(data);
-    setLoading(false);
+    try {
+      const res = await apiFetch('/api/trash');
+      if (!res.ok) throw new Error(`Failed to fetch trash: ${res.status}`);
+      const data = await res.json();
+      // 非配列レスポンス（エラーJSON等）を配列stateに入れない
+      if (!Array.isArray(data)) throw new Error('Unexpected response format');
+      setItems(data);
+      setLoadError(false);
+    } catch (error) {
+      console.error('Failed to fetch trash:', error);
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    fetchItems();
+    // 取得関数の中の setState は await のあと。effect から直接呼ぶと新しい react-hooks が同期 setState と誤認する。
+    void (async () => { await fetchItems(); })();
   }, []);
 
+  // 読み込み失敗時の再試行
+  const handleRetry = () => {
+    setLoadError(false);
+    setLoading(true);
+    fetchItems();
+  };
+
   const handleRestore = async (id: number) => {
-    await fetch(`/api/trash/${id}`, { method: 'POST' });
+    await apiFetch(`/api/trash/${id}`, { method: 'POST' });
     fetchItems();
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm('完全に削除しますか？元に戻せません。')) return;
-    await fetch(`/api/trash/${id}`, { method: 'DELETE' });
+    await apiFetch(`/api/trash/${id}`, { method: 'DELETE' });
     fetchItems();
   };
 
   const handleEmptyTrash = async () => {
     if (!confirm('ゴミ箱を空にしますか？全てのアイテムが完全に削除されます。')) return;
-    await fetch('/api/trash', { method: 'DELETE' });
+    await apiFetch('/api/trash', { method: 'DELETE' });
     fetchItems();
   };
 
   if (loading) {
     return <div className="text-center py-8 text-slate-500 dark:text-slate-400">読み込み中...</div>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+        <p>読み込みに失敗しました</p>
+        <button
+          onClick={handleRetry}
+          className="mt-3 px-4 py-2 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
+        >
+          再試行
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -81,6 +117,8 @@ export default function TrashView() {
                   <img
                     src={item.image_url}
                     alt={item.name}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-contain rounded opacity-60"
                   />
                 ) : (
@@ -114,9 +152,9 @@ export default function TrashView() {
 
               {/* アクション */}
               <div className="flex items-center gap-1">
-                {item.url && !item.url.startsWith('manual://') && (
+                {linkableHttpUrl(item.url) && (
                   <a
-                    href={item.url}
+                    href={linkableHttpUrl(item.url)!}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-slate-400 hover:text-blue-500 p-2"

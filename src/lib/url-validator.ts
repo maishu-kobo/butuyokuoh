@@ -97,6 +97,45 @@ export function getSourceFromUrl(urlString: string): SourceType {
   return result.source;
 }
 
+// 通知Webhookの許可ホスト（完全一致）
+// SSRF対策: クラウドメタデータ(169.254.169.254)や内部宛URLを登録・送信できないようにする
+const ALLOWED_SLACK_WEBHOOK_HOSTS = ['hooks.slack.com'] as const;
+const ALLOWED_DISCORD_WEBHOOK_HOSTS = ['discord.com', 'discordapp.com'] as const;
+
+type WebhookType = 'slack' | 'discord';
+
+/**
+ * 通知Webhook URLが許可されているかを検証（SSRF対策）
+ * - URLとしてパース可能であること
+ * - プロトコルがhttps（httpは不可）
+ * - ホスト名が種別ごとの許可リストに完全一致
+ *   - slack: hooks.slack.com
+ *   - discord: discord.com / discordapp.com
+ *
+ * 完全一致のため `hooks.slack.com.evil.com` のようなサブドメイン偽装は拒否される。
+ * 空文字/null/undefinedは「未設定」とみなし、ここでは検証対象外（呼び出し側で扱う）。
+ */
+export function isAllowedWebhookUrl(urlString: string, type: WebhookType): boolean {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(urlString);
+  } catch {
+    return false;
+  }
+
+  // HTTPSのみ許可（httpは不可）
+  if (parsedUrl.protocol !== 'https:') {
+    return false;
+  }
+
+  const hostname = parsedUrl.hostname.toLowerCase();
+  const allowedHosts =
+    type === 'slack' ? ALLOWED_SLACK_WEBHOOK_HOSTS : ALLOWED_DISCORD_WEBHOOK_HOSTS;
+
+  // ホスト名の完全一致チェック
+  return allowedHosts.some((host) => hostname === host);
+}
+
 /**
  * 一般的なURLをサニタイズ（任意のドメイン）
  * 許可リストに関係なく、URLを正規化

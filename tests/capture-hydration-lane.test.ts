@@ -1,0 +1,47 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import * as pageModule from '../src/app/(app)/capture-hydration/page';
+
+const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
+
+function hydrationPage(): () => { type?: { name?: string } } {
+  const exported = pageModule.default as { default?: () => { type?: { name?: string } } } | (() => { type?: { name?: string } });
+  const page = typeof exported === 'function' ? exported : exported.default;
+  if (typeof page !== 'function') throw new Error('水和ページの関数が無い');
+  return page;
+}
+
+function isNotFound(error: unknown) {
+  return error instanceof Error && (error as { digest?: string }).digest === NOT_FOUND;
+}
+
+function withEnv(env: { NODE_ENV?: string; CAPTURE_TEST_HOOKS?: string }, run: () => void) {
+  const current = process.env as { NODE_ENV?: string; CAPTURE_TEST_HOOKS?: string };
+  const previous = {
+    NODE_ENV: current.NODE_ENV,
+    CAPTURE_TEST_HOOKS: current.CAPTURE_TEST_HOOKS,
+  };
+  current.NODE_ENV = env.NODE_ENV;
+  if (env.CAPTURE_TEST_HOOKS === undefined) delete current.CAPTURE_TEST_HOOKS;
+  else current.CAPTURE_TEST_HOOKS = env.CAPTURE_TEST_HOOKS;
+  try {
+    run();
+  } finally {
+    current.NODE_ENV = previous.NODE_ENV;
+    if (previous.CAPTURE_TEST_HOOKS === undefined) delete current.CAPTURE_TEST_HOOKS;
+    else current.CAPTURE_TEST_HOOKS = previous.CAPTURE_TEST_HOOKS;
+  }
+}
+
+test('the hydration page is not found in production or without the test hook', () => {
+  const page = hydrationPage();
+  withEnv({ NODE_ENV: 'production', CAPTURE_TEST_HOOKS: '1' }, () => {
+    assert.throws(() => page(), isNotFound);
+  });
+  withEnv({ NODE_ENV: 'development', CAPTURE_TEST_HOOKS: undefined }, () => {
+    assert.throws(() => page(), isNotFound);
+  });
+  withEnv({ NODE_ENV: 'development', CAPTURE_TEST_HOOKS: '1' }, () => {
+    assert.equal(page().type?.name, 'CaptureHydrationPicker');
+  });
+});

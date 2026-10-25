@@ -1,9 +1,10 @@
+import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 
 // 復元
-export async function POST(
+async function handlePOST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -25,7 +26,7 @@ export async function POST(
 }
 
 // 完全削除
-export async function DELETE(
+async function handleDELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -42,6 +43,13 @@ export async function DELETE(
     return NextResponse.json({ error: 'アイテムが見つかりません' }, { status: 404 });
   }
 
-  db.prepare('DELETE FROM items WHERE id = ?').run(id);
+  db.transaction(() => {
+    db.prepare('DELETE FROM price_history WHERE item_id = ?').run(id);
+    db.prepare('DELETE FROM notification_settings WHERE item_id = ?').run(id);
+    db.prepare('DELETE FROM items WHERE id = ? AND user_id = ?').run(id, user.id);
+  }).immediate();
   return NextResponse.json({ success: true });
 }
+
+export const POST = withAccess(handlePOST, true);
+export const DELETE = withAccess(handleDELETE, true);

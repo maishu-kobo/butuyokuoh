@@ -1,8 +1,10 @@
+import { assertGuestCapacity } from '@/lib/guest';
+import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 
-export async function GET() {
+async function handleGET() {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -14,7 +16,7 @@ export async function GET() {
       cg.*,
       COUNT(i.id) as item_count
     FROM comparison_groups cg
-    LEFT JOIN items i ON i.comparison_group_id = cg.id
+    LEFT JOIN items i ON i.comparison_group_id = cg.id AND i.user_id = cg.user_id AND i.deleted_at IS NULL AND i.is_purchased = 0
     WHERE cg.user_id = ?
     GROUP BY cg.id
     ORDER BY cg.priority ASC, cg.created_at DESC
@@ -23,7 +25,7 @@ export async function GET() {
   return NextResponse.json(groups);
 }
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -37,8 +39,14 @@ export async function POST(request: NextRequest) {
   }
 
   const db = getDb();
-  const result = db.prepare('INSERT INTO comparison_groups (user_id, name, priority) VALUES (?, ?, ?)').run(user.id, name, priority);
+  return db.transaction(() => {
+    assertGuestCapacity(user, 'comparison_groups', db);
+    const result = db.prepare('INSERT INTO comparison_groups (user_id, name, priority) VALUES (?, ?, ?)').run(user.id, name, priority);
   
-  const group = db.prepare('SELECT * FROM comparison_groups WHERE id = ?').get(result.lastInsertRowid);
-  return NextResponse.json(group, { status: 201 });
+    const group = db.prepare('SELECT * FROM comparison_groups WHERE id = ?').get(result.lastInsertRowid);
+    return NextResponse.json(group, { status: 201 });
+  }).immediate();
 }
+
+export const GET = withAccess(handleGET, true);
+export const POST = withAccess(handlePOST, true);

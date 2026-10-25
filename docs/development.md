@@ -6,7 +6,7 @@
 
 | ツール | バージョン | 備考 |
 |--------|----------|------|
-| Node.js | 20.x 以上 | |
+| Node.js | 22.12 以上 | puppeteer 25 の engines。本番へ入れる前の手順は docs/deployment.md |
 | npm | 10.x 以上 | |
 | Git | - | |
 | Chromium/Chrome | - | Puppeteerで使用 |
@@ -70,6 +70,8 @@ http://localhost:3000 でアクセス。
 | `npm run start` | 本番サーバー起動 |
 | `npm run lint` | ESLintチェック |
 | `npm run check-prices` | 価格チェックスクリプト実行 |
+
+CI の速いレーンと重いレーン、フレークしたテストの隔離は [docs/ci.md](ci.md)。
 
 ---
 
@@ -168,3 +170,13 @@ SQLiteは同時書き込みに制限あり。開発サーバーを再起動。
 
 - `NEXTAUTH_URL`がアクセスしているURLと一致しているか確認
 - Google Cloud ConsoleのリダイレクトURIが正しいか確認
+
+## 任意のコミット前チェック
+
+`npm ci` の後、希望する開発者だけが `npm run hooks:install` を実行する。`core.hooksPath` をこのリポジトリのローカル設定で `.githooks` に設定する。他のリポジトリやグローバル設定は変更しない。同じリポジトリのworktreeではローカル設定を共有する。`.git/hooks` は呼ばれなくなる。別のフック設定がある場合は上書きしない。worktree固有のフック設定がある場合も自動変更せず停止する。
+
+pre-commitはステージ済み差分の空白エラー・競合と、ステージ済みJS/TSのESLintエラーを検出する。部分ステージの未追加部分はLint対象にせず、自動修正、git add、stashを行わない。ESLint設定・tsconfig・package.json・lockfileがステージと作業ツリーで内容や存在が異なる場合は、別設定で検査しないよう停止する。設定が読み込むローカルファイルを今後増やす場合は、チェック対象にも追加する。依存を変更した場合は手元の依存も更新する。
+
+解除は `npm run hooks:uninstall`。自分たちの設定だけを解除し、以前からあるグローバル設定等があればそちらが有効になる。インストール・解除は自動実行されない。
+
+型検査と単体テストは、push前に `npm run verify:fast` で明示的に実行する。このコマンドは作業ツリーを検査するため、push対象のコミットと一致するクリーンな状態で使う。pre-pushフックは導入せず、コミットごとのビルドやブラウザ試験も行わない。ローカルフックは回避できるので、必須チェックによる強制はCIで行う（#79）。

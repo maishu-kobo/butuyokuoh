@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "changes": [
+    {
+      "id": "capture-tables",
+      "reason": "写真取り込みの作業用テーブル。URL登録・一覧・価格再取得・ログインでは行を作らない。",
+      "tablesAdded": ["captures", "capture_candidates", "capture_ai_usage"],
+      "requireEmpty": true
+    },
+    {
+      "id": "capture-columns",
+      "reason": "写真候補の店舗コードと価格取得時刻、比較グループの写真由来。URLから登録した行ではNULLのまま。",
+      "columnsAdded": [
+        { "table": "items", "column": "source_item_code", "value": null },
+        { "table": "items", "column": "price_fetched_at", "value": null },
+        { "table": "comparison_groups", "column": "origin", "value": null },
+        { "table": "comparison_groups", "column": "capture_id", "value": null },
+        { "table": "comparison_groups", "column": "budget_item_id", "value": null }
+      ]
+    },
+    {
+      "id": "capture-indexes",
+      "reason": "写真取り込みテーブルの索引。既存テーブルの索引定義は比べたままにする。",
+      "indexesAdded": [
+        "idx_captures_user",
+        "idx_captures_group",
+        "idx_capture_candidates_user",
+        "idx_capture_candidates_capture",
+        "idx_capture_candidates_expires",
+        "idx_capture_ai_usage_day",
+        "idx_capture_ai_usage_user"
+      ]
+    },
+    {
+      "id": "list-photo-annotations",
+      "reason": "一覧は写真グループの出費の数え方を足す。写真以外の商品は合計に含め、由来ラベルは付かない。URL登録の応答に乗る新しい列はNULL。",
+      "responseFieldsAdded": [
+        { "field": "countsInTotal", "equals": true },
+        { "field": "totalLabel", "equals": null },
+        { "field": "comparison_group_origin", "equals": null },
+        { "field": "group_origin", "equals": null },
+        { "field": "source_item_code", "equals": null },
+        { "field": "price_fetched_at", "equals": null }
+      ]
+    },
+    {
+      "id": "url-scheme-validation",
+      "reason": "security, approved by Sota 2026-10-22",
+      "rejectedUrls": [
+        {
+          "step": "items.create.not-a-url",
+          "url": "not-a-url",
+          "status": 400,
+          "error": "URLは http または https を指定してください"
+        },
+        {
+          "step": "items.create.javascript-url",
+          "url": "javascript:alert(1)",
+          "status": 400,
+          "error": "URLは http または https を指定してください"
+        }
+      ]
+    },
+    {
+      "id": "verified-link-retires-password",
+      "required": true,
+      "reason": "確認済みの Google を、先にパスワード登録されていた同じメールの会員へ結ぶ。その行の password_hash を消し、session_generation を 1 進めて発行済みトークンを落とす。パスワードが無い行は進めない。",
+      "passwordRetired": [
+        { "email": "linked@example.test", "generation": 1 }
+      ]
+    },
+    {
+      "id": "unverified-existing-rejected",
+      "required": true,
+      "reason": "確認済みでない Google は、既にパスワードがある会員も奪わない。google_id は付かないし、password_hash も session_generation もそのまま。develop はプロフィールを見ずに google_id だけ付ける。",
+      "rejectedUnverifiedExisting": [
+        {
+          "step": "auth.google.unverified-existing",
+          "email": "taken@example.test",
+          "googleId": "sub-taken"
+        }
+      ]
+    },
+    {
+      "id": "session-generation-column",
+      "required": true,
+      "reason": "users.session_generation を INTEGER NOT NULL DEFAULT 0 で足す。連携で 1 進んだ行は直前の承認で比べる前に 0 へ戻すので、この手順に残る会員はすべて 0。",
+      "columnsAdded": [
+        { "table": "users", "column": "session_generation", "value": 0 }
+      ]
+    },
+    {
+      "id": "credentials-session-generation",
+      "required": true,
+      "reason": "Credentials の成功は、パスワード確認と同じ読み取りの sessionGeneration を返す。この手順では連携前なので 0。省略したり別の数だと比べたまま残す。",
+      "credentialsGeneration": [
+        { "step": "auth.credentials.success", "generation": 0 }
+      ]
+    },
+    {
+      "id": "session-generation-token",
+      "required": true,
+      "reason": "ログイン成功の自前 JWT に、パスワード確認と同じ読み取りの sessionGeneration を載せる。この手順では連携前なので 0。",
+      "responseFieldsAdded": [
+        { "field": "sessionGeneration", "equals": 0 }
+      ]
+    },
+    {
+      "id": "unverified-google-rejected",
+      "required": true,
+      "reason": "profile.email_verified が true でない Google は会員を作らない。develop はプロフィールを見ずに作る。既存会員がいないメールで拒否を固定する。",
+      "rejectedUnverifiedGoogle": [
+        {
+          "step": "auth.google.unverified",
+          "email": "unverified@example.test",
+          "googleId": "sub-unverified"
+        }
+      ]
+    },
+    {
+      "id": "member-uploads",
+      "reason": "退会する会員の十六進アップロードの所有。URL登録・一覧・価格再取得では行を作らない。",
+      "tablesAdded": ["member_uploads"],
+      "requireEmpty": true,
+      "indexesAdded": [
+        "idx_member_uploads_user",
+        "sqlite_autoindex_member_uploads_1"
+      ]
+    }
+  ]
+}

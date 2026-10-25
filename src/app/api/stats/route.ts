@@ -1,8 +1,10 @@
+import { withAccess } from '@/lib/api-access';
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
+import { moneyTotals, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
 
-export async function GET() {
+async function handleGET() {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -12,21 +14,19 @@ export async function GET() {
 
   // 全体統計
   const overview = db.prepare(`
-    SELECT 
-      COUNT(*) as total_items,
+    SELECT
+      SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) as total_items,
       SUM(CASE WHEN is_purchased = 0 AND deleted_at IS NULL THEN 1 ELSE 0 END) as wishlist_count,
-      SUM(CASE WHEN is_purchased = 1 THEN 1 ELSE 0 END) as purchased_count,
-      SUM(CASE WHEN is_purchased = 0 AND deleted_at IS NULL THEN current_price ELSE 0 END) as wishlist_total,
-      SUM(CASE WHEN is_purchased = 1 THEN current_price ELSE 0 END) as purchased_total
+      SUM(CASE WHEN is_purchased = 1 AND deleted_at IS NULL THEN 1 ELSE 0 END) as purchased_count
     FROM items
     WHERE user_id = ?
   `).get(user.id) as {
     total_items: number;
     wishlist_count: number;
     purchased_count: number;
-    wishlist_total: number | null;
-    purchased_total: number | null;
   };
+  const spendItems = userSpendInput(db, user.id);
+  const totals = moneyTotals(spendItems[0], photoSpendDecisions(spendItems[0], spendItems[1]));
 
   // カテゴリ別集計
   const byCategory = db.prepare(`
@@ -34,7 +34,7 @@ export async function GET() {
       COALESCE(c.name, '未分類') as category_name,
       COALESCE(c.color, '#6b7280') as category_color,
       COUNT(*) as count,
-      SUM(i.current_price) as total
+      SUM(i.current_price * COALESCE(i.quantity, 1)) as total
     FROM items i
     LEFT JOIN categories c ON i.category_id = c.id
     WHERE i.user_id = ? AND i.is_purchased = 0 AND i.deleted_at IS NULL
@@ -47,7 +47,7 @@ export async function GET() {
     SELECT 
       priority,
       COUNT(*) as count,
-      SUM(current_price) as total
+      SUM(current_price * COALESCE(quantity, 1)) as total
     FROM items
     WHERE user_id = ? AND is_purchased = 0 AND deleted_at IS NULL
     GROUP BY priority
@@ -59,9 +59,9 @@ export async function GET() {
     SELECT 
       strftime('%Y-%m', purchased_at) as month,
       COUNT(*) as count,
-      SUM(current_price) as total
+      SUM(current_price * COALESCE(quantity, 1)) as total
     FROM items
-    WHERE user_id = ? AND is_purchased = 1 AND purchased_at IS NOT NULL
+    WHERE user_id = ? AND is_purchased = 1 AND purchased_at IS NOT NULL AND deleted_at IS NULL
     GROUP BY strftime('%Y-%m', purchased_at)
     ORDER BY month DESC
     LIMIT 12
@@ -72,7 +72,7 @@ export async function GET() {
     SELECT 
       source,
       COUNT(*) as count,
-      SUM(current_price) as total
+      SUM(current_price * COALESCE(quantity, 1)) as total
     FROM items
     WHERE user_id = ? AND is_purchased = 0 AND deleted_at IS NULL
     GROUP BY source
@@ -101,8 +101,8 @@ export async function GET() {
     overview: {
       wishlistCount: overview.wishlist_count,
       purchasedCount: overview.purchased_count,
-      wishlistTotal: overview.wishlist_total || 0,
-      purchasedTotal: overview.purchased_total || 0,
+      wishlistTotal: totals.wishlistTotal,
+      purchasedTotal: totals.purchasedTotal,
     },
     byCategory,
     byPriority,
@@ -111,3 +111,5 @@ export async function GET() {
     priceRanges,
   });
 }
+
+export const GET = withAccess(handleGET, true);

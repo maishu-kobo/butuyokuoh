@@ -1,4 +1,5 @@
 export interface Item {
+  is_demo_sample?: number;
   id: number;
   name: string;
   url: string;
@@ -6,11 +7,19 @@ export interface Item {
   current_price: number | null;
   original_price: number | null;
   previous_price?: number | null; // 前回価格（価格履歴から取得）
-  source: string; // 'amazon', 'rakuten', 'other'
+  source: string; // 'amazon', 'rakuten', 'yahoo', 'other'
   source_name: string | null; // メーカー名など
+  source_item_code?: string | null; // 例: yahoo:<商品コード> / rakuten:<itemCode>
+  price_fetched_at?: string | null;
   priority: number; // 1-5
   planned_purchase_date: string | null;
   comparison_group_id: number | null;
+  comparison_group_name?: string | null;
+  comparison_group_origin?: string | null;
+  group_origin?: string | null;
+  budget_selected_item_id?: number | null;
+  countsInTotal?: boolean;
+  totalLabel?: string | null;
   category_id: number | null;
   category_name?: string | null;
   category_color?: string | null;
@@ -21,6 +30,9 @@ export interface Item {
   target_currency: 'JPY' | 'USD' | null;
   quantity: number;
   sort_order?: number;
+  last_scraped_at?: string | null; // 最後にスクレイプを試みた日時
+  scrape_status?: 'success' | 'failed' | null; // 直近スクレイプの成否
+  scrape_error?: string | null; // 失敗理由（任意）
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -47,6 +59,9 @@ export interface ComparisonGroup {
   id: number;
   name: string;
   priority: number;
+  origin?: string | null; // 'photo' は写真から作ったグループ
+  capture_id?: number | null;
+  budget_item_id?: number | null; // 出費予定で選んだ候補。空なら未選択
   created_at: string;
 }
 

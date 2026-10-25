@@ -1,9 +1,11 @@
+import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
+import { annotateSpend, photoSpendDecisions, userSpendInput, type SpendDecision } from '@/lib/photo-spend';
 import type { Item } from '@/types';
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -16,33 +18,40 @@ export async function GET(request: NextRequest) {
   
   // 購入予定日が設定されているアイテム（ゴミ箱に入っていないもの）
   let query = `
-    SELECT * FROM items 
-    WHERE is_purchased = 0 
-    AND user_id = ?
-    AND deleted_at IS NULL
-    AND planned_purchase_date IS NOT NULL
+    SELECT i.*, g.name AS comparison_group_name, g.origin AS group_origin,
+      CASE WHEN g.origin = 'photo' THEN g.budget_item_id ELSE NULL END AS budget_selected_item_id
+    FROM items i
+    LEFT JOIN comparison_groups g ON g.id = i.comparison_group_id AND g.user_id = i.user_id
+    WHERE i.is_purchased = 0
+    AND i.user_id = ?
+    AND i.deleted_at IS NULL
+    AND i.planned_purchase_date IS NOT NULL
   `;
   const params: (string | number)[] = [user.id];
 
   if (month) {
-    query += ` AND strftime('%Y-%m', planned_purchase_date) = ?`;
+    query += ` AND strftime('%Y-%m', i.planned_purchase_date) = ?`;
     params.push(month);
   }
 
-  query += ` ORDER BY planned_purchase_date ASC`;
+  query += ` ORDER BY i.planned_purchase_date ASC`;
 
-  const items = db.prepare(query).all(...params) as Item[];
+  const decisions = photoSpendDecisions(...userSpendInput(db, user.id));
+  const items = annotateSpend(db.prepare(query).all(...params) as Item[], decisions);
   
   // 購入予定日が未設定のアイテム（購入時期未定）
   const undatedQuery = `
-    SELECT * FROM items 
-    WHERE is_purchased = 0 
-    AND user_id = ?
-    AND deleted_at IS NULL
-    AND (planned_purchase_date IS NULL OR planned_purchase_date = '')
-    ORDER BY priority ASC, created_at DESC
+    SELECT i.*, g.name AS comparison_group_name, g.origin AS group_origin,
+      CASE WHEN g.origin = 'photo' THEN g.budget_item_id ELSE NULL END AS budget_selected_item_id
+    FROM items i
+    LEFT JOIN comparison_groups g ON g.id = i.comparison_group_id AND g.user_id = i.user_id
+    WHERE i.is_purchased = 0
+    AND i.user_id = ?
+    AND i.deleted_at IS NULL
+    AND (i.planned_purchase_date IS NULL OR i.planned_purchase_date = '')
+    ORDER BY i.priority ASC, i.created_at DESC
   `;
-  const undatedItems = db.prepare(undatedQuery).all(user.id) as Item[];
+  const undatedItems = annotateSpend(db.prepare(undatedQuery).all(user.id) as Item[], decisions);
   
   // 月ごとにグループ化
   const byMonth: Record<string, { items: Item[], total: number }> = {};
@@ -54,14 +63,14 @@ export async function GET(request: NextRequest) {
         byMonth[monthKey] = { items: [], total: 0 };
       }
       byMonth[monthKey].items.push(item);
-      byMonth[monthKey].total += (item.current_price || 0) * (item.quantity || 1);
+      byMonth[monthKey].total += countedAmount(item, decisions);
     }
   }
 
   // 購入時期未定のアイテムを追加
   if (undatedItems.length > 0) {
     const undatedTotal = undatedItems.reduce(
-      (sum, item) => sum + (item.current_price || 0) * (item.quantity || 1),
+      (sum, item) => sum + countedAmount(item, decisions),
       0
     );
     byMonth['undated'] = { items: undatedItems, total: undatedTotal };
@@ -69,3 +78,11 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json(byMonth);
 }
+
+function countedAmount(item: Item, decisions: Map<number, SpendDecision>): number {
+  const decision = decisions.get(item.id);
+  if (decision) return decision.amount;
+  return (item.current_price || 0) * (item.quantity || 1);
+}
+
+export const GET = withAccess(handleGET, true);

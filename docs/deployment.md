@@ -5,8 +5,12 @@ exe.dev環境への本番デプロイ手順。
 ## 前提
 
 - exe.dev VMにSSHアクセス可能
-- Node.js 20.x、npm 10.x インストール済み
+- Node.js 22.12 以上、npm 10.x インストール済み
 - systemdが利用可能
+
+**develop にマージする前に、本番 VM の Node.js を 22.12 以上へ上げること。** puppeteer 25 は `engines.node >=22.12.0` を要求する。本番が Node.js 20 のままだと、価格チェックのブラウザが起動しない。この変更では本番環境、本番データベース、秘密情報はいじらない。上げる作業は develop へ入れる前に、このリポジトリの外で行う。
+
+価格取得の Chrome は、まずサンドボックス付きで起動する。Ubuntu 23.10 以降で非特権の user namespace が禁止されているとき、または systemd の `RestrictNamespaces=true` のとき、Chrome は起動前に `No usable sandbox!` で止まる。その失敗のときだけ `--no-sandbox` と `--disable-setuid-sandbox` で一度だけ起動し直す。ほかの起動失敗ではやり直さない。`PUPPETEER_DANGEROUS_NO_SANDBOX` は置かない。
 
 ---
 
@@ -42,6 +46,11 @@ JWT_SECRET=<openssl rand -base64 32で生成>
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 ```
+
+**JWT_SECRETは本番（NODE_ENV=production）で必須。** 未設定の場合、トークンの発行・検証が
+`JWT_SECRET environment variable must be set in production` というエラーで失敗し、
+ログイン・拡張機能連携が動作しない（公開フォールバック鍵によるトークン偽造を防ぐためのフェイルファスト）。
+`openssl rand -base64 32` で生成した値を`.env.local`または systemd unit の`Environment=`で設定すること。
 
 ### 4. ビルド
 
@@ -156,6 +165,12 @@ journalctl -u butuyokuoh-price-check -f
 
 ## 更新デプロイ
 
+### ブランチの昇格
+
+機能は `feature/* → develop → main` の順でPRを作り、CIとレビューを確認して統合する。本番へ配置するコードは `main` の検証済みコミットにそろえる。`main` 向けPRにも単体・型・Lint・ビルド・Playwright・依存・秘密情報・CodeQL検査を実行する。main側に先行した更新があり、squashマージ後にも競合が残る場合は、developから昇格用ブランチを作る。そのブランチへmainを取り込み、両方の更新を保持して競合を解消したうえでmain向けPRを作り、CIとレビューを確認する。
+
+写真APIのキーはソースに含めず、本番VMの `CAPTURE_SECRETS_FILE` に設定する。コードの配置と写真機能の有効化は別々に確認する。
+
 ### 通常の更新
 
 ```bash
@@ -189,11 +204,20 @@ cd /home/exedev/butuyokuoh && git pull && npm install && npm run build && sudo s
 ### データベース
 
 ```bash
-# バックアップ
+# スキーマを変える前。手順の詳細は docs/database.md の「スキーマ変更の前のバックアップ」
+sudo systemctl stop butuyokuoh
+sqlite3 data/butuyokuoh.db ".backup 'data/butuyokuoh.db.pre-migrate.backup'"
+sqlite3 data/butuyokuoh.db.pre-migrate.backup "PRAGMA integrity_check;"
+
+# 停止中のファイルコピー。スキーマ変更の前のバックアップには使わない
 cp data/butuyokuoh.db data/butuyokuoh.db.backup.$(date +%Y%m%d)
 
 # 確認
 sqlite3 data/butuyokuoh.db "SELECT COUNT(*) FROM items;"
+
+# この場ではスキーマを変えない。確認が終わったら起動し直す。
+# 新しいコードを入れる前の止め方は docs/database.md
+sudo systemctl start butuyokuoh
 ```
 
 ### ディスク使用量
@@ -251,3 +275,8 @@ dmesg | grep -i oom
 cd /home/exedev/butuyokuoh
 npm run check-prices
 ```
+
+## ゲスト体験
+
+ゲストモードの有効化、保存期限・件数上限、毎時の清掃タイマー、停止手順は [guest-mode.md](guest-mode.md) を参照する。
+初期状態は無効。本番環境で匿名アクセス・Google OAuth・Cookie・清掃の動作を確認したうえで有効にする。
