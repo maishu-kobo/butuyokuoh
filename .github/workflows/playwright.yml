@@ -12,6 +12,7 @@ on:
       - feature/photo-capture
       - feature/capture-existing-bugfixes
       - develop
+      - main
   push:
     branches:
       - feature/photo-capture
