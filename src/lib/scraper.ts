@@ -309,15 +309,18 @@ function isAmazonBlockedHtml(html: string): boolean {
   );
 }
 
+// 価格の抽出に要らない。定期取得の待ちと転送を減らす。
+const PUPPETEER_SKIPPED_RESOURCES = new Set(['image', 'font', 'media']);
+
 /**
  * Puppeteer（ヘッドレスブラウザ）でAmazon商品ページを取得するフォールバック
  * 素のfetchがAmazonのボット対策に弾かれた場合に使用する
  * @returns 取得したScrapedItem（ボット検知された場合はnull）
  */
 async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: ScrapeDeps): Promise<ScrapedItem | null> {
-  const browser = deps?.launchBrowser
+  const browser: AmazonBrowser = deps?.launchBrowser
     ? await deps.launchBrowser({ headless: true })
-    : await launchPageBrowser();
+    : (await launchPageBrowser()) as AmazonBrowser;
 
   try {
     const page = await browser.newPage();
@@ -330,6 +333,10 @@ async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: ScrapeDeps
     await page.setRequestInterception(true);
     page.on('request', async (request) => {
       try {
+        if (PUPPETEER_SKIPPED_RESOURCES.has(request.resourceType())) {
+          await request.abort();
+          return;
+        }
         if (request.isNavigationRequest()) {
           const target = new URL(request.url());
           if (target.protocol === 'http:' || target.protocol === 'https:') {
@@ -420,13 +427,10 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
         sourceName: 'Amazon',
       };
 
-      // 価格が取得できた場合はそのまま返す
-      if (price !== null) {
-        return result;
-      }
-
-      // 価格が抽出できなかった場合はPuppeteerフォールバックを試す
-      fallbackResult = result;
+      // 商品ページは取れている。価格があっても無くてもここで返す。
+      // 価格が無い（在庫切れ、未発売、バリエーション未選択）ときも、ボット検知でも
+      // HTTP 失敗でもないのでブラウザは起動しない。
+      return result;
     }
   } catch (error) {
     if (error instanceof BlockedTargetError) {
@@ -460,7 +464,7 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
     };
   }
 
-  // Puppeteerフォールバック: ボット検知・fetch失敗・価格抽出失敗のいずれかで発動
+  // Puppeteerフォールバック: ボット検知か、再試行しても取れなかった HTTP 失敗で起動する。
   console.log('Falling back to Puppeteer for Amazon scraping:', sanitizedUrl);
   try {
     const puppeteerResult = await scrapeAmazonWithPuppeteer(sanitizedUrl, deps);

@@ -135,7 +135,6 @@ function request(type: string, url: string, navigation: boolean, actions: string
 function fakeBrowser(html: string, onGoto: (handler: ((request: AmazonBrowserRequest) => Promise<void> | void) | undefined) => Promise<void> | void): AmazonBrowser {
   let interception = false;
   let handler: ((request: AmazonBrowserRequest) => Promise<void> | void) | undefined;
-  let closed = false;
   return {
     async newPage() {
       return {
@@ -150,10 +149,8 @@ function fakeBrowser(html: string, onGoto: (handler: ((request: AmazonBrowserReq
         async content() { return html; },
       };
     },
-    async close() { closed = true; },
-    // closed is observed only to keep the fake honest if a future test reads it.
-    get closed() { return closed; },
-  } as AmazonBrowser;
+    async close() {},
+  };
 }
 
 async function emit(
