@@ -4,6 +4,7 @@ import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
+import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
 
 async function handlePOST(request: NextRequest) {
   try {
@@ -33,6 +34,10 @@ async function handlePOST(request: NextRequest) {
         { error: '無効なURL形式です' },
         { status: 400 }
       );
+    }
+
+    if (!isStorableItemUrl(url)) {
+      return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
     }
 
     // スクレイピング

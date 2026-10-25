@@ -5,11 +5,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { scrapeUrl, deriveScrapeOutcome, ScrapedItem } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
+import { excludesPagePriceCheck } from '@/lib/price-check-items';
 
 interface DbItem {
   id: number;
+  user_id: number;
   url: string;
   current_price: number | null;
+  comparison_group_id: number | null;
 }
 
 async function handlePOST(
@@ -27,6 +30,14 @@ async function handlePOST(
   const item = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id) as DbItem | undefined;
   if (!item) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+  }
+
+  // ショップが2件以上の写真グループは、ページの再取得で価格を上書きしない。
+  if (excludesPagePriceCheck(db, item)) {
+    return NextResponse.json(
+      { error: '写真から登録した商品は価格の再取得をしません', code: 'PHOTO_PRICE_EXCLUDED' },
+      { status: 409 },
+    );
   }
 
   // 再スクレイピング（例外時も last_scraped_at と失敗ステータスを記録する）

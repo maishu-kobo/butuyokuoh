@@ -4,6 +4,8 @@ import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
+import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
+import { localCalendarDate } from '@/lib/local-date';
 
 async function handleGET(
   request: NextRequest,
@@ -38,9 +40,13 @@ async function handlePATCH(
   const body = await request.json();
   const db = getDb();
 
-  const item = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id) as { current_price?: number } | undefined;
+  const item = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id) as { current_price?: number; url: string } | undefined;
   if (!item) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+  }
+
+  if (typeof body.url === 'string' && body.url && !isStorableItemUrl(body.url)) {
+    return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
   }
 
   assertOwnedRelations(db, user.id, body);
@@ -51,6 +57,12 @@ async function handlePATCH(
 
   const updates: string[] = [];
   const values: unknown[] = [];
+
+  // 購入日を送らない購入操作は、サーバのタイムゾーンではなく日本の暦日にする。
+  // 明示した日付と、購入取消の null はそのまま残す。
+  if ((body.is_purchased === true || body.is_purchased === 1) && body.purchased_at === undefined) {
+    body.purchased_at = localCalendarDate(new Date(), 'Asia/Tokyo');
+  }
 
   const allowedFields = ['name', 'url', 'priority', 'planned_purchase_date', 'comparison_group_id', 'category_id', 'notes', 'is_purchased', 'purchased_at', 'target_price', 'target_currency', 'quantity', 'image_url', 'current_price', 'sort_order'];
   
@@ -64,6 +76,11 @@ async function handlePATCH(
       }
       values.push(value);
     }
+  }
+
+  // 商品URLを変えたら、以前の検索APIの商品コードと取得時刻を引き継がない。
+  if (body.url !== undefined && body.url !== item.url) {
+    updates.push('source_item_code = NULL', 'price_fetched_at = NULL');
   }
 
   if (updates.length === 0) {

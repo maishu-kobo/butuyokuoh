@@ -4,7 +4,78 @@ import path from 'path';
 
 const dbPath = process.env.BUTUYOKUOH_DB_PATH || path.join(process.cwd(), 'data', 'butuyokuoh.db');
 
+// 検索で見つけた候補を残す時間。登録はこの期限の前の行だけを受け取る。
+export const CAPTURE_CANDIDATE_TTL_MS = 30 * 60 * 1000;
+
+export function captureCandidateExpiresAt(now = Date.now()): number {
+  return now + CAPTURE_CANDIDATE_TTL_MS;
+}
+
+// 写真そのものは保存しない。候補の image_url は店舗の商品画像。
+// origin = 'photo' のグループだけ出費の数え方を変える。budget_item_id は選んだ候補。NULL は未選択。
+// capture_ai_usage は写真判定の回数とニューロン。user_key は会員 ID の文字列。写真は入れない。
+const CAPTURE_SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS captures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    estimated_name TEXT,
+    jan TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    comparison_group_id INTEGER,
+    registered_item_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (comparison_group_id) REFERENCES comparison_groups(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS capture_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    capture_id INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    source_name TEXT,
+    shop_name TEXT,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    image_url TEXT,
+    price INTEGER,
+    source_item_code TEXT,
+    price_fetched_at TEXT,
+    jan TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at INTEGER NOT NULL DEFAULT (unixepoch('now', '+30 minutes') * 1000),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_captures_user ON captures(user_id);
+  CREATE INDEX IF NOT EXISTS idx_captures_group ON captures(comparison_group_id);
+  CREATE INDEX IF NOT EXISTS idx_capture_candidates_user ON capture_candidates(user_id);
+  CREATE INDEX IF NOT EXISTS idx_capture_candidates_capture ON capture_candidates(capture_id);
+  CREATE INDEX IF NOT EXISTS idx_capture_candidates_expires ON capture_candidates(expires_at);
+
+  CREATE TABLE IF NOT EXISTS capture_ai_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_key TEXT NOT NULL,
+    day TEXT NOT NULL,
+    at_ms INTEGER NOT NULL,
+    neurons INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_capture_ai_usage_day ON capture_ai_usage(day);
+  CREATE INDEX IF NOT EXISTS idx_capture_ai_usage_user ON capture_ai_usage(user_key, day, at_ms);
+`;
+
+export function deleteExpiredCaptureCandidates(db: Database.Database, now = Date.now()): number {
+  const result = db.prepare('DELETE FROM capture_candidates WHERE expires_at <= ?').run(now);
+  return result.changes;
+}
+
 let db: Database.Database | null = null;
+
+// いまの migrateDb を適用し終えた版。手順は足すだけで、開くたびに同じ結果になる。
+// user_version はその結果の記録で、今より小さいときだけ上げる。
+const SCHEMA_VERSION = 1;
 
 export function getDb(): Database.Database {
   if (!db) {
@@ -16,6 +87,8 @@ export function getDb(): Database.Database {
 export function openDatabase(filename: string): Database.Database {
   fs.mkdirSync(path.dirname(filename), { recursive: true });
   const connection = new Database(filename);
+  // 外部キーは接続ごとの設定で、ファイルには残らない。
+  connection.pragma('foreign_keys = ON');
   connection.pragma('journal_mode = WAL');
   connection.pragma('busy_timeout = 5000');
   connection.transaction(() => initDb(connection)).immediate();
@@ -58,6 +131,8 @@ function initDb(db: Database.Database) {
       last_scraped_at TEXT,
       scrape_status TEXT,
       scrape_error TEXT,
+      source_item_code TEXT,
+      price_fetched_at TEXT,
       deleted_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -80,6 +155,9 @@ function initDb(db: Database.Database) {
       user_id INTEGER NOT NULL,
       name TEXT NOT NULL,
       priority INTEGER NOT NULL DEFAULT 3,
+      origin TEXT,
+      capture_id INTEGER,
+      budget_item_id INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
@@ -128,6 +206,7 @@ function initDb(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_items_user_group ON items(user_id, comparison_group_id);
   `);
 
+  db.exec(CAPTURE_SCHEMA_SQL);
   migrateDb(db);
 }
 
@@ -136,6 +215,8 @@ function initDb(db: Database.Database) {
 // 後から追加されたカラムはここで ALTER TABLE により追従させる
 function migrateDb(db: Database.Database) {
   addColumnIfNotExists(db, 'users', 'account_type', "TEXT NOT NULL DEFAULT 'member'");
+  // パスワードを消しても会員 id は残る。発行済みトークンを失効させる世代。
+  addColumnIfNotExists(db, 'users', 'session_generation', 'INTEGER NOT NULL DEFAULT 0');
   addColumnIfNotExists(db, 'items', 'is_demo_sample', 'INTEGER NOT NULL DEFAULT 0');
   db.exec(`
     CREATE TABLE IF NOT EXISTS guest_sessions (
@@ -161,6 +242,34 @@ function migrateDb(db: Database.Database) {
   normalizeUserEmails(db);
   // LOWER(email) 照合の全表走査を解消する関数インデックス
   db.prepare('CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email))').run();
+
+  // 写真から登録。足すだけで、既存の列や表は消さない。
+  // budget_item_id は出費予定で選んだ候補の items.id。NULL は未選択。
+  addColumnIfNotExists(db, 'comparison_groups', 'origin', 'TEXT');
+  addColumnIfNotExists(db, 'comparison_groups', 'capture_id', 'INTEGER');
+  addColumnIfNotExists(db, 'comparison_groups', 'budget_item_id', 'INTEGER');
+  // 1件だけ登録した商品。比較グループのときは NULL。
+  addColumnIfNotExists(db, 'captures', 'registered_item_id', 'INTEGER');
+  addColumnIfNotExists(db, 'items', 'source_item_code', 'TEXT');
+  addColumnIfNotExists(db, 'items', 'price_fetched_at', 'TEXT');
+  db.exec(CAPTURE_SCHEMA_SQL);
+  // 十六進のファイル名からは所有者が分からない。アップロードした会員だけを記録する。
+  // 足すだけで、既存の行は消さない。開くたびに同じ結果になる。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS member_uploads (
+      name TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_member_uploads_user ON member_uploads(user_id);
+  `);
+  recordSchemaVersion(db);
+}
+
+function recordSchemaVersion(db: Database.Database) {
+  const current = Number(db.pragma('user_version', { simple: true }));
+  if (current < SCHEMA_VERSION) {
+    db.pragma(`user_version = ${SCHEMA_VERSION}`);
+  }
 }
 
 // 既存ユーザーのメールアドレスを LOWER(TRIM()) に正規化する

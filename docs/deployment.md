@@ -5,8 +5,12 @@ exe.dev環境への本番デプロイ手順。
 ## 前提
 
 - exe.dev VMにSSHアクセス可能
-- Node.js 20.x、npm 10.x インストール済み
+- Node.js 22.12 以上、npm 10.x インストール済み
 - systemdが利用可能
+
+**develop にマージする前に、本番 VM の Node.js を 22.12 以上へ上げること。** puppeteer 25 は `engines.node >=22.12.0` を要求する。本番が Node.js 20 のままだと、価格チェックのブラウザが起動しない。この変更では本番環境、本番データベース、秘密情報はいじらない。上げる作業は develop へ入れる前に、このリポジトリの外で行う。
+
+価格取得の Chrome は、まずサンドボックス付きで起動する。Ubuntu 23.10 以降で非特権の user namespace が禁止されているとき、または systemd の `RestrictNamespaces=true` のとき、Chrome は起動前に `No usable sandbox!` で止まる。その失敗のときだけ `--no-sandbox` と `--disable-setuid-sandbox` で一度だけ起動し直す。ほかの起動失敗ではやり直さない。`PUPPETEER_DANGEROUS_NO_SANDBOX` は置かない。
 
 ---
 
@@ -194,11 +198,20 @@ cd /home/exedev/butuyokuoh && git pull && npm install && npm run build && sudo s
 ### データベース
 
 ```bash
-# バックアップ
+# スキーマを変える前。手順の詳細は docs/database.md の「スキーマ変更の前のバックアップ」
+sudo systemctl stop butuyokuoh
+sqlite3 data/butuyokuoh.db ".backup 'data/butuyokuoh.db.pre-migrate.backup'"
+sqlite3 data/butuyokuoh.db.pre-migrate.backup "PRAGMA integrity_check;"
+
+# 停止中のファイルコピー。スキーマ変更の前のバックアップには使わない
 cp data/butuyokuoh.db data/butuyokuoh.db.backup.$(date +%Y%m%d)
 
 # 確認
 sqlite3 data/butuyokuoh.db "SELECT COUNT(*) FROM items;"
+
+# この場ではスキーマを変えない。確認が終わったら起動し直す。
+# 新しいコードを入れる前の止め方は docs/database.md
+sudo systemctl start butuyokuoh
 ```
 
 ### ディスク使用量
