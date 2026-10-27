@@ -316,6 +316,15 @@ export function CaptureSearchPanel({
         </div>
       )}
       {listed.length > 0 && (
+        <section aria-label="候補の登録操作" className="sticky top-20 z-20 flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-300 bg-white p-3 shadow-sm dark:border-slate-600 dark:bg-slate-800">
+          <p role="status" aria-live="polite" className="text-sm text-gray-900 dark:text-gray-100">{selected.length}件選択中</p>
+          <button type="button" onClick={() => void registerSelected()} disabled={selected.length === 0 || busy || registering}
+            className="min-h-[44px] px-4 py-2 bg-blue-600 text-white rounded-md disabled:opacity-50">
+            {registering ? '登録しています…' : '選んだ候補を登録'}
+          </button>
+        </section>
+      )}
+      {listed.length > 0 && (
         <div className="space-y-2">
           <div className="flex gap-2">
             <button type="button" aria-pressed={sort === 'recommended'} onClick={() => setSort('recommended')} className="min-h-[24px] min-w-[24px] px-3 py-2 border rounded-md text-sm">おすすめ順</button>
@@ -327,7 +336,7 @@ export function CaptureSearchPanel({
               const thumb = candidateThumbnail(item);
               const fetchedLabel = formatCandidateFetchedAt(item.fetchedAt);
               return (
-              <li key={item.candidateId ?? item.id} className="flex items-start gap-2 rounded-md border border-gray-200 dark:border-slate-600 p-2">
+              <li key={item.candidateId ?? item.id} className="scroll-mt-40 flex items-start gap-2 rounded-md border border-gray-200 dark:border-slate-600 p-2">
                 <input
                   type="checkbox"
                   aria-label={`候補を選ぶ ${item.title}`}
@@ -388,14 +397,7 @@ export function CaptureSearchPanel({
                 </p>
               )}
             </div>
-            {listed.length > 0 && <button
-              type="button"
-              onClick={() => void registerSelected()}
-              disabled={selected.length === 0 || busy || registering}
-              className="min-h-[24px] min-w-[24px] px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
-            >
-              {registering ? '登録しています…' : '選んだ候補を登録'}
-            </button>}
+
           </div>
       )}
       {slow && busy && (
