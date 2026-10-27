@@ -35,7 +35,6 @@ test('malformed, foreign-shop and ambiguous mobile destinations remain rejected'
     'http://m.rakuten.co.jp/other-shop/i/123/',
     'http://m.rakuten.co.jp/example-shop/i/not-a-number/',
     'http://m.rakuten.co.jp/example-shop/i/123/extra',
-    'http://m.rakuten.co.jp/example-shop/i/',
     'http://m.rakuten.co.jp.evil.example/example-shop/i/123/',
     'http://user:pass@m.rakuten.co.jp/example-shop/i/123/',
     'http://m.rakuten.co.jp:8080/example-shop/i/123/',

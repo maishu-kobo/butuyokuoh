@@ -5,6 +5,7 @@
 const PRODUCT_HOST = 'item.rakuten.co.jp';
 const MOBILE_HOST = 'm.rakuten.co.jp';
 const AFFILIATE_HOST = 'hb.afl.rakuten.co.jp';
+const MOBILE_ITEM_ID_PATH = /^\/([A-Za-z0-9_-]{1,64})\/i\/[0-9]{1,64}\/?$/;
 const MOBILE_PRODUCT_PATH = /^\/[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{1,64}\/?$/;
 
 function parseHttps(raw: string): URL | null {
@@ -29,7 +30,7 @@ export function canonicalRakutenProductUrl(raw: string): string | null {
   return canonical(parsed);
 }
 
-function canonicalMobileProductUrl(raw: string): string | null {
+function canonicalMobileProductUrl(raw: string, pc: string | null): string | null {
   if (/[\u0000-\u0020\\]/.test(raw)) return null;
   let parsed: URL;
   try {
@@ -39,6 +40,12 @@ function canonicalMobileProductUrl(raw: string): string | null {
   }
   if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.username || parsed.password || parsed.port) return null;
   if (parsed.hostname !== MOBILE_HOST) return null;
+  const legacy = MOBILE_ITEM_ID_PATH.exec(parsed.pathname);
+  if (legacy) {
+    // /shop/i/数字ID はPCの商品コードと異なる。安全性を確認済みのPCリンクを使う。
+    if (!pc || new URL(pc).pathname.split('/')[1] !== legacy[1]) return null;
+    return pc;
+  }
   if (!MOBILE_PRODUCT_PATH.test(parsed.pathname)) return null;
   return canonicalRakutenProductUrl(`https://${PRODUCT_HOST}${parsed.pathname}`);
 }
@@ -50,7 +57,7 @@ export function canonicalRakutenAffiliateUrl(raw: string): string | null {
   if (pcs.length === 0 || pcs.some((value) => canonicalRakutenProductUrl(value) == null)) return null;
   const mobiles = parsed.searchParams.getAll('m');
   if (mobiles.length === 0) return canonical(parsed);
-  const normalized = mobiles.map((value) => canonicalRakutenProductUrl(value) ?? canonicalMobileProductUrl(value));
+  const normalized = mobiles.map((value) => canonicalRakutenProductUrl(value) ?? canonicalMobileProductUrl(value, pcs.length === 1 ? canonicalRakutenProductUrl(pcs[0]) : null));
   if (normalized.some((value) => value == null)) return null;
   if (mobiles.every((value) => canonicalRakutenProductUrl(value) != null)) return canonical(parsed);
   const next = new URL(canonical(parsed));
