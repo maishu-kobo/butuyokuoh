@@ -13,6 +13,7 @@ import {
   type ProductGuess,
   type ProductIdentifier,
 } from './contract';
+import { composeCapturedProduct, guessIsSpecific } from './product-query';
 
 export const WORKERS_AI_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 export const WORKERS_AI_TIMEOUT_MS = 30_000;
@@ -39,12 +40,14 @@ const HOST = 'api.cloudflare.com';
 const INSTRUCTION = [
   '写真に写っている商品を1つだけ見て、JSONオブジェクトだけを返してください。',
   '説明、Markdown、URL、前置きは付けません。',
-  '{"confidence":"sure"|"unsure"|"unreadable","products":[{"name":"","brand":null,"model":null,"jan":null}]}',
+  '{"confidence":"sure"|"unsure"|"unreadable","products":[{"name":"","brand":null,"model":null,"productType":null,"color":null,"jan":null}]}',
   'nameは簡潔な商品名1つです。色、容量、キャリアの候補をスラッシュ（/）で並べてはいけません。',
-  '世代や型番が写真から読み取れないときは数字を推測せず、ブランドと商品の種類だけにします。例: Google Pixel。',
-  'nameは日本の通販で探せる商品名にし、分かるブランドと商品シリーズを含めます。',
+  '世代や型番が写真から読み取れないときは数字を推測せず、ブランドと商品の種類を両方書きます。種類を省いてブランド名だけにしない。例: バレンシアガの靴は「バレンシアガ シューズ」。',
+  'productTypeは見えている種類を1語で書きます。スニーカー、シューズ、バッグ、ヘッドホンのように。分からなければnull。',
+  'colorは見えている色を1つ。分からなければnull。色の候補をスラッシュで並べません。',
+  'nameは日本の通販で探せる商品名にし、分かるブランド、シリーズ、色、種類を含めます。',
   '色や種類しか分からないときは unsure。読めないブランド、型番、サイズを推測してはいけません。',
-  'ブランドと商品シリーズを特定できた1商品だけなら sure。似た候補が複数なら unsure で products は3つまで。',
+  'ブランドと、商品の種類またはシリーズが特定できた1商品だけなら sure。ブランド名だけなら unsure。似た候補が複数なら unsure で products は3つまで。',
   '商品が判別できなければ confidence は unreadable、products は空配列です。',
   '判別できたのに products を空にしてはいけません。',
   'バーコードは判定しません。janは必ずnull。分からないbrandとmodelもnull。',
@@ -587,11 +590,12 @@ function parseGuess(output: unknown): ParsedGuess {
     : 'unsure';
   if (confidence === 'sure' && products.length !== 1) confidence = 'unsure';
   // 一般名や非表示の推測値では商品を特定できた扱いにしない。
-  if (catalog || products.some(product => !product.brand || !product.model)) confidence = 'unsure';
+  if (catalog || products.some(product => !guessIsSpecific(product))) confidence = 'unsure';
   return { kind: 'guess', value: { confidence, products } };
 }
 
-function sanitizeGuessProduct(product: ProductGuess): { product: ProductGuess; catalog: boolean } | null {
+function sanitizeGuessProduct(input: { product: ProductGuess; productType: string | null; color: string | null }): { product: ProductGuess; catalog: boolean } | null {
+  const product = input.product;
   const named = sanitizeProductName(product.name);
   if (!named.name) return null;
   let catalog = named.catalog;
@@ -609,9 +613,14 @@ function sanitizeGuessProduct(product: ProductGuess): { product: ProductGuess; c
     catalog = catalog || cleaned.catalog;
     model = catalog ? null : (cleaned.name || null);
   }
-  const visibleName = named.name.normalize('NFKC').toLocaleLowerCase('en-US');
-  const visible = (label: string | null) => label && visibleName.includes(label.normalize('NFKC').toLocaleLowerCase('en-US')) ? label : null;
-  return { product: { ...product, name: named.name, brand: visible(brand), model: visible(model) }, catalog };
+  const composed = composeCapturedProduct({
+    name: named.name,
+    brand,
+    model,
+    productType: catalog ? null : input.productType,
+    color: catalog ? null : input.color,
+  });
+  return { product: { ...product, name: composed.name, brand: composed.brand, model: composed.model }, catalog };
 }
 
 function sanitizeProductName(name: string): { name: string; catalog: boolean } {
@@ -637,18 +646,22 @@ function sanitizeProductName(name: string): { name: string; catalog: boolean } {
   return { name: next, catalog: hadList || next !== normalized.trim() };
 }
 
-function normalizeProduct(item: unknown): ProductGuess | null {
+function normalizeProduct(item: unknown): { product: ProductGuess; productType: string | null; color: string | null } | null {
   if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
   const record = item as Record<string, unknown>;
   if (typeof record.name !== 'string') return null;
   const name = cleanLabel(record.name, 200);
   if (!name || isUrlish(name)) return null;
   return {
-    name,
-    brand: optionalLabel(record.brand, 80),
-    model: optionalLabel(record.model, 80),
-    // LLMのJANはチェックサムが正しくても画像由来と検証できない。
-    jan: null,
+    product: {
+      name,
+      brand: optionalLabel(record.brand, 80),
+      model: optionalLabel(record.model, 80),
+      // LLMのJANはチェックサムが正しくても画像由来と検証できない。
+      jan: null,
+    },
+    productType: optionalLabel(record.productType, 40),
+    color: optionalLabel(record.color, 40),
   };
 }
 
