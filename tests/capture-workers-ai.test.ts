@@ -20,7 +20,7 @@ const JPEG_DATA_URL = 'data:image/jpeg;base64,/9j/AA==';
 
 const SURE = {
   confidence: 'sure',
-  products: [{ name: 'テスト用ゲルボールペン 0.5', brand: '物欲文具', model: 'BY-05', jan: '4900000000009' }],
+  products: [{ name: '物欲文具 BY-05 ゲルボールペン 0.5', brand: '物欲文具', model: 'BY-05', jan: null }],
 };
 
 function endpoint(): string {
@@ -143,8 +143,8 @@ test('markdown, an OpenAI-shaped reply, and a direct result string all parse int
     if (!unsure.ok) return;
     assert.equal(unsure.value.confidence, 'unsure');
     assert.deepEqual(unsure.value.products, [
-      { name: '牛乳', brand: '明治', model: null, jan: '4900000000009' },
-      { name: '豆乳', brand: null, model: 'A1', jan: null },
+      { name: '牛乳', brand: null, model: null, jan: null },
+      { name: '豆乳', brand: null, model: null, jan: null },
     ]);
     assert.equal(JSON.stringify(unsure.value).includes('evil.example'), false);
     assert.equal(first.calls.length, 1);
