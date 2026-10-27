@@ -307,7 +307,7 @@ export function CaptureSearchPanel({
             <button
               type="button"
               disabled={searchBlocked || registering}
-              onClick={() => void runSearch(chosen, name)}
+              onClick={() => void runSearch(null, name)}
               className="inline-flex shrink-0 items-center whitespace-nowrap min-h-[24px] min-w-[24px] px-3 py-2 border rounded-md text-sm disabled:opacity-50"
             >
               この名前で探す
