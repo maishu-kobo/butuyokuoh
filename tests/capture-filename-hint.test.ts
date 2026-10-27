@@ -6,7 +6,7 @@ import { filenameProductCode } from '../src/lib/capture/filename-hint';
 test('a catalog filename offers only an unconfirmed code, never a product identity', () => {
   assert.equal(filenameProductCode('7897722AA4V1000_F.jpg'), '7897722AA4V1000');
   assert.equal(filenameProductCode('AB-123456_front.PNG'), 'AB-123456');
-  for (const name of ['IMG_12345678.jpg', 'PXL_20261027_123456.jpg', 'DSC12345678.jpg', '20261027.jpg', 'photo.jpg', 'a1234567.jpg', 'ab123.jpg', '../AB123456.jpg', 'd68fe49d-6c98-455d-918e-68c4d05380fe.jpg']) {
+  for (const name of ['IMG_12345678.jpg', 'PXL_20261027_123456.jpg', 'DSC12345678.jpg', '20261027.jpg', '20261027T123456Z.jpg', 'photo.jpg', 'a1234567.jpg', 'ab123.jpg', '../AB123456.jpg', 'd68fe49d-6c98-455d-918e-68c4d05380fe.jpg']) {
     assert.equal(filenameProductCode(name), null, name);
   }
 });
