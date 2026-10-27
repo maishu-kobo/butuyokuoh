@@ -51,7 +51,12 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
     await expect(controls.getByRole('button', { name: '登録しています…' })).toBeDisabled();
     expect(submissions).toEqual([{ candidateIds: [1, 40] }]);
     finish!();
-    await expect(page.getByRole('alert').filter({ hasText: 'テスト用の再試行案内' })).toBeVisible();
+    await expect(controls.getByRole('alert').filter({ hasText: 'テスト用の再試行案内' })).toBeInViewport();
+    const first = page.getByRole('checkbox', { name: '候補を選ぶ 商品候補 1', exact: true });
+    await first.scrollIntoViewIfNeeded();
+    await register.click();
+    await expect(controls.getByRole('alert')).toHaveText('テスト用の再試行案内');
+    await expect(controls.getByRole('alert')).toBeInViewport();
     await expect(register).toBeEnabled();
     await page.getByLabel('検索サービスのクレジット').scrollIntoViewIfNeeded();
     await expect(page.getByRole('link', { name: 'Supported by Rakuten Developers' })).toBeInViewport();

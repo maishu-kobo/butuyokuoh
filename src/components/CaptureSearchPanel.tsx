@@ -322,6 +322,7 @@ export function CaptureSearchPanel({
             className="min-h-[44px] px-4 py-2 bg-blue-600 text-white rounded-md disabled:opacity-50">
             {registering ? '登録しています…' : '選んだ候補を登録'}
           </button>
+          {notice && <p role="alert" className="w-full text-sm text-red-700 dark:text-red-300">{notice}</p>}
         </section>
       )}
       {listed.length > 0 && (
@@ -409,7 +410,7 @@ export function CaptureSearchPanel({
           </div>
         </div>
       )}
-      {notice && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{notice}</p>}
+      {notice && listed.length === 0 && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{notice}</p>}
       {(attribution?.yahoo || showRakutenCredit) && (
         <footer aria-label="検索サービスのクレジット" className="flex flex-col items-end border-t border-gray-200 pt-3 text-xs leading-6 dark:border-slate-600">
           {attribution?.yahoo && (
