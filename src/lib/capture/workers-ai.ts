@@ -6,7 +6,6 @@ import {
   CaptureMessages,
   captureFailure,
   decodeCapturePhoto,
-  isValidJan,
   type CaptureErrorCode,
   type CaptureResult,
   type IdentifyConfidence,
@@ -43,10 +42,12 @@ const INSTRUCTION = [
   '{"confidence":"sure"|"unsure"|"unreadable","products":[{"name":"","brand":null,"model":null,"jan":null}]}',
   'nameは簡潔な商品名1つです。色、容量、キャリアの候補をスラッシュ（/）で並べてはいけません。',
   '世代や型番が写真から読み取れないときは数字を推測せず、ブランドと商品の種類だけにします。例: Google Pixel。',
-  '自信がある商品が1つなら sure。似た候補が複数なら unsure で products は3つまで。',
+  'nameは日本の通販で探せる商品名にし、分かるブランドと商品シリーズを含めます。',
+  '色や種類しか分からないときは unsure。読めないブランド、型番、サイズを推測してはいけません。',
+  'ブランドと商品シリーズを特定できた1商品だけなら sure。似た候補が複数なら unsure で products は3つまで。',
   '商品が判別できなければ confidence は unreadable、products は空配列です。',
   '判別できたのに products を空にしてはいけません。',
-  'JANは写真に印字された8桁か13桁だけ。分からない値は null。',
+  'バーコードは判定しません。janは必ずnull。分からないbrandとmodelもnull。',
 ].join('');
 
 const AI_TRANSIENT_ATTEMPTS = 2;
@@ -583,9 +584,10 @@ function parseGuess(output: unknown): ParsedGuess {
   if (products.length === 0) return { kind: 'invalid' };
   let confidence: IdentifyConfidence = record.confidence === 'sure' || record.confidence === 'unsure'
     ? record.confidence
-    : products.length === 1 ? 'sure' : 'unsure';
+    : 'unsure';
   if (confidence === 'sure' && products.length !== 1) confidence = 'unsure';
-  if (catalog) confidence = 'unsure';
+  // 一般名や非表示の推測値では商品を特定できた扱いにしない。
+  if (catalog || products.some(product => !product.brand || !product.model)) confidence = 'unsure';
   return { kind: 'guess', value: { confidence, products } };
 }
 
@@ -607,7 +609,9 @@ function sanitizeGuessProduct(product: ProductGuess): { product: ProductGuess; c
     catalog = catalog || cleaned.catalog;
     model = catalog ? null : (cleaned.name || null);
   }
-  return { product: { ...product, name: named.name, brand, model }, catalog };
+  const visibleName = named.name.normalize('NFKC').toLocaleLowerCase('en-US');
+  const visible = (label: string | null) => label && visibleName.includes(label.normalize('NFKC').toLocaleLowerCase('en-US')) ? label : null;
+  return { product: { ...product, name: named.name, brand: visible(brand), model: visible(model) }, catalog };
 }
 
 function sanitizeProductName(name: string): { name: string; catalog: boolean } {
@@ -639,16 +643,12 @@ function normalizeProduct(item: unknown): ProductGuess | null {
   if (typeof record.name !== 'string') return null;
   const name = cleanLabel(record.name, 200);
   if (!name || isUrlish(name)) return null;
-  let jan: string | null = null;
-  if (typeof record.jan === 'string') {
-    const trimmed = record.jan.trim();
-    if (isValidJan(trimmed)) jan = trimmed;
-  }
   return {
     name,
     brand: optionalLabel(record.brand, 80),
     model: optionalLabel(record.model, 80),
-    jan,
+    // LLMのJANはチェックサムが正しくても画像由来と検証できない。
+    jan: null,
   };
 }
 

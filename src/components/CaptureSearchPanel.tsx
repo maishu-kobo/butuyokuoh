@@ -21,6 +21,7 @@ import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
 import type { RegisteredLocation, RegisteredCandidateLocation } from '@/lib/capture/register';
 import { useEffect, useRef, useState } from 'react';
 import { ImageOff } from 'lucide-react';
+import { filenameProductCode } from '@/lib/capture/filename-hint';
 
 type ListedCandidate = CaptureCandidate & { candidateId?: number; registeredIn?: RegisteredCandidateLocation | null };
 
@@ -244,6 +245,7 @@ export function CaptureSearchPanel({
   if (!file && !status) return null;
 
   const listed = orderCandidates(candidates, sort);
+  const filenameCode = file ? filenameProductCode(file.name) : null;
   const showRakutenCredit = attribution?.rakuten === true;
   const isAmazonAffiliate = amazonAffiliateLink(amazonUrl);
 
@@ -273,6 +275,9 @@ export function CaptureSearchPanel({
         </button>
       )}
       {products.length > 0 && (
+        <p className="text-sm text-gray-700 dark:text-gray-200">写真からの商品名は推定です。同じ商品とは限りません。ブランド名や品番が分かれば、下の入力欄に追加して探してください。</p>
+      )}
+      {products.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {products.map((product) => (
             <button
@@ -291,6 +296,15 @@ export function CaptureSearchPanel({
           ))}
         </div>
       )}
+      {filenameCode && !busy && (
+        <div className="rounded-md border border-gray-300 p-3 text-sm dark:border-slate-600">
+          <p>ファイル名の品番候補（未確認）: {filenameCode}</p>
+          <p className="mt-1 text-gray-600 dark:text-gray-300">写真から読み取った品番ではありません。商品の品番か確認してから使ってください。</p>
+          <button type="button" disabled={searchBlocked || registering}
+            onClick={() => { setName(filenameCode); void runSearch(null, filenameCode); }}
+            className="mt-2 min-h-[44px] rounded-md border px-3 py-2 disabled:opacity-50">この品番で探す</button>
+        </div>
+      )}
       {(chosen || name) && (
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1" htmlFor="capture-search-name">
@@ -301,6 +315,7 @@ export function CaptureSearchPanel({
               id="capture-search-name"
               disabled={registering}
               value={name}
+              placeholder="商品名・ブランド名・品番"
               onChange={(event) => setName(event.target.value)}
               className="min-w-0 flex-1 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md"
             />
