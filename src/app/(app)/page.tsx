@@ -350,7 +350,7 @@ export default function Home() {
       <HomeHeader user={user} onLogout={logout} />
       <HomeTabNav activeTab={activeTab} onChange={changeTab} onOpenList={fetchItems} />
 
-      <main className="max-w-4xl mx-auto px-4 py-6 overflow-hidden">
+      <main className="max-w-4xl mx-auto px-4 py-6 overflow-clip">
         <div className={animationClass}>
           {activeTab === 'list' && (
             <HomeListView
