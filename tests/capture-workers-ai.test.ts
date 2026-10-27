@@ -343,3 +343,21 @@ test('the workers ai client does not read the environment or log', () => {
   assert.equal(source.includes('capture-secrets'), false);
   assert.equal(source.includes(TOKEN), false);
 });
+
+test('a category with invisible invented identifiers is unsure and never supplies a JAN', async () => {
+  const { identifier } = harness({ responses: [textResult(JSON.stringify({
+    confidence: 'sure', products: [{ name: 'Black Leather Bag', brand: 'The Row', model: 'Small Handbag', jan: '4750000000000' }],
+  }))] });
+  const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.deepEqual(result.value, { confidence: 'unsure', products: [{ name: 'Black Leather Bag', brand: null, model: null, jan: null }] });
+});
+
+test('a visible brand and product line remain searchable but an AI barcode is discarded', async () => {
+  const { identifier } = harness({ responses: [textResult(JSON.stringify({
+    confidence: 'sure', products: [{ name: 'Example Alpha handbag', brand: 'Example', model: 'Alpha', jan: '4900000000009' }],
+  }))] });
+  const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.deepEqual(result.value, { confidence: 'sure', products: [{ name: 'Example Alpha handbag', brand: 'Example', model: 'Alpha', jan: null }] });
+});
