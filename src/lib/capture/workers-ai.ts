@@ -13,7 +13,7 @@ import {
   type ProductGuess,
   type ProductIdentifier,
 } from './contract';
-import { composeCapturedProduct, guessIsSpecific } from './product-query';
+import { composeCapturedProduct, copiedPromptExample, guessIsSpecific } from './product-query';
 
 export const WORKERS_AI_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 export const WORKERS_AI_TIMEOUT_MS = 30_000;
@@ -42,10 +42,12 @@ const INSTRUCTION = [
   '説明、Markdown、URL、前置きは付けません。',
   '{"confidence":"sure"|"unsure"|"unreadable","products":[{"name":"","brand":null,"model":null,"productType":null,"color":null,"jan":null}]}',
   'nameは簡潔な商品名1つです。色、容量、キャリアの候補をスラッシュ（/）で並べてはいけません。',
-  '世代や型番が写真から読み取れないときは数字を推測せず、ブランドと商品の種類を両方書きます。種類を省いてブランド名だけにしない。例: バレンシアガの靴は「バレンシアガ シューズ」。',
-  'productTypeは見えている種類を1語で書きます。スニーカー、シューズ、バッグ、ヘッドホンのように。分からなければnull。',
+  '世代や型番が写真から読み取れないときは数字を推測せず、ブランドと商品の種類を両方書きます。種類を省いてブランド名だけにしない。',
+  '見本のブランド名や商品名は書きません。写真に見えている文字だけを使い、指示文の語を商品名に写さない。',
+  'productTypeは見えている種類を1語で書きます。分からなければnull。',
   'colorは見えている色を1つ。分からなければnull。色の候補をスラッシュで並べません。',
   'nameは日本の通販で探せる商品名にし、分かるブランド、シリーズ、色、種類を含めます。',
+  'modelは見えているシリーズや型番です。種類の語だけをmodelに入れない。分からなければnull。',
   '色や種類しか分からないときは unsure。読めないブランド、型番、サイズを推測してはいけません。',
   'ブランドと、商品の種類またはシリーズが特定できた1商品だけなら sure。ブランド名だけなら unsure。似た候補が複数なら unsure で products は3つまで。',
   '商品が判別できなければ confidence は unreadable、products は空配列です。',
@@ -575,16 +577,28 @@ function parseGuess(output: unknown): ParsedGuess {
   if (!Array.isArray(record.products)) return { kind: 'invalid' };
   const products: ProductGuess[] = [];
   let catalog = false;
+  let echoed = false;
   for (const item of record.products) {
     if (products.length >= MAX_PRODUCTS) break;
     const product = normalizeProduct(item);
     if (!product) continue;
+    if (copiedPromptExample(product.product.name)) {
+      echoed = true;
+      continue;
+    }
     const sanitized = sanitizeGuessProduct(product);
     if (!sanitized) continue;
+    if (copiedPromptExample(sanitized.product.name)) {
+      echoed = true;
+      continue;
+    }
     if (sanitized.catalog) catalog = true;
     products.push(sanitized.product);
   }
-  if (products.length === 0) return { kind: 'invalid' };
+  if (products.length === 0) {
+    if (echoed) return { kind: 'guess', value: { confidence: 'unreadable', products: [] } };
+    return { kind: 'invalid' };
+  }
   let confidence: IdentifyConfidence = record.confidence === 'sure' || record.confidence === 'unsure'
     ? record.confidence
     : 'unsure';
@@ -619,6 +633,7 @@ function sanitizeGuessProduct(input: { product: ProductGuess; productType: strin
     model,
     productType: catalog ? null : input.productType,
     color: catalog ? null : input.color,
+    recoverSeries: !catalog,
   });
   return { product: { ...product, name: composed.name, brand: composed.brand, model: composed.model }, catalog };
 }

@@ -45,27 +45,34 @@ function candidate(id: string, title: string, price: number): CaptureCandidate {
   };
 }
 
-test('a Balenciaga shoe guess keeps the brand and the shoe type instead of the brand alone', async () => {
+test('a prompt example copied as the product name is not searched', async () => {
   const { calls, identifier } = identify({
     confidence: 'sure',
-    products: [{ name: 'バレンシアガ', brand: 'バレンシアガ', model: 'バレンシアガ', productType: 'スニーカー', color: 'ブラック', jan: '4900000000009' }],
+    products: [{ name: 'バレンシアガ シューズ', brand: 'バレンシアガ', model: null, productType: 'シューズ', color: '白', jan: null }],
   });
   const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
   assert.equal(result.ok, true);
   if (!result.ok) return;
-  assert.equal(result.value.confidence, 'sure');
-  const product = result.value.products[0];
-  assert.equal(product.name.includes('バレンシアガ'), true);
-  assert.equal(product.name.includes('スニーカー'), true);
-  assert.equal(product.name.includes('ブラック'), true);
-  assert.notEqual(product.name, 'バレンシアガ');
-  assert.equal(product.brand, 'バレンシアガ');
-  assert.equal(product.model, null);
-  assert.equal(product.jan, null);
+  assert.equal(result.value.confidence, 'unreadable');
+  assert.deepEqual(result.value.products, []);
   const instruction = JSON.parse(calls[0].body).messages[0].content as string;
+  assert.equal(instruction.includes('バレンシアガ'), false);
+  assert.equal(instruction.includes('「'), false);
+  assert.equal(instruction.includes('example'), false);
   assert.equal(instruction.includes('ブランド名だけ'), true);
   assert.equal(instruction.includes('種類'), true);
   assert.equal(instruction.includes('世代'), true);
+});
+
+test('example copied from the old prompt is dropped even with a color attached', async () => {
+  const { identifier } = identify({
+    confidence: 'sure',
+    products: [{ name: 'example', brand: null, model: null, productType: 'pen', color: 'blue', jan: null }],
+  });
+  const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.confidence, 'unreadable');
 });
 
 test('a product type parked in the model field is moved into the searchable name', async () => {
@@ -137,8 +144,7 @@ test('a zero-hit query that still contains a model drops the model and keeps the
     jan: null,
   });
   assert.deepEqual(queries, [
-    'バレンシアガ トリプルS スニーカー バレンシアガ トリプルS',
-    'バレンシアガ トリプルS スニーカー トリプルS',
+    'バレンシアガ トリプルS スニーカー',
     'バレンシアガ スニーカー',
   ]);
   assert.equal(result.ok, true);
