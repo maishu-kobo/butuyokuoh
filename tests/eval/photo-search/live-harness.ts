@@ -15,7 +15,7 @@ import { runGeminiFallback } from '../../../src/lib/capture/gemini-fallback';
 import { dropOtherCategories } from '../../../src/lib/capture/product-query';
 import { withGeminiHarnessRetry } from './gemini-retry';
 import { parseGuessDocument, searchGuessRows, summarizeLiveReport, type GuessProduct, type HarnessSearchResult } from './split-run';
-import { createEvaluationBudget, UNKNOWN_CALL_NEURONS } from './budget';
+import { createEvaluationBudget, evaluationReservation, UNKNOWN_CALL_NEURONS } from './budget';
 
 const root = process.cwd();
 const arg = (name: string) => {
@@ -200,7 +200,13 @@ async function guessOrAll(selected: 'guess' | 'all') {
   let identifierUsage = 0;
   if (!gemini) {
     const loaded = await loadWorkersBudget();
-    budget = createEvaluationBudget(loaded.db, Number(loaded.accountUsedRaw), loaded.snapshotDay, () => identifierUsage);
+    budget = createEvaluationBudget(
+      loaded.db,
+      Number(loaded.accountUsedRaw),
+      loaded.snapshotDay,
+      () => identifierUsage,
+      evaluationReservation(variant.model.estimatedNeuronsPerPhoto),
+    );
   }
   const geminiRun = gemini ? geminiConfigFromEnv({
     CAPTURE_AI_MODEL: variant.name,
