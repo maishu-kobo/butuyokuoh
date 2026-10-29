@@ -11,9 +11,6 @@ const TABS: { id: HomeTab; label: string; icon: typeof List }[] = [
   { id: 'trash', label: 'ゴミ箱', icon: Trash2 },
 ];
 
-const idle = 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600';
-const active = 'bg-[var(--shu)] text-white shadow-md';
-
 export default function HomeTabNav({
   activeTab,
   onChange,
@@ -24,29 +21,27 @@ export default function HomeTabNav({
   onOpenList: () => void;
 }) {
   return (
-    <div className="bg-white dark:bg-slate-800 shadow-sm sticky top-0 z-20">
-      <div className="max-w-4xl mx-auto px-4 py-3">
-        <nav className="flex gap-1.5 overflow-x-auto scrollbar-hide">
-          {TABS.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  onChange(tab.id);
-                  if (tab.id === 'list') onOpenList();
-                }}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
-                  activeTab === tab.id ? active : idle
-                }`}
-              >
-                <Icon size={16} />
-                {tab.label}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
+    <div className="home-nav-shell">
+      <nav className="home-nav" aria-label="物欲王の画面">
+        {TABS.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              aria-pressed={activeTab === tab.id}
+              onClick={() => {
+                onChange(tab.id);
+                if (tab.id === 'list') onOpenList();
+              }}
+              className="home-nav-action"
+            >
+              <Icon size={16} aria-hidden="true" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }
