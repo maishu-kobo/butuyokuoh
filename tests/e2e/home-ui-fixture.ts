@@ -34,9 +34,9 @@ export async function prepareHomeUi(page: Page, theme: 'light' | 'dark') {
         sortBy: (params.get('sort') ?? 'priority') as HomeSortBy,
       });
       await route.fulfill({ status: 200, json: {
-        items: filtered, revision: 'fixed-ui-2026-10-29', totalCount: items.length,
+        items: filtered, revision: 'fixed-ui-2026-10-29:' + params.toString(), totalCount: items.length,
         matchedCount: filtered.length, rowCount: filtered.length,
-        totalAmount: filtered.reduce((sum, item) => sum + item.current_price * item.quantity, 0),
+        totalAmount: items.reduce((sum, item) => sum + item.current_price * item.quantity, 0),
         lowestPriceInGroup: null, matchedIds: filtered.map(item => item.id),
         allIds: items.map(item => item.id), nextCursor: null,
       } });
