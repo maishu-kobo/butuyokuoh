@@ -7,6 +7,7 @@ import { readCapturePhoto } from '@/lib/capture/photo';
 import { captureTestEnv, getCapturePorts, portsForRequest } from '@/lib/capture/ports';
 import { identifyHttpBody, resolveProductIdentifier } from '@/lib/capture/workers-ai';
 import { modelIdFromEnv } from '@/lib/capture/ai-variants';
+import { geminiIdentifierForEnv } from '@/lib/capture/gemini';
 import { NextRequest, NextResponse } from 'next/server';
 
 function errorResponse(error: CaptureErrorBody, status: number) {
@@ -27,13 +28,20 @@ async function handlePOST(request: NextRequest) {
     const user = await getCurrentUser();
     if (user?.account_type === 'member') userId = String(user.id);
   }
-  const identifier = resolveProductIdentifier({
+  // Gemini は CAPTURE_AI_MODEL で選んだときだけ。未選択なら今までの Workers AI。
+  const testEnv = captureTestEnv();
+  const gemini = geminiIdentifierForEnv({
+    hooked,
+    fake: ports.identifier,
+    env: testEnv,
+  });
+  const identifier = gemini ?? resolveProductIdentifier({
     hooked,
     accountId: secrets.cloudflareAccountId,
     apiToken: secrets.cloudflareApiToken,
     userId,
     fake: ports.identifier,
-    env: captureTestEnv(),
+    env: testEnv,
     model: modelIdFromEnv(),
   });
   const http = identifyHttpBody(await identifier.identify(photo.value));

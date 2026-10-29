@@ -311,7 +311,7 @@ test('the identify route selects gemini without reading the environment itself',
   const harness = readFileSync(join('tests', 'eval', 'photo-search', 'live-harness.ts'), 'utf8');
   assert.equal(/process\.env/.test(route), false);
   assert.equal(route.includes('GEMINI_API_KEY'), false);
-  assert.ok(route.indexOf('geminiIdentifierForEnv') < route.indexOf('resolveProductIdentifier'));
+  assert.ok(route.indexOf('geminiIdentifierForEnv(') < route.indexOf('resolveProductIdentifier('));
   assert.equal(gemini.includes('process.env.GEMINI_API_KEY'), false);
   assert.equal(gemini.includes('process.env.GEMINI_MODEL'), false);
   assert.equal(gemini.includes('process.env.CAPTURE_AI_MODEL'), false);

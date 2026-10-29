@@ -27,6 +27,29 @@
 
 Gemma 4 は推論モデルで、思考を切らないと `max_tokens` 400 を思考に使い `result.response` が null になる。リクエストは `chat_template_kwargs.enable_thinking: false` と `reasoning_effort: "none"`、上限は `max_completion_tokens`（[モデルページ](https://developers.cloudflare.com/workers-ai/models/gemma-4-26b-a4b-it/)、[Gemma の思考](https://ai.google.dev/gemma/docs/capabilities/thinking)）。本文は `choices[].message.content` も読む。
 
+### Gemini（無料枠）
+
+Workers AI のほかに、選んだときだけ Google Gemini API で同じ写真を推定できる。既定のモデルは変えない。`CAPTURE_AI_MODEL` が未設定、または Workers の variant のときは、今までどおり llama 3.2 で、`GEMINI_API_KEY` は要らない。
+
+| 設定 | モデル |
+| --- | --- |
+| `CAPTURE_AI_MODEL=gemini` または `gemini-ladder` | `gemini-2.5-flash` |
+| `CAPTURE_AI_MODEL=gemini-lite` または `gemini-lite-ladder` | `gemini-2.5-flash-lite` |
+| `GEMINI_MODEL` | 上の2つのどちらか。置いたときだけ、variant のモデルを上書きする |
+
+`gemini-ladder` と `gemini-lite-ladder` の段は評価ハーネスだけが使う。通常画面でその名前を置いても、推定に使うモデルは同じで、検索の段は増えない。
+
+キーは `GEMINI_API_KEY`。リクエストの URL には置かず、ヘッダ `x-goog-api-key` だけ。`CAPTURE_SECRETS_FILE` は知らないキーを読まないので、このキーはプロセスの環境変数に置く。`GEMINI_MODEL` の初期値は `gemini-2.5-flash`。思考は `thinkingBudget: 0`（[Gemini の思考](https://ai.google.dev/gemini-api/docs/generate-content/thinking)）。返答は `responseMimeType: application/json` と `responseSchema`。ニューロン台帳は増えない。回数の上限は Google AI Studio の無料枠。
+
+評価は推測と検索を別のマシンで分けられる。推測側は `GEMINI_API_KEY` だけ、検索側は Yahoo と楽天のキーだけ。最後の JSON は今までのライブ評価と同じ項目（`diagnosticPoints` の満点は 92）なので、Workers の結果と並べられる。
+
+```bash
+node --import tsx tests/eval/photo-search/live-harness.ts --mode guess --variant gemini-ladder --images tests/eval/photo-search/images --out /tmp/gemini-ladder-guesses.json
+node --import tsx tests/eval/photo-search/live-harness.ts --mode search --guesses /tmp/gemini-ladder-guesses.json --out /tmp/gemini-ladder.json
+```
+
+lite は `--variant gemini-lite-ladder`。検索側は任意で `--truth /絶対パス/truth.json`。この環境では API キーが無いので、ライブの点数は未確認。
+
 ## 選んだモデル
 
 `@cf/meta/llama-3.2-11b-vision-instruct`

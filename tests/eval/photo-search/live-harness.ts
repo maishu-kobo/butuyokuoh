@@ -1,12 +1,17 @@
 // 同じ23枚をバリアントごとに測る。秘密とリクエストURLは残さない。
-// node --import tsx tests/eval/photo-search/live-harness.ts --variant llama32-ladder --images tests/eval/photo-search/images --out /tmp/llama32-ladder.json
+// まとめて測る（Workers。予算の申告が要る）:
+// node --import tsx tests/eval/photo-search/live-harness.ts --variant llama32-ladder --images tests/eval/photo-search/images --out /tmp/llama32-ladder.json --account-used-neurons 0 --usage-day 2026-10-29
+// 推測だけ（Gemini。ECもDBも要らない。GEMINI_API_KEY だけ）:
+// node --import tsx tests/eval/photo-search/live-harness.ts --mode guess --variant gemini-ladder --images tests/eval/photo-search/images --out /tmp/gemini-ladder-guesses.json
+// 検索だけ（Yahoo と楽天のキーだけ。推測JSONを採点する）:
+// node --import tsx tests/eval/photo-search/live-harness.ts --mode search --guesses /tmp/gemini-ladder-guesses.json --out /tmp/gemini-ladder.json
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { resolveSearchVariant, SEARCH_VARIANTS, estimateNeurons } from '../../../src/lib/capture/ai-variants';
+import { resolveSearchVariant, SEARCH_VARIANTS, estimateNeurons, type SearchVariant } from '../../../src/lib/capture/ai-variants';
 import { ensembleGuess } from '../../../src/lib/capture/ensemble';
-import { dropOtherCategories } from '../../../src/lib/capture/product-query';
-import { scorePhoto, exactProductTop5 } from './rubric';
+import { createGeminiIdentifier, geminiConfigFromEnv } from '../../../src/lib/capture/gemini';
+import { parseGuessDocument, searchGuessRows, summarizeLiveReport, type GuessProduct, type HarnessSearchResult } from './split-run';
 import { createEvaluationBudget, UNKNOWN_CALL_NEURONS } from './budget';
 
 const root = process.cwd();
@@ -15,55 +20,206 @@ const arg = (name: string) => {
   return index < 0 ? null : process.argv[index + 1] ?? null;
 };
 const variantName = arg('--variant') ?? 'llama32';
-const label = arg('--label') ?? variantName;
+const labelArg = arg('--label');
 const out = arg('--out');
 const imgDir = arg('--images');
 const only = arg('--only');
+const mode = arg('--mode') ?? 'all';
 const mod = (file: string) => import(pathToFileURL(path.join(root, file)).href);
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function envPathIsAbsolute() { return typeof process.env.BUTUYOKUOH_DB_PATH === 'string' && path.isAbsolute(process.env.BUTUYOKUOH_DB_PATH); }
 
-async function main() {
-  if (!out || !imgDir) {
-    console.error('need --images and --out');
-    process.exit(1);
+function loadTruth(truthPath: string | null): Record<string, string[]> {
+  const truth: Record<string, string[]> = truthPath ? JSON.parse(readFileSync(truthPath, 'utf8')) : {};
+  if (!truth || Array.isArray(truth) || typeof truth !== 'object' || Object.values(truth).some((ids) => !Array.isArray(ids) || ids.some((id) => typeof id !== 'string' || !id.trim()))) {
+    throw new Error('Truth must map photo ids to nonempty exact product identifiers');
   }
+  return truth;
+}
+
+function serviceHave() {
+  const env = process.env;
+  return {
+    cf: Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN),
+    yahoo: Boolean(env.YAHOO_SHOPPING_APP_ID),
+    rakuten: Boolean(env.RAKUTEN_APP_ID && env.RAKUTEN_ACCESS_KEY),
+  };
+}
+
+async function loadWorkersBudget() {
   const accountUsedRaw = arg('--account-used-neurons');
   const snapshotDay = arg('--usage-day');
   if (accountUsedRaw === null || !snapshotDay || !envPathIsAbsolute()) {
     throw new Error('Provide --account-used-neurons, --usage-day (UTC), and an absolute persistent BUTUYOKUOH_DB_PATH');
   }
-  const truthPath = arg('--truth');
-  const truth: Record<string, string[]> = truthPath ? JSON.parse(readFileSync(truthPath, 'utf8')) : {};
-  if (!truth || Array.isArray(truth) || typeof truth !== 'object' || Object.values(truth).some((ids) => !Array.isArray(ids) || ids.some((id) => typeof id !== 'string' || !id.trim()))) {
-    throw new Error('Truth must map photo ids to nonempty exact product identifiers');
+  const db = (await mod('src/lib/db.ts')).getDb();
+  return { accountUsedRaw, snapshotDay, db };
+}
+
+async function searchOnly() {
+  const guessesPath = arg('--guesses');
+  if (!out || !guessesPath) {
+    console.error('need --guesses and --out');
+    process.exit(1);
+  }
+  let guesses;
+  try {
+    guesses = parseGuessDocument(JSON.parse(readFileSync(guessesPath, 'utf8')));
+  } catch {
+    console.error('guesses JSON must name a variant and contain rows');
+    process.exit(1);
+  }
+  if (arg('--variant') && arg('--variant') !== guesses.variant) {
+    console.error('variant does not match the guesses file');
+    process.exit(1);
+  }
+  const truth = loadTruth(arg('--truth'));
+  const live = await mod('src/lib/capture/live-search.ts');
+  const fakes = await mod('src/lib/capture/fakes.ts');
+  const ladder = await mod('src/lib/capture/search-ladder.ts');
+  const have = serviceHave();
+  const referer = refererFromEnv(live);
+  const label = labelArg ?? guesses.label;
+  const scored: Record<string, unknown>[] = [];
+  for (const row of guesses.rows) {
+    const [next] = await searchGuessRows({
+      rows: [row],
+      truth,
+      ladder: guesses.ladder,
+      search: (product) => searchLive(product, guesses.ladder, String(row.id), live, fakes, ladder, referer, label),
+    });
+    scored.push(next);
+    writeFileSync(out, `${JSON.stringify({ partial: true, variant: guesses.variant, rows: scored }, null, 2)}\n`);
+    console.log(`${guesses.variant} ${String(row.id)} q=${JSON.stringify(next.query ?? null)} n=${JSON.stringify(next.counts ?? next.searchError ?? null)}`);
+    await sleep(1500);
+  }
+  const report = summarizeLiveReport({
+    label,
+    variant: guesses.variant,
+    model: guesses.model,
+    ladder: guesses.ladder,
+    estimatedNeuronsFor23: guesses.estimatedNeuronsFor23,
+    have,
+    refererSet: referer !== null,
+    rows: scored,
+    truth,
+  });
+  writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
+  console.log(`done ${guesses.variant} rows=${scored.length} neurons=${report.neurons} diagnosticPoints=${report.diagnosticPoints}`);
+}
+
+function guessQueries(value: object): string[] {
+  const queries = (value as { queries?: unknown }).queries;
+  return Array.isArray(queries) ? queries.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function refererFromEnv(live: { httpsReferer: (origin: string | null) => string | null }): string | null {
+  try { return process.env.AUTH_URL ? live.httpsReferer(new URL(process.env.AUTH_URL).origin) : null; } catch { return null; }
+}
+
+async function searchLive(
+  product: GuessProduct,
+  ladderOn: boolean,
+  id: string,
+  live: {
+    installSearchTransportForTests: (next: object) => void;
+    resolveSearchPorts: (input: object) => unknown;
+    httpsReferer: (origin: string | null) => string | null;
+  },
+  fakes: { searchWithPorts: (query: object, ports: unknown, tag: null) => Promise<{ ok: boolean; error?: { code: string; failures?: { site: string; code: string }[] }; value?: { candidates: { site: string; title: string; price: number }[]; failures: { site: string; code: string }[] } }> },
+  ladder: { searchWithLadder: (product: GuessProduct, ports: unknown, tag: null) => Promise<{ ok: boolean; error?: { code: string; failures?: { site: string; code: string }[] }; value?: { candidates: { site: string; title: string; price: number }[]; failures: { site: string; code: string }[] } }> },
+  referer: string | null,
+  label = labelArg ?? 'search',
+): Promise<HarnessSearchResult> {
+  const env = process.env;
+  const sent: { site: string; keyword: string; status?: number }[] = [];
+  live.installSearchTransportForTests({
+    yahooFetch: async (url: string, init: RequestInit) => {
+      const keyword = new URL(url).searchParams.get('query') ?? new URL(url).searchParams.get('jan_code') ?? '';
+      const response = await fetch(url, init);
+      sent.push({ site: 'yahoo', keyword, status: response.status });
+      return response;
+    },
+    rakutenHttp: async (request: { url: string; headers: Record<string, string>; signal: AbortSignal }) => {
+      const keyword = new URL(request.url).searchParams.get('keyword') ?? '';
+      const response = await fetch(request.url, {
+        method: 'GET', headers: request.headers, signal: request.signal, redirect: 'manual', cache: 'no-store',
+      });
+      const body = await response.text();
+      sent.push({ site: 'rakuten', keyword, status: response.status });
+      return { status: response.status, body };
+    },
+  });
+  const ports = live.resolveSearchPorts({
+    yahooAppId: env.YAHOO_SHOPPING_APP_ID ?? null,
+    rakutenAppId: env.RAKUTEN_APP_ID ?? null,
+    rakutenAccessKey: env.RAKUTEN_ACCESS_KEY ?? null,
+    rakutenAffiliateId: env.RAKUTEN_AFFILIATE_ID ?? null,
+    userId: `eval-${label}-${id}`,
+    referer,
+  });
+  const query = { name: product.name, brand: product.brand, model: product.model, jan: null };
+  const result = ladderOn
+    ? await ladder.searchWithLadder(product, ports, null)
+    : await fakes.searchWithPorts(query, ports, null);
+  if (!result.ok) {
+    return {
+      ok: false,
+      code: result.error?.code ?? 'SEARCH_FAILED',
+      sent,
+      failures: (result.error?.failures ?? []).map((failure) => ({ site: failure.site, code: failure.code })),
+      candidates: [],
+    };
+  }
+  return {
+    ok: true,
+    sent,
+    failures: (result.value?.failures ?? []).map((failure) => ({ site: failure.site, code: failure.code })),
+    candidates: (result.value?.candidates ?? []).map((item) => ({ site: item.site, title: item.title, price: item.price })),
+  };
+}
+
+async function guessOrAll(selected: 'guess' | 'all') {
+  if (!out || !imgDir) {
+    console.error('need --images and --out');
+    process.exit(1);
   }
   const variant = resolveSearchVariant(variantName);
   if (variant.name !== variantName) {
     console.error(`unknown variant. use: ${SEARCH_VARIANTS.map((item) => item.name).join(', ')}`);
     process.exit(1);
   }
-  const wa = await mod('src/lib/capture/workers-ai.ts');
+  const gemini = variant.provider === 'gemini';
+  const truth = selected === 'all' ? loadTruth(arg('--truth')) : {};
+  const label = labelArg ?? variantName;
+  let budget: Awaited<ReturnType<typeof createEvaluationBudget>> | null = null;
+  let identifierUsage = 0;
+  if (!gemini) {
+    const loaded = await loadWorkersBudget();
+    budget = createEvaluationBudget(loaded.db, Number(loaded.accountUsedRaw), loaded.snapshotDay, () => identifierUsage);
+  }
+  const geminiRun = gemini ? geminiConfigFromEnv({
+    CAPTURE_AI_MODEL: variant.name,
+    GEMINI_MODEL: process.env.GEMINI_MODEL,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+  }) : null;
+  if (gemini && (!geminiRun?.model || !geminiRun.apiKey)) {
+    console.error('GEMINI_API_KEY is required, and GEMINI_MODEL must be gemini-2.5-flash or gemini-2.5-flash-lite');
+    process.exit(1);
+  }
+  const wa = gemini ? null : await mod('src/lib/capture/workers-ai.ts');
   const photo = await mod('src/lib/capture/photo.ts');
-  const live = await mod('src/lib/capture/live-search.ts');
-  const fakes = await mod('src/lib/capture/fakes.ts');
-  const ladder = await mod('src/lib/capture/search-ladder.ts');
-  const env = process.env;
-  const have = {
-    cf: Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN),
-    yahoo: Boolean(env.YAHOO_SHOPPING_APP_ID),
-    rakuten: Boolean(env.RAKUTEN_APP_ID && env.RAKUTEN_ACCESS_KEY),
-  };
-  let referer: string | null = null;
-  try { referer = env.AUTH_URL ? live.httpsReferer(new URL(env.AUTH_URL).origin) : null; } catch { referer = null; }
+  const live = selected === 'all' ? await mod('src/lib/capture/live-search.ts') : null;
+  const fakes = selected === 'all' ? await mod('src/lib/capture/fakes.ts') : null;
+  const ladder = selected === 'all' ? await mod('src/lib/capture/search-ladder.ts') : null;
+  const have = serviceHave();
+  const referer = live ? refererFromEnv(live) : null;
   const files = readdirSync(imgDir).filter((file) => file.endsWith('.jpg')).sort();
   const rows: Record<string, unknown>[] = [];
   let neurons = 0;
-  let identifierUsage = 0;
   let activeModel = variant.model;
-  const db = (await mod('src/lib/db.ts')).getDb();
-  const budget = createEvaluationBudget(db, Number(accountUsedRaw), snapshotDay, () => identifierUsage);
+  const actualModel = geminiRun?.model ?? variant.model.id;
   for (const file of files) {
     const id = file.replace(/\.jpg$/, '');
     if (only && !only.split(',').includes(id)) continue;
@@ -73,50 +229,182 @@ async function main() {
     const prep = await photo.prepareCapturePhoto(bytes, 'image/jpeg');
     if (!prep.ok) { row.error = `prepare:${prep.error.code}`; rows.push(row); continue; }
     const calls: unknown[] = [];
-    const http = async (request: { url: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => {
-      try {
-        const response = await fetch(request.url, {
-          method: 'POST', redirect: 'manual', cache: 'no-store', headers: request.headers, body: request.body, signal: request.signal,
-        });
-        const body = await response.text();
-        let text: unknown = null;
-        let usage: { neurons?: number; prompt_tokens?: number; completion_tokens?: number } | null = null;
-        let errors: unknown = null;
-        try {
-          const parsed = JSON.parse(body) as {
-            result?: { response?: unknown; usage?: { neurons?: number; prompt_tokens?: number; completion_tokens?: number } };
-            errors?: { code?: unknown; message?: unknown }[];
-          };
-          text = parsed.result?.response ?? null;
-          usage = parsed.result?.usage ?? null;
-          errors = Array.isArray(parsed.errors)
-            ? parsed.errors.map((item) => ({ code: item.code, message: String(item.message ?? '').slice(0, 200) }))
-            : null;
-        } catch { /* not json */ }
-        const measured = usage && typeof usage.neurons === 'number' ? usage.neurons
-          : usage && typeof usage.prompt_tokens === 'number' && typeof usage.completion_tokens === 'number'
-            ? estimateNeurons(activeModel, usage.prompt_tokens, usage.completion_tokens) : UNKNOWN_CALL_NEURONS;
-        const charged = Number.isFinite(measured) && measured > 0 ? measured : UNKNOWN_CALL_NEURONS;
-        neurons += charged;
-        identifierUsage += charged;
-        calls.push({
-          status: response.status,
-          response: typeof text === 'string' ? text.slice(0, 2000) : JSON.stringify(text)?.slice(0, 2000),
-          usage,
-          errors,
-        });
-        return { status: response.status, body };
-      } catch (error) {
-        neurons += UNKNOWN_CALL_NEURONS;
-        identifierUsage += UNKNOWN_CALL_NEURONS;
-        calls.push({ status: 0, thrown: error instanceof Error ? error.name : 'error' });
-        throw error;
+    const started = Date.now();
+    const identified = gemini
+      ? await identifyGemini(prep.value, geminiRun!.apiKey!, geminiRun!.model!, calls)
+      : await identifyWorkers(prep.value, variant, id, label, wa, budget!, calls, () => identifierUsage, (next) => { identifierUsage = next; }, (model) => { activeModel = model; }, () => activeModel, (charged) => { neurons += charged; identifierUsage += charged; });
+    if (!identified.ok && identified.error.code === 'AI_LIMIT') { rows.push({ ...row, identifyError: 'AI_LIMIT' }); break; }
+    row.identifyMs = Date.now() - started;
+    row.modelCalls = calls;
+    row.neurons = gemini ? 0 : Math.round((neurons - beforeNeurons) * 1000) / 1000;
+    if (!identified.ok || identified.value.products.length === 0) {
+      if (identified.ok) {
+        row.confidence = identified.value.confidence;
+        row.products = identified.value.products;
+        row.queries = guessQueries(identified.value);
+      } else {
+        row.identifyError = identified.error.code;
       }
+      rows.push(row);
+      writePartial(selected, label, variant, actualModel, rows);
+      await sleep(1500);
+      continue;
+    }
+    row.confidence = identified.value.confidence;
+    row.products = identified.value.products;
+    row.queries = guessQueries(identified.value);
+    const product = identified.value.products[0];
+    row.query = { name: product.name, brand: product.brand, model: product.model, jan: null };
+    if (selected === 'all' && live && fakes && ladder) {
+      const [scored] = await searchGuessRows({
+        rows: [row],
+        truth,
+        ladder: variant.ladder,
+        search: (item) => searchLive(item, variant.ladder, id, live, fakes, ladder, referer),
+      });
+      rows.push(scored);
+    } else {
+      rows.push(row);
+    }
+    writePartial(selected, label, variant, actualModel, rows);
+    console.log(`${variant.name} ${id} conf=${row.confidence ?? row.identifyError} q=${JSON.stringify(row.query ?? null)} n=${JSON.stringify(row.counts ?? row.searchError ?? null)}`);
+    await sleep(1500);
+  }
+  if (selected === 'guess') {
+    const guessFile = {
+      mode: 'guess',
+      label,
+      variant: variant.name,
+      model: actualModel,
+      ladder: variant.ladder,
+      estimatedNeuronsFor23: variant.estimatedNeuronsFor23,
+      rows,
     };
-    const identifyWith = (modelId: string, userSuffix: string) => {
-      identifierUsage = 0;
-      activeModel = variant.secondModel?.id === modelId ? variant.secondModel : variant.model;
-      return wa.createWorkersAiIdentifier({
+    writeFileSync(out, `${JSON.stringify(guessFile, null, 2)}\n`);
+    console.log(`done guess ${variant.name} rows=${rows.length}`);
+    return;
+  }
+  const report = summarizeLiveReport({
+    label,
+    variant: variant.name,
+    model: actualModel,
+    ladder: variant.ladder,
+    estimatedNeuronsFor23: variant.estimatedNeuronsFor23,
+    have,
+    refererSet: referer !== null,
+    neurons: Math.round(neurons),
+    rows,
+    truth,
+  });
+  writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
+  console.log(`done ${variant.name} rows=${rows.length} neurons=${report.neurons} diagnosticPoints=${report.diagnosticPoints}`);
+}
+
+function writePartial(selected: 'guess' | 'all', label: string, variant: SearchVariant, model: string, rows: Record<string, unknown>[]) {
+  if (!out) return;
+  const body = selected === 'guess'
+    ? { mode: 'guess', partial: true, label, variant: variant.name, model, ladder: variant.ladder, estimatedNeuronsFor23: variant.estimatedNeuronsFor23, rows }
+    : { partial: true, variant: variant.name, rows };
+  writeFileSync(out, `${JSON.stringify(body, null, 2)}\n`);
+}
+
+async function identifyGemini(
+  photo: { mediaType: string; bytes: Uint8Array },
+  apiKey: string,
+  model: string,
+  calls: unknown[],
+) {
+  const http = async (request: { url: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => {
+    try {
+      const response = await fetch(request.url, {
+        method: 'POST', redirect: 'manual', cache: 'no-store', headers: request.headers, body: request.body, signal: request.signal,
+      });
+      const body = await response.text();
+      let text: string | null = null;
+      let usage: Record<string, number | null> | null = null;
+      try {
+        const parsed = JSON.parse(body) as {
+          candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
+          usageMetadata?: Record<string, unknown>;
+        };
+        const parts = parsed.candidates?.[0]?.content?.parts ?? [];
+        text = parts.filter((part) => part && typeof part.text === 'string' && part.thought !== true).map((part) => part.text).join('');
+        const meta = parsed.usageMetadata;
+        if (meta) {
+          usage = {};
+          for (const key of ['promptTokenCount', 'candidatesTokenCount', 'thoughtsTokenCount', 'totalTokenCount']) {
+            const value = meta[key];
+            usage[key] = typeof value === 'number' ? value : null;
+          }
+        }
+      } catch { /* not json */ }
+      calls.push({ status: response.status, response: text ? text.slice(0, 2000) : null, usage });
+      return { status: response.status, body };
+    } catch (error) {
+      calls.push({ status: 0, thrown: error instanceof Error ? error.name : 'error' });
+      return { status: 0, body: '' };
+    }
+  };
+  return createGeminiIdentifier({ apiKey, model, http }).identify(photo);
+}
+
+async function identifyWorkers(
+  photo: { mediaType: string; bytes: Uint8Array },
+  variant: SearchVariant,
+  id: string,
+  label: string,
+  wa: { createWorkersAiIdentifier: (options: object) => { identify: (input: object) => Promise<{ ok: true; value: { confidence: 'sure' | 'unsure' | 'unreadable'; products: GuessProduct[] } } | { ok: false; error: { code: string } }> } },
+  budget: ReturnType<typeof createEvaluationBudget>,
+  calls: unknown[],
+  usage: () => number,
+  setUsage: (next: number) => void,
+  setModel: (model: SearchVariant['model']) => void,
+  model: () => SearchVariant['model'],
+  charge: (neurons: number) => void,
+) {
+  const env = process.env;
+  const http = async (request: { url: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => {
+    try {
+      const response = await fetch(request.url, {
+        method: 'POST', redirect: 'manual', cache: 'no-store', headers: request.headers, body: request.body, signal: request.signal,
+      });
+      const body = await response.text();
+      let text: unknown = null;
+      let tokenUsage: { neurons?: number; prompt_tokens?: number; completion_tokens?: number } | null = null;
+      let errors: unknown = null;
+      try {
+        const parsed = JSON.parse(body) as {
+          result?: { response?: unknown; usage?: { neurons?: number; prompt_tokens?: number; completion_tokens?: number } };
+          errors?: { code?: unknown; message?: unknown }[];
+        };
+        text = parsed.result?.response ?? null;
+        tokenUsage = parsed.result?.usage ?? null;
+        errors = Array.isArray(parsed.errors)
+          ? parsed.errors.map((item) => ({ code: item.code, message: String(item.message ?? '').slice(0, 200) }))
+          : null;
+      } catch { /* not json */ }
+      const measured = tokenUsage && typeof tokenUsage.neurons === 'number' ? tokenUsage.neurons
+        : tokenUsage && typeof tokenUsage.prompt_tokens === 'number' && typeof tokenUsage.completion_tokens === 'number'
+          ? estimateNeurons(model(), tokenUsage.prompt_tokens, tokenUsage.completion_tokens) : UNKNOWN_CALL_NEURONS;
+      const charged = Number.isFinite(measured) && measured > 0 ? measured : UNKNOWN_CALL_NEURONS;
+      charge(charged);
+      calls.push({
+        status: response.status,
+        response: typeof text === 'string' ? text.slice(0, 2000) : JSON.stringify(text)?.slice(0, 2000),
+        usage: tokenUsage,
+        errors,
+      });
+      return { status: response.status, body };
+    } catch (error) {
+      charge(UNKNOWN_CALL_NEURONS);
+      calls.push({ status: 0, thrown: error instanceof Error ? error.name : 'error' });
+      throw error;
+    }
+  };
+  const identifyWith = (modelId: string, userSuffix: string) => {
+    setUsage(0);
+    setModel(variant.secondModel?.id === modelId ? variant.secondModel : variant.model);
+    return wa.createWorkersAiIdentifier({
       accountId: env.CLOUDFLARE_ACCOUNT_ID ?? '',
       apiToken: env.CLOUDFLARE_API_TOKEN ?? '',
       userId: `eval-${label}-${id}-${userSuffix}`,
@@ -124,117 +412,35 @@ async function main() {
       budget,
       http,
     });
-    };
-    const started = Date.now();
-    const identified = await identifyWith(variant.model.id, 'a').identify(prep.value);
-    if (!identified.ok && identified.error.code === 'AI_LIMIT') { rows.push({ ...row, identifyError: 'AI_LIMIT' }); break; }
-    let merged = identified.ok ? identified.value : null;
-    if (variant.secondModel) {
-      const second = await identifyWith(variant.secondModel.id, 'b').identify(prep.value);
-      if (identified.ok && second.ok) {
-        const combined = ensembleGuess(
-          { confidence: identified.value.confidence, product: identified.value.products[0] ?? null },
-          { confidence: second.value.confidence, product: second.value.products[0] ?? null },
-        );
-        merged = combined.product
-          ? { confidence: combined.confidence, products: [combined.product] }
-          : { confidence: 'unreadable' as const, products: [] };
-      } else if (!identified.ok && second.ok) {
-        merged = second.value;
-      }
-    }
-    row.identifyMs = Date.now() - started;
-    row.modelCalls = calls;
-    row.neurons = Math.round((neurons - beforeNeurons) * 1000) / 1000;
-    if (!merged) { row.identifyError = identified.ok ? 'AI_INVALID_RESPONSE' : identified.error.code; rows.push(row); await sleep(1500); continue; }
-    row.confidence = merged.confidence;
-    row.products = merged.products;
-    const product = merged.products[0] ?? null;
-    if (product) {
-      const query = { name: product.name, brand: product.brand, model: product.model, jan: product.jan ?? null };
-      row.query = query;
-      const sent: { site: string; keyword: string; status?: number }[] = [];
-      live.installSearchTransportForTests({
-        yahooFetch: async (url: string, init: RequestInit) => {
-          const keyword = new URL(url).searchParams.get('query') ?? new URL(url).searchParams.get('jan_code') ?? '';
-          const response = await fetch(url, init);
-          sent.push({ site: 'yahoo', keyword, status: response.status });
-          return response;
-        },
-        rakutenHttp: async (request: { url: string; headers: Record<string, string>; signal: AbortSignal }) => {
-          const keyword = new URL(request.url).searchParams.get('keyword') ?? '';
-          const response = await fetch(request.url, {
-            method: 'GET', headers: request.headers, signal: request.signal, redirect: 'manual', cache: 'no-store',
-          });
-          const body = await response.text();
-          sent.push({ site: 'rakuten', keyword, status: response.status });
-          return { status: response.status, body };
-        },
-      });
-      const ports = live.resolveSearchPorts({
-        yahooAppId: env.YAHOO_SHOPPING_APP_ID ?? null,
-        rakutenAppId: env.RAKUTEN_APP_ID ?? null,
-        rakutenAccessKey: env.RAKUTEN_ACCESS_KEY ?? null,
-        rakutenAffiliateId: env.RAKUTEN_AFFILIATE_ID ?? null,
-        userId: `eval-${label}-${id}`,
-        referer,
-      });
-      const searchStarted = Date.now();
-      const result = variant.ladder
-        ? await ladder.searchWithLadder(product, ports, null)
-        : await fakes.searchWithPorts(query, ports, null);
-      row.searchMs = Date.now() - searchStarted;
-      row.sent = sent;
-      if (!result.ok) {
-        row.searchError = result.error.code;
-        row.failures = (result.error.failures ?? []).map((failure: { site: string; code: string }) => ({ site: failure.site, code: failure.code }));
-      } else {
-        const raw = result.value.candidates as { site: string; title: string; price: number }[];
-        const candidates = dropOtherCategories(raw, product.name);
-        row.failures = result.value.failures.map((failure: { site: string; code: string }) => ({ site: failure.site, code: failure.code }));
-        row.counts = {
-          yahoo: candidates.filter((item) => item.site === 'yahoo').length,
-          rakuten: candidates.filter((item) => item.site === 'rakuten').length,
-        };
-        row.top5 = candidates.slice(0, 5).map((item) => ({ site: item.site, title: item.title, price: item.price }));
-      }
-      const counts = row.counts as { yahoo?: number; rakuten?: number } | undefined;
-      const top5 = (row.top5 as { title: string }[] | undefined) ?? [];
-      row.exactProductTop5 = exactProductTop5(top5.map((item) => item.title), truth[id]);
-      row.score = scorePhoto({
-        id,
-        confidence: String(row.confidence ?? ''),
-        name: product.name,
-        brand: product.brand,
-        hits: (counts?.yahoo ?? 0) + (counts?.rakuten ?? 0),
-        top3: top5.slice(0, 3).map((item) => item.title),
-      });
-    }
-    rows.push(row);
-    writeFileSync(out, `${JSON.stringify({ partial: true, variant: variant.name, rows }, null, 2)}\n`);
-    console.log(`${variant.name} ${id} conf=${row.confidence ?? row.identifyError} q=${JSON.stringify(row.query ?? null)} n=${JSON.stringify(row.counts ?? row.searchError ?? null)}`);
-    await sleep(1500);
-  }
-  const scores = rows.map((row) => row.score).filter((score): score is { points: number } => Boolean(score));
-  const report = {
-    label,
-    variant: variant.name,
-    model: variant.model.id,
-    ladder: variant.ladder,
-    estimatedNeuronsFor23: variant.estimatedNeuronsFor23,
-    have,
-    refererSet: referer !== null,
-    neurons: Math.round(neurons),
-    exactProduct: {
-      evaluated: rows.filter((row) => truth[String(row.id)]?.length).length,
-      hits: rows.filter((row) => row.exactProductTop5 === true).length,
-      unscored: rows.filter((row) => !truth[String(row.id)]?.length).length,
-    },
-    diagnosticPoints: scores.reduce((sum, score) => sum + score.points, 0),
-    rows,
   };
-  writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
-  console.log(`done ${variant.name} rows=${rows.length} neurons=${Math.round(neurons)} diagnosticPoints=${report.diagnosticPoints}`);
+  const identified = await identifyWith(variant.model.id, 'a').identify(photo);
+  if (!identified.ok && identified.error.code === 'AI_LIMIT') return identified;
+  if (!variant.secondModel) return identified;
+  const second = await identifyWith(variant.secondModel.id, 'b').identify(photo);
+  if (identified.ok && second.ok) {
+    const combined = ensembleGuess(
+      { confidence: identified.value.confidence, product: identified.value.products[0] ?? null },
+      { confidence: second.value.confidence, product: second.value.products[0] ?? null },
+    );
+    const merged = combined.product
+      ? { confidence: combined.confidence, products: [combined.product] }
+      : { confidence: 'unreadable' as const, products: [] };
+    return { ok: true as const, value: merged };
+  }
+  if (!identified.ok && second.ok) return second;
+  return identified;
+}
+
+async function main() {
+  if (mode !== 'all' && mode !== 'guess' && mode !== 'search') {
+    console.error('mode must be all, guess, or search');
+    process.exit(1);
+  }
+  if (mode === 'search') {
+    await searchOnly();
+    return;
+  }
+  await guessOrAll(mode);
 }
 
 main().catch((error: unknown) => {
