@@ -1,7 +1,27 @@
-// 自信ありのブランドを、読めた文字か種類と衝突するときだけ外す。
+// 自信ありのブランドは、種類が明らかに違うときだけ外す。文字が無いだけでは外さない。
+// 文字を読んでいない型番（数字を含む）だけは外し、ブランドは残す。
 // 写真のファイル名では判断しない。既定の推定はこの関数を通さない。
 import type { IdentifyConfidence, IdentifyResponse, ProductGuess } from './contract';
 import { colorInText, dominantTypeGroup, statedProductType } from './product-query';
+
+// メーカーではない許諾元。服や帽子の範囲を外れた種類を sure のブランドにしない。
+const LICENSORS: { names: string[]; groups: string[] }[] = [
+  { names: ['mlb', 'メジャーリーグ'], groups: ['shirts', 'caps', 'jackets'] },
+  { names: ['nba', 'nfl', 'nhl'], groups: ['shirts', 'caps', 'jackets'] },
+  { names: ['disney', 'ディズニー', 'marvel', 'マーベル', 'sanrio', 'サンリオ'], groups: ['shirts', 'caps', 'jackets'] },
+];
+
+// 知っているメーカーと、その種類。表に無いブランドは文字が無くても残す。
+const MAKERS: { names: string[]; groups: string[] }[] = [
+  { names: ['nike', 'ナイキ'], groups: ['shoes', 'shirts', 'caps', 'jackets'] },
+  { names: ['adidas', 'アディダス', 'converse', 'コンバース'], groups: ['shoes'] },
+  { names: ['mac'], groups: ['lips'] },
+  { names: ['hp', 'dell', 'lenovo', 'asus'], groups: ['computers'] },
+  { names: ['apple', 'アップル'], groups: ['computers', 'phones'] },
+  { names: ['dyson', 'ダイソン'], groups: ['vacuums'] },
+  { names: ['casio', 'カシオ'], groups: ['watches'] },
+  { names: ['sony', 'ソニー'], groups: ['audio', 'cameras', 'phones', 'computers'] },
+];
 
 export const BRAND_EVIDENCE_SUFFIX = '各productにvisibleTextを足す。visibleTextは写真から読めた文字だけ。ロゴや刻印が無ければ空文字。推測したブランドや型番はvisibleTextに書かない。';
 
@@ -20,16 +40,16 @@ export function guardSureBrand(input: {
   const evidence = input.evidence ?? null;
   if (input.confidence !== 'sure') return { confidence: input.confidence, product: input.product, guarded: false };
   const brand = claimedBrand(input.product);
-  const model = input.product.model?.trim() || null;
-  if (!brand && !model) return { confidence: input.confidence, product: input.product, guarded: false };
-  const unsupported = !brandIsEvidenced(brand, model, evidence) || categoryConflicts(input.product, evidence);
-  if (!unsupported) return { confidence: input.confidence, product: input.product, guarded: false };
-  const name = categoryLevelName(input.product, evidence);
-  return {
-    confidence: 'unsure',
-    product: { name, brand: null, model: null, jan: null },
-    guarded: true,
-  };
+  if (brand && domainConflicts(brand, evidence?.productType || input.product.name)) {
+    return {
+      confidence: 'unsure',
+      product: { name: categoryLevelName(input.product, evidence), brand: null, model: null, jan: null },
+      guarded: true,
+    };
+  }
+  const trimmed = stripUnreadModelNumber(input.product, evidence);
+  if (!trimmed) return { confidence: input.confidence, product: input.product, guarded: false };
+  return { confidence: input.confidence, product: trimmed, guarded: true };
 }
 
 export function guardIdentifyResult<T extends { ok: boolean; value?: IdentifyResponse }>(result: T): T {
@@ -59,23 +79,57 @@ function claimedBrand(product: ProductGuess): string | null {
   return token;
 }
 
-function brandIsEvidenced(brand: string | null, model: string | null, evidence: BrandEvidence | null): boolean {
-  if (!evidence?.textProvided) return false;
-  const text = evidence.visibleText.trim();
-  if (!text) return false;
-  if (brand && !includesFold(text, brand)) return false;
-  if (model && !includesFold(text, model)) return false;
+function domainConflicts(brand: string, categoryText: string): boolean {
+  const wanted = dominantTypeGroup(categoryText);
+  if (!wanted) return false;
+  const folded = fold(brand);
+  for (const licensor of LICENSORS) {
+    if (!licensor.names.some((name) => folded === name || folded.includes(name))) continue;
+    return !licensor.groups.includes(wanted);
+  }
+  for (const maker of MAKERS) {
+    if (!maker.names.some((name) => folded === name)) continue;
+    return !maker.groups.includes(wanted);
+  }
+  return false;
+}
+
+function stripUnreadModelNumber(product: ProductGuess, evidence: BrandEvidence | null): ProductGuess | null {
+  const model = product.model?.trim() || '';
+  const blob = `${model} ${product.name}`;
+  if (!/\d/.test(blob)) return null;
+  const text = evidence?.textProvided ? evidence.visibleText : '';
+  if (text && (!model || includesFold(text, model)) && digitTokens(blob).every((token) => includesFold(text, token))) return null;
+  let name = model && /\d/.test(model) ? removePhrase(product.name, model) : product.name;
+  name = name.split(/\s+/).filter((token) => token && !/\d/.test(token) && !latinModelToken(token, product.brand)).join(' ');
+  const typeWord = statedProductType(evidence?.productType || '') || statedProductType(product.name);
+  const color = colorInText(evidence?.color || '') || colorInText(product.name);
+  if (product.brand && !includesFold(name, product.brand)) name = `${product.brand} ${name}`.trim();
+  if (typeWord && !statedProductType(name)) name = `${name} ${typeWord}`.trim();
+  if (color && !includesFold(name, color)) name = `${name} ${color}`.trim();
+  name = name.replace(/\s+/g, ' ').trim();
+  if (!name) return null;
+  return { name, brand: product.brand, model: null, jan: null };
+}
+
+function latinModelToken(token: string, brand: string | null): boolean {
+  if (!/[A-Za-z]/.test(token)) return false;
+  if (brand && fold(token) === fold(brand)) return false;
   return true;
 }
 
-function categoryConflicts(product: ProductGuess, evidence: BrandEvidence | null): boolean {
-  const wanted = dominantTypeGroup(evidence?.productType || product.name);
-  if (!wanted) return false;
-  const brandGroup = dominantTypeGroup(product.brand ?? '');
-  if (brandGroup && brandGroup !== wanted) return true;
-  const nameGroup = dominantTypeGroup(product.name);
-  if (product.brand && nameGroup && nameGroup !== wanted) return true;
-  return false;
+function digitTokens(text: string): string[] {
+  return text.split(/\s+/).filter((token) => /\d/.test(token));
+}
+
+function removePhrase(name: string, phrase: string): string {
+  if (!phrase) return name;
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return name.replace(new RegExp(escaped, 'ig'), ' ').replace(/\s+/g, ' ').trim();
+}
+
+function fold(value: string): string {
+  return value.normalize('NFKC').toLocaleLowerCase('en-US');
 }
 
 function categoryLevelName(product: ProductGuess, evidence: BrandEvidence | null): string {
