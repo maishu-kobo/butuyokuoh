@@ -11,7 +11,8 @@ import { pathToFileURL } from 'node:url';
 import { resolveSearchVariant, SEARCH_VARIANTS, estimateNeurons, type SearchVariant } from '../../../src/lib/capture/ai-variants';
 import { ensembleGuess } from '../../../src/lib/capture/ensemble';
 import { createGeminiIdentifier, GEMINI_LITE_MODEL, geminiConfigFromEnv } from '../../../src/lib/capture/gemini';
-import { needsGeminiAfterMiss, needsGeminiFallback } from '../../../src/lib/capture/gemini-fallback';
+import { runGeminiFallback } from '../../../src/lib/capture/gemini-fallback';
+import { dropOtherCategories } from '../../../src/lib/capture/product-query';
 import { withGeminiHarnessRetry } from './gemini-retry';
 import { parseGuessDocument, searchGuessRows, summarizeLiveReport, type GuessProduct, type HarnessSearchResult } from './split-run';
 import { createEvaluationBudget, UNKNOWN_CALL_NEURONS } from './budget';
@@ -237,18 +238,69 @@ async function guessOrAll(selected: 'guess' | 'all') {
     if (!prep.ok) { row.error = `prepare:${prep.error.code}`; rows.push(row); continue; }
     const calls: unknown[] = [];
     const started = Date.now();
-    let identified = gemini
+    if (fallback && selected === 'all' && live && fakes && ladder) {
+      const outcome = await runGeminiFallback({
+        photo: prep.value,
+        primary: {
+          async identify() {
+            return identifyWorkers(prep.value, variant, id, label, wa, budget!, calls, () => identifierUsage, (next) => { identifierUsage = next; }, (model) => { activeModel = model; }, () => activeModel, (charged) => { neurons += charged; identifierUsage += charged; });
+          },
+        },
+        gemini: liteKey ? { async identify() { return identifyGemini(prep.value, liteKey, GEMINI_LITE_MODEL, calls); } } : null,
+        search: async (product) => {
+          const value = await searchLive(product, true, id, live, fakes, ladder, referer);
+          const visible = value.ok ? dropOtherCategories(value.candidates, product.name) : [];
+          return { hits: visible.length, value: { ...value, candidates: visible } };
+        },
+      });
+      row.identifyMs = Date.now() - started;
+      row.modelCalls = calls;
+      row.neurons = Math.round((neurons - beforeNeurons) * 1000) / 1000;
+      row.usedGemini = outcome.usedGemini;
+      if (!outcome.guess.ok) {
+        if (outcome.guess.error?.code === 'AI_LIMIT') { rows.push({ ...row, identifyError: 'AI_LIMIT' }); break; }
+        row.identifyError = outcome.guess.error?.code ?? 'AI_UNAVAILABLE';
+        rows.push(row);
+        writePartial(selected, label, variant, actualModel, rows);
+        await sleep(1500);
+        continue;
+      }
+      if (!outcome.guess.value || outcome.guess.value.products.length === 0) {
+        if (outcome.guess.value) {
+          row.confidence = outcome.guess.value.confidence;
+          row.products = outcome.guess.value.products;
+          row.queries = guessQueries(outcome.guess.value);
+        }
+        rows.push(row);
+        writePartial(selected, label, variant, actualModel, rows);
+        await sleep(1500);
+        continue;
+      }
+      const chosen = outcome.guess.value.products[0];
+      row.confidence = outcome.guess.value.confidence;
+      row.products = outcome.guess.value.products;
+      row.queries = guessQueries(outcome.guess.value);
+      row.query = { name: chosen.name, brand: chosen.brand, model: chosen.model, jan: null };
+      if (outcome.found) {
+        const cached = outcome.found.value;
+        const [scored] = await searchGuessRows({
+          rows: [row],
+          truth,
+          ladder: true,
+          search: async () => cached,
+        });
+        rows.push(scored);
+      } else {
+        rows.push(row);
+      }
+      writePartial(selected, label, variant, actualModel, rows);
+      console.log(`${variant.name} ${id} conf=${row.confidence ?? row.identifyError} q=${JSON.stringify(row.query ?? null)} n=${JSON.stringify(row.counts ?? row.searchError ?? null)}`);
+      await sleep(1500);
+      continue;
+    }
+    const identified = gemini
       ? await identifyGemini(prep.value, geminiRun!.apiKey!, geminiRun!.model!, calls)
       : await identifyWorkers(prep.value, variant, id, label, wa, budget!, calls, () => identifierUsage, (next) => { identifierUsage = next; }, (model) => { activeModel = model; }, () => activeModel, (charged) => { neurons += charged; identifierUsage += charged; });
-    let askedGemini = gemini;
-    if (fallback && liteKey && needsGeminiFallback(identified)) {
-      askedGemini = true;
-      const second = await identifyGemini(prep.value, liteKey, GEMINI_LITE_MODEL, calls);
-      if (second.ok) {
-        identified = second;
-        row.usedGemini = true;
-      }
-    }
     if (!identified.ok && identified.error.code === 'AI_LIMIT') { rows.push({ ...row, identifyError: 'AI_LIMIT' }); break; }
     row.identifyMs = Date.now() - started;
     row.modelCalls = calls;
@@ -272,36 +324,12 @@ async function guessOrAll(selected: 'guess' | 'all') {
     const product = identified.value.products[0];
     row.query = { name: product.name, brand: product.brand, model: product.model, jan: null };
     if (selected === 'all' && live && fakes && ladder) {
-      let [scored] = await searchGuessRows({
+      const [scored] = await searchGuessRows({
         rows: [row],
         truth,
         ladder: variant.ladder,
         search: (item) => searchLive(item, variant.ladder, id, live, fakes, ladder, referer),
       });
-      const counts = scored.counts as { yahoo?: number; rakuten?: number } | undefined;
-      const hits = (counts?.yahoo ?? 0) + (counts?.rakuten ?? 0);
-      if (fallback && liteKey && needsGeminiAfterMiss({ asked: askedGemini, hits: scored.searchError ? 0 : hits })) {
-        askedGemini = true;
-        const second = await identifyGemini(prep.value, liteKey, GEMINI_LITE_MODEL, calls);
-        if (second.ok && second.value.products.length > 0) {
-          const product = second.value.products[0];
-          const retried: Record<string, unknown> = {
-            ...row,
-            confidence: second.value.confidence,
-            products: second.value.products,
-            queries: guessQueries(second.value),
-            query: { name: product.name, brand: product.brand, model: product.model, jan: null },
-            usedGemini: true,
-            modelCalls: calls,
-          };
-          [scored] = await searchGuessRows({
-            rows: [retried],
-            truth,
-            ladder: true,
-            search: (item) => searchLive(item, true, id, live, fakes, ladder, referer),
-          });
-        }
-      }
       rows.push(scored);
     } else {
       rows.push(row);

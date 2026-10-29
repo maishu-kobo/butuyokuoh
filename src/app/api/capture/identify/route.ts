@@ -1,14 +1,14 @@
 import { requireSameOrigin, withAccess } from '@/lib/api-access';
 import { getCurrentUser } from '@/lib/auth';
 import { withCapture, withCaptureAi } from '@/lib/capture-flags';
-import { readCaptureSecrets } from '@/lib/capture-secrets';
+import { amazonAssociateTag, readCaptureSecrets } from '@/lib/capture-secrets';
 import { type CaptureErrorBody } from '@/lib/capture/contract';
 import { readCapturePhoto } from '@/lib/capture/photo';
 import { captureTestEnv, getCapturePorts, portsForRequest } from '@/lib/capture/ports';
 import { identifyHttpBody, resolveProductIdentifier } from '@/lib/capture/workers-ai';
 import { modelIdFromEnv } from '@/lib/capture/ai-variants';
 import { geminiIdentifierForEnv } from '@/lib/capture/gemini';
-import { geminiFallbackIdentifierForEnv } from '@/lib/capture/gemini-fallback';
+import { llama4GeminiActors, productionLadderSearch, runGeminiFallback } from '@/lib/capture/gemini-fallback';
 import { NextRequest, NextResponse } from 'next/server';
 
 function errorResponse(error: CaptureErrorBody, status: number) {
@@ -29,9 +29,10 @@ async function handlePOST(request: NextRequest) {
     const user = await getCurrentUser();
     if (user?.account_type === 'member') userId = String(user.id);
   }
-  // 既定は Workers AI。Gemini と llama4 からのフォールバックは CAPTURE_AI_MODEL で選んだときだけ。
+  // 既定は Workers AI。フォールバックは CAPTURE_AI_MODEL で選んだときだけ。
+  // 検索段が 0 件なら Gemini lite を試し、0 件や失敗なら llama 4 の名前を残す。
   const testEnv = captureTestEnv();
-  const fallback = geminiFallbackIdentifierForEnv({
+  const actors = llama4GeminiActors({
     hooked,
     fake: ports.identifier,
     env: testEnv,
@@ -39,12 +40,34 @@ async function handlePOST(request: NextRequest) {
     apiToken: secrets.cloudflareApiToken,
     userId,
   });
+  if (actors?.kind === 'fake') {
+    const http = identifyHttpBody(await actors.identify.identify(photo.value));
+    return NextResponse.json(http.body, { status: http.status });
+  }
+  if (actors?.kind === 'live') {
+    const outcome = await runGeminiFallback({
+      photo: photo.value,
+      primary: actors.primary,
+      gemini: actors.gemini,
+      search: (product) => productionLadderSearch(product, {
+        yahooAppId: secrets.yahooAppId,
+        rakutenAppId: secrets.rakutenAppId,
+        rakutenAccessKey: secrets.rakutenAccessKey,
+        rakutenAffiliateId: secrets.rakutenAffiliateId,
+        userId,
+        origin: request.headers.get('origin'),
+        associateTag: amazonAssociateTag(),
+      }),
+    });
+    const http = identifyHttpBody(outcome.guess);
+    return NextResponse.json(http.body, { status: http.status });
+  }
   const gemini = geminiIdentifierForEnv({
     hooked,
     fake: ports.identifier,
     env: testEnv,
   });
-  const identifier = fallback ?? gemini ?? resolveProductIdentifier({
+  const identifier = gemini ?? resolveProductIdentifier({
     hooked,
     accountId: secrets.cloudflareAccountId,
     apiToken: secrets.cloudflareApiToken,
