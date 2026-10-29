@@ -46,7 +46,7 @@ export default function HomeFilterPanel({
       </div>
       <label className="home-sort">
         並び順
-        <select value={sortBy} onChange={(event) => onSortBy(event.target.value as HomeSortBy)}>
+        <select aria-label="並び順" value={sortBy} onChange={(event) => onSortBy(event.target.value as HomeSortBy)}>
           <option value="priority">優先度順</option>
           <option value="price_asc">価格が安い順</option>
           <option value="price_desc">価格が高い順</option>
@@ -58,7 +58,7 @@ export default function HomeFilterPanel({
       <div id={panelId} hidden={!isOpen} className="home-filter-details">
         <label className="home-sort">
           優先度
-          <select value={selectedPriority ?? ''}
+          <select aria-label="優先度" value={selectedPriority ?? ''}
             onChange={(event) => onSelectedPriority(event.target.value ? Number(event.target.value) : null)}>
             <option value="">すべて</option>
             <option value="1">最高</option><option value="2">高</option>
