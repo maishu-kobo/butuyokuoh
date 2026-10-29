@@ -27,6 +27,7 @@ export default function HomeListView({
   filteredItems,
   wishlist,
   totalAmount,
+  paging,
   loading,
   loadError,
   categories,
@@ -68,6 +69,8 @@ export default function HomeListView({
   filteredItems: Item[];
   wishlist: WishlistRow<Item>[];
   totalAmount: number;
+  paging?: { totalCount: number; matchedCount: number; hasMore: boolean; moreLoading: boolean;
+    moreError: boolean; notice: string; onMore: () => void };
   loading: boolean;
   loadError: boolean;
   categories: Category[];
@@ -126,9 +129,12 @@ export default function HomeListView({
   const [listWindow, setListWindow] = useState(() => ({ key: queryKey, page: createHomeListPage() }));
   const alignedWindow = alignHomeListPage(listWindow, queryKey);
   if (alignedWindow !== listWindow) setListWindow(alignedWindow);
-  const visibleRows = visibleWishlistRows(filteredItems, wishlist, alignedWindow.page);
-  const hasMore = homeListHasMore(alignedWindow.page, filteredItems.length);
+  const visibleRows = paging ? wishlist : visibleWishlistRows(filteredItems, wishlist, alignedWindow.page);
+  const hasMore = paging ? paging.hasMore : homeListHasMore(alignedWindow.page, filteredItems.length);
+  const totalCount = paging?.totalCount ?? items.length;
+  const matchedCount = paging?.matchedCount ?? filteredItems.length;
   const showMore = () => {
+    if (paging) { paging.onMore(); return; }
     setListWindow((current) => {
       const page = current.key === queryKey ? current.page : createHomeListPage();
       return {
@@ -143,7 +149,7 @@ export default function HomeListView({
       <div className="flex gap-3">
         <div className="flex-1 bg-white dark:bg-slate-800 rounded-xl shadow-sm px-4 py-2.5">
           <p className="text-xs text-slate-500 dark:text-slate-400">アイテム数</p>
-          <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{items.length}<span className="text-sm font-normal text-slate-500 dark:text-slate-400 ml-0.5">件</span></p>
+          <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{totalCount}<span className="text-sm font-normal text-slate-500 dark:text-slate-400 ml-0.5">件</span></p>
         </div>
         <div className="flex-1 bg-white dark:bg-slate-800 rounded-xl shadow-sm px-4 py-2.5">
           <p className="text-xs text-slate-500 dark:text-slate-400">合計金額</p>
@@ -172,7 +178,7 @@ export default function HomeListView({
         <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200">
           {selectionMode
             ? `${selectedCount}件選択中`
-            : `ほしいものリスト (${filteredItems.length}件${selectedCategory ? ` / 全${items.length}件` : ''})`
+            : `ほしいものリスト (${matchedCount}件${selectedCategory ? ` / 全${totalCount}件` : ''})`
           }
         </h2>
         <div className="flex items-center gap-2 flex-wrap">
@@ -202,7 +208,7 @@ export default function HomeListView({
             <>
               <button
                 onClick={onToggleSelectionMode}
-                disabled={items.length === 0}
+                disabled={loading || totalCount === 0}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors disabled:opacity-50"
               >
                 <CheckSquare size={16} />
@@ -219,7 +225,7 @@ export default function HomeListView({
               </button>
               <button
                 onClick={onRefreshAll}
-                disabled={isGuest || refreshing || items.length === 0}
+                disabled={isGuest || refreshing || loading || totalCount === 0}
                 title={isGuest ? '価格更新はログイン後に利用できます' : undefined}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
               >
@@ -250,11 +256,11 @@ export default function HomeListView({
             再試行
           </button>
         </div>
-      ) : items.length === 0 ? (
+      ) : totalCount === 0 ? (
         <div className="text-center py-12 text-slate-500 dark:text-slate-400">
           まだアイテムがありません。上のフォームから追加してください。
         </div>
-      ) : filteredItems.length === 0 ? (
+      ) : matchedCount === 0 ? (
         <div className="text-center py-12 text-slate-500 dark:text-slate-400">
           <p>条件に一致するアイテムがありません</p>
           <button
@@ -267,6 +273,8 @@ export default function HomeListView({
         </div>
       ) : (
         <>
+          {paging?.notice && <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{paging.notice}</p>}
+          {paging?.hasMore && <p className="text-sm text-slate-600 dark:text-slate-300">ドラッグで順序を変えるには、すべての候補を読み込んでください。</p>}
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -310,12 +318,14 @@ export default function HomeListView({
           </DndContext>
           {hasMore && (
             <div className="text-center">
+              {paging?.moreError && <p role="alert" className="mb-2 text-sm text-red-700 dark:text-red-300">追加読み込みに失敗しました。表示中の商品はそのままです。</p>}
               <button
                 type="button"
                 onClick={showMore}
+                disabled={paging?.moreLoading}
                 className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
               >
-                もっと見る
+                {paging?.moreLoading ? '読み込み中...' : paging?.moreError ? '追加読み込みを再試行' : 'もっと見る'}
               </button>
             </div>
           )}

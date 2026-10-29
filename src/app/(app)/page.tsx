@@ -6,9 +6,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useSwipeable } from 'react-swipeable';
 import { Item, ComparisonGroup, Category } from '@/types';
-import { sumCountedPrices } from '@/lib/photo-spend';
+import { usePagedItems } from '@/lib/use-paged-items';
 import { wishlistRows } from '@/lib/capture/list-card';
-import { homeListDragOrders, selectAllFilteredIds } from '@/lib/home-list-page';
+import { homeListDragOrders } from '@/lib/home-list-page';
 import BudgetView from '@/components/BudgetView';
 import PurchasedHistory from '@/components/PurchasedHistory';
 import StatsView from '@/components/StatsView';
@@ -22,11 +22,9 @@ import HomeListView from '@/components/home/HomeListView';
 import HomeTabNav from '@/components/home/HomeTabNav';
 import { useHomeSwipeRef } from '@/lib/home-tab-swipe';
 import {
-  filterHomeItems,
   homeDragEnabled,
   homeTabAnimation,
   homeTabBySwipe,
-  lowestPriceInSelectedGroup,
   type HomeListQuery,
   type HomeSortBy,
   type HomeTab,
@@ -34,14 +32,11 @@ import {
 
 export default function Home() {
   const { user, isGuest, loading: authLoading, logout } = useAuth();
-  const [items, setItems] = useState<Item[]>([]);
   const [purchasedItems, setPurchasedItems] = useState<Item[]>([]);
   const [groups, setGroups] = useState<ComparisonGroup[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeTab, setActiveTab] = useState<HomeTab>('list');
   const [animationClass, setAnimationClass] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
@@ -51,24 +46,21 @@ export default function Home() {
   const [selectedPriority, setSelectedPriority] = useState<number | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
-
-  const fetchItems = useCallback(async () => {
-    try {
-      const res = await apiFetch('/api/items');
-      if (!res.ok) throw new Error(`Failed to fetch items: ${res.status}`);
-      const data = await res.json();
-      // 非配列レスポンス（エラーJSON等）を配列stateに入れない
-      if (!Array.isArray(data)) throw new Error('Unexpected response format');
-      setItems(data);
-      setLoadError(false);
-    } catch (error) {
-      console.error('Failed to fetch items:', error);
-      setLoadError(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [selection, setSelection] = useState<{ revision: string | null; ids: Set<number> }>({ revision: null, ids: new Set() });
+  const listQuery: HomeListQuery = useMemo(() => ({
+    selectedCategory, selectedPriority, selectedGroup, searchQuery, sortBy,
+  }), [selectedCategory, selectedPriority, selectedGroup, searchQuery, sortBy]);
+  const { state: pageState, reload: fetchItems, more: fetchMore } = usePagedItems(listQuery, user?.id ?? null);
+  const page = pageState.page;
+  const items = page?.items ?? [];
+  const filteredItems = items;
+  const loading = pageState.loading;
+  const loadError = pageState.error;
+  const selectedItems = useMemo(() => selection.revision === page?.revision ? selection.ids : new Set<number>(), [selection, page?.revision]);
+  const setSelectedItems = useCallback((value: Set<number> | ((previous: Set<number>) => Set<number>)) => {
+    setSelection(current => ({ revision: page?.revision ?? null, ids: typeof value === 'function'
+      ? value(current.revision === page?.revision ? current.ids : new Set()) : value }));
+  }, [page?.revision]);
 
   // 補助データ: 失敗しても空配列のままにしてクラッシュを防ぐ（エラーUIは出さない）
   const fetchPurchased = useCallback(async () => {
@@ -106,8 +98,6 @@ export default function Home() {
 
   // 読み込み失敗時の再試行（補助データも併せて再取得）
   const handleRetry = () => {
-    setLoadError(false);
-    setLoading(true);
     fetchItems();
     fetchPurchased();
     fetchGroups();
@@ -118,11 +108,10 @@ export default function Home() {
     if (!user) return;
     // 取得関数の中の setState は await のあと。effect から直接呼ぶと新しい react-hooks が同期 setState と誤認する。
     // 各関数は今までどおり同時に始める。
-    void (async () => { await fetchItems(); })();
     void (async () => { await fetchPurchased(); })();
     void (async () => { await fetchGroups(); })();
     void (async () => { await fetchCategories(); })();
-  }, [user, fetchItems, fetchPurchased, fetchGroups, fetchCategories]);
+  }, [user, fetchPurchased, fetchGroups, fetchCategories]);
 
   const handleDelete = useCallback(async (id: number) => {
     await apiFetch(`/api/items/${id}`, { method: 'DELETE' });
@@ -132,8 +121,8 @@ export default function Home() {
   const handleRefreshAll = async () => {
     setRefreshing(true);
     try {
-      await Promise.all(items.map((item) =>
-        apiFetch(`/api/items/${item.id}/refresh`, { method: 'POST' })
+      await Promise.all((page?.allIds ?? []).map((id) =>
+        apiFetch(`/api/items/${id}/refresh`, { method: 'POST' })
       ));
       fetchItems();
     } finally {
@@ -141,16 +130,8 @@ export default function Home() {
     }
   };
 
-  const listQuery: HomeListQuery = useMemo(() => ({
-    selectedCategory,
-    selectedPriority,
-    selectedGroup,
-    searchQuery,
-    sortBy,
-  }), [selectedCategory, selectedPriority, selectedGroup, searchQuery, sortBy]);
-  const filteredItems = useMemo(() => filterHomeItems(items, listQuery), [items, listQuery]);
-  // ドラッグ&ドロップが有効かどうか（優先度順で、絞り込みが無いときだけ）
-  const dragEnabled = homeDragEnabled(listQuery);
+  // Partial lists cannot safely rewrite sort positions of unseen items.
+  const dragEnabled = homeDragEnabled(listQuery) && Boolean(page) && !page?.nextCursor && !loading;
   const wishlist = useMemo(
     () => wishlistRows(filteredItems, groups, purchasedItems),
     [filteredItems, groups, purchasedItems],
@@ -160,18 +141,10 @@ export default function Home() {
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
 
-    if (!over || active.id === over.id) return;
+    if (!dragEnabled || !over || active.id === over.id) return;
 
     const newSortOrders = homeListDragOrders(filteredItems, Number(active.id), Number(over.id));
     if (!newSortOrders) return;
-
-    // 楽観的更新: 即座にローカル状態を更新
-    setItems(prevItems =>
-      prevItems.map(item => ({
-        ...item,
-        sort_order: newSortOrders.has(item.id) ? newSortOrders.get(item.id)! : item.sort_order,
-      }))
-    );
 
     // バックグラウンドでAPIを一括更新
     try {
@@ -181,9 +154,10 @@ export default function Home() {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sort_order }),
-          })
+          }).then(response => { if (!response.ok) throw new Error('Reorder failed'); })
         )
       );
+      await fetchItems();
     } catch (error) {
       // エラー時は再取得して整合性を保つ
       console.error('Failed to update sort order:', error);
@@ -205,11 +179,11 @@ export default function Home() {
       else next.add(id);
       return next;
     });
-  }, []);
+  }, [setSelectedItems]);
 
   // 全選択。画面に出ていない絞り込み結果も含む。
   const selectAll = () => {
-    setSelectedItems(new Set(selectAllFilteredIds(filteredItems)));
+    setSelectedItems(new Set(page?.matchedIds ?? []));
   };
 
   // 選択解除
@@ -324,9 +298,9 @@ export default function Home() {
   };
 
   // 合計金額計算。写真グループはサーバーが付けた印の付いた1件だけを足す。
-  const totalAmount = sumCountedPrices(items);
+  const totalAmount = page?.totalAmount ?? 0;
   // 比較グループフィルター時の最安価格
-  const lowestPriceInGroup = lowestPriceInSelectedGroup(selectedGroup, filteredItems);
+  const lowestPriceInGroup = page?.lowestPriceInGroup ?? null;
   const refreshPhotoCard = useCallback(() => {
     void fetchItems();
     void fetchPurchased();
@@ -358,6 +332,9 @@ export default function Home() {
               filteredItems={filteredItems}
               wishlist={wishlist}
               totalAmount={totalAmount}
+              paging={{ totalCount: page?.totalCount ?? 0, matchedCount: page?.matchedCount ?? 0,
+                hasMore: Boolean(page?.nextCursor), moreLoading: pageState.moreLoading,
+                moreError: pageState.moreError, notice: pageState.notice, onMore: fetchMore }}
               loading={loading}
               loadError={loadError}
               categories={categories}
