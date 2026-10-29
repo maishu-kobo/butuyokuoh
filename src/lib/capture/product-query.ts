@@ -265,13 +265,19 @@ export function composeCapturedProduct(input: CapturedFields & { recoverSeries?:
   return { name: clip(next), brand, model };
 }
 
-function colorInText(text: string): string | null {
+export function colorInText(text: string): string | null {
   let best: { to: string; length: number } | null = null;
   for (const [from, to] of COLORS) {
     if (!includesLabel(text, from)) continue;
     if (!best || from.length > best.length) best = { to, length: from.length };
   }
   return best?.to ?? null;
+}
+
+const GENERIC_TOKENS = new Set(['example', 'unknown', 'n/a', 'null', 'none', 'item', '例', '不明']);
+
+function isGenericToken(token: string): boolean {
+  return GENERIC_TOKENS.has(fold(token));
 }
 
 function shrinkSentence(name: string): string {
@@ -289,15 +295,16 @@ export function statedProductType(text: string): string | null {
 }
 
 export function searchLadderSteps(product: { name: string; brand: string | null; model: string | null }): { name: string; brand: string | null; model: string | null; jan: null }[] {
-  const full = { name: product.name.trim(), brand: product.brand, model: product.model, jan: null as null };
   const type = statedProductType(product.name);
   const color = colorInText(product.name);
-  const steps = [full];
+  const cleaned = product.name.split(/ +/).filter((token) => token && !isGenericToken(token)).join(' ');
+  const full = { name: cleaned || product.name.trim(), brand: product.brand, model: product.model, jan: null as null };
+  const steps = cleaned ? [full] : [];
   if (product.brand && type) {
     steps.push({ name: `${product.brand} ${type}`, brand: product.brand, model: null, jan: null });
   }
   if (type && color) steps.push({ name: `${color} ${type}`, brand: null, model: null, jan: null });
-  else if (type) steps.push({ name: type, brand: null, model: null, jan: null });
+  if (type) steps.push({ name: type, brand: null, model: null, jan: null });
   const seen = new Set<string>();
   const unique = [];
   for (const step of steps) {
@@ -319,7 +326,7 @@ export function storeSearchKeyword(
   for (const piece of pieces) {
     for (const token of piece.split(/ +/)) {
       const cleaned = token.trim();
-      if (!cleaned || /^[-‐‑–—]+$/.test(cleaned)) continue;
+      if (!cleaned || /^[-‐‑–—]+$/.test(cleaned) || isGenericToken(cleaned)) continue;
       const covered = tokens.join(' ');
       if (covered && tokenCovered(covered, cleaned)) continue;
       tokens.push(cleaned);
@@ -362,6 +369,11 @@ export function guessIsSpecific(product: { name: string; brand: string | null; m
 
 function primaryGroup(text: string): string | null {
   return bestTerm(text)?.group ?? null;
+}
+
+export function dropOtherCategories<T extends { title: string }>(items: readonly T[], queryName: string): T[] {
+  if (!statedProductType(queryName)) return [...items];
+  return items.filter((item) => !categoryMismatch(queryName, item.title));
 }
 
 export function categoryMismatch(queryName: string, title: string): boolean {

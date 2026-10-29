@@ -147,7 +147,7 @@ export function createWorkersAiIdentifier(options: WorkersAiIdentifierOptions): 
         } else {
           slot = begun.token;
           const dataUrl = `data:${photo.value.mediaType};base64,${Buffer.from(photo.value.bytes).toString('base64')}`;
-          const imageBody = JSON.stringify(aiRequestBody(model.shape, INSTRUCTION, 'この写真の商品をJSONで返してください。', dataUrl));
+          const imageBody = JSON.stringify(aiRequestBody(model, INSTRUCTION, 'この写真の商品をJSONで返してください。', dataUrl));
           for (let attempt = 0; attempt < AI_TRANSIENT_ATTEMPTS; attempt += 1) {
             const called = await callModel(http, url, apiToken, imageBody, timeoutMs);
             if (called.kind !== 'response') {
@@ -546,20 +546,49 @@ function parseJson(body: string): unknown {
   }
 }
 
-function extractModelOutput(payload: object): unknown {
-  const result = (payload as { result?: unknown }).result;
-  if (typeof result === 'string') return result;
-  if (!result || typeof result !== 'object') return null;
-  const record = result as Record<string, unknown>;
-  if (typeof record.response === 'string' || (record.response && typeof record.response === 'object')) return record.response;
-  const choice = Array.isArray(record.choices) ? record.choices[0] : null;
-  if (choice && typeof choice === 'object') {
-    const message = (choice as { message?: unknown }).message;
-    if (message && typeof message === 'object' && typeof (message as { content?: unknown }).content === 'string') {
-      return (message as { content: string }).content;
+function textOfContent(content: unknown): string | null {
+  if (typeof content === 'string') return content.trim() || null;
+  if (!Array.isArray(content)) return null;
+  const text = content.map((part) => {
+    if (typeof part === 'string') return part;
+    if (part && typeof part === 'object' && typeof (part as { text?: unknown }).text === 'string') {
+      return (part as { text: string }).text;
     }
+    return '';
+  }).join('');
+  return text.trim() || null;
+}
+
+function choiceText(record: Record<string, unknown>): string | null {
+  const choice = Array.isArray(record.choices) ? record.choices[0] : null;
+  if (!choice || typeof choice !== 'object') return null;
+  const message = (choice as { message?: unknown }).message;
+  if (!message || typeof message !== 'object') return null;
+  return textOfContent((message as { content?: unknown }).content);
+}
+
+function visibleAnswer(text: string): string {
+  let out = text;
+  for (const marker of ['<channel|>', '</think>', '<|end_of_thought|>']) {
+    const index = out.lastIndexOf(marker);
+    if (index >= 0) out = out.slice(index + marker.length);
   }
-  if (typeof record.confidence === 'string') return record;
+  return out.trim();
+}
+
+function extractModelOutput(payload: object): unknown {
+  const root = payload as Record<string, unknown>;
+  const result = root.result;
+  if (typeof result === 'string' && result.trim() && result.trim() !== 'null') return visibleAnswer(result);
+  const bags = [result, root].filter((item) => item && typeof item === 'object') as Record<string, unknown>[];
+  for (const record of bags) {
+    if (typeof record.response === 'string' && record.response.trim() && record.response.trim() !== 'null') {
+      return visibleAnswer(record.response);
+    }
+    const choice = choiceText(record);
+    if (choice) return visibleAnswer(choice);
+    if (typeof record.confidence === 'string') return record;
+  }
   return null;
 }
 

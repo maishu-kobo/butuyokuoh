@@ -1,4 +1,6 @@
 // 23枚の採点。ブランドが写真に見えないものは none。
+import { categoryMismatch } from '../../../src/lib/capture/product-query';
+
 export interface PhotoScoreCard {
   id: string;
   brand: string | null;
@@ -57,14 +59,15 @@ function has(text: string, aliases: readonly string[]): boolean {
 export function scorePhoto(input: PhotoScoreInput, cards: readonly PhotoScoreCard[] = PHOTO_SCORECARDS): PhotoScore {
   const card = cards.find((item) => item.id === input.id);
   const blob = `${input.name ?? ''} ${input.brand ?? ''}`;
-  const top = input.top3.join(' ');
-  const category = card ? has(top, card.categoryTerms) : false;
+  const category = card ? input.top3.some((title) => has(title, card.categoryTerms)) : false;
+  const conflict = card ? input.top3.some((title) => categoryMismatch(card.categoryTerms[0], title)) : false;
+  const categoryOk = category && !conflict;
   const brand = !card || card.brand === null ? null : has(blob, card.aliases);
   const stated = (input.brand ?? '').trim();
   const sure = input.confidence === 'sure';
   const wrongBrand = sure && stated.length > 0 && card !== undefined && (card.brand === null || !has(stated, card.aliases));
   const noWrongBrand = !wrongBrand;
   const hits = input.hits > 0;
-  const points = Number(category) + (brand === null ? 0 : Number(brand)) + Number(noWrongBrand) + Number(hits);
-  return { category, brand, noWrongBrand, hits, points };
+  const points = Number(categoryOk) + (brand === null ? 0 : Number(brand)) + Number(noWrongBrand) + Number(hits);
+  return { category: categoryOk, brand, noWrongBrand, hits, points };
 }

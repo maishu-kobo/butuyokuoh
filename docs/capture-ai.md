@@ -23,7 +23,9 @@
 | mistral31 | `@cf/mistralai/mistral-small-3.1-24b-instruct` | 31876 | 4140 |
 | moondream | `@cf/moondream/moondream3.1-9B-A2B` | 27273 | 3560 |
 
-`-ladder` は同じモデルで、0件のときだけ種類の検索語を足す。ニューロンは増えない。
+`-ladder` は同じモデルで、Yahoo か楽天のどちらかが 0 件または失敗なら種類の検索語を足す。ニューロンは増えない。`ensemble` は llama 4 の種類・色・ブランドに、ブランドが一致したときだけ llama 3.2 のシリーズを足す。23枚で約 1,470 ニューロン（ライブの 904 と 569 の合計）。
+
+Gemma 4 は推論モデルで、思考を切らないと `max_tokens` 400 を思考に使い `result.response` が null になる。リクエストは `chat_template_kwargs.enable_thinking: false` と `reasoning_effort: "none"`、上限は `max_completion_tokens`（[モデルページ](https://developers.cloudflare.com/workers-ai/models/gemma-4-26b-a4b-it/)、[Gemma の思考](https://ai.google.dev/gemma/docs/capabilities/thinking)）。本文は `choices[].message.content` も読む。
 
 ## 選んだモデル
 

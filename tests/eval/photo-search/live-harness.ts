@@ -4,6 +4,8 @@ import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { resolveSearchVariant, SEARCH_VARIANTS, estimateNeurons } from '../../../src/lib/capture/ai-variants';
+import { ensembleGuess } from '../../../src/lib/capture/ensemble';
+import { dropOtherCategories } from '../../../src/lib/capture/product-query';
 import { scorePhoto } from './rubric';
 
 const root = process.cwd();
@@ -48,6 +50,7 @@ async function main() {
   for (const file of files) {
     const id = file.replace(/\.jpg$/, '');
     if (only && !only.split(',').includes(id)) continue;
+    const beforeNeurons = neurons;
     const row: Record<string, unknown> = { id, variant: variant.name };
     const bytes = new Uint8Array(readFileSync(path.join(imgDir, file)));
     const prep = await photo.prepareCapturePhoto(bytes, 'image/jpeg');
@@ -89,21 +92,37 @@ async function main() {
         throw error;
       }
     };
-    const identifier = wa.createWorkersAiIdentifier({
+    const identifyWith = (modelId: string, userSuffix: string) => wa.createWorkersAiIdentifier({
       accountId: env.CLOUDFLARE_ACCOUNT_ID ?? '',
       apiToken: env.CLOUDFLARE_API_TOKEN ?? '',
-      userId: `eval-${label}-${id}`,
-      model: variant.model.id,
+      userId: `eval-${label}-${id}-${userSuffix}`,
+      model: modelId,
       http,
     });
     const started = Date.now();
-    const identified = await identifier.identify(prep.value);
+    const identified = await identifyWith(variant.model.id, 'a').identify(prep.value);
+    let merged = identified.ok ? identified.value : null;
+    if (variant.secondModel) {
+      const second = await identifyWith(variant.secondModel.id, 'b').identify(prep.value);
+      if (identified.ok && second.ok) {
+        const combined = ensembleGuess(
+          { confidence: identified.value.confidence, product: identified.value.products[0] ?? null },
+          { confidence: second.value.confidence, product: second.value.products[0] ?? null },
+        );
+        merged = combined.product
+          ? { confidence: combined.confidence, products: [combined.product] }
+          : { confidence: 'unreadable' as const, products: [] };
+      } else if (!identified.ok && second.ok) {
+        merged = second.value;
+      }
+    }
     row.identifyMs = Date.now() - started;
     row.modelCalls = calls;
-    if (!identified.ok) { row.identifyError = identified.error.code; rows.push(row); await sleep(1500); continue; }
-    row.confidence = identified.value.confidence;
-    row.products = identified.value.products;
-    const product = identified.value.products[0] ?? null;
+    row.neurons = Math.round((neurons - beforeNeurons) * 1000) / 1000;
+    if (!merged) { row.identifyError = identified.error.code; rows.push(row); await sleep(1500); continue; }
+    row.confidence = merged.confidence;
+    row.products = merged.products;
+    const product = merged.products[0] ?? null;
     if (product) {
       const query = { name: product.name, brand: product.brand, model: product.model, jan: product.jan ?? null };
       row.query = query;
@@ -143,7 +162,8 @@ async function main() {
         row.searchError = result.error.code;
         row.failures = (result.error.failures ?? []).map((failure: { site: string; code: string }) => ({ site: failure.site, code: failure.code }));
       } else {
-        const candidates = result.value.candidates as { site: string; title: string; price: number }[];
+        const raw = result.value.candidates as { site: string; title: string; price: number }[];
+        const candidates = dropOtherCategories(raw, product.name);
         row.failures = result.value.failures.map((failure: { site: string; code: string }) => ({ site: failure.site, code: failure.code }));
         row.counts = {
           yahoo: candidates.filter((item) => item.site === 'yahoo').length,
