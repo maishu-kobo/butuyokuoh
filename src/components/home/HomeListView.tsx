@@ -244,7 +244,7 @@ export default function HomeListView({
         categories={categories}
       />
 
-      {loading ? (
+      {loading && items.length === 0 ? (
         <div className="text-center py-12 text-slate-500 dark:text-slate-400">読み込み中...</div>
       ) : loadError ? (
         <div className="text-center py-12 text-slate-500 dark:text-slate-400">

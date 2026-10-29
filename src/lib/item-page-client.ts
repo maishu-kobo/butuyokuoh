@@ -55,13 +55,13 @@ export class ItemPageClient {
     const previous = this.state.page;
     const params = itemPageParams(this.query);
     if (append && previous?.nextCursor) params.set('cursor', previous.nextCursor);
-    this.publish({ ...this.state, page: append ? previous : null, loading: !append,
+    this.publish({ ...this.state, page: previous, loading: !append,
       error: false, moreLoading: append, moreError: false });
     try {
       const response = await this.transport('/api/items/page?' + params, abort.signal);
       if (generation !== this.generation) return;
       if (append && response.status === 409) {
-        this.publish({ ...this.state, notice: '一覧が変更されたため先頭から読み込み直しました。' });
+        this.publish({ ...this.state, page: null, notice: '一覧が変更されたため先頭から読み込み直しました。' });
         await this.reload();
         return;
       }

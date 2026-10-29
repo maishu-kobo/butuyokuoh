@@ -150,3 +150,10 @@ test('server pages are not sliced again at the legacy 50-item display boundary',
   assert.match(html, /ページ商品0051/);
   assert.doesNotMatch(html, /もっと見る/);
 });
+
+test('refresh does not replace existing cards with the initial loading screen', () => {
+  assert.match(render({ loading: true }), /読み込み済み商品/);
+  const initial = render({ loading: true, items: [], filteredItems: [], wishlist: [] });
+  assert.doesNotMatch(initial, /読み込み済み商品/);
+  assert.match(initial, /読み込み中/);
+});
