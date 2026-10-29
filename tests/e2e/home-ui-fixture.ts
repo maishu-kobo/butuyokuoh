@@ -25,7 +25,8 @@ export async function prepareHomeUi(page: Page, theme: 'light' | 'dark') {
       '/api/auth/session': {}, '/api/auth/providers': {},
       '/api/auth/me': { user: { id: 1, account_type: 'member', email: 'ui@example.test', name: 'テスト利用者' } },
       '/api/auth/guest': { enabled: true, ttlHours: 24 },
-      '/api/items': items, '/api/categories': [], '/api/comparison-groups': [], '/api/purchased': [],
+      '/api/items': items, '/api/categories': [], '/api/comparison-groups': [],
+      '/api/purchased': { items: [], monthlySummary: [], totalStats: { count: 0, total: 0 } },
       '/api/capture': { enabled: true },
     };
     if (route.request().method() === 'GET' && path in responses) {
