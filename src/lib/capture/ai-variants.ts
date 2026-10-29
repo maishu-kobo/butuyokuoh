@@ -101,6 +101,8 @@ export interface SearchVariant {
   ladder: boolean;
   estimatedNeuronsFor23: number;
   provider: 'workers' | 'gemini' | 'fallback';
+  brandGuard?: boolean;
+  rerank?: boolean;
 }
 
 const GEMINI_FLASH: AiModelSpec = {
@@ -148,6 +150,24 @@ export const SEARCH_VARIANTS: readonly SearchVariant[] = [
     ladder: true,
     estimatedNeuronsFor23: 904,
     provider: 'fallback',
+  },
+  {
+    name: 'llama4-brand-guard',
+    model: AI_MODELS[1],
+    ladder: true,
+    estimatedNeuronsFor23: 904,
+    provider: 'workers',
+    brandGuard: true,
+  },
+  {
+    name: 'llama4-gemini-grounded',
+    model: AI_MODELS[1],
+    secondModel: GEMINI_LITE,
+    ladder: true,
+    estimatedNeuronsFor23: 904,
+    provider: 'fallback',
+    brandGuard: true,
+    rerank: true,
   },
 ];
 

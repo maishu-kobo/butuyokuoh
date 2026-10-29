@@ -40,6 +40,8 @@ Workers AI のほかに、選んだときだけ Google Gemini API で同じ写�
 
 `gemini-2.5-flash` と `gemini-2.5-flash-lite` は新規利用者に 404 となるため使わない。`gemini-ladder` と `gemini-lite-ladder` の段は評価ハーネスだけが使う。通常画面でその名前を置いても、推定に使うモデルは同じで、検索の段は増えない。
 
+`llama4-brand-guard` は llama 4 の sure を、読めた文字がブランドを含まないとき、またはブランドの種類と商品の種類が違うときに、種類と色だけの検索語へ落とす。`llama4-gemini-grounded` はそのあとに、今のフォールバックと、候補上位5件を `gemini-3.5-flash-lite` で1回だけ並べ替える。`CAPTURE_AI_RERANK=0` で並べ替えだけ止める。失敗したら元の順。どちらも未設定なら動かない。`llama4-gemini-fallback` の動きは変えない。
+
 無料枠はモデルごとに1日およそ20回で、中央値の待ちは約25秒。Gemini を既定にはしない。`llama4-gemini-fallback` も未設定なら動かない。自信が低い（unsure）だけでは lite を呼ばない。呼ぶのは llama 4 が失敗したとき（1日の上限を除く）、読めないとき、商品名が無いとき、そして llama 4 の検索段が 0 件のとき。lite の検索も 0 件、または lite が失敗・429・時間切れなら、llama 4 の名前と検索結果を残す。この判断は `runGeminiFallback` にあり、写真の推定 API と評価の `--mode all` が同じ関数を使う。推定 API は選んだとき、画面へ返す商品名を決めるために検索段を先に実行する。
 
 キーは `GEMINI_API_KEY`。`AQ.` で始まるキーも通す。リクエストの URL には置かず、ヘッダ `x-goog-api-key` だけ。`CAPTURE_SECRETS_FILE` は知らないキーを読まないので、このキーはプロセスの環境変数に置く。`GEMINI_MODEL` の初期値は `gemini-3.5-flash`。思考はモデルごとで、flash は `thinkingLevel: low`、flash-lite は `thinkingLevel: minimal`（lite に `thinkingBudget: 0` を送ると 400。[Gemini 3.5](https://ai.google.dev/gemini-api/docs/generate-content/whats-new-gemini-3.5)、[思考](https://ai.google.dev/gemini-api/docs/generate-content/thinking)）。タイムアウトは 90 秒。画面の判定は待たずに1回だけ送り直す。429 と 503 を 10 秒、20 秒と最大6回待つのは評価ハーネスだけ。返答は `responseMimeType: application/json` と `responseSchema`。ニューロン台帳は増えない。
@@ -66,6 +68,20 @@ node --import tsx tests/eval/photo-search/live-harness.ts \
 ```
 
 `--mode guess` は llama 4 の JSON だけを書く。0件かどうかは検索しないと分からない。lite を足す判断は `--mode all`（Cloudflare、Gemini、Yahoo、楽天）と、`CAPTURE_AI_MODEL=llama4-gemini-fallback` の `POST /api/capture/identify` が同じ関数で行う。この環境では API キーが無いので、ライブの点数は未確認。
+
+根拠のないブランドを外し、候補を1回並べ替える評価:
+
+```bash
+node --import tsx tests/eval/photo-search/live-harness.ts \
+  --mode all \
+  --variant llama4-gemini-grounded \
+  --images tests/eval/photo-search/images \
+  --out /tmp/llama4-gemini-grounded.json \
+  --account-used-neurons 0 \
+  --usage-day 2026-10-29
+```
+
+ブランドの確認だけで並べ替えないときは `--variant llama4-brand-guard`。報告書の `geminiCalls` が lite の呼び出し回数。
 
 ## 選んだモデル
 

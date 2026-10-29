@@ -12,6 +12,8 @@ import { resolveSearchVariant, SEARCH_VARIANTS, estimateNeurons, type SearchVari
 import { ensembleGuess } from '../../../src/lib/capture/ensemble';
 import { createGeminiIdentifier, GEMINI_LITE_MODEL, geminiConfigFromEnv } from '../../../src/lib/capture/gemini';
 import { runGeminiFallback } from '../../../src/lib/capture/gemini-fallback';
+import { BRAND_EVIDENCE_SUFFIX, guardIdentifyResult } from '../../../src/lib/capture/brand-guard';
+import { rerankCandidates } from '../../../src/lib/capture/candidate-rerank';
 import { dropOtherCategories } from '../../../src/lib/capture/product-query';
 import { withGeminiHarnessRetry } from './gemini-retry';
 import { parseGuessDocument, searchGuessRows, summarizeLiveReport, type GuessProduct, type HarnessSearchResult } from './split-run';
@@ -179,7 +181,12 @@ async function searchLive(
     ok: true,
     sent,
     failures: (result.value?.failures ?? []).map((failure) => ({ site: failure.site, code: failure.code })),
-    candidates: (result.value?.candidates ?? []).map((item) => ({ site: item.site, title: item.title, price: item.price })),
+    candidates: (result.value?.candidates ?? []).map((item) => ({
+      site: item.site,
+      title: item.title,
+      price: item.price,
+      imageUrl: 'imageUrl' in item && typeof item.imageUrl === 'string' ? item.imageUrl : null,
+    })),
   };
 }
 
@@ -218,6 +225,9 @@ async function guessOrAll(selected: 'guess' | 'all') {
     process.exit(1);
   }
   const fallback = variant.provider === 'fallback';
+  const brandGuard = variant.brandGuard === true;
+  let geminiCalls = 0;
+  const rerankOn = variant.rerank === true && process.env.CAPTURE_AI_RERANK !== '0' && process.env.CAPTURE_AI_RERANK !== 'false';
   const liteConfig = fallback
     ? geminiConfigFromEnv({ CAPTURE_AI_MODEL: 'gemini-lite', GEMINI_API_KEY: process.env.GEMINI_API_KEY })
     : null;
@@ -249,10 +259,11 @@ async function guessOrAll(selected: 'guess' | 'all') {
         photo: prep.value,
         primary: {
           async identify() {
-            return identifyWorkers(prep.value, variant, id, label, wa, budget!, calls, () => identifierUsage, (next) => { identifierUsage = next; }, (model) => { activeModel = model; }, () => activeModel, (charged) => { neurons += charged; identifierUsage += charged; });
+            const raw = await identifyWorkers(prep.value, variant, id, label, wa, budget!, calls, () => identifierUsage, (next) => { identifierUsage = next; }, (model) => { activeModel = model; }, () => activeModel, (charged) => { neurons += charged; identifierUsage += charged; }, brandGuard ? BRAND_EVIDENCE_SUFFIX : undefined);
+            return brandGuard ? guardIdentifyResult(raw) : raw;
           },
         },
-        gemini: liteKey ? { async identify() { return identifyGemini(prep.value, liteKey, GEMINI_LITE_MODEL, calls); } } : null,
+        gemini: liteKey ? { async identify() { return identifyGemini(prep.value, liteKey, GEMINI_LITE_MODEL, calls, () => { geminiCalls += 1; }); } } : null,
         search: async (product) => {
           const value = await searchLive(product, true, id, live, fakes, ladder, referer);
           const visible = value.ok ? dropOtherCategories(value.candidates, product.name) : [];
@@ -263,6 +274,22 @@ async function guessOrAll(selected: 'guess' | 'all') {
       row.modelCalls = calls;
       row.neurons = Math.round((neurons - beforeNeurons) * 1000) / 1000;
       row.usedGemini = outcome.usedGemini;
+      if (rerankOn && liteKey && outcome.found?.value.ok) {
+        const ranked = await rerankCandidates({
+          photo: prep.value,
+          candidates: outcome.found.value.candidates,
+          apiKey: liteKey,
+          complete: async (request) => {
+            geminiCalls += 1;
+            const response = await fetch(request.url, {
+              method: 'POST', redirect: 'manual', cache: 'no-store', headers: request.headers, body: request.body, signal: request.signal,
+            });
+            return { status: response.status, body: await response.text() };
+          },
+        });
+        outcome.found = { hits: outcome.found.hits, value: { ...outcome.found.value, candidates: ranked.candidates } };
+      }
+      row.geminiCalls = geminiCalls;
       if (!outcome.guess.ok) {
         if (outcome.guess.error?.code === 'AI_LIMIT') { rows.push({ ...row, identifyError: 'AI_LIMIT' }); break; }
         row.identifyError = outcome.guess.error?.code ?? 'AI_UNAVAILABLE';
@@ -304,9 +331,11 @@ async function guessOrAll(selected: 'guess' | 'all') {
       await sleep(1500);
       continue;
     }
-    const identified = gemini
-      ? await identifyGemini(prep.value, geminiRun!.apiKey!, geminiRun!.model!, calls)
-      : await identifyWorkers(prep.value, variant, id, label, wa, budget!, calls, () => identifierUsage, (next) => { identifierUsage = next; }, (model) => { activeModel = model; }, () => activeModel, (charged) => { neurons += charged; identifierUsage += charged; });
+    const identifiedRaw = gemini
+      ? await identifyGemini(prep.value, geminiRun!.apiKey!, geminiRun!.model!, calls, () => { geminiCalls += 1; })
+      : await identifyWorkers(prep.value, variant, id, label, wa, budget!, calls, () => identifierUsage, (next) => { identifierUsage = next; }, (model) => { activeModel = model; }, () => activeModel, (charged) => { neurons += charged; identifierUsage += charged; }, brandGuard ? BRAND_EVIDENCE_SUFFIX : undefined);
+    const identified = brandGuard ? guardIdentifyResult(identifiedRaw) : identifiedRaw;
+    row.geminiCalls = geminiCalls;
     if (!identified.ok && identified.error.code === 'AI_LIMIT') { rows.push({ ...row, identifyError: 'AI_LIMIT' }); break; }
     row.identifyMs = Date.now() - started;
     row.modelCalls = calls;
@@ -358,18 +387,21 @@ async function guessOrAll(selected: 'guess' | 'all') {
     console.log(`done guess ${variant.name} rows=${rows.length}`);
     return;
   }
-  const report = summarizeLiveReport({
-    label,
-    variant: variant.name,
-    model: actualModel,
-    ladder: variant.ladder,
-    estimatedNeuronsFor23: variant.estimatedNeuronsFor23,
-    have,
-    refererSet: referer !== null,
-    neurons: Math.round(neurons),
-    rows,
-    truth,
-  });
+  const report = {
+    ...summarizeLiveReport({
+      label,
+      variant: variant.name,
+      model: actualModel,
+      ladder: variant.ladder,
+      estimatedNeuronsFor23: variant.estimatedNeuronsFor23,
+      have,
+      refererSet: referer !== null,
+      neurons: Math.round(neurons),
+      rows,
+      truth,
+    }),
+    geminiCalls: rows.reduce((sum, row) => sum + (typeof row.geminiCalls === 'number' ? row.geminiCalls : 0), 0),
+  };
   writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
   console.log(`done ${variant.name} rows=${rows.length} neurons=${report.neurons} diagnosticPoints=${report.diagnosticPoints}`);
 }
@@ -387,6 +419,7 @@ async function identifyGemini(
   apiKey: string,
   model: string,
   calls: unknown[],
+  onCall?: () => void,
 ) {
   let lastStatus = 0;
   const http = async (request: { url: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => {
@@ -425,6 +458,7 @@ async function identifyGemini(
   return withGeminiHarnessRetry({
     sleep,
     run: async () => {
+      onCall?.();
       const value = await createGeminiIdentifier({ apiKey, model, http, attempts: 1 }).identify(photo);
       return { status: lastStatus, value };
     },
@@ -444,6 +478,7 @@ async function identifyWorkers(
   setModel: (model: SearchVariant['model']) => void,
   model: () => SearchVariant['model'],
   charge: (neurons: number) => void,
+  instructionSuffix?: string,
 ) {
   const env = process.env;
   const http = async (request: { url: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => {
@@ -494,6 +529,7 @@ async function identifyWorkers(
       model: modelId,
       budget,
       http,
+      instructionSuffix,
     });
   };
   const identified = await identifyWith(variant.model.id, 'a').identify(photo);

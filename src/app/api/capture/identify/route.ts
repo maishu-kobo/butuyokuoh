@@ -9,6 +9,7 @@ import { identifyHttpBody, resolveProductIdentifier } from '@/lib/capture/worker
 import { modelIdFromEnv } from '@/lib/capture/ai-variants';
 import { geminiIdentifierForEnv } from '@/lib/capture/gemini';
 import { llama4GeminiActors, productionLadderSearch, runGeminiFallback } from '@/lib/capture/gemini-fallback';
+import { identifyGroundedVariant } from '@/lib/capture/grounded-variant';
 import { NextRequest, NextResponse } from 'next/server';
 
 function errorResponse(error: CaptureErrorBody, status: number) {
@@ -29,9 +30,30 @@ async function handlePOST(request: NextRequest) {
     const user = await getCurrentUser();
     if (user?.account_type === 'member') userId = String(user.id);
   }
-  // 既定は Workers AI。フォールバックは CAPTURE_AI_MODEL で選んだときだけ。
-  // 検索段が 0 件なら Gemini lite を試し、0 件や失敗なら llama 4 の名前を残す。
+  // 既定は Workers AI。根拠の確認と並べ替えは、選んだ variant だけ。
   const testEnv = captureTestEnv();
+  const grounded = await identifyGroundedVariant({
+    photo: photo.value,
+    hooked,
+    fake: ports.identifier,
+    env: testEnv,
+    accountId: secrets.cloudflareAccountId,
+    apiToken: secrets.cloudflareApiToken,
+    userId,
+    search: (product) => productionLadderSearch(product, {
+      yahooAppId: secrets.yahooAppId,
+      rakutenAppId: secrets.rakutenAppId,
+      rakutenAccessKey: secrets.rakutenAccessKey,
+      rakutenAffiliateId: secrets.rakutenAffiliateId,
+      userId,
+      origin: request.headers.get('origin'),
+      associateTag: amazonAssociateTag(),
+    }),
+  });
+  if (grounded) {
+    const http = identifyHttpBody(grounded);
+    return NextResponse.json(http.body, { status: http.status });
+  }
   const actors = llama4GeminiActors({
     hooked,
     fake: ports.identifier,
