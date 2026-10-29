@@ -20,7 +20,7 @@ const JPEG_DATA_URL = 'data:image/jpeg;base64,/9j/AA==';
 
 const SURE = {
   confidence: 'sure',
-  products: [{ name: 'テスト用ゲルボールペン 0.5', brand: '物欲文具', model: 'BY-05', jan: '4900000000009' }],
+  products: [{ name: '物欲文具 BY-05 ゲルボールペン 0.5', brand: '物欲文具', model: 'BY-05', jan: null }],
 };
 
 function endpoint(): string {
@@ -122,6 +122,28 @@ test('a photo is sent once as a data URL and the JSON reply becomes a product gu
   });
 });
 
+test('object responses use the same validation as string responses without retrying', async () => {
+  const generic = { confidence: 'sure', products: [{ name: 'black leather shoulder bag', brand: null, model: null, productType: 'shoulder bag', color: 'black', jan: null }] };
+  await withFetchBlocked(async () => {
+    for (const reply of [SURE, generic, { confidence: 'unreadable', products: [] }]) {
+      const object = harness({ responses: [cf({ response: reply })] });
+      const string = harness({ responses: [textResult(JSON.stringify(reply))] });
+      const actual = await object.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+      const expected = await string.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+      assert.equal(actual.ok, true);
+      assert.deepEqual(actual, expected);
+      assert.equal(object.calls.length, 1);
+      if (reply === generic && actual.ok) assert.equal(actual.value.confidence, 'unsure');
+    }
+    for (const reply of [{}, [], { confidence: 'sure', products: [] }, { products: [{ name: 'https://evil.example/secret' }] }]) {
+      const invalid = harness({ responses: [cf({ response: reply }), cf({ response: reply })] });
+      const result = await invalid.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.error.code, 'AI_INVALID_RESPONSE');
+    }
+  });
+});
+
 test('markdown, an OpenAI-shaped reply, and a direct result string all parse into the same guess', async () => {
   const fenced = '説明は捨てる\n```json\n' + JSON.stringify({
     confidence: 'unsure',
@@ -143,8 +165,8 @@ test('markdown, an OpenAI-shaped reply, and a direct result string all parse int
     if (!unsure.ok) return;
     assert.equal(unsure.value.confidence, 'unsure');
     assert.deepEqual(unsure.value.products, [
-      { name: '牛乳', brand: '明治', model: null, jan: '4900000000009' },
-      { name: '豆乳', brand: null, model: 'A1', jan: null },
+      { name: '牛乳', brand: null, model: null, jan: null },
+      { name: '豆乳', brand: null, model: null, jan: null },
     ]);
     assert.equal(JSON.stringify(unsure.value).includes('evil.example'), false);
     assert.equal(first.calls.length, 1);
@@ -342,4 +364,22 @@ test('the workers ai client does not read the environment or log', () => {
   assert.equal(/console\./.test(source), false);
   assert.equal(source.includes('capture-secrets'), false);
   assert.equal(source.includes(TOKEN), false);
+});
+
+test('a category with invisible invented identifiers is unsure and never supplies a JAN', async () => {
+  const { identifier } = harness({ responses: [textResult(JSON.stringify({
+    confidence: 'sure', products: [{ name: 'Black Leather Bag', brand: 'The Row', model: 'Small Handbag', jan: '4750000000000' }],
+  }))] });
+  const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.deepEqual(result.value, { confidence: 'unsure', products: [{ name: 'Black Leather Bag', brand: null, model: null, jan: null }] });
+});
+
+test('a visible brand and product line remain searchable but an AI barcode is discarded', async () => {
+  const { identifier } = harness({ responses: [textResult(JSON.stringify({
+    confidence: 'sure', products: [{ name: 'Example Alpha handbag', brand: 'Example', model: 'Alpha', jan: '4900000000009' }],
+  }))] });
+  const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.deepEqual(result.value, { confidence: 'sure', products: [{ name: 'Example Alpha handbag', brand: 'Example', model: 'Alpha', jan: null }] });
 });

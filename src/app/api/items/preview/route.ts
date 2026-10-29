@@ -2,9 +2,10 @@ import { scrapeGuestUrl } from '@/lib/guest-scraper';
 import { GuestError } from '@/lib/guest';
 import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
-import { scrapeUrl } from '@/lib/scraper';
+import { isUnusableScrape, scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
+import { PRODUCT_FETCH_HELP } from '@/lib/public-page';
 
 async function handlePOST(request: NextRequest) {
   try {
@@ -42,6 +43,9 @@ async function handlePOST(request: NextRequest) {
 
     // スクレイピング
     const result = user.account_type === 'guest' ? await scrapeGuestUrl(url, user.id) : await scrapeUrl(url);
+    if (isUnusableScrape(result)) {
+      return NextResponse.json({ error: PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' }, { status: 422 });
+    }
 
     return NextResponse.json({
       name: result.name,

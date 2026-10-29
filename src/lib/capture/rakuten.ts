@@ -12,6 +12,7 @@ import {
 } from './contract';
 import { canonicalCandidateImageUrl } from './image-hosts';
 import { canonicalRakutenAffiliateUrl, canonicalRakutenProductUrl } from './rakuten-link';
+import { storeSearchKeyword } from './product-query';
 import { textQueryVariants } from './search-attempt';
 import { reportStoreAttempt, type StoreAttempt } from './search-log';
 
@@ -295,22 +296,7 @@ function canonicalItemUrl(raw: string): string | null {
 
 function rakutenKeyword(query: SearchQuery): string {
   if (query.jan && isValidJan(query.jan)) return query.jan;
-  const parts = [query.name, query.brand ?? '', query.model ?? ''].map(part => part.trim()).filter(Boolean);
-  return truncateUtf8(parts.join(' '), KEYWORD_MAX_BYTES);
-}
-
-function truncateUtf8(value: string, maxBytes: number): string {
-  const chars = Array.from(value);
-  const encoder = new TextEncoder();
-  let bytes = 0;
-  let count = 0;
-  for (const char of chars) {
-    const size = encoder.encode(char).byteLength;
-    if (bytes + size > maxBytes) break;
-    bytes += size;
-    count += 1;
-  }
-  return chars.slice(0, count).join('');
+  return storeSearchKeyword(query, { maxChars: KEYWORD_MAX_BYTES, maxBytes: KEYWORD_MAX_BYTES });
 }
 
 function aborted(signal: AbortSignal): Promise<never> {

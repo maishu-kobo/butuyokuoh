@@ -151,7 +151,7 @@ test('a slash that is part of the name stays, and a two-color tail does not', as
   const kept = await cable.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
   assert.equal(kept.ok, true);
   if (!kept.ok) return;
-  assert.equal(kept.value.confidence, 'sure');
+  assert.equal(kept.value.confidence, 'unsure');
   assert.equal(kept.value.products[0].name, 'USB A/C ケーブル');
 
   const colors = harness([
@@ -180,6 +180,7 @@ test('a name without a variant list keeps its generation', async () => {
   if (!result.ok) return;
   assert.equal(result.value.confidence, 'sure');
   assert.equal(result.value.products[0].name, 'Google Pixel 10 Pro Fold');
+  assert.equal(result.value.products[0].model, 'Pixel 10 Pro Fold');
 });
 
 test('missing shop keys are not a retryable search failure, and one configured shop still returns candidates', async () => {

@@ -21,6 +21,7 @@ import { RAKUTEN_CREDIT } from '@/lib/capture/rakuten';
 import type { RegisteredLocation, RegisteredCandidateLocation } from '@/lib/capture/register';
 import { useEffect, useRef, useState } from 'react';
 import { ImageOff } from 'lucide-react';
+import { filenameProductCode } from '@/lib/capture/filename-hint';
 
 type ListedCandidate = CaptureCandidate & { candidateId?: number; registeredIn?: RegisteredCandidateLocation | null };
 
@@ -244,6 +245,7 @@ export function CaptureSearchPanel({
   if (!file && !status) return null;
 
   const listed = orderCandidates(candidates, sort);
+  const filenameCode = file ? filenameProductCode(file.name) : null;
   const showRakutenCredit = attribution?.rakuten === true;
   const isAmazonAffiliate = amazonAffiliateLink(amazonUrl);
 
@@ -273,6 +275,9 @@ export function CaptureSearchPanel({
         </button>
       )}
       {products.length > 0 && (
+        <p className="text-sm text-gray-700 dark:text-gray-200">写真からの商品名は推定です。同じ商品とは限りません。ブランド名や品番が分かれば、下の入力欄に追加して探してください。</p>
+      )}
+      {products.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {products.map((product) => (
             <button
@@ -291,6 +296,15 @@ export function CaptureSearchPanel({
           ))}
         </div>
       )}
+      {filenameCode && !busy && (
+        <div className="rounded-md border border-gray-300 p-3 text-sm dark:border-slate-600">
+          <p>ファイル名の品番候補（未確認）: {filenameCode}</p>
+          <p className="mt-1 text-gray-600 dark:text-gray-300">写真から読み取った品番ではありません。商品の品番か確認してから使ってください。</p>
+          <button type="button" disabled={searchBlocked || registering}
+            onClick={() => { setName(filenameCode); void runSearch(null, filenameCode); }}
+            className="mt-2 min-h-[44px] rounded-md border px-3 py-2 disabled:opacity-50">この品番で探す</button>
+        </div>
+      )}
       {(chosen || name) && (
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1" htmlFor="capture-search-name">
@@ -301,19 +315,30 @@ export function CaptureSearchPanel({
               id="capture-search-name"
               disabled={registering}
               value={name}
+              placeholder="商品名・ブランド名・品番"
               onChange={(event) => setName(event.target.value)}
               className="min-w-0 flex-1 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md"
             />
             <button
               type="button"
               disabled={searchBlocked || registering}
-              onClick={() => void runSearch(chosen, name)}
+              onClick={() => void runSearch(null, name)}
               className="inline-flex shrink-0 items-center whitespace-nowrap min-h-[24px] min-w-[24px] px-3 py-2 border rounded-md text-sm disabled:opacity-50"
             >
               この名前で探す
             </button>
           </div>
         </div>
+      )}
+      {listed.length > 0 && (
+        <section aria-label="候補の登録操作" className="sticky top-20 z-20 flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-300 bg-white p-3 shadow-sm dark:border-slate-600 dark:bg-slate-800">
+          <p role="status" aria-live="polite" className="text-sm text-gray-900 dark:text-gray-100">{selected.length}件選択中</p>
+          <button type="button" onClick={() => void registerSelected()} disabled={selected.length === 0 || busy || registering}
+            className="min-h-[44px] px-4 py-2 bg-blue-600 text-white rounded-md disabled:opacity-50">
+            {registering ? '登録しています…' : '選んだ候補を登録'}
+          </button>
+          {notice && <p role="alert" className="w-full text-sm text-red-700 dark:text-red-300">{notice}</p>}
+        </section>
       )}
       {listed.length > 0 && (
         <div className="space-y-2">
@@ -327,7 +352,7 @@ export function CaptureSearchPanel({
               const thumb = candidateThumbnail(item);
               const fetchedLabel = formatCandidateFetchedAt(item.fetchedAt);
               return (
-              <li key={item.candidateId ?? item.id} className="flex items-start gap-2 rounded-md border border-gray-200 dark:border-slate-600 p-2">
+              <li key={item.candidateId ?? item.id} className="scroll-mt-40 flex items-start gap-2 rounded-md border border-gray-200 dark:border-slate-600 p-2">
                 <input
                   type="checkbox"
                   aria-label={`候補を選ぶ ${item.title}`}
@@ -388,14 +413,7 @@ export function CaptureSearchPanel({
                 </p>
               )}
             </div>
-            {listed.length > 0 && <button
-              type="button"
-              onClick={() => void registerSelected()}
-              disabled={selected.length === 0 || busy || registering}
-              className="min-h-[24px] min-w-[24px] px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
-            >
-              {registering ? '登録しています…' : '選んだ候補を登録'}
-            </button>}
+
           </div>
       )}
       {slow && busy && (
@@ -407,7 +425,7 @@ export function CaptureSearchPanel({
           </div>
         </div>
       )}
-      {notice && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{notice}</p>}
+      {notice && listed.length === 0 && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{notice}</p>}
       {(attribution?.yahoo || showRakutenCredit) && (
         <footer aria-label="検索サービスのクレジット" className="flex flex-col items-end border-t border-gray-200 pt-3 text-xs leading-6 dark:border-slate-600">
           {attribution?.yahoo && (

@@ -3,6 +3,7 @@
 # 保護したテスト（セキュリティと回帰）はリストに書けない。必須レーンが拒否する。
 # path フィルタは付けない。
 # ローカルの npm test と npm run test:e2e はこのリストを見ない。
+# develop への push でも実行する。必須チェックへの組み込みはリポジトリ設定なので、ここではしない。
 name: quarantined tests
 
 on:
@@ -11,9 +12,11 @@ on:
       - feature/photo-capture
       - feature/capture-existing-bugfixes
       - develop
+      - main
   push:
     branches:
       - feature/photo-capture
+      - develop
 
 permissions:
   contents: read
