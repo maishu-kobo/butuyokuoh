@@ -86,6 +86,13 @@ export interface IdentifyResponse {
   products: ProductGuess[];
   // 評価用。店の検索語の候補。画面のAPIには出さない。
   queries?: string[];
+  // モデルが返した読めた文字と種類。画面のAPIには出さない。
+  evidence?: {
+    textProvided: boolean;
+    visibleText: string;
+    productType: string | null;
+    color: string | null;
+  };
 }
 
 export interface IdentifyInput {

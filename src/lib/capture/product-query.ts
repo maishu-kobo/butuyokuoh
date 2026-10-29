@@ -162,6 +162,10 @@ export function nameHasProductType(text: string): boolean {
   return bestTerm(text) !== null;
 }
 
+export function dominantTypeGroup(text: string): string | null {
+  return bestTerm(text)?.group ?? null;
+}
+
 function canonicalType(value: string | null): string | null {
   if (!value || value.includes('/')) return null;
   return bestTerm(value)?.canonical ?? null;
