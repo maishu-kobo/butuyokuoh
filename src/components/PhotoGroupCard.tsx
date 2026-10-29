@@ -4,13 +4,13 @@ import { apiFetch } from '@/lib/api-fetch';
 import { formatYen, type WishlistRow } from '@/lib/capture/list-card';
 import { photoGroupDeleteIds, photoShopDeleteIds } from '@/lib/capture/photo-group-actions';
 import { formatListTimestamp, offersPriceRefresh, photoImageUrl, shopBadgeText, uniqueShopTags } from '@/lib/capture/photo-card-view';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import SortableItemCard from './SortableItemCard';
 import type { Category, ComparisonGroup, Item } from '@/types';
 
 type PhotoCard = Extract<WishlistRow, { kind: 'photo' }>;
 
-export default function PhotoGroupCard({
+function PhotoGroupCard({
   card,
   item,
   onUpdate,
@@ -82,7 +82,7 @@ export default function PhotoGroupCard({
           aria-expanded={open}
           aria-label={open ? `${card.name}のショップを閉じる` : `${card.name}のショップを見る`}
           onClick={() => setOpen((current) => !current)}
-          className="inline-flex min-h-[24px] min-w-[24px] items-center text-blue-600 hover:text-blue-700"
+          className="inline-flex min-h-[24px] min-w-[24px] items-center text-blue-600 hover:text-blue-700 focus:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200 dark:focus:text-blue-200"
         >
           {open ? 'ショップを閉じる' : 'ショップを見る'}
         </button>
@@ -159,3 +159,6 @@ export default function PhotoGroupCard({
     </div>
   );
 }
+
+// 検索の1文字で、中身が変わっていない写真グループまで描き直さない。
+export default memo(PhotoGroupCard);

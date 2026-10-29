@@ -695,3 +695,19 @@ test('Rakuten credit is the developers attribution and the client does not read 
   assert.equal(/process\.env/.test(source), false);
   assert.equal(source.includes(SECRET), false);
 });
+
+
+test('photo keyword punctuation is removed without removing Japanese names or model identifiers (#251)', async () => {
+  for (const [name, expected] of [
+    ['Gucci - Gucci Sylvie Bag', 'Gucci Sylvie Bag'],
+    ['黒い ハンドバッグ', '黒い ハンドバッグ'],
+    ['ソニーのWH-1000XM5ヘッドホン', 'ソニーのWH-1000XM5ヘッドホン'],
+    ['G-SHOCK GW-M5610U', 'G-SHOCK GW-M5610U'],
+    ['7897722AA4V1000', '7897722AA4V1000'],
+  ]) {
+    const { search, calls } = harness();
+    const result = await search.search({ name, brand: null, model: null, jan: null });
+    assert.equal(result.ok, true);
+    assert.equal(new URL(calls[0].url).searchParams.get('keyword'), expected);
+  }
+});

@@ -10,7 +10,8 @@
 # フレークの隔離は quarantine.yml。失敗すると赤になる。チェック名は必須の名前ではない。
 # 保護したテストは .github/test-quarantine.txt に書けない。このレーンが拒否する。
 # 実店舗の e2e（E2E_LIVE_SCRAPE / E2E_LIVE_AMAZON / E2E_LIVE_RAKUTEN）は環境変数を付けない。
-# develop への push と、マージ条件への組み込みはここではしない。
+# develop への push でも実行する。
+# マージ条件（必須ステータスチェック）はリポジトリ設定なので、このファイルではしない。
 # path フィルタは付けない。必須ジョブが skip になると、その SHA のチェックが pending のままマージを止める。
 name: CI
 
@@ -20,9 +21,11 @@ on:
       - feature/photo-capture
       - feature/capture-existing-bugfixes
       - develop
+      - main
   push:
     branches:
       - feature/photo-capture
+      - develop
 
 permissions:
   contents: read
@@ -34,17 +37,7 @@ concurrency:
 jobs:
   check:
     name: test, types, build
-    # 無課金の条件を確認し、App 導入後に指定ブランチだけで試す。未確認と fork PR は従来どおり。
-    # 有効化と復旧の手順は docs/ci.md。障害時の自動切り戻しではない。
-    runs-on: >-
-      ${{ vars.BLACKSMITH_NO_CHARGE_CONFIRMED == 'true' &&
-          vars.BLACKSMITH_CI_BRANCH != '' &&
-          ((github.event_name == 'pull_request' &&
-            github.event.pull_request.head.repo.full_name == github.repository &&
-            github.head_ref == vars.BLACKSMITH_CI_BRANCH) ||
-           (github.event_name == 'push' && github.ref_type == 'branch' &&
-            github.ref_name == vars.BLACKSMITH_CI_BRANCH)) &&
-          'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       NEXT_TELEMETRY_DISABLED: "1"
@@ -82,6 +75,10 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      # 既存の警告は残す。新しい警告だけを落とす。警告の一括修正はしない。
+      - name: Lint warning baseline
+        run: node scripts/lint-warnings.mjs check
 
   audit:
     name: npm audit

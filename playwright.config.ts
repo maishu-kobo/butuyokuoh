@@ -1,19 +1,28 @@
 import { defineConfig } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { filesForLane, laneFromEnv, OTHER_LANE_FILES } from './scripts/e2e-lanes.mjs';
 
 process.env.E2E_DB_PATH ||= join(mkdtempSync(join(tmpdir(), 'butuyokuoh-e2e-')), 'test.sqlite');
 const port = 3107;
+const lane = laneFromEnv();
+const specNames = readdirSync('tests/e2e');
 export default defineConfig({
   testDir: './tests/e2e',
-  testMatch: process.env.E2E_GUEST_DISABLED ? 'disabled.spec.ts' : ['guest.spec.ts', 'capture.spec.ts', 'capture-photo-pick.spec.ts', 'capture-photo-group.spec.ts', 'capture-amazon-tab.spec.ts', 'capture-flow.spec.ts', 'capture-manual.spec.ts', 'capture-hydration.spec.ts'],
+  testMatch: lane === 'default' ? /.*\.spec\.ts/ : filesForLane(specNames, lane),
+  testIgnore: lane === 'default' ? Object.keys(OTHER_LANE_FILES) : undefined,
   fullyParallel: false,
   workers: 1,
   timeout: 60_000,
-  use: { baseURL: `http://localhost:${port}`, trace: 'retain-on-failure' },
+  reporter: process.env.CI ? [['list'], ['json', { outputFile: 'test-results/results.json' }]] : 'list',
+  use: {
+    baseURL: `http://localhost:${port}`,
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+  },
   webServer: {
-    command: `npm run ${process.env.E2E_PRODUCTION ? 'start' : 'dev'} -- --port ${port}`,
+    command: `npm run ${lane === 'production' ? 'start' : 'dev'} -- --port ${port}`,
     url: `http://localhost:${port}/api/auth/guest`,
     timeout: 120_000,
     reuseExistingServer: false,
@@ -28,7 +37,10 @@ export default defineConfig({
       JWT_SECRET: 'guest-e2e-only-jwt-secret-not-for-production',
       GOOGLE_CLIENT_ID: 'test-client', GOOGLE_CLIENT_SECRET: 'test-secret',
       // 開発サーバのテストだけでシナリオを切り替える。本番の NODE_ENV ではヘッダーを無視する。
-      CAPTURE_TEST_HOOKS: '1',
+      // 本番スモークはこの鍵を渡さない。
+      ...(lane === 'production' ? {} : { CAPTURE_TEST_HOOKS: '1' }),
+      // 既定レーンだけ、店の代わりに固定ページを返す。本番ではポートが無効。
+      ...(lane === 'default' ? { E2E_PRODUCT_FIXTURES: '1' } : {}),
       CAPTURE_ENABLED: 'true',
       CAPTURE_AI_ENABLED: 'true',
       AMAZON_ASSOCIATE_TAG: 'test-tag-22',

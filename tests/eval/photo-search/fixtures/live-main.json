@@ -1,0 +1,2944 @@
+{
+  "label": "main",
+  "have": {
+    "cf": true,
+    "yahoo": true,
+    "rakuten": true
+  },
+  "refererSet": true,
+  "estNeurons": 571,
+  "rows": [
+    {
+      "id": "balenciaga-shoes",
+      "identifyMs": 1775,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Nike Air Force 1\",\"brand\":\"Nike\",\"model\":\"Air Force 1\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6713,
+            "completion_tokens": 32,
+            "total_tokens": 6745,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 31.575235430375002
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "Nike Air Force 1",
+          "brand": "Nike",
+          "model": "Air Force 1",
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Nike Air Force 1",
+        "brand": "Nike",
+        "model": "Air Force 1",
+        "jan": null
+      },
+      "searchMs": 1935,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "Nike Air Force 1 Nike Air Force 1",
+          "status": 400
+        },
+        {
+          "site": "yahoo",
+          "keyword": "Nike Air Force 1 Nike Air Force 1",
+          "status": 200
+        }
+      ],
+      "failures": [
+        {
+          "site": "rakuten",
+          "code": "SEARCH_FAILED"
+        }
+      ],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 0
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "ナイキ エアフォース 1 ガールズ NIKE AIR FORCE 1 LE(GS) white/white dh2920-111 レディース スニーカー AF1 ホワイト レザー",
+          "price": 14800
+        },
+        {
+          "site": "yahoo",
+          "title": "ナイキ エア フォース 1 '07 ホワイト ゲームロイヤル NIKE AIR FORCE 1 07 wht/game royal iv5732-100",
+          "price": 15900
+        },
+        {
+          "site": "yahoo",
+          "title": "ナイキ エアフォース1 ロー 07 ホワイト 白 NIKE AIR FORCE 1 07 LOW WHITE 白 メンズ スニーカー CW2288-111 DD8959-100",
+          "price": 15950
+        },
+        {
+          "site": "yahoo",
+          "title": "ナイキ エアフォース 1 '07 NIKE AIR FORCE 1 07 white/white cw2288-111 スニーカー ホワイト AF1 LOW 白 メンズ エア フォース ワン ロー",
+          "price": 16700
+        },
+        {
+          "site": "yahoo",
+          "title": "NIKE AIR FORCE 1 '07 ナイキ エア フォース 1 '07 BLACK/BLACK CW2288-001",
+          "price": 16940
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "ナイキ エアフォース 1 ガールズ NIKE AIR FORCE 1 LE(GS) white/white dh2920-111 レディース スニーカー AF1 ホワイト レザー",
+          "price": 14800
+        },
+        {
+          "title": "ナイキ エア フォース 1 '07 ホワイト ゲームロイヤル NIKE AIR FORCE 1 07 wht/game royal iv5732-100",
+          "price": 15900
+        },
+        {
+          "title": "ナイキ エアフォース1 ロー 07 ホワイト 白 NIKE AIR FORCE 1 07 LOW WHITE 白 メンズ スニーカー CW2288-111 DD8959-100",
+          "price": 15950
+        },
+        {
+          "title": "ナイキ エアフォース 1 '07 NIKE AIR FORCE 1 07 white/white cw2288-111 スニーカー ホワイト AF1 LOW 白 メンズ エア フォース ワン ロー",
+          "price": 16700
+        },
+        {
+          "title": "NIKE AIR FORCE 1 '07 ナイキ エア フォース 1 '07 BLACK/BLACK CW2288-001",
+          "price": 16940
+        }
+      ],
+      "top5rakuten": []
+    },
+    {
+      "id": "balenciaga-type-in-model",
+      "identifyMs": 1380,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"adidas\",\"brand\":\"adidas\",\"model\":\"adidas\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3511,
+            "completion_tokens": 28,
+            "total_tokens": 3539,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 17.206952628625
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "adidas",
+          "brand": "adidas",
+          "model": "adidas",
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "adidas",
+        "brand": "adidas",
+        "model": "adidas",
+        "jan": null
+      },
+      "searchMs": 350,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "adidas adidas adidas",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "adidas adidas adidas",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "ツバ付き ニット帽 アディダス adidas つば付き ロゴ ニットキャップ 帽子 ゴルフ アクリル スポーツ メンズ レディース ランニング ジョギング ブランド ADIDAS バイザー",
+          "price": 3190
+        },
+        {
+          "site": "rakuten",
+          "title": "【最大10万P当選★要エントリー★10/31まで】 アディダス (adidas) RUNFALCON 5 M ランニング メンズジョギングシューズ メンズ レジェンドインク/フットウェアホワイト/コアブラック NKE45 IE8809",
+          "price": 5478
+        },
+        {
+          "site": "rakuten",
+          "title": "adidas 【公式】アディダス adidas 返品可 ADIDAS POKEMON SST クイックオン / ADIDAS POKEMON SST QUICKON アディダス シューズ・靴 スニーカー イエロー【送料無料】",
+          "price": 9350
+        },
+        {
+          "site": "yahoo",
+          "title": "レディース ADIDAS アディダス GRAND COURT MULE グランドコート ミュール JS4997 WOND/OFFW/WOND",
+          "price": 9350
+        },
+        {
+          "site": "yahoo",
+          "title": "レディース ADIDAS アディダス GRAND COURT MULE グランドコート ミュール JS4998 WARM/WARM/WOND",
+          "price": 9350
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "レディース ADIDAS アディダス GRAND COURT MULE グランドコート ミュール JS4997 WOND/OFFW/WOND",
+          "price": 9350
+        },
+        {
+          "title": "レディース ADIDAS アディダス GRAND COURT MULE グランドコート ミュール JS4998 WARM/WARM/WOND",
+          "price": 9350
+        },
+        {
+          "title": "レディース ADIDAS アディダス OZGAIA W オズガイア W IG6045 CORE/CORE/FTWR",
+          "price": 12100
+        },
+        {
+          "title": "アディダス adidas スニーカー オズガイア / Ozgaia / 厚底スニーカー / アディダスオリジナルス adidas Originals レディース メンズ",
+          "price": 12100
+        },
+        {
+          "title": "アディダス ゴルフシューズ コードカオス 25 ボア メンズ ゴルフ ダイヤル式スパイクレスシューズ 2E adidas",
+          "price": 14890
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "ツバ付き ニット帽 アディダス adidas つば付き ロゴ ニットキャップ 帽子 ゴルフ アクリル スポーツ メンズ レディース ランニング ジョギング ブランド ADIDAS バイザー",
+          "price": 3190
+        },
+        {
+          "title": "【最大10万P当選★要エントリー★10/31まで】 アディダス (adidas) RUNFALCON 5 M ランニング メンズジョギングシューズ メンズ レジェンドインク/フットウェアホワイト/コアブラック NKE45 IE8809",
+          "price": 5478
+        },
+        {
+          "title": "adidas 【公式】アディダス adidas 返品可 ADIDAS POKEMON SST クイックオン / ADIDAS POKEMON SST QUICKON アディダス シューズ・靴 スニーカー イエロー【送料無料】",
+          "price": 9350
+        },
+        {
+          "title": "【ADIDAS】 アディダス adidas TAEKWONDO LACE W アディダス テコンドー レース W JS1194",
+          "price": 10450
+        },
+        {
+          "title": "adidas 【公式】アディダス adidas 返品可 adidas by Stella McCartney TrueCasuals レギュラー スポーツウェア T... アディダス トップス カットソー・Tシャツ ブラック【送料無料】",
+          "price": 10670
+        }
+      ]
+    },
+    {
+      "id": "birkenstock-sandals",
+      "identifyMs": 1271,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Birkenstock\",\"brand\":null,\"model\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6713,
+            "completion_tokens": 27,
+            "total_tokens": 6740,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 31.267769591625
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "Birkenstock",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Birkenstock",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 1085,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "Birkenstock",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "Birkenstock",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 26
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "ビルケンシュトック Gizeh / ギゼ EVA Eggshell 1031278 メンズ レディス サンダル シューズ スポーツサンダル メンズサンダル レディースサンダル BIRKENSTOCK",
+          "price": 5544
+        },
+        {
+          "site": "rakuten",
+          "title": "ビルケンシュトック アリゾナ EVA サンダル 正規品 BIRKENSTOCK ARIZONA 幅狭 ナロー GE1294 即納",
+          "price": 5775
+        },
+        {
+          "site": "rakuten",
+          "title": "ビルケンシュトック BIRKENSTOCK スポーツサンダル ARIZONA EVA GE129423 GE129421",
+          "price": 5950
+        },
+        {
+          "site": "rakuten",
+          "title": "ビルケンシュトック GIZEH EVA GE128201 BK メンズ レディース スポーツサンダル : ブラック BIRKENSTOCK",
+          "price": 5980
+        },
+        {
+          "site": "yahoo",
+          "title": "BIRKENSTOCK ビルケンシュトック Arizona EVA アリゾナ 国内正規品 サンダル メンズ レディース",
+          "price": 5980
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "BIRKENSTOCK ビルケンシュトック Arizona EVA アリゾナ 国内正規品 サンダル メンズ レディース",
+          "price": 5980
+        },
+        {
+          "title": "ビルケンシュトック 国内正規品 BIRKENSTOCK Zermatt ルームシューズ メンズ レディース ツェルマット 1014932 1017523 1014934",
+          "price": 8360
+        },
+        {
+          "title": "BIRKENSTOCK ビルケンシュトック ボストン 国内正規品 BOSTON トープ サボ サンダル メンズ レディース レギュラー ナロー",
+          "price": 19360
+        },
+        {
+          "title": "ビルケンシュトック サンダル モンタナ 国内正規品 BIRKENSTOCK Montana コンフォート オイルドレザー メンズ レディース",
+          "price": 21120
+        },
+        {
+          "title": "ビルケンシュトック BIRKENSTOCK サンダル ボストン ベロア 60461 60463 SS24 BOSTON メンズ・レディース ドイツ製 TAUPE | SUEDE-LEATHER 正規取扱店",
+          "price": 24200
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "ビルケンシュトック Gizeh / ギゼ EVA Eggshell 1031278 メンズ レディス サンダル シューズ スポーツサンダル メンズサンダル レディースサンダル BIRKENSTOCK",
+          "price": 5544
+        },
+        {
+          "title": "ビルケンシュトック アリゾナ EVA サンダル 正規品 BIRKENSTOCK ARIZONA 幅狭 ナロー GE1294 即納",
+          "price": 5775
+        },
+        {
+          "title": "ビルケンシュトック BIRKENSTOCK スポーツサンダル ARIZONA EVA GE129423 GE129421",
+          "price": 5950
+        },
+        {
+          "title": "ビルケンシュトック GIZEH EVA GE128201 BK メンズ レディース スポーツサンダル : ブラック BIRKENSTOCK",
+          "price": 5980
+        },
+        {
+          "title": "ビルケンシュトック アリゾナ ARIZONA EVA GE129423 GE129421 BK メンズ レディース スポーツサンダル ： ブラック BIRKENSTOCK 2020sandals",
+          "price": 6150
+        }
+      ]
+    },
+    {
+      "id": "canon-camera",
+      "identifyMs": 1482,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Olympus OM-D\",\"brand\":\"Olympus\",\"model\":\"OM-D\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6713,
+            "completion_tokens": 32,
+            "total_tokens": 6745,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 31.575235430375002
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "Olympus OM-D",
+          "brand": "Olympus",
+          "model": "OM-D",
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Olympus OM-D",
+        "brand": "Olympus",
+        "model": "OM-D",
+        "jan": null
+      },
+      "searchMs": 317,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "Olympus OM-D Olympus OM-D",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "Olympus OM-D Olympus OM-D",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 8,
+        "rakuten": 20
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "お買い得品｜オリンパス OLYMPUS OM-D E-M1 ボディ CA01-D1222-4B4B",
+          "price": 28840
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】【1年保証】【美品】OLYMPUS OM-D E-M5 ボディ ブラック",
+          "price": 43800
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】【1年保証】【美品】OLYMPUS OM-D E-M10 ボディ ブラック",
+          "price": 43800
+        },
+        {
+          "site": "yahoo",
+          "title": "オリンパス ミラーレス OLYMPUS OM-D E-M10 Mark III レンズキット シルバー Wi-Fi搭載 中古 スマホに送れる 新品SDカード付き 届いてすぐに使える 動画撮影",
+          "price": 79800
+        },
+        {
+          "site": "yahoo",
+          "title": "OLYMPUS OM-D E-M10 Mark IV ボディ シルバー ミラーレス一眼カメラ",
+          "price": 83791
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "お買い得品｜オリンパス OLYMPUS OM-D E-M1 ボディ CA01-D1222-4B4B",
+          "price": 28840
+        },
+        {
+          "title": "オリンパス ミラーレス OLYMPUS OM-D E-M10 Mark III レンズキット シルバー Wi-Fi搭載 中古 スマホに送れる 新品SDカード付き 届いてすぐに使える 動画撮影",
+          "price": 79800
+        },
+        {
+          "title": "OLYMPUS OM-D E-M10 Mark IV ボディ シルバー ミラーレス一眼カメラ",
+          "price": 83791
+        },
+        {
+          "title": "オリンパス ミラーレス OLYMPUS OM-D E-M10 MarkII レンズキット ブラック 中古 Wi-Fi搭載 新品SDカード付き 届いてすぐに使える スマホに送れる 動画撮影",
+          "price": 83800
+        },
+        {
+          "title": "[箱破損 または 箱汚れ品] OLYMPUS OM-D E-M10 Mark IV EZダブルズームキット シルバー",
+          "price": 97980
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【中古】【1年保証】【美品】OLYMPUS OM-D E-M5 ボディ ブラック",
+          "price": 43800
+        },
+        {
+          "title": "【中古】【1年保証】【美品】OLYMPUS OM-D E-M10 ボディ ブラック",
+          "price": 43800
+        },
+        {
+          "title": "【中古】【1年保証】【美品】OLYMPUS OM-D E-M1 12-50mm EZ ブラック",
+          "price": 84800
+        },
+        {
+          "title": "【箱破損 または 箱汚れ品 】OLYMPUS OM-D E-M10 Mark IV EZダブルズームキット シルバー",
+          "price": 97980
+        },
+        {
+          "title": "【中古】【1年保証】【美品】OLYMPUS OM-D E-M1 Mark II ボディ ブラック",
+          "price": 99800
+        }
+      ]
+    },
+    {
+      "id": "chanel-perfume",
+      "identifyMs": 1806,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Perfume\",\"brand\":null,\"model\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6713,
+            "completion_tokens": 27,
+            "total_tokens": 6740,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 31.267769591625
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "Perfume",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Perfume",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 296,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "Perfume",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "Perfume",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 29
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "【中古】 COSMIC　EXPLORER（初回限定盤B）（DVD付）／Perfume",
+          "price": 330
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】 Future　Pop（完全生産限定盤）（Blu−ray　Disc付）／Perfume",
+          "price": 330
+        },
+        {
+          "site": "yahoo",
+          "title": "Perfume／GAME",
+          "price": 330
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】Perfume　4th　Tour　in　DOME「LEVEL3」　初回限定盤/ Perfume【出演】",
+          "price": 960
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】 Perfume　WORLD　TOUR　2nd／Perfume",
+          "price": 1089
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "Perfume／GAME",
+          "price": 330
+        },
+        {
+          "title": "CD/Perfume/Perfume The Best ”P Cubed” (通常盤)",
+          "price": 3565
+        },
+        {
+          "title": "香水 Roll-on Perfume Oil - NUDE PEARL - レディース メンズ",
+          "price": 3960
+        },
+        {
+          "title": "ボディクリーム Perfume Oil - NUDE PEARL -",
+          "price": 6380
+        },
+        {
+          "title": "Perfume／Perfume ZO／Z5 Anniversary ネビュラロマンス -完全版- 【DVD】",
+          "price": 11556
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【中古】 COSMIC　EXPLORER（初回限定盤B）（DVD付）／Perfume",
+          "price": 330
+        },
+        {
+          "title": "【中古】 Future　Pop（完全生産限定盤）（Blu−ray　Disc付）／Perfume",
+          "price": 330
+        },
+        {
+          "title": "【中古】Perfume　4th　Tour　in　DOME「LEVEL3」　初回限定盤/ Perfume【出演】",
+          "price": 960
+        },
+        {
+          "title": "【中古】 Perfume　WORLD　TOUR　2nd／Perfume",
+          "price": 1089
+        },
+        {
+          "title": "【中古】【Blu－ray】Perfume　Anniversary　10days　2015　PPPPPPPPPP「LIVE　3：5：6：9」　初回限定版　特典ディスク・フォトブックレット付 / Perfume【出演】",
+          "price": 1412
+        }
+      ]
+    },
+    {
+      "id": "converse-complete",
+      "identifyMs": 1735,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"CONVERSE ALL STAR\",\"brand\":\"CONVERSE\",\"model\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3511,
+            "completion_tokens": 29,
+            "total_tokens": 3540,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 17.268445796375
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "CONVERSE ALL STAR",
+          "brand": "CONVERSE",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "CONVERSE ALL STAR",
+        "brand": "CONVERSE",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 313,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "CONVERSE ALL STAR CONVERSE",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "CONVERSE ALL STAR CONVERSE",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "コンバース オールスター スニーカー ハイカット ハイ キャンバス メンズ レディース 定番【旧モデル】 CONVERSE ALL STAR HI",
+          "price": 4389
+        },
+        {
+          "site": "rakuten",
+          "title": "コンバース CONVERSE スニーカー ハイカット キャンバス オールスター ハイ メンズ レディース 定番【旧モデル】 CONVERSE ALL STAR HI",
+          "price": 4389
+        },
+        {
+          "site": "rakuten",
+          "title": "コンバース オールスター スリップ N OX CONVERSE ALL STAR SLIP N OX 31317160 31317161 31318890 31318891 メンズ レディース スニーカー",
+          "price": 5280
+        },
+        {
+          "site": "rakuten",
+          "title": "CONVERSE ALL STAR SLIP FE OX / ALL STAR SLIP N OX 31314090 31314091 31315611 31317160 31317161 コンバース オールスター スリップ FE OX / オールスター スリップ N OX 5カラー",
+          "price": 6160
+        },
+        {
+          "site": "rakuten",
+          "title": "【動画あり】送料無料 コンバース オールスター スニーカー レディース メンズ ユニセックス CONVERSE ALL STAR R アール OX ローカット キャンバス 定番 シューズ 靴 1SD819 1SD823 ブラック ホワイト 黒 白",
+          "price": 6490
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "コンバース オールスター US OX スニーカー メンズ レディース CONVERSE ALL STAR キャンバス ブラック ホワイト/トリコ 1SD286 1SD287 シューズ 靴 定番",
+          "price": 8410
+        },
+        {
+          "title": "スニーカー Brooks Brothers × CONVERSE ALL STAR AGED OX／BB メンズ",
+          "price": 15400
+        },
+        {
+          "title": "コンバース オールスター クップ スニーカー メンズ レディース CONVERSE ALL STAR COUPE OX ローカット レザー シューズ 定番 シューズ 靴 ブラック ホワイト",
+          "price": 15840
+        },
+        {
+          "title": "スニーカー Brooks Brothers × CONVERSE ALL STAR AGED HI／BB メンズ レディース",
+          "price": 16500
+        },
+        {
+          "title": "コンバース オールスター スニーカー CONVERSE ALL STAR LGCY LE OX / コンバース オールスター レガシー LE OX メンズ レディース",
+          "price": 20900
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "コンバース オールスター スニーカー ハイカット ハイ キャンバス メンズ レディース 定番【旧モデル】 CONVERSE ALL STAR HI",
+          "price": 4389
+        },
+        {
+          "title": "コンバース CONVERSE スニーカー ハイカット キャンバス オールスター ハイ メンズ レディース 定番【旧モデル】 CONVERSE ALL STAR HI",
+          "price": 4389
+        },
+        {
+          "title": "コンバース オールスター スリップ N OX CONVERSE ALL STAR SLIP N OX 31317160 31317161 31318890 31318891 メンズ レディース スニーカー",
+          "price": 5280
+        },
+        {
+          "title": "CONVERSE ALL STAR SLIP FE OX / ALL STAR SLIP N OX 31314090 31314091 31315611 31317160 31317161 コンバース オールスター スリップ FE OX / オールスター スリップ N OX 5カラー",
+          "price": 6160
+        },
+        {
+          "title": "【動画あり】送料無料 コンバース オールスター スニーカー レディース メンズ ユニセックス CONVERSE ALL STAR R アール OX ローカット キャンバス 定番 シューズ 靴 1SD819 1SD823 ブラック ホワイト 黒 白",
+          "price": 6490
+        }
+      ]
+    },
+    {
+      "id": "dior-lipstick",
+      "identifyMs": 2413,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"MAC Lipstick\",\"brand\":\"MAC\",\"model\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3511,
+            "completion_tokens": 27,
+            "total_tokens": 3538,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 17.145459460875003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "MAC Lipstick",
+          "brand": "MAC",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "MAC Lipstick",
+        "brand": "MAC",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 978,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "MAC Lipstick MAC",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "MAC Lipstick MAC",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "マック / MAC マキシマル シルキー マット リップスティック 669 ウォーム テディ 3.5g (口紅)",
+          "price": 2837
+        },
+        {
+          "site": "yahoo",
+          "title": "マック / MAC リップスティック（フロスト） 308 ファビー 3g (口紅)",
+          "price": 2969
+        },
+        {
+          "site": "yahoo",
+          "title": "マック / MAC リップスティック（フロスト） 313 プラムダンディ 3g (口紅)",
+          "price": 2969
+        },
+        {
+          "site": "yahoo",
+          "title": "マック / MAC マキシマル スリーク サテン リップスティック 836 フレッシュポット 3.5g (口紅)",
+          "price": 3079
+        },
+        {
+          "site": "yahoo",
+          "title": "並行輸入品 MAC マック リップスティック #DANGEROUS 3g【送料無料】",
+          "price": 3450
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "マック / MAC マキシマル シルキー マット リップスティック 669 ウォーム テディ 3.5g (口紅)",
+          "price": 2837
+        },
+        {
+          "title": "マック / MAC リップスティック（フロスト） 308 ファビー 3g (口紅)",
+          "price": 2969
+        },
+        {
+          "title": "マック / MAC リップスティック（フロスト） 313 プラムダンディ 3g (口紅)",
+          "price": 2969
+        },
+        {
+          "title": "マック / MAC マキシマル スリーク サテン リップスティック 836 フレッシュポット 3.5g (口紅)",
+          "price": 3079
+        },
+        {
+          "title": "並行輸入品 MAC マック リップスティック #DANGEROUS 3g【送料無料】",
+          "price": 3450
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "マック Macximal Silky Matte Lipstick - # Marrakesh 3.5g MAC Macximal Silky Matte Lipstick - # Marrakesh 3.5g 送料無料 【楽天海外通販】",
+          "price": 3660
+        },
+        {
+          "title": "マック Macximal Silky Matte Lipstick - # Diva 3.5g MAC Macximal Silky Matte Lipstick - # Diva 3.5g 送料無料 【楽天海外通販】",
+          "price": 3890
+        },
+        {
+          "title": "マック Macximal Silky Matte Lipstick - # Kinda Sexy 3.5g MAC Macximal Silky Matte Lipstick - # Kinda Sexy 3.5g 送料無料 【楽天海外通販】",
+          "price": 3890
+        },
+        {
+          "title": "マック Macximal Silky Matte Lipstick - # Antique Velvet 3.5g MAC Macximal Silky Matte Lipstick - # Antique Velvet 3.5g 送料無料 【楽天海外通販】",
+          "price": 3960
+        },
+        {
+          "title": "マック Macximal Silky Matte Lipstick - # Honeylove 3.5g MAC Macximal Silky Matte Lipstick - # Honeylove 3.5g 送料無料 【楽天海外通販】",
+          "price": 4040
+        }
+      ]
+    },
+    {
+      "id": "dyson-vacuum",
+      "identifyMs": 1718,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Dyson V11 Absolute Pro\",\"brand\":\"Dyson\",\"model\":\"V11 Absolute Pro\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3511,
+            "completion_tokens": 36,
+            "total_tokens": 3547,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 17.698897970625
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "Dyson V11 Absolute Pro",
+          "brand": "Dyson",
+          "model": "V11 Absolute Pro",
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Dyson V11 Absolute Pro",
+        "brand": "Dyson",
+        "model": "V11 Absolute Pro",
+        "jan": null
+      },
+      "searchMs": 972,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "Dyson V11 Absolute Pro Dyson V11 Absolute Pro",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "Dyson V11 Absolute Pro Dyson V11 Absolute Pro",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "ダイソン 掃除機 v7 バッテリー 【PSE適合】【PL保険(1億円補償)】【1年保証】互換 充電池 dyson sv11 hh11",
+          "price": 3980
+        },
+        {
+          "site": "yahoo",
+          "title": "ダイソン 掃除機 v7 バッテリー 【PSE適合】【PL保険(1億円補償)】【1年保証】【選べる特典あり】互換 充電池 dyson sv11 hh11",
+          "price": 4580
+        },
+        {
+          "site": "yahoo",
+          "title": "ダイソン互換バッテリー V7/SV11シリーズ互換バッテリー 【3000mAh 排気フィルターなし】",
+          "price": 6280
+        },
+        {
+          "site": "rakuten",
+          "title": "ダイソン 掃除機 V11 SV14 SV15 SV22 V15 シリーズ 用 フィルター 交換フィルター コードレス掃除機フィルター 互換品 洗濯可能 2個セット Absolute Extra Fluffy Animal Pro+ Complete Mo",
+          "price": 2334
+        },
+        {
+          "site": "rakuten",
+          "title": "ダイソン 掃除機 V11 SV14 SV15 SV22 V15 シリーズ 用 フィルター 交換フィルター コードレス掃除機フィルター 互換品 洗濯可能 2個セット Absolute Extra Fluffy Animal Pro+ Complete Motorhead Cleaner (V11フィルタ",
+          "price": 2830
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "ダイソン 掃除機 v7 バッテリー 【PSE適合】【PL保険(1億円補償)】【1年保証】互換 充電池 dyson sv11 hh11",
+          "price": 3980
+        },
+        {
+          "title": "ダイソン 掃除機 v7 バッテリー 【PSE適合】【PL保険(1億円補償)】【1年保証】【選べる特典あり】互換 充電池 dyson sv11 hh11",
+          "price": 4580
+        },
+        {
+          "title": "ダイソン互換バッテリー V7/SV11シリーズ互換バッテリー 【3000mAh 排気フィルターなし】",
+          "price": 6280
+        },
+        {
+          "title": "Dyson ダイソン対応 交換用 掃除機フィルター 互換品 コードレス掃除機フィルター V11 SV14 SV15 SV22 V15 用 970013-02 洗濯可能 送料無料 2個セット 互換品",
+          "price": 1880
+        },
+        {
+          "title": "ダイソン 互換 V11 バッテリー SV15 大容量 4000ｍAh ボタン固定式 掃除機 交換用 壁掛け ブラケット 対応 Fluffy Absolute Extra 1年保証（V11/SV15-1）",
+          "price": 8950
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "ダイソン 掃除機 V11 SV14 SV15 SV22 V15 シリーズ 用 フィルター 交換フィルター コードレス掃除機フィルター 互換品 洗濯可能 2個セット Absolute Extra Fluffy Animal Pro+ Complete Mo",
+          "price": 2334
+        },
+        {
+          "title": "ダイソン 掃除機 V11 SV14 SV15 SV22 V15 シリーズ 用 フィルター 交換フィルター コードレス掃除機フィルター 互換品 洗濯可能 2個セット Absolute Extra Fluffy Animal Pro+ Complete Motorhead Cleaner (V11フィルタ",
+          "price": 2830
+        },
+        {
+          "title": "FLYLINKTECH ダイソン V7 SV11バッテリー 5000mAh 掃除機交換用バッテリー V7 Fluff/Fluffy+/Absolute/Absolute Extra/Animalpro/Motorhead PSEマーク付き",
+          "price": 3726
+        },
+        {
+          "title": "【P5倍&200円OFF】ダイソン V7 バッテリー 6000mAh 【18ヶ月保証】 大容量 掃除機 SV11バッテリー D-yson 交換用バッテリー v7 ダイソン v7 Fluff/Fluffy+/Absolute/Absolute Extra/Animalpro/Motorhead PSE認証",
+          "price": 4180
+        },
+        {
+          "title": "【P5倍&200円OFF】ダイソン V7 バッテリー 6000mAh 【18ヶ月保証】 大容量 掃除機 SV11バッテリー D-yson 交換用バッテリー v7 ダイソン v7 Fluff/Fluffy+/Absolute/Absolute Extra/Animalpro/Motorhead PSE認証HBI",
+          "price": 4180
+        }
+      ]
+    },
+    {
+      "id": "gshock",
+      "identifyMs": 2033,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"G-SHOCK\",\"brand\":null,\"model\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3511,
+            "completion_tokens": 28,
+            "total_tokens": 3539,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 17.206952628625
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "G-SHOCK",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "G-SHOCK",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 898,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "G-SHOCK",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "G-SHOCK",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 29
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "カシオ CASIO G-SHOCK 腕時計 メンズ ブラック GD-100-1BJF",
+          "price": 9220
+        },
+        {
+          "site": "rakuten",
+          "title": "【店内ポイント最大40.5倍！】 カシオ Gショック G-SHOCK 5600シリーズ メンズ レディース ペア 電池 ソーラー 電波 DW-5600RL-1JF GW-M5610U-1JF DW-5600UE-1JF G-5600UE-1JF GW-M5610U-1BJF GW-M5610UBC-1JF",
+          "price": 11440
+        },
+        {
+          "site": "yahoo",
+          "title": "G-SHOCK Gショック ジーショック カシオ CASIO ソリッドカラーズ ブラック DW-5600UBB-1JF メンズ 腕時計 国内正規品 送料無料 爆買",
+          "price": 11440
+        },
+        {
+          "site": "yahoo",
+          "title": "CASIO カシオ G-SHOCK Gショック メンズ デジタル オールブラック DW-5600UBB-1JF 【安心の5年保証】",
+          "price": 11440
+        },
+        {
+          "site": "yahoo",
+          "title": "CASIO カシオ GA-2100-1A1 G-SHOCK ブラック メンズ 腕時計 カーボンコア 耐衝撃構造 20気圧防水 アナログ デジタル 薄型 軽量 LED付 [海外正規品]",
+          "price": 12480
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "カシオ CASIO G-SHOCK 腕時計 メンズ ブラック GD-100-1BJF",
+          "price": 9220
+        },
+        {
+          "title": "G-SHOCK Gショック ジーショック カシオ CASIO ソリッドカラーズ ブラック DW-5600UBB-1JF メンズ 腕時計 国内正規品 送料無料 爆買",
+          "price": 11440
+        },
+        {
+          "title": "CASIO カシオ G-SHOCK Gショック メンズ デジタル オールブラック DW-5600UBB-1JF 【安心の5年保証】",
+          "price": 11440
+        },
+        {
+          "title": "CASIO カシオ GA-2100-1A1 G-SHOCK ブラック メンズ 腕時計 カーボンコア 耐衝撃構造 20気圧防水 アナログ デジタル 薄型 軽量 LED付 [海外正規品]",
+          "price": 12480
+        },
+        {
+          "title": "G-SHOCK ベーシック GA-2100-1A1JF メンズ 腕時計 デジアナ ブラック カーボンコアガード 耐衝撃 カシオ 国内正規品 品薄 希少",
+          "price": 14080
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【店内ポイント最大40.5倍！】 カシオ Gショック G-SHOCK 5600シリーズ メンズ レディース ペア 電池 ソーラー 電波 DW-5600RL-1JF GW-M5610U-1JF DW-5600UE-1JF G-5600UE-1JF GW-M5610U-1BJF GW-M5610UBC-1JF",
+          "price": 11440
+        },
+        {
+          "title": "GA-100B-4AJF CASIO カシオ G-SHOCK ジーショック gshock　Gショック プレゼント アスレジャー ブランド",
+          "price": 13090
+        },
+        {
+          "title": "G-SHOCK ストリート ユーティリティカラー GA-2110SU-3AJF メンズ 腕時計 アナデジ ワサビ グリーン カーボン 国内正規品 カシオ 八角形",
+          "price": 14960
+        },
+        {
+          "title": "【店内ポイント最大41倍！10月30日！】G-SHOCK ジーショック Gショック GW-M5610U-1CJF 電波 ソーラー 電波時計 5600 ブラック デジタル メンズ 腕時計 カシオ CASIO タフソーラー",
+          "price": 19360
+        },
+        {
+          "title": "G-SHOCK デジタル 6900シリーズ GW-6900U-1JF メンズ 腕時計 電波ソーラー デジタル 樹脂バンド ブラック 国内正規品 カシオ",
+          "price": 19360
+        }
+      ]
+    },
+    {
+      "id": "gucci-brand-only",
+      "identifyMs": 1539,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"タオルバッグ\",\"brand\":null,\"model\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6713,
+            "completion_tokens": 29,
+            "total_tokens": 6742,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 31.390755927125003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "タオルバッグ",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "タオルバッグ",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 304,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "タオルバッグ",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "タオルバッグ",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 9,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "【マクネット McNETT】McNETT 44036 ウルトラコンパクトマイクロファイバータオルバッグ サンド M マクネット",
+          "price": 2456
+        },
+        {
+          "site": "rakuten",
+          "title": "aroco タオルストライプトートバッグ(M) レディース a4 軽量 タオルバッグ 春夏 ヴィータフェリーチェ バッグ トートバッグ ピンク パープル グリーン",
+          "price": 2750
+        },
+        {
+          "site": "yahoo",
+          "title": "トートバッグ レディース a4 軽量 軽い タオル生地 ストライプ タオルバッグ ボーダー コットン 綿 肩掛け ビーチバッグ 海水浴 海水浴 htb-30449z",
+          "price": 2750
+        },
+        {
+          "site": "rakuten",
+          "title": "aroco タオルストライプトートバッグ(L) レディース a4 軽量 タオルバッグ 春夏 ヴィータフェリーチェ バッグ トートバッグ ピンク パープル グリーン",
+          "price": 2970
+        },
+        {
+          "site": "yahoo",
+          "title": "トートバッグ レディース a4 軽量 軽い 大きめ タオル生地 ストライプ タオルバッグ コットン ビーチバッグ 海水浴 プール 大容量 おしゃれ htb-30450z",
+          "price": 2970
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "トートバッグ レディース a4 軽量 軽い タオル生地 ストライプ タオルバッグ ボーダー コットン 綿 肩掛け ビーチバッグ 海水浴 海水浴 htb-30449z",
+          "price": 2750
+        },
+        {
+          "title": "トートバッグ レディース a4 軽量 軽い 大きめ タオル生地 ストライプ タオルバッグ コットン ビーチバッグ 海水浴 プール 大容量 おしゃれ htb-30450z",
+          "price": 2970
+        },
+        {
+          "title": "トートバッグ タオルバッグ レディース「Luluanatote ルルアナトート」A4 ボーダー ストライプ サマーバッグ ブランド HAYNI",
+          "price": 5500
+        },
+        {
+          "title": "トートバッグ パイル プエブコ PUEBCO ローカル ディストリビューション レインボー タオル バッグ",
+          "price": 2750
+        },
+        {
+          "title": "森田miw トートバッグ morita miw 小物入れ オシャレ ブランド moritamiw カバン トート くすばしタオル 楠橋紋織 morita miw (モリタミウ) ギフト おしゃれ",
+          "price": 5130
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【マクネット McNETT】McNETT 44036 ウルトラコンパクトマイクロファイバータオルバッグ サンド M マクネット",
+          "price": 2456
+        },
+        {
+          "title": "aroco タオルストライプトートバッグ(M) レディース a4 軽量 タオルバッグ 春夏 ヴィータフェリーチェ バッグ トートバッグ ピンク パープル グリーン",
+          "price": 2750
+        },
+        {
+          "title": "aroco タオルストライプトートバッグ(L) レディース a4 軽量 タオルバッグ 春夏 ヴィータフェリーチェ バッグ トートバッグ ピンク パープル グリーン",
+          "price": 2970
+        },
+        {
+          "title": "Gear Aid ウルトラコンパクトマイクロファイバータオルバッグ OD M 44033",
+          "price": 2995
+        },
+        {
+          "title": "マルカンおうちサロン超吸水バスタオルバッグ",
+          "price": 3111
+        }
+      ]
+    },
+    {
+      "id": "iittala-mug",
+      "identifyMs": 1336,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"enamel mug\",\"brand\":null,\"model\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3511,
+            "completion_tokens": 27,
+            "total_tokens": 3538,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 17.145459460875003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "enamel mug",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "enamel mug",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 674,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "enamel mug",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "enamel mug",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 29
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "マーキュリー エナメルナマグ mercury 琺瑯 マグカップ ENAMEL MUG CUP ホーロー マグ マグカップ かっこいい 琺瑯 エナメル おしゃれ 大人 ホーロー コップ カップ キッチン カフェ 食器 ティー マグカップ",
+          "price": 1320
+        },
+        {
+          "site": "rakuten",
+          "title": "マーキュリー エナメルナマグ mercury 琺瑯 マグカップ ENAMEL MUG CUP ホーロー マグ かっこいい エナメル おしゃれ 大人 コップ カップ キッチン カフェ 食器 ティー",
+          "price": 1320
+        },
+        {
+          "site": "yahoo",
+          "title": "マーキュリー エナメルナマグ mercury 琺瑯 マグカップ ENAMEL MUG CUP [ ホーロー マグ マグカップ かっこいい 琺瑯 エナメル おしゃれ 大人 ](ポイント10倍)",
+          "price": 1320
+        },
+        {
+          "site": "rakuten",
+          "title": "ROARK REVIVAL ロアーク ロアークリバイバル コップ マグカップ ”SAFE CAMP” ENAMEL MUG ネイビー",
+          "price": 1650
+        },
+        {
+          "site": "rakuten",
+          "title": "ROARK REVIVAL ロアーク リバイバル グッズ マグカップ \"FEAR THE SEA\"ENAMEL MUG キャンプ コーヒー サーフィン ホーロー RAJ400 1220",
+          "price": 1650
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "マーキュリー エナメルナマグ mercury 琺瑯 マグカップ ENAMEL MUG CUP [ ホーロー マグ マグカップ かっこいい 琺瑯 エナメル おしゃれ 大人 ](ポイント10倍)",
+          "price": 1320
+        },
+        {
+          "title": "muurla ムールラ BASIC ENAMEL MUG ベーシックエナメルマグ L 370ml フィンランド コップ カップ マグカップ ホーロー アウトドア 北欧 食洗機可 琺瑯",
+          "price": 2200
+        },
+        {
+          "title": "CHUMS チャムス エナメルマグ Enamel Mug 琺瑯 ほうろう ホウロウ ホーロー マグカップ コップ 食器 保温性 プレゼント 化粧箱あり CH62-2177",
+          "price": 2750
+        },
+        {
+          "title": "CHUMS チャムス エナメルマグ Enamel Mug 琺瑯 ほうろう ホウロウ ホーロー マグカップ コップ 食器 保温性 プレゼント 化粧箱あり CH62-2177",
+          "price": 2750
+        },
+        {
+          "title": "チャムス CHUMS Enamel Mug F CH62-2177-Z051",
+          "price": 2750
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "マーキュリー エナメルナマグ mercury 琺瑯 マグカップ ENAMEL MUG CUP ホーロー マグ マグカップ かっこいい 琺瑯 エナメル おしゃれ 大人 ホーロー コップ カップ キッチン カフェ 食器 ティー マグカップ",
+          "price": 1320
+        },
+        {
+          "title": "マーキュリー エナメルナマグ mercury 琺瑯 マグカップ ENAMEL MUG CUP ホーロー マグ かっこいい エナメル おしゃれ 大人 コップ カップ キッチン カフェ 食器 ティー",
+          "price": 1320
+        },
+        {
+          "title": "ROARK REVIVAL ロアーク ロアークリバイバル コップ マグカップ ”SAFE CAMP” ENAMEL MUG ネイビー",
+          "price": 1650
+        },
+        {
+          "title": "ROARK REVIVAL ロアーク リバイバル グッズ マグカップ \"FEAR THE SEA\"ENAMEL MUG キャンプ コーヒー サーフィン ホーロー RAJ400 1220",
+          "price": 1650
+        },
+        {
+          "title": "ROARK REVIVAL ロアーク リバイバル グッズ マグカップ \"SAFE CAMP\"ENAMEL MUG キャンプ コーヒー サーフィン ホーロー RAJ401 1220",
+          "price": 1650
+        }
+      ]
+    },
+    {
+      "id": "iphone",
+      "identifyMs": 1328,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"iPhone\",\"brand\":\"Apple\",\"model\":\"iPhone 5\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3511,
+            "completion_tokens": 27,
+            "total_tokens": 3538,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 17.145459460875003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "iPhone",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "iPhone",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 530,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "iPhone",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "iPhone",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 24
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "【中古】iPhone SE 第3世代 2022 SE3 A2782 64GB 128GB スマホ スマートフォン SE3 本体 SIMフリー ミッドナイト レッド スターライト docomo au softbank 美品 にこスマ認定整備済み品(リファービッシュ 整備済品) 白ロム",
+          "price": 19800
+        },
+        {
+          "site": "rakuten",
+          "title": "中古 Apple iPhone12 Pro 128GB 256GB 512GB シルバー グラファイト ゴールド パシフィックブルー SIMフリー 6ヶ月保証 赤ロム保証 スマホ【CA】 スマホ アップル 中古スマホ スマホ スマートフォン 本体 アイフォン 中古アイフォン 中古iphone",
+          "price": 43800
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】iPhone 13 128GB 256GB 512GB A2631 スマホ スマートフォン 本体 SIMフリー グリーン ピンク ブルー ミッドナイト スターライト (PRODUCT)RED docomo au softbank 美品 にこスマ認定整備済み品(リファービッシュ 整備済品) 白ロム",
+          "price": 44800
+        },
+        {
+          "site": "rakuten",
+          "title": "中古 Apple iPhone13 128GB 256GB 512GB レッド スターライト ミッドナイト ブルー ピンク グリーン SIMフリー 6ヶ月保証 赤ロム保証 スマホ【CA】 スマホ アップル 中古スマホ スマホ スマートフォン 本体 アイフォン 中古アイフォン",
+          "price": 48800
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】iPhone 14 128GB 256GB 512GB A2881 スマホ スマートフォン 本体 SIMフリー ミッドナイト (PRODUCT)RED スターライト パープル ブルー イエロー docomo au softbank 美品 にこスマ認定整備済み品(リファービッシュ 整備済品) 白ロム",
+          "price": 52800
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "iPhone17 ケース iPhone18Pro iPhone17e ケース iPhone15 14 iPhone16 iPhone16e ケース iPhone18 Pro Max Plus Air iPhone13 12 mini 11 SE3 ケース リング付き",
+          "price": 1280
+        },
+        {
+          "title": "iPhone17 ケース 手帳型 iPhone18Pro アイフォン17 iPhone17e iPhone Duo スマホケース iPhone16 ケース iPhone 17Pro 16Pro iPhone Air 17ProMax 18ProMax",
+          "price": 1650
+        },
+        {
+          "title": "iPhone17 ケース 手帳型 iPhone18Pro アイフォン17 iPhone17e iPhone16 ケース iPhone16e iPhone17Pro iPhone Air 17ProMax 15 ケース 14 シュリンク レザー PU",
+          "price": 1950
+        },
+        {
+          "title": "iFace 公式 iPhone17 ケース iPhone18Pro Max ケース iphone18pro max iphone17 ケース iPhone 17e 16 16e ケース 17Pro Air ケース スマホケース 耐衝撃 iface",
+          "price": 3960
+        },
+        {
+          "title": "【SALE】どこでも電力全開！iphone17 iphone16e充電器 iphone type-c pd充電器 30W PD対応 タイプｃ急速充電器 usb アイフォン 携帯充電器 iphone/ipad/Android",
+          "price": 1310
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【中古】iPhone SE 第3世代 2022 SE3 A2782 64GB 128GB スマホ スマートフォン SE3 本体 SIMフリー ミッドナイト レッド スターライト docomo au softbank 美品 にこスマ認定整備済み品(リファービッシュ 整備済品) 白ロム",
+          "price": 19800
+        },
+        {
+          "title": "中古 Apple iPhone12 Pro 128GB 256GB 512GB シルバー グラファイト ゴールド パシフィックブルー SIMフリー 6ヶ月保証 赤ロム保証 スマホ【CA】 スマホ アップル 中古スマホ スマホ スマートフォン 本体 アイフォン 中古アイフォン 中古iphone",
+          "price": 43800
+        },
+        {
+          "title": "【中古】iPhone 13 128GB 256GB 512GB A2631 スマホ スマートフォン 本体 SIMフリー グリーン ピンク ブルー ミッドナイト スターライト (PRODUCT)RED docomo au softbank 美品 にこスマ認定整備済み品(リファービッシュ 整備済品) 白ロム",
+          "price": 44800
+        },
+        {
+          "title": "中古 Apple iPhone13 128GB 256GB 512GB レッド スターライト ミッドナイト ブルー ピンク グリーン SIMフリー 6ヶ月保証 赤ロム保証 スマホ【CA】 スマホ アップル 中古スマホ スマホ スマートフォン 本体 アイフォン 中古アイフォン",
+          "price": 48800
+        },
+        {
+          "title": "【中古】iPhone 14 128GB 256GB 512GB A2881 スマホ スマートフォン 本体 SIMフリー ミッドナイト (PRODUCT)RED スターライト パープル ブルー イエロー docomo au softbank 美品 にこスマ認定整備済み品(リファービッシュ 整備済品) 白ロム",
+          "price": 52800
+        }
+      ]
+    },
+    {
+      "id": "levis-jacket",
+      "identifyMs": 1810,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Levi's 501\",\"brand\":\"Levi's\",\"model\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3511,
+            "completion_tokens": 31,
+            "total_tokens": 3542,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 17.391432131875003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "Levi's 501",
+          "brand": "Levi's",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Levi's 501",
+        "brand": "Levi's",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 483,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "Levi's 501 Levi's",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "Levi's 501 Levi's",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 29
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "【SALE／60%OFF】Levi's 501(R)'90S ジーンズ ミディアムインディゴ リーバイス パンツ ジーンズ・デニムパンツ ネイビー【送料無料】",
+          "price": 6160
+        },
+        {
+          "site": "yahoo",
+          "title": "リーバイス Levi's 501 ORIGINAL RIGID 501オリジナル リジット メンズ オールシーズン デニム パンツ ジーンズ ジーパン ストレート ノンウォッシュ 005010000",
+          "price": 10890
+        },
+        {
+          "site": "rakuten",
+          "title": "リーバイス 501 リジッド LEVIS 501 リーバイス ジーンズリーバイス デニム 501 LEVI'S 501 ジーンズ ストレート デニム インディゴ ノンウォッシュ 未洗い リジッド 00501-0000",
+          "price": 12100
+        },
+        {
+          "site": "rakuten",
+          "title": "【LEVI'S】リーバイス【00501-1484】リーバイス 501ストレート レッグ ビッグE（2013年リニューアル）ボタンフライ ジーンズPREMIUMリンスLEVI'S 501 STRAIGHT LEG BUTTON-FLY",
+          "price": 13000
+        },
+        {
+          "site": "rakuten",
+          "title": "LEVI’S LEVIS リーバイス ジーンズ ブラック 501 オリジナルフィット 501 ORIGINAL FIT 00501 0660 デニム ウェア ボトムス 長ズボン メンズ|slz|",
+          "price": 9423
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "リーバイス Levi's 501 ORIGINAL RIGID 501オリジナル リジット メンズ オールシーズン デニム パンツ ジーンズ ジーパン ストレート ノンウォッシュ 005010000",
+          "price": 10890
+        },
+        {
+          "title": "ジーンズ 「Levi's」501 デニムパンツ メンズ レディース",
+          "price": 11000
+        },
+        {
+          "title": "【並行輸入品 本国企画】リーバイス LEVI’S 501-0651 ボタンフライ ストレート ジーンズ オプティックホワイト 後染め USAライン OPTIC WHITE",
+          "price": 13980
+        },
+        {
+          "title": "【並行輸入品 本国企画】リーバイス 501 LEVI’S 501-0000 オリジナル ボタンフライ ストレート ジーンズ リジッド ｜ メンズ ジーパン デニムパンツ ボトムス",
+          "price": 14980
+        },
+        {
+          "title": "LEVI'S リーバイス 501 ボタンフライ レギュラーストレート LEVI'S PREMIUM BIG E リンス ワンウォッシュ 00501-1484",
+          "price": 15400
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【SALE／60%OFF】Levi's 501(R)'90S ジーンズ ミディアムインディゴ リーバイス パンツ ジーンズ・デニムパンツ ネイビー【送料無料】",
+          "price": 6160
+        },
+        {
+          "title": "リーバイス 501 リジッド LEVIS 501 リーバイス ジーンズリーバイス デニム 501 LEVI'S 501 ジーンズ ストレート デニム インディゴ ノンウォッシュ 未洗い リジッド 00501-0000",
+          "price": 12100
+        },
+        {
+          "title": "【LEVI'S】リーバイス【00501-1484】リーバイス 501ストレート レッグ ビッグE（2013年リニューアル）ボタンフライ ジーンズPREMIUMリンスLEVI'S 501 STRAIGHT LEG BUTTON-FLY",
+          "price": 13000
+        },
+        {
+          "title": "LEVI’S LEVIS リーバイス ジーンズ ブラック 501 オリジナルフィット 501 ORIGINAL FIT 00501 0660 デニム ウェア ボトムス 長ズボン メンズ|slz|",
+          "price": 9423
+        },
+        {
+          "title": "＼店内、月末SALE開催中／ リーバイス Levi's ジーンズ デニム ジーパン 501 Levi's Original リジッドモデル ストレート メンズ ボタンフライ オリジナル US スタンダード モデル 未洗い ノンウォッシュ 00501-0000 00501-0226 Rigid stf 父の日 バレンタイン",
+          "price": 9999
+        }
+      ]
+    },
+    {
+      "id": "levis-jeans",
+      "identifyMs": 2119,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Levi's 711 Skinny Jeans\",\"brand\":\"Levi's\",\"model\":\"711\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3511,
+            "completion_tokens": 33,
+            "total_tokens": 3544,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 17.514418467375002
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "Levi's 711 Skinny Jeans",
+          "brand": "Levi's",
+          "model": "711",
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Levi's 711 Skinny Jeans",
+        "brand": "Levi's",
+        "model": "711",
+        "jan": null
+      },
+      "searchMs": 303,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "Levi's 711 Skinny Jeans Levi's 711",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "Levi's 711 Skinny Jeans Levi's 711",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "【中古】リーバイス Levi's 711 デニム スキニー ジーンズ パンツ ウォッシュ加工 ジップフライ 26 ブルー 青 /TT ■ECC003 レディース 【ベクトル 古着】 260410",
+          "price": 1800
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】リーバイス Levi's 711SKINNY デニムパンツ ジーンズ 26 インディゴブルー /NL ■ECG006 レディース 【ベクトル 古着】 260614",
+          "price": 2000
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】リーバイス Levi's 711 SKINNY デニム ジーンズ W27 青 スキニー /JP レディース 【ベクトル 古着】 260811",
+          "price": 2000
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】リーバイス Levi's 711SKINNY デニムパンツ ジーンズ 26 インディゴブルー /NL ■ECG006 レディース 【ベクトル 古着】 260614",
+          "price": 2000
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】リーバイス Levi's 711 SKINNY デニム ジーンズ W27 青 スキニー /JP レディース 【ベクトル 古着】 260811",
+          "price": 2000
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "[レディース リーバイス 711 スキニーパンツ USAモデル Levis スリムパンツ ジーンズ 爆買",
+          "price": 8130
+        },
+        {
+          "title": "【並行輸入品】Levi's Girls' 711 Skinny Fit Jeans , Blue Winds, 12 Levi's Girls'",
+          "price": 23044
+        },
+        {
+          "title": "【並行輸入品】Levi 'sレディース711 Skinny Jean US サイズ: 24 32 カラー: ブラック Levi's Women'",
+          "price": 25154
+        },
+        {
+          "title": "【並行輸入品】Levi's Women's 711 Skinny Jeans,Soft Black,31Wx30L Levi's Womens",
+          "price": 26600
+        },
+        {
+          "title": "【並行輸入品】Levi 'sレディース711 Skinny Jean US サイズ: 26 32 カラー: ブラック Levi's Women'",
+          "price": 26600
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【中古】リーバイス Levi's 711 デニム スキニー ジーンズ パンツ ウォッシュ加工 ジップフライ 26 ブルー 青 /TT ■ECC003 レディース 【ベクトル 古着】 260410",
+          "price": 1800
+        },
+        {
+          "title": "【中古】リーバイス Levi's 711SKINNY デニムパンツ ジーンズ 26 インディゴブルー /NL ■ECG006 レディース 【ベクトル 古着】 260614",
+          "price": 2000
+        },
+        {
+          "title": "【中古】リーバイス Levi's 711 SKINNY デニム ジーンズ W27 青 スキニー /JP レディース 【ベクトル 古着】 260811",
+          "price": 2000
+        },
+        {
+          "title": "【中古】リーバイス Levi's 711SKINNY デニムパンツ ジーンズ 26 インディゴブルー /NL ■ECG006 レディース 【ベクトル 古着】 260614",
+          "price": 2000
+        },
+        {
+          "title": "【中古】リーバイス Levi's 711 SKINNY デニム ジーンズ W27 青 スキニー /JP レディース 【ベクトル 古着】 260811",
+          "price": 2000
+        }
+      ]
+    },
+    {
+      "id": "lv-handbag",
+      "identifyMs": 1589,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"タオルバッグ\",\"brand\":null,\"model\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6713,
+            "completion_tokens": 29,
+            "total_tokens": 6742,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 31.390755927125003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "タオルバッグ",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "タオルバッグ",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 260,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "タオルバッグ",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "タオルバッグ",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 9,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "マルカン　おうちサロン　超吸水バスタオルバッグ　M　関東当日便",
+          "price": 1580
+        },
+        {
+          "site": "rakuten",
+          "title": "【マクネット McNETT】McNETT 44036 ウルトラコンパクトマイクロファイバータオルバッグ サンド M マクネット",
+          "price": 2456
+        },
+        {
+          "site": "rakuten",
+          "title": "aroco タオルストライプトートバッグ(M) レディース a4 軽量 タオルバッグ 春夏 ヴィータフェリーチェ バッグ トートバッグ ピンク パープル グリーン",
+          "price": 2750
+        },
+        {
+          "site": "yahoo",
+          "title": "トートバッグ レディース a4 軽量 軽い タオル生地 ストライプ タオルバッグ ボーダー コットン 綿 肩掛け ビーチバッグ 海水浴 海水浴 htb-30449z",
+          "price": 2750
+        },
+        {
+          "site": "yahoo",
+          "title": "トートバッグ レディース a4 軽量 軽い 大きめ タオル生地 ストライプ タオルバッグ コットン ビーチバッグ 海水浴 プール 大容量 おしゃれ htb-30450z",
+          "price": 2970
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "トートバッグ レディース a4 軽量 軽い タオル生地 ストライプ タオルバッグ ボーダー コットン 綿 肩掛け ビーチバッグ 海水浴 海水浴 htb-30449z",
+          "price": 2750
+        },
+        {
+          "title": "トートバッグ レディース a4 軽量 軽い 大きめ タオル生地 ストライプ タオルバッグ コットン ビーチバッグ 海水浴 プール 大容量 おしゃれ htb-30450z",
+          "price": 2970
+        },
+        {
+          "title": "トートバッグ タオルバッグ レディース「Luluanatote ルルアナトート」A4 ボーダー ストライプ サマーバッグ ブランド HAYNI",
+          "price": 5500
+        },
+        {
+          "title": "トートバッグ パイル プエブコ PUEBCO ローカル ディストリビューション レインボー タオル バッグ",
+          "price": 2750
+        },
+        {
+          "title": "森田miw トートバッグ morita miw 小物入れ オシャレ ブランド moritamiw カバン トート くすばしタオル 楠橋紋織 morita miw (モリタミウ) ギフト おしゃれ",
+          "price": 5130
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "マルカン　おうちサロン　超吸水バスタオルバッグ　M　関東当日便",
+          "price": 1580
+        },
+        {
+          "title": "【マクネット McNETT】McNETT 44036 ウルトラコンパクトマイクロファイバータオルバッグ サンド M マクネット",
+          "price": 2456
+        },
+        {
+          "title": "aroco タオルストライプトートバッグ(M) レディース a4 軽量 タオルバッグ 春夏 ヴィータフェリーチェ バッグ トートバッグ ピンク パープル グリーン",
+          "price": 2750
+        },
+        {
+          "title": "Gear Aid ウルトラコンパクトマイクロファイバータオルバッグ OD M 44033",
+          "price": 2995
+        },
+        {
+          "title": "マルカンおうちサロン超吸水バスタオルバッグ",
+          "price": 3111
+        }
+      ]
+    },
+    {
+      "id": "macbook",
+      "identifyMs": 1861,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"HP Special Edition 1000\",\"brand\":\"HP\",\"model\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6713,
+            "completion_tokens": 30,
+            "total_tokens": 6743,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 31.452249094875
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "HP Special Edition 1000",
+          "brand": "HP",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "HP Special Edition 1000",
+        "brand": "HP",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 258,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "HP Special Edition 1000 HP",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "HP Special Edition 1000 HP",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 5
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "【USA在庫あり】 0712-0288 Parts Unlimited オイルフィルター 09年-14年 ホンダ TRX420FA/ FPA 2A FourTraxRancher AT Camo HD店",
+          "price": 1226
+        },
+        {
+          "site": "rakuten",
+          "title": "【おまけCL付】新品 ワイアット・アープ スペシャルエディション (DVD) 1000415906",
+          "price": 1317
+        },
+        {
+          "site": "rakuten",
+          "title": "【おまけCL付】新品 80日間世界一周 スペシャル・エディション (DVD) 1000588581",
+          "price": 1317
+        },
+        {
+          "site": "yahoo",
+          "title": "【USA在庫あり】 2212-0616 K&amp;S ケーアンドエス ニュートラル スイッチ ホンダ 35600-422 JP店",
+          "price": 2893
+        },
+        {
+          "site": "yahoo",
+          "title": "【USA在庫あり】 2212-0616 K&amp;S ケーアンドエス ニュートラル スイッチ ホンダ 35600-422 HD店",
+          "price": 2893
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "【USA在庫あり】 0712-0288 Parts Unlimited オイルフィルター 09年-14年 ホンダ TRX420FA/ FPA 2A FourTraxRancher AT Camo HD店",
+          "price": 1226
+        },
+        {
+          "title": "【USA在庫あり】 2212-0616 K&amp;S ケーアンドエス ニュートラル スイッチ ホンダ 35600-422 JP店",
+          "price": 2893
+        },
+        {
+          "title": "【USA在庫あり】 2212-0616 K&amp;S ケーアンドエス ニュートラル スイッチ ホンダ 35600-422 HD店",
+          "price": 2893
+        },
+        {
+          "title": "【USA在庫あり】 1721-0009 EBC イービーシー ブレーキパッド リア 93年-11年 BMW (オーガニック) JP店",
+          "price": 7019
+        },
+        {
+          "title": "【USA在庫あり】 0430-1361 MOOSE OFFROAD BALL JOINTS HI PERF UPPR/LWR KAW MSE JP店",
+          "price": 11220
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【おまけCL付】新品 ワイアット・アープ スペシャルエディション (DVD) 1000415906",
+          "price": 1317
+        },
+        {
+          "title": "【おまけCL付】新品 80日間世界一周 スペシャル・エディション (DVD) 1000588581",
+          "price": 1317
+        },
+        {
+          "title": "EUROPE IMPORT GOODS ヨーロッパ輸入商品 Home Track ’’V’’ アダプター HP4 S 1000 R RR 749 CBR FIREBLADE SP SP1 SP2 400 600 VTR KLV NINJA 650 KRT EDITION SPECIAL ZX-10 REPLICA SE VERSYS Z 800 E VERSION 900 A2 RS",
+          "price": 4860
+        },
+        {
+          "title": "V PARTS ブイパーツ 純正仕様 アルミ ブレーキレバー ブラック BMW HP4 1000 YZF-R1 GSX 1300 B-KING GSX-R 600 750 GSX-S ABS SPECIAL EDITION EVO F S RR DAYTONA 675 SPEED TRIPLE 1050 STREET YAMAHA ヤマハ SUZUKI スズキ TRIUMPH トライアンフ ハンド",
+          "price": 7474
+        },
+        {
+          "title": "ADVANTAGE アドバンテージ Special Clutch Pessure Plate GSX1100SY Final Edition GSX1100SR GSX1100S anniversary GSX1100SAE GSX1100SBE GSX1100SM GSX1100SL GSX1100SSL GSX1100SD GSX1100SZ GSX1100SE GSX1000S GSX100",
+          "price": 40853
+        }
+      ]
+    },
+    {
+      "id": "muji-tote",
+      "identifyMs": 1841,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Rune Tote Bag\",\"brand\":\"Unbranded\",\"model\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3511,
+            "completion_tokens": 31,
+            "total_tokens": 3542,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 17.391432131875003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "Rune Tote Bag",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Rune Tote Bag",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 262,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "Rune Tote Bag",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "Rune Tote Bag",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 1,
+        "rakuten": 18
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "【在庫処分】トルネ（TORUNE）　保冷ショッピングエコバッグ トート（BK）　【品番：P-3557】",
+          "price": 739
+        },
+        {
+          "site": "rakuten",
+          "title": "【ポイント5倍 10/30 0時〜】 ランチバッグ 保冷バッグ お弁当 ランチバック 保冷ランチバッグ お弁当 バッグ お弁当袋 トート型 アニマルガーデン ピンク TORUNE トルネ ランチトート シンプル おしゃれ かわいい 子供 大人 メンズ キッズ 20key",
+          "price": 990
+        },
+        {
+          "site": "rakuten",
+          "title": "トルネ（TORUNE）　保冷ショッピングエコバッグ トート（BK）　【品番：P-3557】",
+          "price": 1056
+        },
+        {
+          "site": "rakuten",
+          "title": "トルネ（TORUNE）　保冷ショッピングエコバッグ トート（BK）　【品番：P-3557】",
+          "price": 1056
+        },
+        {
+          "site": "rakuten",
+          "title": "ネコポス速達！アルビオン フラ活 BIGトート サイズ：42×38×10cm 内ポケット有り キャンバス生地 純正 正規 コットンバッグ エコバッグ サブバッグ マザーズバッグ ブランド手提げ袋 キャンバストート キャンバス生 ショッピング袋 大きめ 大容量 限定品 FLARUNE ALBION",
+          "price": 1990
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "RUNE 内藤ルネ トートバッグ レディース 3way ショルダーバッグ 肩掛けバッグ 小さめ Sサイズ AL05502102 花柄 ブラック",
+          "price": 1999
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【在庫処分】トルネ（TORUNE）　保冷ショッピングエコバッグ トート（BK）　【品番：P-3557】",
+          "price": 739
+        },
+        {
+          "title": "【ポイント5倍 10/30 0時〜】 ランチバッグ 保冷バッグ お弁当 ランチバック 保冷ランチバッグ お弁当 バッグ お弁当袋 トート型 アニマルガーデン ピンク TORUNE トルネ ランチトート シンプル おしゃれ かわいい 子供 大人 メンズ キッズ 20key",
+          "price": 990
+        },
+        {
+          "title": "トルネ（TORUNE）　保冷ショッピングエコバッグ トート（BK）　【品番：P-3557】",
+          "price": 1056
+        },
+        {
+          "title": "トルネ（TORUNE）　保冷ショッピングエコバッグ トート（BK）　【品番：P-3557】",
+          "price": 1056
+        },
+        {
+          "title": "ネコポス速達！アルビオン フラ活 BIGトート サイズ：42×38×10cm 内ポケット有り キャンバス生地 純正 正規 コットンバッグ エコバッグ サブバッグ マザーズバッグ ブランド手提げ袋 キャンバストート キャンバス生 ショッピング袋 大きめ 大容量 限定品 FLARUNE ALBION",
+          "price": 1990
+        }
+      ]
+    },
+    {
+      "id": "nike-sneakers",
+      "identifyMs": 1614,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Nike Cortez\",\"brand\":\"Nike\",\"model\":\"Cortez\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3511,
+            "completion_tokens": 29,
+            "total_tokens": 3540,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 17.268445796375
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "Nike Cortez",
+          "brand": "Nike",
+          "model": "Cortez",
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Nike Cortez",
+        "brand": "Nike",
+        "model": "Cortez",
+        "jan": null
+      },
+      "searchMs": 280,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "Nike Cortez Nike Cortez",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "Nike Cortez Nike Cortez",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "W NIKE CORTEZ ウィメンズ ナイキ コルテッツ レディース スニーカー オールシーズン ネイビーブルー ib1857-400",
+          "price": 9900
+        },
+        {
+          "site": "rakuten",
+          "title": "【10,000円均一SALE】 NIKE CORTEZ LTR SE ナイキ コルテッツ レザー SE メンズ スニーカー ローカット PARACHUTE BEIGE/OFF NOIR/GUM DARK BROWN ベージュ IM8057-297",
+          "price": 10000
+        },
+        {
+          "site": "yahoo",
+          "title": "ナイキ nike スニーカー NIKE CORTEZ ナイキ コルテッツ レディース",
+          "price": 11088
+        },
+        {
+          "site": "yahoo",
+          "title": "W NIKE CORTEZ ウィメンズ ナイキ コルテッツ レディース スニーカー ライトブラウン hq1841-200",
+          "price": 12000
+        },
+        {
+          "site": "yahoo",
+          "title": "ナイキ nike スニーカー NIKE CORTEZ LTR SE ナイキ コルテッツ レザー SE メンズ",
+          "price": 12177
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "W NIKE CORTEZ ウィメンズ ナイキ コルテッツ レディース スニーカー オールシーズン ネイビーブルー ib1857-400",
+          "price": 9900
+        },
+        {
+          "title": "ナイキ nike スニーカー NIKE CORTEZ ナイキ コルテッツ レディース",
+          "price": 11088
+        },
+        {
+          "title": "W NIKE CORTEZ ウィメンズ ナイキ コルテッツ レディース スニーカー ライトブラウン hq1841-200",
+          "price": 12000
+        },
+        {
+          "title": "ナイキ nike スニーカー NIKE CORTEZ LTR SE ナイキ コルテッツ レザー SE メンズ",
+          "price": 12177
+        },
+        {
+          "title": "ナイキ nike スニーカー NIKE CORTEZ ナイキ コルテッツ メンズ",
+          "price": 12430
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【10,000円均一SALE】 NIKE CORTEZ LTR SE ナイキ コルテッツ レザー SE メンズ スニーカー ローカット PARACHUTE BEIGE/OFF NOIR/GUM DARK BROWN ベージュ IM8057-297",
+          "price": 10000
+        },
+        {
+          "title": "NIKE CORTEZ ナイキ コルテッツ スニーカー メンズ レディース ブラック 黒 DM4044-001",
+          "price": 12430
+        },
+        {
+          "title": "NIKE CORTEZ ナイキ コルテッツ スニーカー メンズ ホワイト 白 DM4044-105",
+          "price": 12430
+        },
+        {
+          "title": "NIKE CORTEZ LEATHER ナイキ コルテッツ レザー スニーカー レディース ホワイト 白 DN1791-108",
+          "price": 12430
+        },
+        {
+          "title": "NIKE CORTEZ ナイキ コルテッツ メンズ スニーカー オールシーズン ホワイト dm4044-102",
+          "price": 12800
+        }
+      ]
+    },
+    {
+      "id": "northface-backpack",
+      "identifyMs": 1558,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"THE NORTH FACE\",\"brand\":\"THE NORTH FACE\",\"model\":\"VERBERA 50\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6713,
+            "completion_tokens": 33,
+            "total_tokens": 6746,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 31.636728598125003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "THE NORTH FACE",
+          "brand": "THE NORTH FACE",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "THE NORTH FACE",
+        "brand": "THE NORTH FACE",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 346,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "THE NORTH FACE THE NORTH FACE",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "THE NORTH FACE THE NORTH FACE",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "ザ・ノース・フェイス グラニュール NM72305 K トレッキング ウエストバッグ : ブラック THE NORTH FACE ノースフェイス",
+          "price": 4797
+        },
+        {
+          "site": "rakuten",
+          "title": "ザ・ノース・フェイス スウィープ NM72304 K トレッキング ウエストバッグ : ブラック THE NORTH FACE ノースフェイス",
+          "price": 5800
+        },
+        {
+          "site": "rakuten",
+          "title": "【30日限定 ポイント10倍】 ザ・ノース・フェイス THE NORTH FACE アウトドア スウィープ ユニセックス ウエストポーチ ボディバッグ たすき掛け ななめ掛け 4L 内ポケット メッシュ キークリップ付き フロント 背面 収納 NM72304 K",
+          "price": 5834
+        },
+        {
+          "site": "rakuten",
+          "title": "ザ・ノース・フェイス K Homeslice キッズ ホームスライス NMJ72361 K ジュニア 子供 バックパック リュック : ブラック THE NORTH FACE",
+          "price": 6580
+        },
+        {
+          "site": "rakuten",
+          "title": "【アウトレット】ノースフェイス THE NORTH FACE リュック バックパック メンズ VAULT【返品送料無料】",
+          "price": 8980
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "ザ・ノース・フェイス レディース スウェット パーカー THE NORTH FACE リアビューフルジップフーディ NTW12442 裏起毛 厚手 スウェットパーカ /rearview-fzh-w",
+          "price": 11430
+        },
+        {
+          "title": "ザ・ノースフェイス シェルブランケット NNB72501 ブラック THE NORTH FACE 26FW",
+          "price": 12441
+        },
+        {
+          "title": "2026秋冬新作 ノースフェイス スウェット パーカー メンズ レディース THE NORTH FACE Rearview FullZip Hoodie フルジップ NT62640 NT12442",
+          "price": 12870
+        },
+        {
+          "title": "ザ・ノース・フェイス THE NORTH FACE コンパクトジャケット メンズ アウター 上着 フーディ パーカー 軽量 撥水 コンパクト収納 防寒 防風 普段使い",
+          "price": 12969
+        },
+        {
+          "title": "最大41％ ノースフェイス ブランケット ケープ 抱っこ紐 ベビーカー THE NORTH FACE ベビーシェルブランケット NNB72501 メンズ レディース キッズ ベビー",
+          "price": 14300
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "ザ・ノース・フェイス グラニュール NM72305 K トレッキング ウエストバッグ : ブラック THE NORTH FACE ノースフェイス",
+          "price": 4797
+        },
+        {
+          "title": "ザ・ノース・フェイス スウィープ NM72304 K トレッキング ウエストバッグ : ブラック THE NORTH FACE ノースフェイス",
+          "price": 5800
+        },
+        {
+          "title": "【30日限定 ポイント10倍】 ザ・ノース・フェイス THE NORTH FACE アウトドア スウィープ ユニセックス ウエストポーチ ボディバッグ たすき掛け ななめ掛け 4L 内ポケット メッシュ キークリップ付き フロント 背面 収納 NM72304 K",
+          "price": 5834
+        },
+        {
+          "title": "ザ・ノース・フェイス K Homeslice キッズ ホームスライス NMJ72361 K ジュニア 子供 バックパック リュック : ブラック THE NORTH FACE",
+          "price": 6580
+        },
+        {
+          "title": "【アウトレット】ノースフェイス THE NORTH FACE リュック バックパック メンズ VAULT【返品送料無料】",
+          "price": 8980
+        }
+      ]
+    },
+    {
+      "id": "pilot-pen",
+      "identifyMs": 1736,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Pilot Frixion Pen\",\"brand\":\"Pilot\",\"model\":\"Frixion\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6713,
+            "completion_tokens": 33,
+            "total_tokens": 6746,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 31.636728598125003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "Pilot Frixion Pen",
+          "brand": "Pilot",
+          "model": "Frixion",
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Pilot Frixion Pen",
+        "brand": "Pilot",
+        "model": "Frixion",
+        "jan": null
+      },
+      "searchMs": 253,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "Pilot Frixion Pen Pilot Frixion",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "Pilot Frixion Pen Pilot Frixion",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 2,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "パイロット（PILOT）フリクションライト＜こすると消える蛍光ペン＞（FRIXION）ソフトカラーフリクションシリーズ（蛍光ペン・ラインマーカー）（SFL-10SL-xx）",
+          "price": 118
+        },
+        {
+          "site": "rakuten",
+          "title": "パイロット（PILOT）フリクションカラーズ＜こすると消えるカラーペン＞（FRIXION）フリクションシリーズ（カラーペン）その1（ブラック〜ブラウン）（SFC-10M-xxx）",
+          "price": 118
+        },
+        {
+          "site": "rakuten",
+          "title": "パイロット（PILOT）フリクションライト＜こすると消える蛍光ペン＞（FRIXION）フリクションシリーズ（蛍光ペン・ラインマーカー）（SFL-10SL-x）",
+          "price": 118
+        },
+        {
+          "site": "rakuten",
+          "title": "[PILOT]パイロット フリクションスリム 変え芯（1本入り）文具 文房具 ペン カラフル 便利 デザイン FRIXION 消える メタル軸 デザイン 海外 輸入",
+          "price": 131
+        },
+        {
+          "site": "rakuten",
+          "title": "PILOT パイロット フリクションライト ソフトカラー SFL-10SL 蛍光ペン ラインマーカー フリクション ライト 消える 消せる チェックペン 筆記具 文具",
+          "price": 132
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "多機能ボールペン ボールペンを自分で組み立て、好みのリフィルで楽しめる TRONNOVATE TAKUMI PURE + タクミピュアプラス 好みに合わせてカスタマイズ 送料無料",
+          "price": 9900
+        },
+        {
+          "title": "Rocketbook Core Reusable Spiral Notebook, Letter Size 8.5x11, Black - Dotted Pages, App-Connected, Erasable, Durable Cover, Ideal for School, Work, an",
+          "price": 26560
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "パイロット（PILOT）フリクションライト＜こすると消える蛍光ペン＞（FRIXION）ソフトカラーフリクションシリーズ（蛍光ペン・ラインマーカー）（SFL-10SL-xx）",
+          "price": 118
+        },
+        {
+          "title": "パイロット（PILOT）フリクションカラーズ＜こすると消えるカラーペン＞（FRIXION）フリクションシリーズ（カラーペン）その1（ブラック〜ブラウン）（SFC-10M-xxx）",
+          "price": 118
+        },
+        {
+          "title": "パイロット（PILOT）フリクションライト＜こすると消える蛍光ペン＞（FRIXION）フリクションシリーズ（蛍光ペン・ラインマーカー）（SFL-10SL-x）",
+          "price": 118
+        },
+        {
+          "title": "[PILOT]パイロット フリクションスリム 変え芯（1本入り）文具 文房具 ペン カラフル 便利 デザイン FRIXION 消える メタル軸 デザイン 海外 輸入",
+          "price": 131
+        },
+        {
+          "title": "PILOT パイロット フリクションライト ソフトカラー SFL-10SL 蛍光ペン ラインマーカー フリクション ライト 消える 消せる チェックペン 筆記具 文具",
+          "price": 132
+        }
+      ]
+    },
+    {
+      "id": "regal-dress-shoes",
+      "identifyMs": 1600,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"vamp\",\"brand\":null,\"model\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6713,
+            "completion_tokens": 26,
+            "total_tokens": 6739,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 31.206276423875003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "vamp",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "vamp",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 1421,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "vamp",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "vamp",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "【11/1-3 最大3000円OFF】 ヘドン オリジナル ヴァンプ スプーク(VAMP SPOOK X9750) #FRFG",
+          "price": 1320
+        },
+        {
+          "site": "rakuten",
+          "title": "【11/1-3 最大3000円OFF】 ヘドン オリジナル ヴァンプ スプーク(VAMP SPOOK X9750) #OLB",
+          "price": 1320
+        },
+        {
+          "site": "rakuten",
+          "title": "【11/1-3 最大3000円OFF】 ヘドン ノーリップ ヴァンプ スプーク(VAMP SPOOK X9751) #YCDS",
+          "price": 1320
+        },
+        {
+          "site": "rakuten",
+          "title": "ヘドン オリジナル ヴァンプ スプーク(VAMP SPOOK X9750) #FRFG",
+          "price": 1320
+        },
+        {
+          "site": "rakuten",
+          "title": "ヘドン オリジナル ヴァンプ スプーク(VAMP SPOOK X9750) #OLB",
+          "price": 1320
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "サンダル SUBU/スブ SUBU VAMP F-LINE ヴァンプ ウィンターサンダル モックシューズ レディース メンズ",
+          "price": 7480
+        },
+        {
+          "title": "スリッポン 「SUBU」VAMP collection レディース メンズ",
+          "price": 7480
+        },
+        {
+          "title": "スブ ヴァンプ プラットフォーム SUBU VAMP PLATFORM subu-vamp",
+          "price": 10780
+        },
+        {
+          "title": "サンダル SUBU / DOTS VAMP STUDCORE / Synth Olive / WINTER SANDAL / スブ / ウィンターサンダル メンズ",
+          "price": 11000
+        },
+        {
+          "title": "HAWKINS ホーキンス HP IT VAMP 防水・防滑 ヴァンプ HB81001 BLACK",
+          "price": 14300
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【11/1-3 最大3000円OFF】 ヘドン オリジナル ヴァンプ スプーク(VAMP SPOOK X9750) #FRFG",
+          "price": 1320
+        },
+        {
+          "title": "【11/1-3 最大3000円OFF】 ヘドン オリジナル ヴァンプ スプーク(VAMP SPOOK X9750) #OLB",
+          "price": 1320
+        },
+        {
+          "title": "【11/1-3 最大3000円OFF】 ヘドン ノーリップ ヴァンプ スプーク(VAMP SPOOK X9751) #YCDS",
+          "price": 1320
+        },
+        {
+          "title": "ヘドン オリジナル ヴァンプ スプーク(VAMP SPOOK X9750) #FRFG",
+          "price": 1320
+        },
+        {
+          "title": "ヘドン オリジナル ヴァンプ スプーク(VAMP SPOOK X9750) #OLB",
+          "price": 1320
+        }
+      ]
+    },
+    {
+      "id": "rolex-brand-only",
+      "identifyMs": 1571,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"MLB\",\"brand\":null,\"model\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3511,
+            "completion_tokens": 26,
+            "total_tokens": 3537,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 17.083966293125002
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "MLB",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "MLB",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 1183,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "MLB",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "MLB",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 29
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "【在庫処分セール】MLB キッズ 長袖 Tシャツ ロンT ワッフル生地 子供服 ベビー服 男の子 女の子 サーマル 刺繍 ロゴ メジャーリーグ ドジャース ヤンキース パドレス 秋服 90 100 110 120 130 140 150cm [M便 1/1]",
+          "price": 990
+        },
+        {
+          "site": "rakuten",
+          "title": "MLB トレーナー キッズ ジュニア 子供服 男の子 女の子 ドジャース ヤンキース パドレス スウェット 長袖 ロゴ 公式ライセンス 裏毛 90cm 100cm 110cm 120cm 130cm 140cm 150cm 160cm 170cm 通学 野球",
+          "price": 1045
+        },
+        {
+          "site": "rakuten",
+          "title": "ドジャース パンツ キッズ MLB メジャーリーグ スエット 裏起毛 ベースボール ジャージ ズボン ヤンキース 野球 長ズボン 部活 スポーツ 体操服 おしゃれ 男の子 子供服 ロングパンツ 90cm 100cm 110cm 120cm 130cm 140cm 150cm 160cm 170cm ●",
+          "price": 1045
+        },
+        {
+          "site": "rakuten",
+          "title": "MLB Tシャツ キッズ 子供 ドジャース ヤンキース 長袖 mlb 男の子 DODGERS メジャーリーグ 110 120 130 140 150 160 刺繍 バックプリント ロンT",
+          "price": 1500
+        },
+        {
+          "site": "rakuten",
+          "title": "プティマイン(petit main)【MLB】車アップリケTシャツ 子供服 キッズ ベビー 女の子 女子 女児 男の子 男子 男児 通園 通学",
+          "price": 1595
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "MLB ムートンフリース キッズ メジャーリーグ ヤンキース ドジャース パドレス ベースボール 上 ジップアップ ジャケット アウター 羽織り 上着 80cmから170cm",
+          "price": 1788
+        },
+        {
+          "title": "MLB 起毛 トレーナー キッズ 起毛 子供 ドジャース ヤンキース バックプリント 男の子 130 140 150 160 DODGERS",
+          "price": 1900
+        },
+        {
+          "title": "MLB パーカー キッズ ジュニア ドジャース ヤンキース パドレス ロゴ 裏毛 裏起毛 120cm 130cm 140cm 150cm 160cm 170cm",
+          "price": 2750
+        },
+        {
+          "title": "ワイドパンツ パンツ 「MLB」「100-160cm」裏毛 スウェット パンツ ライン「PAIRMANON STREET」 キッズ 子供服 男の子 女の子",
+          "price": 3300
+        },
+        {
+          "title": "トレーナー 「MLB」「100-160cm」裏毛 スウェット ハーフジップ 「PAIRMANON STREET」 キッズ 子供服 男の子 女の子",
+          "price": 3300
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【在庫処分セール】MLB キッズ 長袖 Tシャツ ロンT ワッフル生地 子供服 ベビー服 男の子 女の子 サーマル 刺繍 ロゴ メジャーリーグ ドジャース ヤンキース パドレス 秋服 90 100 110 120 130 140 150cm [M便 1/1]",
+          "price": 990
+        },
+        {
+          "title": "MLB トレーナー キッズ ジュニア 子供服 男の子 女の子 ドジャース ヤンキース パドレス スウェット 長袖 ロゴ 公式ライセンス 裏毛 90cm 100cm 110cm 120cm 130cm 140cm 150cm 160cm 170cm 通学 野球",
+          "price": 1045
+        },
+        {
+          "title": "ドジャース パンツ キッズ MLB メジャーリーグ スエット 裏起毛 ベースボール ジャージ ズボン ヤンキース 野球 長ズボン 部活 スポーツ 体操服 おしゃれ 男の子 子供服 ロングパンツ 90cm 100cm 110cm 120cm 130cm 140cm 150cm 160cm 170cm ●",
+          "price": 1045
+        },
+        {
+          "title": "MLB Tシャツ キッズ 子供 ドジャース ヤンキース 長袖 mlb 男の子 DODGERS メジャーリーグ 110 120 130 140 150 160 刺繍 バックプリント ロンT",
+          "price": 1500
+        },
+        {
+          "title": "プティマイン(petit main)【MLB】車アップリケTシャツ 子供服 キッズ ベビー 女の子 女子 女児 男の子 男子 男児 通園 通学",
+          "price": 1595
+        }
+      ]
+    },
+    {
+      "id": "sony-headphones",
+      "identifyMs": 2395,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Bose QuietComfort 35 II\",\"brand\":\"Bose\",\"model\":\"QuietComfort 35 II\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6713,
+            "completion_tokens": 36,
+            "total_tokens": 6749,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 31.821208101375003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "Bose QuietComfort 35 II",
+          "brand": "Bose",
+          "model": "QuietComfort 35 II",
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Bose QuietComfort 35 II",
+        "brand": "Bose",
+        "model": "QuietComfort 35 II",
+        "jan": null
+      },
+      "searchMs": 800,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "Bose QuietComfort 35 II Bose QuietComfort 35 II",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "Bose QuietComfort 35 II Bose QuietComfort 35 II",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 8,
+        "rakuten": 25
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "Geekria ヘッドバンド 互換性 ヘッドホンヘッドバンドプロテインレザーパッド ボーズ Bose QuietComfort 35 ii Gamin",
+          "price": 2139
+        },
+        {
+          "site": "yahoo",
+          "title": "【中古】BOSE QuietComfort 35 wireless headphones II シルバー【府中ル・シーニュ】保証期間１ヶ月【ランクB】",
+          "price": 7980
+        },
+        {
+          "site": "rakuten",
+          "title": "ボーズ　Bose QuietComfort 35 wireless headphones II",
+          "price": 43000
+        },
+        {
+          "site": "rakuten",
+          "title": "ボーズ　Bose QuietComfort 35 wireless headphones II　限定カラー ミッドナイトブルー",
+          "price": 45000
+        },
+        {
+          "site": "rakuten",
+          "title": "プロのBoseヘッドフォン交換用イヤーパッド、Bose QuietComfort 35 ii / QC35 / QC25 / QC2 / QC15 / Ae2 / Ae2i / Ae2w / SoundTrue＆SoundLink（Over-Ear）、Fabric＆Memory Foam、Krone Kalpasmos–Grayに適合",
+          "price": 2907
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "Geekria ヘッドバンド 互換性 ヘッドホンヘッドバンドプロテインレザーパッド ボーズ Bose QuietComfort 35 ii Gamin",
+          "price": 2139
+        },
+        {
+          "title": "【中古】BOSE QuietComfort 35 wireless headphones II シルバー【府中ル・シーニュ】保証期間１ヶ月【ランクB】",
+          "price": 7980
+        },
+        {
+          "title": "Bose QuietComfort 35(QC35)&amp;QuietComfort 35ii(QC35ii)用のプロフェッショナルな用イヤー",
+          "price": 1069
+        },
+        {
+          "title": "BOSE イヤーパッド QC45 QC35 QC25 QC15 AE2 SoundTrue SoundLink 交換用 イヤークッション ヘッドホン 互換 Bose QuietComfort 耳パッド 修理",
+          "price": 1198
+        },
+        {
+          "title": "Bose QuietComfort 35(QC35)&amp;QuietComfort 35ii(QC35ii)用のプロフェッショナル",
+          "price": 1209
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "ボーズ　Bose QuietComfort 35 wireless headphones II",
+          "price": 43000
+        },
+        {
+          "title": "ボーズ　Bose QuietComfort 35 wireless headphones II　限定カラー ミッドナイトブルー",
+          "price": 45000
+        },
+        {
+          "title": "プロのBoseヘッドフォン交換用イヤーパッド、Bose QuietComfort 35 ii / QC35 / QC25 / QC2 / QC15 / Ae2 / Ae2i / Ae2w / SoundTrue＆SoundLink（Over-Ear）、Fabric＆Memory Foam、Krone Kalpasmos–Grayに適合",
+          "price": 2907
+        },
+        {
+          "title": "【送料無料】プロのBoseヘッドフォン交換用イヤーパッド、Bose QuietComfort 35 ii / QC35 / QC25 / QC2 / QC15 / Ae2 / Ae2i / Ae2w / SoundTrue＆SoundLink（Over-Ear）、Fabric＆Memory Foam、Krone Kalpasmos−Grayに適合",
+          "price": 3083
+        },
+        {
+          "title": "Bose QuietComfort 35(QC35)＆QuietComfort 35ii(QC35ii)用のプロフェッショナルな交換用イヤーパッド、より柔らかいレザーとメモリーフォームを備えたプレミアムヘッドフォンイヤパッドクッション、ミッドナイトブルー",
+          "price": 1307
+        }
+      ]
+    },
+    {
+      "id": "uniqlo-shirt",
+      "identifyMs": 1177,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Tシャツ\",\"brand\":null,\"model\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3511,
+            "completion_tokens": 27,
+            "total_tokens": 3538,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 17.145459460875003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "Tシャツ",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Tシャツ",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 403,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "Tシャツ",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "Tシャツ",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 28
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "【メール便(〜2枚OK)】glimmer 4.4オンス ドライTシャツ 00300-ACT｜キッズ ユニセックス｜無地 半袖 薄手｜白 ホワイト グレー 黒 ブラック 赤 レッド ピンク 黄色 イエロー 水色 青 ブルー ネイビー 緑 紫 全50色｜100cm 110cm 120cm 130cm 140cm 150cm (T)",
+          "price": 249
+        },
+        {
+          "site": "rakuten",
+          "title": "【メール便】Printstar 5.6オンス ヘビーウェイトTシャツ 00085-CVT｜キッズ ユニセックス｜半袖 無地 綿｜白 ホワイト 黒 ブラック グレー 赤 レッド ピンク 緑 グリーン 青 ブルー ネイビー 全37色｜100cm 110cm 120cm 130cm 140cm 150cm (T)",
+          "price": 370
+        },
+        {
+          "site": "yahoo",
+          "title": "Tシャツ 無地 半袖 カットソー 速乾 ドライ サラサラ 半袖 グリマー ユニセックス 人気 4.4オンス 薄手 インナー スポーツ 300-ACT",
+          "price": 386
+        },
+        {
+          "site": "rakuten",
+          "title": "【メール便(〜2枚OK)】Printstar 5.0オンス ベーシックTシャツ 00086-DMT｜キッズ ユニセックス｜半袖 無地｜白 ホワイト グレー 黒 ブラック ネイビー 黄 イエロー 赤 レッド ピンク 紫 水色 青 ブルー 緑 全24色｜100cm 110cm 120cm 130cm 140cm 150cm (T)",
+          "price": 432
+        },
+        {
+          "site": "yahoo",
+          "title": "Ｔシャツ 半袖 無地 コットン100％ メンズTシャツ レディースTシャツ 送料無料 UNISEX",
+          "price": 480
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "Tシャツ 無地 半袖 カットソー 速乾 ドライ サラサラ 半袖 グリマー ユニセックス 人気 4.4オンス 薄手 インナー スポーツ 300-ACT",
+          "price": 386
+        },
+        {
+          "title": "Ｔシャツ 半袖 無地 コットン100％ メンズTシャツ レディースTシャツ 送料無料 UNISEX",
+          "price": 480
+        },
+        {
+          "title": "ドライ Tシャツ メンズ レディース 速乾 無地 4.4オンス グリマー glimmer 00300-ACT 半袖 UVカット 吸汗速乾 スポーツ トレーニング 大きいサイズ 白 黒 紺",
+          "price": 569
+        },
+        {
+          "title": "tシャツ 「EN-JOY」どっちも前だから1人でお着替え カラフル 長袖Tシャツ キッズ 子供服 男の子 女の子",
+          "price": 968
+        },
+        {
+          "title": "シンプル Tシャツ 無地 コットン デイリーTシャツ 綿100％ フレブル フレンチブルドッグ カラフル 犬服 ペットウェア KM045TS",
+          "price": 1280
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【メール便(〜2枚OK)】glimmer 4.4オンス ドライTシャツ 00300-ACT｜キッズ ユニセックス｜無地 半袖 薄手｜白 ホワイト グレー 黒 ブラック 赤 レッド ピンク 黄色 イエロー 水色 青 ブルー ネイビー 緑 紫 全50色｜100cm 110cm 120cm 130cm 140cm 150cm (T)",
+          "price": 249
+        },
+        {
+          "title": "【メール便】Printstar 5.6オンス ヘビーウェイトTシャツ 00085-CVT｜キッズ ユニセックス｜半袖 無地 綿｜白 ホワイト 黒 ブラック グレー 赤 レッド ピンク 緑 グリーン 青 ブルー ネイビー 全37色｜100cm 110cm 120cm 130cm 140cm 150cm (T)",
+          "price": 370
+        },
+        {
+          "title": "【メール便(〜2枚OK)】Printstar 5.0オンス ベーシックTシャツ 00086-DMT｜キッズ ユニセックス｜半袖 無地｜白 ホワイト グレー 黒 ブラック ネイビー 黄 イエロー 赤 レッド ピンク 紫 水色 青 ブルー 緑 全24色｜100cm 110cm 120cm 130cm 140cm 150cm (T)",
+          "price": 432
+        },
+        {
+          "title": "【XS-XLメール便(1枚)】Printstar 5.6オンス ヘビーウェイト長袖Tシャツ 00102-CVL｜メンズ レディース｜無地 クルーネック 綿｜白 ホワイト グレー 黒 ブラック 黄 イエロー 赤 レッド ピンク 紫 水色 青 ブルー 緑 グリーン 全14色｜XS S M L XL 2XL 3XL (T)",
+          "price": 750
+        },
+        {
+          "title": "【SALE／33%OFF】devirock 綿100% お洗濯してもよれにくい 無地 ビッグシルエット 袖リブ 長袖Tシャツ 26SS デビロック トップス カットソー・Tシャツ ブルー パープル グレー イエロー ホワイト",
+          "price": 797
+        }
+      ]
+    }
+  ]
+}

@@ -14,7 +14,7 @@ async function expectCandidateControls(page: Page) {
   const register = await page.getByRole('button', { name: '選んだ候補を登録' }).boundingBox();
   expect(amazon).toBeTruthy();
   expect(register).toBeTruthy();
-  expect(register!.y - (amazon!.y + amazon!.height)).toBeGreaterThanOrEqual(16);
+  expect(amazon!.y).toBeGreaterThan(register!.y + register!.height);
 
   const searchName = await page.getByRole('button', { name: 'この名前で探す' }).boundingBox();
   const nameField = await page.getByLabel('探す商品名').boundingBox();
@@ -543,3 +543,45 @@ test('expired trash candidates do not promise restoration or navigate to cleanup
   try { expect(db.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id=?').get(userId)).toEqual({n:1}); }
   finally { db.close(); }
 });
+
+for (const mode of ['same-name', 'edited-back', 'retry'] as const) {
+  test(`manual name search drops photo conditions: ${mode}`, async ({ page }) => {
+    const product = { name: 'Black Leather Bag', brand: 'Photo Brand', model: 'PHOTO-123', jan: '4900000000009' };
+    const requests: Record<string, unknown>[] = [];
+    await page.route('**/api/capture/identify', route => route.fulfill({
+      json: { confidence: 'sure', products: [product] },
+    }));
+    await page.route('**/api/capture/search', async route => {
+      requests.push(route.request().postDataJSON());
+      if (mode === 'retry' && requests.length === 2) { await route.abort('failed'); return; }
+      await route.fulfill({ json: { candidates: [], failures: [] } });
+    });
+    const registered = await page.request.post('/api/auth/register', {
+      data: { email: `manual-search-${mode}@example.test`, password: 'test-password' },
+    });
+    expect(registered.ok()).toBeTruthy();
+    await page.goto('/');
+    await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
+    await page.getByLabel('写真ファイル').setInputFiles({ name: 'bag.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+    await expect(page.getByText('見つかりませんでした', { exact: true })).toBeVisible();
+    expect(requests[0]).toEqual(product);
+    if (mode === 'edited-back') {
+      await page.getByLabel('探す商品名').fill('別の商品名');
+      await page.getByLabel('探す商品名').fill(product.name);
+    }
+    await page.getByRole('button', { name: 'この名前で探す' }).click();
+    if (mode === 'retry') {
+      await page.getByRole('button', { name: 'もう一度探す' }).click();
+      await expect.poll(() => requests.length).toBe(3);
+    }
+    await expect(page.getByText('見つかりませんでした', { exact: true })).toBeVisible();
+    expect(requests.length).toBe(mode === 'retry' ? 3 : 2);
+    for (const request of requests.slice(1)) {
+      expect(request).toEqual({ name: product.name, brand: null, model: null, jan: null });
+    }
+    // 推定商品を明示して選ぶ操作は、引き続き写真の判定条件を使う。
+    await page.getByRole('button', { name: product.name, exact: true }).click();
+    await expect.poll(() => requests.length).toBe(mode === 'retry' ? 4 : 3);
+    expect(requests.at(-1)).toEqual(product);
+  });
+}
