@@ -84,6 +84,8 @@ export type IdentifyConfidence = 'sure' | 'unsure' | 'unreadable';
 export interface IdentifyResponse {
   confidence: IdentifyConfidence;
   products: ProductGuess[];
+  // 評価用。店の検索語の候補。画面のAPIには出さない。
+  queries?: string[];
 }
 
 export interface IdentifyInput {
