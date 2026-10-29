@@ -71,3 +71,13 @@ export function scorePhoto(input: PhotoScoreInput, cards: readonly PhotoScoreCar
   const points = Number(categoryOk) + (brand === null ? 0 : Number(brand)) + Number(noWrongBrand) + Number(hits);
   return { category: categoryOk, brand, noWrongBrand, hits, points };
 }
+
+
+/** Exact identifiers must be curated independently of the model's output. */
+export function exactProductTop5(titles: readonly string[], identifiers: readonly string[] | undefined): boolean | null {
+  if (!identifiers?.length) return null;
+  return titles.slice(0, 5).some((title) => identifiers.some((identifier) => {
+    const escaped = identifier.normalize('NFKC').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`, 'i').test(title.normalize('NFKC'));
+  }));
+}

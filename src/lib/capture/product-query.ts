@@ -248,7 +248,7 @@ export function composeCapturedProduct(input: CapturedFields & { recoverSeries?:
   if (model && brand && fold(model) === fold(brand)) model = null;
   if (model && fold(model) === fold(name)) model = null;
   if (model && isOnlyType(model)) {
-    typeHint = typeHint ?? model;
+    typeHint = canonicalType(typeHint) ? typeHint : model;
     model = null;
   }
   if (model && !includesLabel(name, model)) model = null;
@@ -278,16 +278,6 @@ const GENERIC_TOKENS = new Set(['example', 'unknown', 'n/a', 'null', 'none', 'it
 
 function isGenericToken(token: string): boolean {
   return GENERIC_TOKENS.has(fold(token));
-}
-
-function shrinkSentence(name: string): string {
-  const trimmed = name.trim();
-  if (trimmed.includes(' ') || [...trimmed].length < 12) return trimmed;
-  if (!/[のがをにで]/.test(trimmed)) return trimmed;
-  const type = bestTerm(trimmed);
-  if (!type) return trimmed;
-  const color = colorInText(trimmed);
-  return [color, type.canonical].filter(Boolean).join(' ');
 }
 
 export function statedProductType(text: string): string | null {
@@ -320,7 +310,7 @@ export function storeSearchKeyword(
   query: { name: string; brand: string | null; model: string | null },
   limit: { maxChars: number; maxBytes: number },
 ): string {
-  const source = shrinkSentence(query.name).replace(/ +[-‐‑–—]+ +/g, ' ');
+  const source = query.name.replace(/ +[-‐‑–—]+ +/g, ' ');
   const pieces = [source, query.brand ?? '', query.model ?? ''];
   const tokens: string[] = [];
   for (const piece of pieces) {

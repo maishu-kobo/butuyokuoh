@@ -184,3 +184,12 @@ test('brand plus a known product type never composes a brand-only name', () => {
     },
   ), { numRuns: brands.length * types.length * 3 });
 });
+
+
+test('an unknown type hint preserves a known type from the model field', () => {
+  fc.assert(fc.property(fc.constantFrom('スニーカー', 'ヘッドホン', 'トートバッグ'), type => {
+    const product = composeCapturedProduct({ name: 'ソニー', brand: 'ソニー', model: type, productType: '未分類', color: null });
+    assert.equal(product.name, `ソニー ${type}`);
+    assert.equal(product.model, null);
+  }), { seed: 252 });
+});

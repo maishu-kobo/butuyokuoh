@@ -6,7 +6,8 @@ import { pathToFileURL } from 'node:url';
 import { resolveSearchVariant, SEARCH_VARIANTS, estimateNeurons } from '../../../src/lib/capture/ai-variants';
 import { ensembleGuess } from '../../../src/lib/capture/ensemble';
 import { dropOtherCategories } from '../../../src/lib/capture/product-query';
-import { scorePhoto } from './rubric';
+import { scorePhoto, exactProductTop5 } from './rubric';
+import { createEvaluationBudget, UNKNOWN_CALL_NEURONS } from './budget';
 
 const root = process.cwd();
 const arg = (name: string) => {
@@ -21,10 +22,22 @@ const only = arg('--only');
 const mod = (file: string) => import(pathToFileURL(path.join(root, file)).href);
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function envPathIsAbsolute() { return typeof process.env.BUTUYOKUOH_DB_PATH === 'string' && path.isAbsolute(process.env.BUTUYOKUOH_DB_PATH); }
+
 async function main() {
   if (!out || !imgDir) {
     console.error('need --images and --out');
     process.exit(1);
+  }
+  const accountUsedRaw = arg('--account-used-neurons');
+  const snapshotDay = arg('--usage-day');
+  if (accountUsedRaw === null || !snapshotDay || !envPathIsAbsolute()) {
+    throw new Error('Provide --account-used-neurons, --usage-day (UTC), and an absolute persistent BUTUYOKUOH_DB_PATH');
+  }
+  const truthPath = arg('--truth');
+  const truth: Record<string, string[]> = truthPath ? JSON.parse(readFileSync(truthPath, 'utf8')) : {};
+  if (!truth || Array.isArray(truth) || typeof truth !== 'object' || Object.values(truth).some((ids) => !Array.isArray(ids) || ids.some((id) => typeof id !== 'string' || !id.trim()))) {
+    throw new Error('Truth must map photo ids to nonempty exact product identifiers');
   }
   const variant = resolveSearchVariant(variantName);
   if (variant.name !== variantName) {
@@ -47,6 +60,10 @@ async function main() {
   const files = readdirSync(imgDir).filter((file) => file.endsWith('.jpg')).sort();
   const rows: Record<string, unknown>[] = [];
   let neurons = 0;
+  let identifierUsage = 0;
+  let activeModel = variant.model;
+  const db = (await mod('src/lib/db.ts')).getDb();
+  const budget = createEvaluationBudget(db, Number(accountUsedRaw), snapshotDay, () => identifierUsage);
   for (const file of files) {
     const id = file.replace(/\.jpg$/, '');
     if (only && !only.split(',').includes(id)) continue;
@@ -76,10 +93,12 @@ async function main() {
             ? parsed.errors.map((item) => ({ code: item.code, message: String(item.message ?? '').slice(0, 200) }))
             : null;
         } catch { /* not json */ }
-        if (usage && typeof usage.neurons === 'number') neurons += usage.neurons;
-        else if (usage && typeof usage.prompt_tokens === 'number') {
-          neurons += estimateNeurons(variant.model, usage.prompt_tokens, usage.completion_tokens ?? 0);
-        }
+        const measured = usage && typeof usage.neurons === 'number' ? usage.neurons
+          : usage && typeof usage.prompt_tokens === 'number' && typeof usage.completion_tokens === 'number'
+            ? estimateNeurons(activeModel, usage.prompt_tokens, usage.completion_tokens) : UNKNOWN_CALL_NEURONS;
+        const charged = Number.isFinite(measured) && measured > 0 ? measured : UNKNOWN_CALL_NEURONS;
+        neurons += charged;
+        identifierUsage += charged;
         calls.push({
           status: response.status,
           response: typeof text === 'string' ? text.slice(0, 2000) : JSON.stringify(text)?.slice(0, 2000),
@@ -88,19 +107,27 @@ async function main() {
         });
         return { status: response.status, body };
       } catch (error) {
+        neurons += UNKNOWN_CALL_NEURONS;
+        identifierUsage += UNKNOWN_CALL_NEURONS;
         calls.push({ status: 0, thrown: error instanceof Error ? error.name : 'error' });
         throw error;
       }
     };
-    const identifyWith = (modelId: string, userSuffix: string) => wa.createWorkersAiIdentifier({
+    const identifyWith = (modelId: string, userSuffix: string) => {
+      identifierUsage = 0;
+      activeModel = variant.secondModel?.id === modelId ? variant.secondModel : variant.model;
+      return wa.createWorkersAiIdentifier({
       accountId: env.CLOUDFLARE_ACCOUNT_ID ?? '',
       apiToken: env.CLOUDFLARE_API_TOKEN ?? '',
       userId: `eval-${label}-${id}-${userSuffix}`,
       model: modelId,
+      budget,
       http,
     });
+    };
     const started = Date.now();
     const identified = await identifyWith(variant.model.id, 'a').identify(prep.value);
+    if (!identified.ok && identified.error.code === 'AI_LIMIT') { rows.push({ ...row, identifyError: 'AI_LIMIT' }); break; }
     let merged = identified.ok ? identified.value : null;
     if (variant.secondModel) {
       const second = await identifyWith(variant.secondModel.id, 'b').identify(prep.value);
@@ -119,7 +146,7 @@ async function main() {
     row.identifyMs = Date.now() - started;
     row.modelCalls = calls;
     row.neurons = Math.round((neurons - beforeNeurons) * 1000) / 1000;
-    if (!merged) { row.identifyError = identified.error.code; rows.push(row); await sleep(1500); continue; }
+    if (!merged) { row.identifyError = identified.ok ? 'AI_INVALID_RESPONSE' : identified.error.code; rows.push(row); await sleep(1500); continue; }
     row.confidence = merged.confidence;
     row.products = merged.products;
     const product = merged.products[0] ?? null;
@@ -169,20 +196,22 @@ async function main() {
           yahoo: candidates.filter((item) => item.site === 'yahoo').length,
           rakuten: candidates.filter((item) => item.site === 'rakuten').length,
         };
-        row.top3 = candidates.slice(0, 3).map((item) => ({ site: item.site, title: item.title, price: item.price }));
+        row.top5 = candidates.slice(0, 5).map((item) => ({ site: item.site, title: item.title, price: item.price }));
       }
       const counts = row.counts as { yahoo?: number; rakuten?: number } | undefined;
-      const top3 = (row.top3 as { title: string }[] | undefined) ?? [];
+      const top5 = (row.top5 as { title: string }[] | undefined) ?? [];
+      row.exactProductTop5 = exactProductTop5(top5.map((item) => item.title), truth[id]);
       row.score = scorePhoto({
         id,
         confidence: String(row.confidence ?? ''),
         name: product.name,
         brand: product.brand,
         hits: (counts?.yahoo ?? 0) + (counts?.rakuten ?? 0),
-        top3: top3.map((item) => item.title),
+        top3: top5.slice(0, 3).map((item) => item.title),
       });
     }
     rows.push(row);
+    writeFileSync(out, `${JSON.stringify({ partial: true, variant: variant.name, rows }, null, 2)}\n`);
     console.log(`${variant.name} ${id} conf=${row.confidence ?? row.identifyError} q=${JSON.stringify(row.query ?? null)} n=${JSON.stringify(row.counts ?? row.searchError ?? null)}`);
     await sleep(1500);
   }
@@ -196,14 +225,19 @@ async function main() {
     have,
     refererSet: referer !== null,
     neurons: Math.round(neurons),
-    points: scores.reduce((sum, score) => sum + score.points, 0),
+    exactProduct: {
+      evaluated: rows.filter((row) => truth[String(row.id)]?.length).length,
+      hits: rows.filter((row) => row.exactProductTop5 === true).length,
+      unscored: rows.filter((row) => !truth[String(row.id)]?.length).length,
+    },
+    diagnosticPoints: scores.reduce((sum, score) => sum + score.points, 0),
     rows,
   };
   writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
-  console.log(`done ${variant.name} rows=${rows.length} neurons=${Math.round(neurons)} points=${report.points}`);
+  console.log(`done ${variant.name} rows=${rows.length} neurons=${Math.round(neurons)} diagnosticPoints=${report.diagnosticPoints}`);
 }
 
 main().catch((error: unknown) => {
-  console.error('harness failed', error instanceof Error ? `${error.name}: ${error.message.slice(0, 200)}` : '');
+  console.error('harness failed', error instanceof Error ? error.name : '');
   process.exit(1);
 });

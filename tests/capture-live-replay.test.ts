@@ -74,14 +74,21 @@ test('the live backpack reply does not repeat the brand or send a bare hyphen', 
   assert.equal(Buffer.byteLength(keyword, 'utf8') <= 128, true);
 });
 
-test('the live rune-tote sentence is shortened to a color and a bag type', async () => {
+test('the live rune-tote reply retains identifying text when building search keywords', async () => {
   const row = load('live-pr.json').find((item) => item.id === 'muji-tote');
   assert.ok(row?.modelCalls?.[0]?.response);
   const result = await replay(row.modelCalls[0].response as string);
   assert.equal(result.ok, true);
   if (!result.ok) return;
   const keyword = storeSearchKeyword(result.value.products[0], { maxChars: 128, maxBytes: 128 });
-  assert.equal(keyword.includes('文字'), false);
+  assert.ok(keyword.length > 0);
   assert.equal(keyword.includes('バッグ') || keyword.includes('トート'), true);
   assert.equal(Buffer.byteLength(keyword, 'utf8') <= 128, true);
+});
+
+
+test('search keyword cleanup preserves manually supplied brands, models and Japanese descriptions', () => {
+  for (const name of ['ソニーのWH-1000XM5ヘッドホン', 'バレンシアガの黒いハンドバッグ', 'G-SHOCK GW-M5610U', '7897722AA4V1000']) {
+    assert.equal(storeSearchKeyword({ name, brand: null, model: null }, { maxChars: 128, maxBytes: 128 }), name);
+  }
 });

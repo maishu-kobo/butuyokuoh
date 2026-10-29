@@ -188,3 +188,17 @@ test('a shoes guess does not score a bag in the top 3 as the right category', ()
   assert.equal(bags.category, false);
 });
 
+
+
+test('broad fallback candidates cannot outrank results from the original search', async () => {
+  const candidate = (id: string, site: 'yahoo' | 'rakuten', title: string, price: number) => ({ id, site, title, price, url: site === 'yahoo' ? 'https://store.shopping.yahoo.co.jp/example/item' : 'https://item.rakuten.co.jp/example/item', fetchedAt: '2026-10-29T00:00:00.000Z', shopName: '店' });
+  const exact = candidate('yahoo:exact', 'yahoo', 'Dyson V10 掃除機', 40000);
+  const broad = candidate('rakuten:broad', 'rakuten', 'Generic 掃除機', 1000);
+  const result = await searchWithLadder({ name: 'Dyson V10 掃除機', brand: 'Dyson', model: 'V10' }, {
+    identifier: { async identify() { throw new Error('unused'); } },
+    yahoo: { async search() { return { ok: true, value: [exact] }; } },
+    rakuten: { async search(query) { return { ok: true, value: query.name.includes('V10') ? [] : [broad] }; } },
+  });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.deepEqual(result.value.candidates.map((item) => item.id), [exact.id, broad.id]);
+});

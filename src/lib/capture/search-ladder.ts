@@ -27,7 +27,7 @@ export async function searchWithLadder(
   const seen = new Set<string>();
   let amazonUrl = '';
   const failures: SearchResponse['failures'] = [];
-  let rank: SearchQuery = { name: product.name, brand: product.brand, model: product.model, jan: null };
+  const rank: SearchQuery = { name: product.name, brand: product.brand, model: product.model, jan: null };
   let lastError: CaptureResult<SearchResponse> | null = null;
   for (const step of queries) {
     const query: SearchQuery = { ...step, jan: null };
@@ -44,12 +44,11 @@ export async function searchWithLadder(
       if (!failures.some((item) => item.site === failure.site && item.code === failure.code)) failures.push(failure);
     }
     const kept = dropOtherCategories(result.value.candidates, product.name);
-    for (const candidate of kept) {
+    for (const candidate of sortCandidates(kept, rank)) {
       if (seen.has(candidate.id)) continue;
       seen.add(candidate.id);
       merged.push(candidate);
     }
-    rank = query;
     const yahooDown = result.value.failures.some((failure) => failure.site === 'yahoo') || siteCount(kept, 'yahoo') === 0;
     const rakutenDown = result.value.failures.some((failure) => failure.site === 'rakuten') || siteCount(kept, 'rakuten') === 0;
     if (!yahooDown && !rakutenDown) break;
@@ -58,7 +57,7 @@ export async function searchWithLadder(
   return {
     ok: true,
     value: {
-      candidates: sortCandidates(merged, rank),
+      candidates: merged,
       amazonUrl,
       failures,
     },
