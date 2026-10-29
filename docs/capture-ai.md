@@ -40,7 +40,7 @@ Workers AI のほかに、選んだときだけ Google Gemini API で同じ写�
 
 `gemini-2.5-flash` と `gemini-2.5-flash-lite` は新規利用者に 404 となるため使わない。`gemini-ladder` と `gemini-lite-ladder` の段は評価ハーネスだけが使う。通常画面でその名前を置いても、推定に使うモデルは同じで、検索の段は増えない。
 
-`llama4-brand-guard` は llama 4 の sure を、読めた文字がブランドを含まないとき、またはブランドの種類と商品の種類が違うときに、種類と色だけの検索語へ落とす。`llama4-gemini-grounded` はそのあとに、今のフォールバックと、候補上位5件を `gemini-3.5-flash-lite` で1回だけ並べ替える。`CAPTURE_AI_RERANK=0` で並べ替えだけ止める。失敗したら元の順。どちらも未設定なら動かない。`llama4-gemini-fallback` の動きは変えない。
+`llama4-brand-guard` は、ブランドの種類と商品の種類が違う sure だけを種類と色へ落とす。文字が無いだけではブランドは残す。文字を読んでいない数字の型番だけ外す。`llama4-gemini-grounded` は今のフォールバックにその確認を足す。候補の並べ替えはコードに残し、`CAPTURE_AI_RERANK=1` のときだけ動く。失敗したら元の順。どちらも未設定なら動かない。`llama4-gemini-fallback` の動きは変えない。
 
 無料枠はモデルごとに1日およそ20回で、中央値の待ちは約25秒。Gemini を既定にはしない。`llama4-gemini-fallback` も未設定なら動かない。自信が低い（unsure）だけでは lite を呼ばない。呼ぶのは llama 4 が失敗したとき（1日の上限を除く）、読めないとき、商品名が無いとき、そして llama 4 の検索段が 0 件のとき。lite の検索も 0 件、または lite が失敗・429・時間切れなら、llama 4 の名前と検索結果を残す。この判断は `runGeminiFallback` にあり、写真の推定 API と評価の `--mode all` が同じ関数を使う。推定 API は選んだとき、画面へ返す商品名を決めるために検索段を先に実行する。
 
@@ -69,7 +69,7 @@ node --import tsx tests/eval/photo-search/live-harness.ts \
 
 `--mode guess` は llama 4 の JSON だけを書く。0件かどうかは検索しないと分からない。lite を足す判断は `--mode all`（Cloudflare、Gemini、Yahoo、楽天）と、`CAPTURE_AI_MODEL=llama4-gemini-fallback` の `POST /api/capture/identify` が同じ関数で行う。この環境では API キーが無いので、ライブの点数は未確認。
 
-根拠のないブランドを外し、候補を1回並べ替える評価:
+根拠のないブランドを外す評価。並べ替えは `CAPTURE_AI_RERANK=1` のときだけ:
 
 ```bash
 node --import tsx tests/eval/photo-search/live-harness.ts \

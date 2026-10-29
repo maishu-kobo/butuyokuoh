@@ -15,7 +15,7 @@ import { runGeminiFallback } from '../../../src/lib/capture/gemini-fallback';
 import { BRAND_EVIDENCE_SUFFIX, guardIdentifyResult } from '../../../src/lib/capture/brand-guard';
 import { rerankCandidates } from '../../../src/lib/capture/candidate-rerank';
 import { dropOtherCategories } from '../../../src/lib/capture/product-query';
-import { withGeminiHarnessRetry } from './gemini-retry';
+import { geminiCallsForPhoto, sumGeminiCalls, withGeminiHarnessRetry } from './gemini-retry';
 import { parseGuessDocument, searchGuessRows, summarizeLiveReport, type GuessProduct, type HarnessSearchResult } from './split-run';
 import { createEvaluationBudget, evaluationReservation, UNKNOWN_CALL_NEURONS } from './budget';
 
@@ -227,7 +227,7 @@ async function guessOrAll(selected: 'guess' | 'all') {
   const fallback = variant.provider === 'fallback';
   const brandGuard = variant.brandGuard === true;
   let geminiCalls = 0;
-  const rerankOn = variant.rerank === true && process.env.CAPTURE_AI_RERANK !== '0' && process.env.CAPTURE_AI_RERANK !== 'false';
+  const rerankOn = variant.rerank === true && (process.env.CAPTURE_AI_RERANK === '1' || process.env.CAPTURE_AI_RERANK === 'true');
   const liteConfig = fallback
     ? geminiConfigFromEnv({ CAPTURE_AI_MODEL: 'gemini-lite', GEMINI_API_KEY: process.env.GEMINI_API_KEY })
     : null;
@@ -248,6 +248,7 @@ async function guessOrAll(selected: 'guess' | 'all') {
     const id = file.replace(/\.jpg$/, '');
     if (only && !only.split(',').includes(id)) continue;
     const beforeNeurons = neurons;
+    const geminiBefore = geminiCalls;
     const row: Record<string, unknown> = { id, variant: variant.name };
     const bytes = new Uint8Array(readFileSync(path.join(imgDir, file)));
     const prep = await photo.prepareCapturePhoto(bytes, 'image/jpeg');
@@ -289,7 +290,7 @@ async function guessOrAll(selected: 'guess' | 'all') {
         });
         outcome.found = { hits: outcome.found.hits, value: { ...outcome.found.value, candidates: ranked.candidates } };
       }
-      row.geminiCalls = geminiCalls;
+      row.geminiCalls = geminiCallsForPhoto(geminiCalls, geminiBefore);
       if (!outcome.guess.ok) {
         if (outcome.guess.error?.code === 'AI_LIMIT') { rows.push({ ...row, identifyError: 'AI_LIMIT' }); break; }
         row.identifyError = outcome.guess.error?.code ?? 'AI_UNAVAILABLE';
@@ -335,7 +336,7 @@ async function guessOrAll(selected: 'guess' | 'all') {
       ? await identifyGemini(prep.value, geminiRun!.apiKey!, geminiRun!.model!, calls, () => { geminiCalls += 1; })
       : await identifyWorkers(prep.value, variant, id, label, wa, budget!, calls, () => identifierUsage, (next) => { identifierUsage = next; }, (model) => { activeModel = model; }, () => activeModel, (charged) => { neurons += charged; identifierUsage += charged; }, brandGuard ? BRAND_EVIDENCE_SUFFIX : undefined);
     const identified = brandGuard ? guardIdentifyResult(identifiedRaw) : identifiedRaw;
-    row.geminiCalls = geminiCalls;
+    row.geminiCalls = geminiCallsForPhoto(geminiCalls, geminiBefore);
     if (!identified.ok && identified.error.code === 'AI_LIMIT') { rows.push({ ...row, identifyError: 'AI_LIMIT' }); break; }
     row.identifyMs = Date.now() - started;
     row.modelCalls = calls;
@@ -400,7 +401,7 @@ async function guessOrAll(selected: 'guess' | 'all') {
       rows,
       truth,
     }),
-    geminiCalls: rows.reduce((sum, row) => sum + (typeof row.geminiCalls === 'number' ? row.geminiCalls : 0), 0),
+    geminiCalls: sumGeminiCalls(rows),
   };
   writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
   console.log(`done ${variant.name} rows=${rows.length} neurons=${report.neurons} diagnosticPoints=${report.diagnosticPoints}`);

@@ -4,11 +4,12 @@ import { readFileSync } from 'node:fs';
 import { resolveSearchVariant } from '../src/lib/capture/ai-variants';
 import { guardSureBrand } from '../src/lib/capture/brand-guard';
 import { applyCandidatePick, geminiRerankRequest, rerankCandidates } from '../src/lib/capture/candidate-rerank';
+import { geminiCallsForPhoto, sumGeminiCalls } from './eval/photo-search/gemini-retry';
 import { WORKERS_AI_MODEL } from '../src/lib/capture/workers-ai';
 
 const photo = { mediaType: 'image/jpeg', bytes: Uint8Array.of(0xff, 0xd8, 0xff) };
 
-test('a sure brand without readable text becomes a category query', () => {
+test('a league mark on the wrong category is dropped, and an unread model number is not', () => {
   const watch = guardSureBrand({
     confidence: 'sure',
     product: { name: 'アナログ', brand: 'MLB', model: null, jan: null },
@@ -26,13 +27,34 @@ test('a sure brand without readable text becomes a category query', () => {
   const laptop = guardSureBrand({
     confidence: 'sure',
     product: { name: 'HP Pavilion Gaming 15', brand: 'HP', model: 'Pavilion Gaming 15', jan: null },
-    evidence: { textProvided: true, visibleText: '', productType: 'ノートパソコン', color: '黒' },
+    evidence: { textProvided: false, visibleText: '', productType: 'ノートパソコン', color: '黒' },
   });
   assert.equal(laptop.guarded, true);
-  assert.equal(laptop.product.name.includes('HP'), false);
+  assert.equal(laptop.confidence, 'sure');
+  assert.equal(laptop.product.brand, 'HP');
+  assert.equal(laptop.product.model, null);
+  assert.equal(laptop.product.name.includes('HP'), true);
   assert.equal(laptop.product.name.includes('Pavilion'), false);
+  assert.equal(laptop.product.name.includes('15'), false);
   assert.equal(laptop.product.name.includes('ノートパソコン'), true);
-  assert.equal(laptop.product.name.includes('黒'), true);
+
+  const lipstick = guardSureBrand({
+    confidence: 'sure',
+    product: { name: 'MAC リップスティック', brand: 'MAC', model: null, jan: null },
+    evidence: { textProvided: false, visibleText: '', productType: '口紅', color: null },
+  });
+  assert.equal(lipstick.guarded, false);
+  assert.equal(lipstick.product.brand, 'MAC');
+  assert.equal(lipstick.product.name, 'MAC リップスティック');
+
+  const cortez = guardSureBrand({
+    confidence: 'sure',
+    product: { name: 'ナイキ コルテッツ', brand: 'ナイキ', model: 'コルテッツ', jan: null },
+    evidence: { textProvided: false, visibleText: '', productType: 'スニーカー', color: 'ホワイト' },
+  });
+  assert.equal(cortez.guarded, false);
+  assert.equal(cortez.product.brand, 'ナイキ');
+  assert.equal(cortez.product.model, 'コルテッツ');
 });
 
 test('readable text keeps a sure brand, and a category clash still drops it', () => {
@@ -43,6 +65,7 @@ test('readable text keeps a sure brand, and a category clash still drops it', ()
   });
   assert.equal(kept.guarded, false);
   assert.equal(kept.product.brand, 'Dyson');
+  assert.equal(kept.product.model, 'V11');
   assert.equal(kept.confidence, 'sure');
 
   const clash = guardSureBrand({
@@ -123,7 +146,13 @@ test('the new variants are opt-in and the fallback variant stays as it was', () 
   assert.equal(route.includes('identifyGroundedVariant'), true);
   assert.equal(harness.includes('rerankCandidates'), true);
   assert.equal(harness.includes('geminiCalls'), true);
+  assert.equal(harness.includes("CAPTURE_AI_RERANK === '1'"), true);
+  assert.equal(harness.includes('geminiCallsForPhoto'), true);
+  assert.equal(harness.includes('sumGeminiCalls'), true);
   const guardSource = readFileSync(new URL('../src/lib/capture/brand-guard.ts', import.meta.url), 'utf8');
   assert.equal(guardSource.includes('alb-wristwatch'), false);
   assert.equal(guardSource.includes('broken-laptop'), false);
+  assert.equal(geminiCallsForPhoto(26, 23), 3);
+  assert.equal(sumGeminiCalls([{ geminiCalls: 1 }, { geminiCalls: 1 }, { geminiCalls: 2 }]), 4);
+  assert.equal(sumGeminiCalls([{ geminiCalls: 1 }, { geminiCalls: 2 }, { geminiCalls: 4 }]) === 7, true);
 });
