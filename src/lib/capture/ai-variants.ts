@@ -100,11 +100,11 @@ export interface SearchVariant {
   secondModel?: AiModelSpec;
   ladder: boolean;
   estimatedNeuronsFor23: number;
-  provider: 'workers' | 'gemini';
+  provider: 'workers' | 'gemini' | 'fallback';
 }
 
 const GEMINI_FLASH: AiModelSpec = {
-  id: 'gemini-2.5-flash',
+  id: 'gemini-3.5-flash',
   variant: 'gemini',
   shape: 'chat-image',
   vision: true,
@@ -117,7 +117,7 @@ const GEMINI_FLASH: AiModelSpec = {
 
 const GEMINI_LITE: AiModelSpec = {
   ...GEMINI_FLASH,
-  id: 'gemini-2.5-flash-lite',
+  id: 'gemini-3.5-flash-lite',
   variant: 'gemini-lite',
 };
 
@@ -141,6 +141,14 @@ export const SEARCH_VARIANTS: readonly SearchVariant[] = [
   { name: 'gemini-ladder', model: GEMINI_FLASH, ladder: true, estimatedNeuronsFor23: 0, provider: 'gemini' },
   { name: 'gemini-lite', model: GEMINI_LITE, ladder: false, estimatedNeuronsFor23: 0, provider: 'gemini' },
   { name: 'gemini-lite-ladder', model: GEMINI_LITE, ladder: true, estimatedNeuronsFor23: 0, provider: 'gemini' },
+  {
+    name: 'llama4-gemini-fallback',
+    model: AI_MODELS[1],
+    secondModel: GEMINI_LITE,
+    ladder: true,
+    estimatedNeuronsFor23: 904,
+    provider: 'fallback',
+  },
 ];
 
 export function resolveAiModel(id: string | null | undefined): AiModelSpec {

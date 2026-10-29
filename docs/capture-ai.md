@@ -33,13 +33,16 @@ Workers AI のほかに、選んだときだけ Google Gemini API で同じ写�
 
 | 設定 | モデル |
 | --- | --- |
-| `CAPTURE_AI_MODEL=gemini` または `gemini-ladder` | `gemini-2.5-flash` |
-| `CAPTURE_AI_MODEL=gemini-lite` または `gemini-lite-ladder` | `gemini-2.5-flash-lite` |
-| `GEMINI_MODEL` | 上の2つのどちらか。置いたときだけ、variant のモデルを上書きする |
+| `CAPTURE_AI_MODEL=gemini` または `gemini-ladder` | `gemini-3.5-flash` |
+| `CAPTURE_AI_MODEL=gemini-lite` または `gemini-lite-ladder` | `gemini-3.5-flash-lite` |
+| `CAPTURE_AI_MODEL=llama4-gemini-fallback` | 先に llama 4。読めない、自信が低い、検索段が 0 件のときだけ `gemini-3.5-flash-lite` |
+| `GEMINI_MODEL` | 上の2つのどちらか。置いたときだけ、直接の Gemini variant のモデルを上書きする |
 
-`gemini-ladder` と `gemini-lite-ladder` の段は評価ハーネスだけが使う。通常画面でその名前を置いても、推定に使うモデルは同じで、検索の段は増えない。
+`gemini-2.5-flash` と `gemini-2.5-flash-lite` は新規利用者に 404 となるため使わない。`gemini-ladder` と `gemini-lite-ladder` の段は評価ハーネスだけが使う。通常画面でその名前を置いても、推定に使うモデルは同じで、検索の段は増えない。
 
-キーは `GEMINI_API_KEY`。リクエストの URL には置かず、ヘッダ `x-goog-api-key` だけ。`CAPTURE_SECRETS_FILE` は知らないキーを読まないので、このキーはプロセスの環境変数に置く。`GEMINI_MODEL` の初期値は `gemini-2.5-flash`。思考は `thinkingBudget: 0`（[Gemini の思考](https://ai.google.dev/gemini-api/docs/generate-content/thinking)）。返答は `responseMimeType: application/json` と `responseSchema`。ニューロン台帳は増えない。回数の上限は Google AI Studio の無料枠。
+無料枠はモデルごとに1日およそ20回で、中央値の待ちは約25秒。Gemini を既定にはしない。`llama4-gemini-fallback` も未設定なら動かない。Gemini が失敗、429、時間切れのときは llama 4 の結果を残す。0件のときの lite 呼び出しは、写真がある評価の `--mode all` で行う。
+
+キーは `GEMINI_API_KEY`。`AQ.` で始まるキーも通す。リクエストの URL には置かず、ヘッダ `x-goog-api-key` だけ。`CAPTURE_SECRETS_FILE` は知らないキーを読まないので、このキーはプロセスの環境変数に置く。`GEMINI_MODEL` の初期値は `gemini-3.5-flash`。思考はモデルごとで、flash は `thinkingLevel: low`、flash-lite は `thinkingLevel: minimal`（lite に `thinkingBudget: 0` を送ると 400。[Gemini 3.5](https://ai.google.dev/gemini-api/docs/generate-content/whats-new-gemini-3.5)、[思考](https://ai.google.dev/gemini-api/docs/generate-content/thinking)）。タイムアウトは 90 秒。画面の判定は待たずに1回だけ送り直す。429 と 503 を 10 秒、20 秒と最大6回待つのは評価ハーネスだけ。返答は `responseMimeType: application/json` と `responseSchema`。ニューロン台帳は増えない。
 
 評価は推測と検索を別のマシンで分けられる。推測側は `GEMINI_API_KEY` だけ、検索側は Yahoo と楽天のキーだけ。最後の JSON は今までのライブ評価と同じ項目（`diagnosticPoints` の満点は 92）なので、Workers の結果と並べられる。
 
@@ -48,7 +51,21 @@ node --import tsx tests/eval/photo-search/live-harness.ts --mode guess --variant
 node --import tsx tests/eval/photo-search/live-harness.ts --mode search --guesses /tmp/gemini-ladder-guesses.json --out /tmp/gemini-ladder.json
 ```
 
-lite は `--variant gemini-lite-ladder`。検索側は任意で `--truth /絶対パス/truth.json`。この環境では API キーが無いので、ライブの点数は未確認。
+lite は `--variant gemini-lite-ladder`。検索側は任意で `--truth /絶対パス/truth.json`。
+
+llama 4 のあと、必要なときだけ lite を足す。推測は Cloudflare のキーとニューロンの申告が要る。Gemini のキーが無いときは llama 4 の推測だけを書く。店のキーは推測には要らない。
+
+```bash
+node --import tsx tests/eval/photo-search/live-harness.ts \
+  --mode guess \
+  --variant llama4-gemini-fallback \
+  --images tests/eval/photo-search/images \
+  --out /tmp/llama4-gemini-guesses.json \
+  --account-used-neurons 0 \
+  --usage-day 2026-10-29
+```
+
+0件のときに lite でやり直すのは `--mode all`（同じマシンに Cloudflare、Gemini、Yahoo、楽天のキーがあるとき）。この環境では API キーが無いので、ライブの点数は未確認。
 
 ## 選んだモデル
 
