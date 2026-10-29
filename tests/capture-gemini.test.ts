@@ -13,10 +13,10 @@ import {
   type GeminiHttpRequest,
 } from '../src/lib/capture/gemini';
 import {
-  createGeminiFallbackIdentifier,
-  geminiFallbackIdentifierForEnv,
-  needsGeminiAfterMiss,
-  needsGeminiFallback,
+  type FallbackGuess,
+  llama4GeminiActors,
+  needsGeminiBeforeSearch,
+  runGeminiFallback,
 } from '../src/lib/capture/gemini-fallback';
 import { geminiHarnessBackoffMs, withGeminiHarnessRetry } from './eval/photo-search/gemini-retry';
 import { parseGuessDocument, searchGuessRows, summarizeLiveReport } from './eval/photo-search/split-run';
@@ -327,8 +327,10 @@ test('the identify route selects gemini without reading the environment itself',
   const harness = readFileSync(join('tests', 'eval', 'photo-search', 'live-harness.ts'), 'utf8');
   assert.equal(/process\.env/.test(route), false);
   assert.equal(route.includes('GEMINI_API_KEY'), false);
-  assert.ok(route.indexOf('geminiFallbackIdentifierForEnv(') < route.indexOf('geminiIdentifierForEnv('));
+  assert.ok(route.indexOf('runGeminiFallback(') < route.indexOf('geminiIdentifierForEnv('));
   assert.ok(route.indexOf('geminiIdentifierForEnv(') < route.indexOf('resolveProductIdentifier('));
+  assert.equal(route.includes('runGeminiFallback'), true);
+  assert.equal(harness.includes('runGeminiFallback'), true);
   assert.equal(gemini.includes('10_000'), false);
   assert.equal(harness.includes('withGeminiHarnessRetry'), true);
   assert.equal(harness.includes("provider === 'fallback'"), true);
@@ -378,40 +380,127 @@ test('an AQ-prefixed Gemini key is sent and a dotted key stays out of the URL', 
   assert.equal(Date.now() - started < 2_000, true);
 });
 
-test('llama 4 keeps a sure guess and a Gemini failure, and the harness waits only on 429 and 503', async () => {
+test('llama 4 calls Gemini only when unreadable or the ladder has no hits, and keeps a worse Gemini result', async () => {
   const photo = { mediaType: 'image/jpeg' as const, bytes: jpeg };
-  const sure = {
-    ok: true as const,
-    value: { confidence: 'sure' as const, products: [{ name: 'Dyson V11 掃除機', brand: 'Dyson', model: 'V11', jan: null }] },
-  };
-  let geminiCalls = 0;
-  const kept = await createGeminiFallbackIdentifier({
-    primary: { async identify() { return sure; } },
-    gemini: { async identify() { geminiCalls += 1; throw new Error('unused'); } },
-  }).identify(photo);
-  assert.equal(geminiCalls, 0);
-  assert.equal(kept.ok && kept.value.products[0].model, 'V11');
-  assert.equal(needsGeminiFallback(sure), false);
-  const unsure = {
+  const llama = {
     ok: true as const,
     value: { confidence: 'unsure' as const, products: [{ name: '白いスニーカー', brand: null, model: null, jan: null }] },
   };
-  assert.equal(needsGeminiFallback(unsure), true);
-  const replaced = await createGeminiFallbackIdentifier({
-    primary: { async identify() { return unsure; } },
-    gemini: { async identify() {
-      return { ok: true as const, value: { confidence: 'sure' as const, products: [{ name: 'Balenciaga Arena スニーカー', brand: 'Balenciaga', model: 'Arena', jan: null }] } };
-    } },
-  }).identify(photo);
-  assert.equal(replaced.ok && replaced.value.products[0].brand, 'Balenciaga');
-  const timedOut = await createGeminiFallbackIdentifier({
-    primary: { async identify() { return unsure; } },
-    gemini: { async identify() { return { ok: false as const, error: { code: 'AI_TIMEOUT' as const, error: 'slow' }, status: 504 }; } },
-  }).identify(photo);
-  assert.equal(timedOut.ok && timedOut.value.confidence, 'unsure');
-  assert.equal(needsGeminiAfterMiss({ asked: false, hits: 0 }), true);
-  assert.equal(needsGeminiAfterMiss({ asked: true, hits: 0 }), false);
-  assert.equal(needsGeminiAfterMiss({ asked: false, hits: 2 }), false);
+  const specific = {
+    ok: true as const,
+    value: { confidence: 'sure' as const, products: [{ name: 'Dyson V11 掃除機', brand: 'Dyson', model: null, jan: null }] },
+  };
+  const geminiHit = {
+    ok: true as const,
+    value: { confidence: 'sure' as const, products: [{ name: 'Balenciaga Arena スニーカー', brand: 'Balenciaga', model: 'Arena', jan: null }] },
+  };
+  const unreadable = { ok: true as const, value: { confidence: 'unreadable' as const, products: [] } };
+  const limit = { ok: false as const, error: { code: 'AI_LIMIT' }, status: 429 };
+  const timeout = { ok: false as const, error: { code: 'AI_TIMEOUT' }, status: 504 };
+  const vague = {
+    ok: true as const,
+    value: { confidence: 'sure' as const, products: [{ name: '靴', brand: null, model: null, jan: null }] },
+  };
+  assert.equal(needsGeminiBeforeSearch(llama), false);
+  assert.equal(needsGeminiBeforeSearch(specific), false);
+  assert.equal(needsGeminiBeforeSearch(vague), false);
+  assert.equal(needsGeminiBeforeSearch(unreadable), true);
+  assert.equal(needsGeminiBeforeSearch(limit), false);
+  assert.equal(needsGeminiBeforeSearch(timeout), true);
+
+  const searched: string[] = [];
+  const hitsFor = async (name: string) => {
+    searched.push(name);
+    return { hits: name.includes('Balenciaga') ? 3 : name.includes('スニーカー') ? 0 : 4, value: name };
+  };
+  const sureKept = await runGeminiFallback({
+    photo,
+    primary: { async identify() { return specific; } },
+    gemini: { async identify() { throw new Error('unused'); } },
+    search: (product) => hitsFor(product.name),
+  });
+  assert.equal(sureKept.usedGemini, false);
+  assert.equal(sureKept.guess.ok && sureKept.guess.value?.products[0].name.includes('Dyson'), true);
+  assert.deepEqual(searched, ['Dyson V11 掃除機']);
+
+  searched.length = 0;
+  let geminiCalls = 0;
+  const unsureKept = await runGeminiFallback({
+    photo,
+    primary: { async identify() { return llama; } },
+    gemini: { async identify(): Promise<FallbackGuess> { geminiCalls += 1; return geminiHit; } },
+    search: async (product) => {
+      searched.push(product.name);
+      return { hits: 5, value: product.name };
+    },
+  });
+  assert.equal(geminiCalls, 0);
+  assert.equal(unsureKept.usedGemini, false);
+  assert.deepEqual(searched, ['白いスニーカー']);
+
+  searched.length = 0;
+  geminiCalls = 0;
+  const replaced = await runGeminiFallback({
+    photo,
+    primary: { async identify() { return llama; } },
+    gemini: { async identify(): Promise<FallbackGuess> { geminiCalls += 1; return geminiHit; } },
+    search: async (product) => ({ hits: product.name.includes('Balenciaga') ? 2 : 0, value: product.name }),
+  });
+  assert.equal(geminiCalls, 1);
+  assert.equal(replaced.usedGemini, true);
+  assert.equal(replaced.guess.ok && replaced.guess.value?.products[0].brand, 'Balenciaga');
+  assert.equal(replaced.found?.hits, 2);
+
+  searched.length = 0;
+  const bothEmpty = await runGeminiFallback({
+    photo,
+    primary: { async identify() { return llama; } },
+    gemini: { async identify(): Promise<FallbackGuess> { return geminiHit; } },
+    search: async () => ({ hits: 0, value: 'empty' }),
+  });
+  assert.equal(bothEmpty.usedGemini, false);
+  assert.equal(bothEmpty.guess.ok && bothEmpty.guess.value?.products[0].name, '白いスニーカー');
+  assert.equal(bothEmpty.found?.value, 'empty');
+
+  const timedOut = await runGeminiFallback({
+    photo,
+    primary: { async identify() { return llama; } },
+    gemini: { async identify(): Promise<FallbackGuess> { return timeout; } },
+    search: async () => ({ hits: 0, value: 'llama-search' }),
+  });
+  assert.equal(timedOut.usedGemini, false);
+  assert.equal(timedOut.guess.ok && timedOut.guess.value?.confidence, 'unsure');
+  assert.equal(timedOut.found?.value, 'llama-search');
+
+  const fromUnreadable = await runGeminiFallback({
+    photo,
+    primary: { async identify() { return unreadable; } },
+    gemini: { async identify(): Promise<FallbackGuess> { return geminiHit; } },
+    search: async (product) => ({ hits: product.name.includes('Balenciaga') ? 2 : 0, value: product.name }),
+  });
+  assert.equal(fromUnreadable.usedGemini, true);
+  assert.equal(fromUnreadable.guess.ok && fromUnreadable.guess.value?.products[0].brand, 'Balenciaga');
+
+  const unreadableKept = await runGeminiFallback({
+    photo,
+    primary: { async identify() { return unreadable; } },
+    gemini: { async identify(): Promise<FallbackGuess> { return geminiHit; } },
+    search: async () => ({ hits: 0, value: 'gemini-empty' }),
+  });
+  assert.equal(unreadableKept.usedGemini, false);
+  assert.equal(unreadableKept.guess.ok && unreadableKept.guess.value?.confidence, 'unreadable');
+  assert.equal(unreadableKept.found, null);
+
+  let afterLimit = 0;
+  const stopped = await runGeminiFallback({
+    photo,
+    primary: { async identify() { return limit; } },
+    gemini: { async identify(): Promise<FallbackGuess> { afterLimit += 1; return geminiHit; } },
+    search: async () => { afterLimit += 1; return { hits: 0, value: 'no' }; },
+  });
+  assert.equal(afterLimit, 0);
+  assert.equal(stopped.guess.ok, false);
+
   const fallback = resolveSearchVariant('llama4-gemini-fallback');
   assert.equal(fallback.provider, 'fallback');
   assert.equal(fallback.ladder, true);
@@ -419,7 +508,7 @@ test('llama 4 keeps a sure guess and a Gemini failure, and the harness waits onl
   assert.equal(fallback.secondModel?.id, 'gemini-3.5-flash-lite');
   assert.equal(resolveSearchVariant(undefined).provider, 'workers');
   let called = false;
-  const gated = geminiFallbackIdentifierForEnv({
+  const gated = llama4GeminiActors({
     hooked: false,
     fake: { async identify() { throw new Error('fake'); } },
     env: { NODE_ENV: 'test' },
@@ -430,7 +519,7 @@ test('llama 4 keeps a sure guess and a Gemini failure, and the harness waits onl
     geminiHttp: async () => { called = true; return { status: 200, body: '' }; },
   });
   assert.equal(gated, null);
-  const selected = await geminiFallbackIdentifierForEnv({
+  const selected = llama4GeminiActors({
     hooked: false,
     fake: { async identify() { throw new Error('fake'); } },
     env: { NODE_ENV: 'test' },
@@ -439,8 +528,12 @@ test('llama 4 keeps a sure guess and a Gemini failure, and the harness waits onl
     apiToken: null,
     userId: 'member',
     geminiHttp: async () => { called = true; return { status: 200, body: '' }; },
-  })!.identify(photo);
-  assert.equal(selected.ok, false);
+  });
+  assert.equal(selected?.kind, 'fake');
+  if (selected?.kind === 'fake') {
+    const body = await selected.identify.identify(photo);
+    assert.equal(body.ok, false);
+  }
   assert.equal(called, false);
   const waits: number[] = [];
   const statuses = [429, 503, 200];

@@ -18,7 +18,7 @@
 
 - 写真の推定は、`CAPTURE_AI_MODEL` で選んだときだけ Google Gemini（無料枠）を使える。既定のモデルは変えていない。
 
-- 写真の Gemini 推定は `gemini-3.5-flash` と `gemini-3.5-flash-lite` を使い、`AQ.` のキーを受ける。llama 4 から lite へのフォールバックは選んだときだけ。
+- 写真の Gemini 推定は `gemini-3.5-flash` と `gemini-3.5-flash-lite` を使い、`AQ.` のキーを受ける。llama 4 から lite へのフォールバックは、読めないときと検索 0 件のときだけ。
 
 - ほしいものリストは絞り込みと並びのあと、まず50件を表示し、「もっと見る」で次の50件を足す（#36 の画面上のページ送りのみ）。
 
