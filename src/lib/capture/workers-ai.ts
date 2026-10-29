@@ -13,6 +13,8 @@ import {
   type ProductGuess,
   type ProductIdentifier,
 } from './contract';
+import { composeCapturedProduct, copiedPromptExample, guessIsSpecific } from './product-query';
+import { aiRequestBody, resolveAiModel } from './ai-variants';
 
 export const WORKERS_AI_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 export const WORKERS_AI_TIMEOUT_MS = 30_000;
@@ -39,12 +41,16 @@ const HOST = 'api.cloudflare.com';
 const INSTRUCTION = [
   '写真に写っている商品を1つだけ見て、JSONオブジェクトだけを返してください。',
   '説明、Markdown、URL、前置きは付けません。',
-  '{"confidence":"sure"|"unsure"|"unreadable","products":[{"name":"","brand":null,"model":null,"jan":null}]}',
+  '{"confidence":"sure"|"unsure"|"unreadable","products":[{"name":"","brand":null,"model":null,"productType":null,"color":null,"jan":null}]}',
   'nameは簡潔な商品名1つです。色、容量、キャリアの候補をスラッシュ（/）で並べてはいけません。',
-  '世代や型番が写真から読み取れないときは数字を推測せず、ブランドと商品の種類だけにします。例: Google Pixel。',
-  'nameは日本の通販で探せる商品名にし、分かるブランドと商品シリーズを含めます。',
+  '世代や型番が写真から読み取れないときは数字を推測せず、ブランドと商品の種類を両方書きます。種類を省いてブランド名だけにしない。',
+  '見本のブランド名や商品名は書きません。写真に見えている文字だけを使い、指示文の語を商品名に写さない。',
+  'productTypeは見えている種類を1語で書きます。分からなければnull。',
+  'colorは見えている色を1つ。分からなければnull。色の候補をスラッシュで並べません。',
+  'nameは日本の通販で探せる商品名にし、分かるブランド、シリーズ、色、種類を含めます。',
+  'modelは見えているシリーズや型番です。種類の語だけをmodelに入れない。分からなければnull。',
   '色や種類しか分からないときは unsure。読めないブランド、型番、サイズを推測してはいけません。',
-  'ブランドと商品シリーズを特定できた1商品だけなら sure。似た候補が複数なら unsure で products は3つまで。',
+  'ブランドと、商品の種類またはシリーズが特定できた1商品だけなら sure。ブランド名だけなら unsure。似た候補が複数なら unsure で products は3つまで。',
   '商品が判別できなければ confidence は unreadable、products は空配列です。',
   '判別できたのに products を空にしてはいけません。',
   'バーコードは判定しません。janは必ずnull。分からないbrandとmodelもnull。',
@@ -88,6 +94,7 @@ export interface WorkersAiIdentifierOptions {
   accountId: string;
   apiToken: string;
   userId: string;
+  model?: string;
   budget?: AiBudget;
   http?: WorkersAiHttp;
   now?: () => number;
@@ -118,7 +125,8 @@ export function createWorkersAiIdentifier(options: WorkersAiIdentifierOptions): 
       const accountId = normalizeAccount(options.accountId);
       const apiToken = normalizeToken(options.apiToken);
       const userId = normalizeUserId(options.userId);
-      const url = accountId ? endpoint(accountId) : null;
+      const model = resolveAiModel(options.model);
+      const url = accountId ? endpoint(accountId, model.id) : null;
       if (!accountId || !apiToken || !userId || !url) {
         return captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
       }
@@ -138,15 +146,8 @@ export function createWorkersAiIdentifier(options: WorkersAiIdentifierOptions): 
           );
         } else {
           slot = begun.token;
-          const imageBody = JSON.stringify({
-            messages: [
-              { role: 'system', content: INSTRUCTION },
-              { role: 'user', content: 'この写真の商品をJSONで返してください。' },
-            ],
-            image: `data:${photo.value.mediaType};base64,${Buffer.from(photo.value.bytes).toString('base64')}`,
-            max_tokens: AI_MAX_OUTPUT_TOKENS,
-            temperature: 0,
-          });
+          const dataUrl = `data:${photo.value.mediaType};base64,${Buffer.from(photo.value.bytes).toString('base64')}`;
+          const imageBody = JSON.stringify(aiRequestBody(model, INSTRUCTION, 'この写真の商品をJSONで返してください。', dataUrl));
           for (let attempt = 0; attempt < AI_TRANSIENT_ATTEMPTS; attempt += 1) {
             const called = await callModel(http, url, apiToken, imageBody, timeoutMs);
             if (called.kind !== 'response') {
@@ -343,6 +344,7 @@ export function resolveProductIdentifier(input: {
   http?: WorkersAiHttp;
   now?: () => number;
   timeoutMs?: number;
+  model?: string;
 }): ProductIdentifier {
   // 偽物は、本番以外かつ CAPTURE_TEST_HOOKS=1 のときだけ返す。
   const testMode = input.env?.NODE_ENV !== 'production' && input.env?.CAPTURE_TEST_HOOKS === '1';
@@ -359,6 +361,7 @@ export function resolveProductIdentifier(input: {
     http: input.http,
     now: input.now,
     timeoutMs: input.timeoutMs,
+    model: input.model,
   });
 }
 
@@ -456,8 +459,8 @@ function normalizeUserId(value: string): string | null {
   return userId;
 }
 
-function endpoint(accountId: string): string | null {
-  const url = new URL(`https://${HOST}/client/v4/accounts/${accountId}/ai/run/${WORKERS_AI_MODEL}`);
+function endpoint(accountId: string, modelId: string): string | null {
+  const url = new URL(`https://${HOST}/client/v4/accounts/${accountId}/ai/run/${modelId}`);
   if (url.protocol !== 'https:' || url.hostname !== HOST || url.username || url.password || url.search || url.hash) {
     return null;
   }
@@ -543,20 +546,49 @@ function parseJson(body: string): unknown {
   }
 }
 
-function extractModelOutput(payload: object): unknown {
-  const result = (payload as { result?: unknown }).result;
-  if (typeof result === 'string') return result;
-  if (!result || typeof result !== 'object') return null;
-  const record = result as Record<string, unknown>;
-  if (typeof record.response === 'string' || (record.response && typeof record.response === 'object')) return record.response;
-  const choice = Array.isArray(record.choices) ? record.choices[0] : null;
-  if (choice && typeof choice === 'object') {
-    const message = (choice as { message?: unknown }).message;
-    if (message && typeof message === 'object' && typeof (message as { content?: unknown }).content === 'string') {
-      return (message as { content: string }).content;
+function textOfContent(content: unknown): string | null {
+  if (typeof content === 'string') return content.trim() || null;
+  if (!Array.isArray(content)) return null;
+  const text = content.map((part) => {
+    if (typeof part === 'string') return part;
+    if (part && typeof part === 'object' && typeof (part as { text?: unknown }).text === 'string') {
+      return (part as { text: string }).text;
     }
+    return '';
+  }).join('');
+  return text.trim() || null;
+}
+
+function choiceText(record: Record<string, unknown>): string | null {
+  const choice = Array.isArray(record.choices) ? record.choices[0] : null;
+  if (!choice || typeof choice !== 'object') return null;
+  const message = (choice as { message?: unknown }).message;
+  if (!message || typeof message !== 'object') return null;
+  return textOfContent((message as { content?: unknown }).content);
+}
+
+function visibleAnswer(text: string): string {
+  let out = text;
+  for (const marker of ['<channel|>', '</think>', '<|end_of_thought|>']) {
+    const index = out.lastIndexOf(marker);
+    if (index >= 0) out = out.slice(index + marker.length);
   }
-  if (typeof record.confidence === 'string') return record;
+  return out.trim();
+}
+
+function extractModelOutput(payload: object): unknown {
+  const root = payload as Record<string, unknown>;
+  const result = root.result;
+  if (typeof result === 'string' && result.trim() && result.trim() !== 'null') return visibleAnswer(result);
+  const bags = [result, root].filter((item) => item && typeof item === 'object') as Record<string, unknown>[];
+  for (const record of bags) {
+    if (typeof record.response === 'string' && record.response.trim() && record.response.trim() !== 'null') {
+      return visibleAnswer(record.response);
+    }
+    const choice = choiceText(record);
+    if (choice) return visibleAnswer(choice);
+    if (typeof record.confidence === 'string') return record;
+  }
   return null;
 }
 
@@ -572,26 +604,39 @@ function parseGuess(output: unknown): ParsedGuess {
   if (!Array.isArray(record.products)) return { kind: 'invalid' };
   const products: ProductGuess[] = [];
   let catalog = false;
+  let echoed = false;
   for (const item of record.products) {
     if (products.length >= MAX_PRODUCTS) break;
     const product = normalizeProduct(item);
     if (!product) continue;
+    if (copiedPromptExample(product.product.name)) {
+      echoed = true;
+      continue;
+    }
     const sanitized = sanitizeGuessProduct(product);
     if (!sanitized) continue;
+    if (copiedPromptExample(sanitized.product.name)) {
+      echoed = true;
+      continue;
+    }
     if (sanitized.catalog) catalog = true;
     products.push(sanitized.product);
   }
-  if (products.length === 0) return { kind: 'invalid' };
+  if (products.length === 0) {
+    if (echoed) return { kind: 'guess', value: { confidence: 'unreadable', products: [] } };
+    return { kind: 'invalid' };
+  }
   let confidence: IdentifyConfidence = record.confidence === 'sure' || record.confidence === 'unsure'
     ? record.confidence
     : 'unsure';
   if (confidence === 'sure' && products.length !== 1) confidence = 'unsure';
   // 一般名や非表示の推測値では商品を特定できた扱いにしない。
-  if (catalog || products.some(product => !product.brand || !product.model)) confidence = 'unsure';
+  if (catalog || products.some(product => !guessIsSpecific(product))) confidence = 'unsure';
   return { kind: 'guess', value: { confidence, products } };
 }
 
-function sanitizeGuessProduct(product: ProductGuess): { product: ProductGuess; catalog: boolean } | null {
+function sanitizeGuessProduct(input: { product: ProductGuess; productType: string | null; color: string | null }): { product: ProductGuess; catalog: boolean } | null {
+  const product = input.product;
   const named = sanitizeProductName(product.name);
   if (!named.name) return null;
   let catalog = named.catalog;
@@ -609,9 +654,16 @@ function sanitizeGuessProduct(product: ProductGuess): { product: ProductGuess; c
     catalog = catalog || cleaned.catalog;
     model = catalog ? null : (cleaned.name || null);
   }
-  const visibleName = named.name.normalize('NFKC').toLocaleLowerCase('en-US');
-  const visible = (label: string | null) => label && visibleName.includes(label.normalize('NFKC').toLocaleLowerCase('en-US')) ? label : null;
-  return { product: { ...product, name: named.name, brand: visible(brand), model: visible(model) }, catalog };
+  const composed = composeCapturedProduct({
+    name: named.name,
+    brand,
+    model,
+    productType: catalog ? null : input.productType,
+    color: catalog ? null : input.color,
+    recoverSeries: !catalog,
+  });
+  if (!composed.name) return null;
+  return { product: { ...product, name: composed.name, brand: composed.brand, model: composed.model }, catalog };
 }
 
 function sanitizeProductName(name: string): { name: string; catalog: boolean } {
@@ -637,18 +689,22 @@ function sanitizeProductName(name: string): { name: string; catalog: boolean } {
   return { name: next, catalog: hadList || next !== normalized.trim() };
 }
 
-function normalizeProduct(item: unknown): ProductGuess | null {
+function normalizeProduct(item: unknown): { product: ProductGuess; productType: string | null; color: string | null } | null {
   if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
   const record = item as Record<string, unknown>;
   if (typeof record.name !== 'string') return null;
   const name = cleanLabel(record.name, 200);
   if (!name || isUrlish(name)) return null;
   return {
-    name,
-    brand: optionalLabel(record.brand, 80),
-    model: optionalLabel(record.model, 80),
-    // LLMのJANはチェックサムが正しくても画像由来と検証できない。
-    jan: null,
+    product: {
+      name,
+      brand: optionalLabel(record.brand, 80),
+      model: optionalLabel(record.model, 80),
+      // LLMのJANはチェックサムが正しくても画像由来と検証できない。
+      jan: null,
+    },
+    productType: optionalLabel(record.productType, 40),
+    color: optionalLabel(record.color, 40),
   };
 }
 

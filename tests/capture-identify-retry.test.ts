@@ -178,8 +178,9 @@ test('a name without a variant list keeps its generation', async () => {
   const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
   assert.equal(result.ok, true);
   if (!result.ok) return;
-  assert.equal(result.value.confidence, 'unsure');
+  assert.equal(result.value.confidence, 'sure');
   assert.equal(result.value.products[0].name, 'Google Pixel 10 Pro Fold');
+  assert.equal(result.value.products[0].model, 'Pixel 10 Pro Fold');
 });
 
 test('missing shop keys are not a retryable search failure, and one configured shop still returns candidates', async () => {

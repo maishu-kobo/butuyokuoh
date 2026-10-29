@@ -28,3 +28,29 @@ test('an uncertain photo asks for detail and a filename code is used only after 
   await expect.poll(() => searches.length).toBe(2);
   expect(searches[1]).toEqual({ name: 'Example Alpha', brand: null, model: null, jan: null });
 });
+
+test('a failed photo query can be corrected manually without retaining the inferred brand (#251)', async ({ page }) => {
+  const searches: unknown[] = [];
+  await page.route('**/api/capture/identify', route => route.fulfill({ json: {
+    confidence: 'sure', products: [{ name: 'Gucci - Gucci Sylvie Bag', brand: 'Gucci', model: 'Sylvie', jan: null }],
+  } }));
+  await page.route('**/api/capture/search', route => {
+    searches.push(route.request().postDataJSON());
+    return route.fulfill({ status: searches.length === 1 ? 502 : 200, json: searches.length === 1
+      ? { code: 'SEARCH_FAILED', error: '候補を取得できませんでした', failures: [{ site: 'rakuten', code: 'SEARCH_FAILED', error: '楽天の候補を取得できませんでした' }] }
+      : { candidates: [], failures: [] },
+    });
+  });
+  const response = await page.request.post('/api/auth/register', { data: { email: 'query251@example.test', password: 'test-password' } });
+  expect(response.ok()).toBeTruthy();
+  await page.goto('/');
+  await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
+  const jpeg = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#123456' } }).jpeg().toBuffer();
+  await page.getByLabel('写真ファイル').setInputFiles({ name: 'bag.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+  await expect.poll(() => searches.length).toBe(1);
+  await page.getByLabel('探す商品名', { exact: true }).fill('7897722AA4V1000');
+  await page.getByRole('button', { name: 'この名前で探す', exact: true }).click();
+  await expect.poll(() => searches.length).toBe(2);
+  expect(searches[1]).toEqual({ name: '7897722AA4V1000', brand: null, model: null, jan: null });
+  await expect(page.getByText('見つかりませんでした', { exact: true })).toBeVisible();
+});
