@@ -159,7 +159,7 @@ const initial=[
 {id:4,name:'iPhone 5',kind:'集める',price:6200,shop:'リユース店D',date:'',image:'iphone-5',note:'コレクション用。状態とバッテリーを確認。'},
 {id:5,name:'QuietComfort 25 別店舗候補',kind:'聴く',price:19800,shop:'オーディオ店E',date:'',image:'bose-headphones',note:'付属品の有無も確認して比較。'}
 ];
-let items=initial.map(x=>({...x})),selection=new Set(),view='list',objectUrl=null;
+let items=initial.map(x=>({...x})),selection=new Set(),view='list';
 const yen=n=>'¥'+n.toLocaleString('ja-JP');
 function el(tag,text,cls){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;}
 function updateSelection(){byId('selected').hidden=selection.size===0;byId('selected-count').textContent=selection.size+'件を選択中';byId('selected-compare').disabled=selection.size<2;}
@@ -183,7 +183,7 @@ function render(){
 function show(id){byId(id).showModal();}
 function openAdd(){byId('url-result').hidden=true;byId('photo-result').hidden=true;byId('register-area').hidden=true;byId('candidates').replaceChildren();byId('photo-file').value='';byId('add-status').textContent='';mode('url');show('add-dialog');}
 function mode(m){byId('url-form').hidden=m!=='url';byId('photo-form').hidden=m!=='photo';byId('url-mode').setAttribute('aria-pressed',String(m==='url'));byId('photo-mode').setAttribute('aria-pressed',String(m==='photo'));byId('add-status').textContent='';}
-function usePhoto(src){const image=document.createElement('img');image.id='picked-photo';image.width=110;image.height=100;image.style.objectFit='contain';image.alt='選択した写真';image.onerror=()=>{byId('add-status').textContent='このブラウザでは写真を表示できません。JPEG/PNGまたはサンプルをお試しください。';};image.src=src;byId('picked-photo').replaceWith(image);byId('photo-result').hidden=false;byId('candidates').replaceChildren();byId('register-area').hidden=true;byId('add-status').textContent='写真は端末内で表示しました。未確定の推定を確認してください。';}
+function showPhoto(image){image.id='picked-photo';image.style.width='110px';image.style.height='100px';image.style.objectFit='contain';image.setAttribute('aria-label','選択した写真');byId('picked-photo').replaceWith(image);byId('photo-result').hidden=false;byId('candidates').replaceChildren();byId('register-area').hidden=true;byId('add-status').textContent='写真は端末内で表示しました。未確定の推定を確認してください。';}
 function save(name,price,shop){items.push({id:Math.max(...items.map(x=>x.id))+1,name,price,shop,date:'',kind:'聴く',image:'bose-headphones',note:'この試作で登録したサンプル。'});}
 function finish(message){byId('add-dialog').close();byId('app-status').textContent=message;view='list';byId('query').value='';render();}
 function openDetail(x){
@@ -208,8 +208,19 @@ byId('reset-study').onclick=()=>{items=initial.map(x=>({...x}));selection=new Se
 byId('add-top').onclick=openAdd;byId('url-mode').onclick=()=>mode('url');byId('photo-mode').onclick=()=>mode('photo');
 byId('url-preview').onclick=()=>{let u;try{u=new URL(byId('product-url').value);}catch{}if(!u||!['https:','http:'].includes(u.protocol)){byId('add-status').textContent='http または https の商品URLを入力してください。';return;}byId('url-result').hidden=false;byId('add-status').textContent='サンプル情報を確認してください。URLには接続していません。';};
 byId('url-save').onclick=()=>{save('サンプルのヘッドホン',18400,'架空ショップA');finish('1件をリストに保存しました（この表示中のみ）');};
-byId('sample-photo').onclick=()=>usePhoto(assets['bose-headphones']);
-byId('photo-file').onchange=()=>{const f=byId('photo-file').files[0];if(!f)return;if(!f.type.startsWith('image/')){byId('add-status').textContent='画像ファイルを選んでください。';return;}if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=URL.createObjectURL(f);usePhoto(objectUrl);};
+byId('sample-photo').onclick=()=>showPhoto(photo({image:'bose-headphones',name:'選択した写真'},''));
+byId('photo-file').onchange=async()=>{
+  const file=byId('photo-file').files[0];if(!file)return;
+  if(!file.type.startsWith('image/')){byId('add-status').textContent='画像ファイルを選んでください。';return;}
+  try{
+    const bitmap=await createImageBitmap(file);
+    const canvas=document.createElement('canvas');canvas.width=110;canvas.height=100;
+    const context=canvas.getContext('2d');if(!context){bitmap.close();throw new Error('Canvas unavailable');}
+    const scale=Math.min(110/bitmap.width,100/bitmap.height);
+    context.drawImage(bitmap,(110-bitmap.width*scale)/2,(100-bitmap.height*scale)/2,bitmap.width*scale,bitmap.height*scale);bitmap.close();
+    canvas.setAttribute('role','img');canvas.dataset.photo='local';showPhoto(canvas);
+  }catch{byId('add-status').textContent='このブラウザでは写真を表示できません。JPEG/PNGまたはサンプルをお試しください。';}
+};
 byId('search-candidates').onclick=()=>{
   if(!byId('photo-query').value.trim()){byId('add-status').textContent='商品名を入力してください。';return;}
   const candidates=[18400,19800].map((p,i)=>{

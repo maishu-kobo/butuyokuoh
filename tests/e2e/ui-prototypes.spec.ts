@@ -36,9 +36,9 @@ for (const concept of ['a', 'b', 'c']) {
       await page.locator('#photo-mode').click();
       await page.locator('#photo-file').setInputFiles({
         name: 'anonymous.png', mimeType: 'image/png',
-        buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlQAAAABJRU5ErkJggg==', 'base64'),
+        buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==', 'base64'),
       });
-      await expect(page.locator('#picked-photo')).toHaveAttribute('src', /^blob:/);
+      await expect(page.locator('#picked-photo')).toHaveAttribute('data-photo', 'local');
       await page.locator('#sample-photo').click();
       await expect(page.locator('#picked-photo')).toHaveAttribute('src', /^data:image\//);
       await expect(page.locator('#photo-result')).toContainText('ブランド・型番は未確定');
