@@ -1,5 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import evaluationCatalog from './eval/photo-search/catalog.json';
+import sources from './eval/photo-search/sources.json';
 import { summarizePhotoEvaluation } from './eval/photo-search/metrics.mjs';
 import { exactProductTop5, scorePhoto } from './eval/photo-search/rubric';
 import { createWorkersAiIdentifier } from '../src/lib/capture/workers-ai';
@@ -87,5 +91,42 @@ test('filename-like evaluation identifiers cannot enter the model HTTP body', as
   assert.equal(bodies.length, 2);
   assert.equal(bodies[0], bodies[1]);
   assert.equal(bodies[0].includes('7897722AA4V1000'), false);
+});
+
+test('catalog provenance stays aligned with the 23 source images without treating unknown SKUs as truth', () => {
+  const images = evaluationCatalog.cases.filter((item) => item.file !== null);
+  assert.equal(images.length, 23);
+  const hashes = new Set<string>();
+  for (const item of images) {
+    const source = sources.images.find((entry) => entry.id === item.id);
+    assert.ok(source, item.id);
+    assert.equal(item.file, source.file);
+    assert.equal(item.sourcePage, source.page);
+    assert.ok(source.license && source.artist);
+    assert.deepEqual(item.previousIds, [source.previousId]);
+    const bytes = readFileSync(new URL('../' + item.file, import.meta.url));
+    const hash = createHash('sha1').update(Buffer.from('blob ' + bytes.length + '\0')).update(bytes).digest('hex');
+    assert.equal(item.gitBlobSha, hash, item.id);
+    assert.equal(hashes.has(hash), false, item.id);
+    hashes.add(hash);
+    assert.equal(item.truth?.identifiers.length ?? 0, 0, item.id);
+  }
+  const original = evaluationCatalog.cases.find((item) => item.id === 'original-bag-247');
+  assert.equal(original?.file, null);
+  assert.deepEqual(original?.truth?.identifiers, ['7897722AA4V1000']);
+});
+
+test('historical reports remain unscored for exact products and preserve their actual call counts', () => {
+  for (const [name, calls, excluded] of [['live-main.json', 24, 1], ['live-pr.json', 24, 1], ['live-pr03.json', 23, 0]] as const) {
+    const saved = JSON.parse(readFileSync(new URL('./eval/photo-search/fixtures/' + name, import.meta.url), 'utf8'));
+    const report = summarizePhotoEvaluation(saved, evaluationCatalog, scoring);
+    assert.equal(report.condition, 'legacy-unspecified');
+    assert.equal(report.coverage.observed, 23);
+    assert.equal(report.coverage.excluded.length, excluded);
+    assert.deepEqual(report.accuracy.exactProductTop5, { eligible: 0, hits: 0, rate: null });
+    assert.deepEqual(report.accuracy.brand, { eligible: 8, hits: 5, rate: 0.625 });
+    assert.equal(report.usage.modelCalls, calls);
+    assert.equal(report.usage.callsWithoutReportedNeurons, 0);
+  }
 });
 

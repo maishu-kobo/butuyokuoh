@@ -1,0 +1,561 @@
+{
+  "schemaVersion": 1,
+  "baseline": "78161507701a4fc2f49919b8cb91cc3670a215c2",
+  "note": "Source descriptions and licenses are inherited from sources.json. All 23 images were visually reviewed on 2026-10-29. Only readable brand marks are verified; SKU and product URLs remain unconfirmed. Model outputs never establish truth.",
+  "excludedAliases": [
+    {
+      "id": "gucci-brand-only",
+      "duplicateOf": "prada-tooled-handbag",
+      "reason": "Duplicate of lv-handbag in historical runs, documented in sources.json; retain resource usage but exclude duplicate accuracy row"
+    }
+  ],
+  "cases": [
+    {
+      "id": "balenciaga-arena",
+      "previousIds": [
+        "balenciaga-shoes"
+      ],
+      "file": "tests/eval/photo-search/images/balenciaga-arena.jpg",
+      "gitBlobSha": "020873b63154a0ff5f50de443bc5fc8393b485fe",
+      "sourceRecord": "sources.json#balenciaga-arena",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3A2023-07-15-Balenciaga-Arena.jpg",
+      "sourceReportedDescription": "Balenciaga Arena の白いハイカットスニーカー",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": null,
+      "visualObservation": "白いハイカットスニーカー2足。写真内でSKUは読めない。"
+    },
+    {
+      "id": "adidas-leather-tennis",
+      "previousIds": [
+        "balenciaga-type-in-model"
+      ],
+      "file": "tests/eval/photo-search/images/adidas-leather-tennis.jpg",
+      "gitBlobSha": "2f89f9fe666235b7160a96302323667732c4afea",
+      "sourceRecord": "sources.json#adidas-leather-tennis",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3AShoes%2C_leather_tennis_%28pair%29_%28AM_2017.30.1-15%29.jpg",
+      "sourceReportedDescription": "Adidas のレザーテニスシューズ",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "historical-or-context-image-needs-review",
+      "truth": null,
+      "visualObservation": "3本線の中古レザースニーカー。SKUは読めない。"
+    },
+    {
+      "id": "nike-cortez",
+      "previousIds": [
+        "nike-sneakers"
+      ],
+      "file": "tests/eval/photo-search/images/nike-cortez.jpg",
+      "gitBlobSha": "34dcb2757698e1b8923812bf7d8f16426a5fe1b9",
+      "sourceRecord": "sources.json#nike-cortez",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3ANike_Cortez.jpg",
+      "sourceReportedDescription": "Nike Cortez",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": null,
+      "visualObservation": "白・赤・青のローカットスニーカー。SKUは読めない。"
+    },
+    {
+      "id": "converse-all-star",
+      "previousIds": [
+        "converse-complete"
+      ],
+      "file": "tests/eval/photo-search/images/converse-all-star.jpg",
+      "gitBlobSha": "dce91df85a5fd1c04b2058b3d2f9a54d7e8c9be6",
+      "sourceRecord": "sources.json#converse-all-star",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3AA_classic_Black_pair_of_Converse_All_Stars_resting_on_the_Black_%26_White_Ed._Shoebox_%281998-2002%29.JPG",
+      "sourceReportedDescription": "Converse All Star の黒いスニーカー",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": {
+        "status": "verified",
+        "productName": null,
+        "brand": "Converse",
+        "model": null,
+        "productUrl": null,
+        "identifiers": [],
+        "productNameAliases": [],
+        "brandAliases": [
+          "Converse",
+          "コンバース"
+        ],
+        "evidence": [
+          "https://github.com/maishu-kobo/butuyokuoh/blob/78161507701a4fc2f49919b8cb91cc3670a215c2/tests/eval/photo-search/images/converse-all-star.jpg"
+        ]
+      },
+      "visualObservation": "黒いハイカットスニーカー。CONVERSE ALL STARの丸いパッチが読める。"
+    },
+    {
+      "id": "oxford-brogue",
+      "previousIds": [
+        "regal-dress-shoes"
+      ],
+      "file": "tests/eval/photo-search/images/oxford-brogue.jpg",
+      "gitBlobSha": "074d39498e0465f72f8152c51684d0ce462be4ba",
+      "sourceRecord": "sources.json#oxford-brogue",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3AParts_of_a_shoe_-_Oxford_brogue_wingtip.jpg",
+      "sourceReportedDescription": "オックスフォードのブローグ靴の部位図",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "historical-or-context-image-needs-review",
+      "truth": null,
+      "visualObservation": "靴の部位名quarter/vamp/wingtipを加えた説明画像。"
+    },
+    {
+      "id": "birkenstock-arizona",
+      "previousIds": [
+        "birkenstock-sandals"
+      ],
+      "file": "tests/eval/photo-search/images/birkenstock-arizona.jpg",
+      "gitBlobSha": "e2c35c0732f30105ca4820efc1e68d9cba2d74e6",
+      "sourceRecord": "sources.json#birkenstock-arizona",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3ABirkenstock_Arizona.jpg",
+      "sourceReportedDescription": "Birkenstock Arizona",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": null,
+      "visualObservation": "2本ストラップの黒いサンダルを履いた足。SKUは読めない。"
+    },
+    {
+      "id": "prada-tooled-handbag",
+      "previousIds": [
+        "lv-handbag"
+      ],
+      "file": "tests/eval/photo-search/images/prada-tooled-handbag.jpg",
+      "gitBlobSha": "87539bef364a19535ce8556f7d0fd59bc0ca43e7",
+      "sourceRecord": "sources.json#prada-tooled-handbag",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3A1935-45_Prada_handbag%2C_tooled_and_gilded_leather_02.jpg",
+      "sourceReportedDescription": "1935-45年の Prada の型押し革ハンドバッグ。以前の lv-handbag と gucci-brand-only は同じ写真だった",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "historical-or-context-image-needs-review",
+      "truth": null,
+      "visualObservation": "型押し模様の茶色いハンドバッグ。写真内のブランド・SKUは読めない。"
+    },
+    {
+      "id": "trekking-backpack",
+      "previousIds": [
+        "northface-backpack"
+      ],
+      "file": "tests/eval/photo-search/images/trekking-backpack.jpg",
+      "gitBlobSha": "693a25c93c89808f745517bae1a7632097a7026e",
+      "sourceRecord": "sources.json#trekking-backpack",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3AA_backpack_with_trekking_poles_and_shoes.jpg",
+      "sourceReportedDescription": "トレッキングポールと靴が写ったバックパック",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": null,
+      "visualObservation": "バックパック、トレッキングポール、靴が同時に写る。対象商品が複数。"
+    },
+    {
+      "id": "rune-cotton-tote",
+      "previousIds": [
+        "muji-tote"
+      ],
+      "file": "tests/eval/photo-search/images/rune-cotton-tote.jpg",
+      "gitBlobSha": "608a4755aa57a350f5f66303a9666dbc1fc5c1eb",
+      "sourceRecord": "sources.json#rune-cotton-tote",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3AA_cotton_bag_with_runes_-_Baumwolltasche_mit_Runen.jpg",
+      "sourceReportedDescription": "ルーン文字の入ったコットントート",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": null,
+      "visualObservation": "ルーン文字の円形プリントがある青いトートバッグ。"
+    },
+    {
+      "id": "iphone-5",
+      "previousIds": [
+        "iphone"
+      ],
+      "file": "tests/eval/photo-search/images/iphone-5.jpg",
+      "gitBlobSha": "5ceace6b9bfe2c2088aefcfa3f2577f297433421",
+      "sourceRecord": "sources.json#iphone-5",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3AIPhone_5.png",
+      "sourceReportedDescription": "iPhone 5",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": null,
+      "visualObservation": "黒いスマートフォンの正面。容量・地域・SKUは判別できない。"
+    },
+    {
+      "id": "bose-headphones",
+      "previousIds": [
+        "sony-headphones"
+      ],
+      "file": "tests/eval/photo-search/images/bose-headphones.jpg",
+      "gitBlobSha": "aef70c06682def4c74868c942a8b6f013b0d34b6",
+      "sourceRecord": "sources.json#bose-headphones",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3ABose_QuietComfort_25_Acoustic_Noise_Cancelling_Headphones_with_Carry_Case.jpg",
+      "sourceReportedDescription": "Bose QuietComfort 25",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": {
+        "status": "verified",
+        "productName": null,
+        "brand": "Bose",
+        "model": null,
+        "productUrl": null,
+        "identifiers": [],
+        "productNameAliases": [],
+        "brandAliases": [
+          "Bose",
+          "ボーズ"
+        ],
+        "evidence": [
+          "https://github.com/maishu-kobo/butuyokuoh/blob/78161507701a4fc2f49919b8cb91cc3670a215c2/tests/eval/photo-search/images/bose-headphones.jpg"
+        ]
+      },
+      "visualObservation": "BOSE表記のある黒い有線ヘッドホンとケース。SKUは読めない。"
+    },
+    {
+      "id": "adapted-mirrorless-camera",
+      "previousIds": [
+        "canon-camera"
+      ],
+      "file": "tests/eval/photo-search/images/adapted-mirrorless-camera.jpg",
+      "gitBlobSha": "ef176b6fd3a005d6d2ccecc05131f27964d88628",
+      "sourceRecord": "sources.json#adapted-mirrorless-camera",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3AAdapted_Lens_on_Mirrorless_Camera.jpg",
+      "sourceReportedDescription": "ミラーレスカメラに付けたレンズ",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": {
+        "status": "verified",
+        "productName": null,
+        "brand": "Olympus",
+        "model": null,
+        "productUrl": null,
+        "identifiers": [],
+        "productNameAliases": [],
+        "brandAliases": [
+          "Olympus",
+          "オリンパス"
+        ],
+        "evidence": [
+          "https://github.com/maishu-kobo/butuyokuoh/blob/78161507701a4fc2f49919b8cb91cc3670a215c2/tests/eval/photo-search/images/adapted-mirrorless-camera.jpg"
+        ]
+      },
+      "visualObservation": "OLYMPUS OM-Dと読めるカメラ本体と別レンズ。正確な世代・組合せは未確定。"
+    },
+    {
+      "id": "broken-laptop-2006",
+      "previousIds": [
+        "macbook"
+      ],
+      "file": "tests/eval/photo-search/images/broken-laptop-2006.jpg",
+      "gitBlobSha": "61c9f633af11887e7db49f51622e684803bf808c",
+      "sourceRecord": "sources.json#broken-laptop-2006",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3A2006_broken_laptop_computer_237398638.jpg",
+      "sourceReportedDescription": "2006年の壊れたノートパソコン",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "historical-or-context-image-needs-review",
+      "truth": {
+        "status": "verified",
+        "productName": null,
+        "brand": "HP",
+        "model": null,
+        "productUrl": null,
+        "identifiers": [],
+        "productNameAliases": [],
+        "brandAliases": [
+          "HP",
+          "ヒューレットパッカード"
+        ],
+        "evidence": [
+          "https://github.com/maishu-kobo/butuyokuoh/blob/78161507701a4fc2f49919b8cb91cc3670a215c2/tests/eval/photo-search/images/broken-laptop-2006.jpg"
+        ]
+      },
+      "visualObservation": "hpロゴが読める、画面が割れたノートPC。MacBookではない。SKUは読めない。"
+    },
+    {
+      "id": "casio-g-shock",
+      "previousIds": [
+        "gshock"
+      ],
+      "file": "tests/eval/photo-search/images/casio-g-shock.jpg",
+      "gitBlobSha": "b1b71524633ff7a1511a7dc4f3228c8cec800033",
+      "sourceRecord": "sources.json#casio-g-shock",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3ACasio_G-Shock_analog-digital_watch.jpeg",
+      "sourceReportedDescription": "Casio G-Shock",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": {
+        "status": "verified",
+        "productName": null,
+        "brand": "Casio",
+        "model": null,
+        "productUrl": null,
+        "identifiers": [],
+        "productNameAliases": [],
+        "brandAliases": [
+          "Casio",
+          "カシオ"
+        ],
+        "evidence": [
+          "https://github.com/maishu-kobo/butuyokuoh/blob/78161507701a4fc2f49919b8cb91cc3670a215c2/tests/eval/photo-search/images/casio-g-shock.jpg"
+        ]
+      },
+      "visualObservation": "CASIO G-SHOCK表記が読める黒い腕時計。SKUは読めない。"
+    },
+    {
+      "id": "mac-lipstick",
+      "previousIds": [
+        "dior-lipstick"
+      ],
+      "file": "tests/eval/photo-search/images/mac-lipstick.jpg",
+      "gitBlobSha": "286889aa15ca4f28b81adfb2aa013498013f7daa",
+      "sourceRecord": "sources.json#mac-lipstick",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3ALipstick_mac_day_4.jpg",
+      "sourceReportedDescription": "MAC の口紅",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": {
+        "status": "verified",
+        "productName": null,
+        "brand": "MAC",
+        "model": null,
+        "productUrl": null,
+        "identifiers": [],
+        "productNameAliases": [],
+        "brandAliases": [
+          "MAC",
+          "M.A.C",
+          "マック"
+        ],
+        "evidence": [
+          "https://github.com/maishu-kobo/butuyokuoh/blob/78161507701a4fc2f49919b8cb91cc3670a215c2/tests/eval/photo-search/images/mac-lipstick.jpg"
+        ]
+      },
+      "visualObservation": "MAC表記が読める口紅と複数の化粧品。口紅の色番は読めない。"
+    },
+    {
+      "id": "coty-suma-perfume",
+      "previousIds": [
+        "chanel-perfume"
+      ],
+      "file": "tests/eval/photo-search/images/coty-suma-perfume.jpg",
+      "gitBlobSha": "4c6091977f814b5bf737c58eb85250ccc0a34f91",
+      "sourceRecord": "sources.json#coty-suma-perfume",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3AA_Suma-perfume_by_Coty.1.jpg",
+      "sourceReportedDescription": "Coty の Suma 香水",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "historical-or-context-image-needs-review",
+      "truth": {
+        "status": "verified",
+        "productName": null,
+        "brand": "Coty",
+        "model": null,
+        "productUrl": null,
+        "identifiers": [],
+        "productNameAliases": [],
+        "brandAliases": [
+          "Coty",
+          "コティ"
+        ],
+        "evidence": [
+          "https://github.com/maishu-kobo/butuyokuoh/blob/78161507701a4fc2f49919b8cb91cc3670a215c2/tests/eval/photo-search/images/coty-suma-perfume.jpg"
+        ]
+      },
+      "visualObservation": "SUMA/COTY表記が読める香水瓶と箱。販売単位・品番は未確定。"
+    },
+    {
+      "id": "denim-jacket",
+      "previousIds": [
+        "levis-jacket"
+      ],
+      "file": "tests/eval/photo-search/images/denim-jacket.jpg",
+      "gitBlobSha": "f9cf9d70ec758b6bb70577f7ec7248175e2d1c54",
+      "sourceRecord": "sources.json#denim-jacket",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3ADenim_jacket_details.jpg",
+      "sourceReportedDescription": "デニムジャケットのディテール",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": null,
+      "visualObservation": "デニムジャケットのボタンと縫い目の近接画像。ブランド・SKUは未確定。"
+    },
+    {
+      "id": "blue-jeans",
+      "previousIds": [
+        "levis-jeans"
+      ],
+      "file": "tests/eval/photo-search/images/blue-jeans.jpg",
+      "gitBlobSha": "10168a4a0e2fcfa5bb0fa1ec7d68f4be58a72e45",
+      "sourceRecord": "sources.json#blue-jeans",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3ABlonde_woman_wearing_jeans_-_2007.JPG",
+      "sourceReportedDescription": "ジーンズをはいた人物",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "historical-or-context-image-needs-review",
+      "truth": null,
+      "visualObservation": "人物が履いたジーンズ。ブランド・SKUは読めない。"
+    },
+    {
+      "id": "hema-white-tshirt",
+      "previousIds": [
+        "uniqlo-shirt"
+      ],
+      "file": "tests/eval/photo-search/images/hema-white-tshirt.jpg",
+      "gitBlobSha": "ecd37b69603ff15c9671d3b0acc8aa4a3f35834d",
+      "sourceRecord": "sources.json#hema-white-tshirt",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3ADutch_flag_white_t-shirt_at_the_HEMA%2C_Winschoten_%282019%29.jpg",
+      "sourceReportedDescription": "HEMA の白い T シャツ",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": null,
+      "visualObservation": "店頭のオランダ国旗柄の白いTシャツ。無地ではない。複数の商品が写る。"
+    },
+    {
+      "id": "ceramic-mugs",
+      "previousIds": [
+        "iittala-mug"
+      ],
+      "file": "tests/eval/photo-search/images/ceramic-mugs.jpg",
+      "gitBlobSha": "828d684838d0c14e569a3d5b20039c3d72bb1981",
+      "sourceRecord": "sources.json#ceramic-mugs",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3A02024_1733_ceramic_mugs.jpg",
+      "sourceReportedDescription": "陶器のマグカップ",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": null,
+      "visualObservation": "柄入りマグが複数とポットが写る。素材は写真だけでは確定しない。"
+    },
+    {
+      "id": "dyson-v10-vacuum",
+      "previousIds": [
+        "dyson-vacuum"
+      ],
+      "file": "tests/eval/photo-search/images/dyson-v10-vacuum.jpg",
+      "gitBlobSha": "a9c118e92c2fd0cba0031dfcc60062708fe2f93b",
+      "sourceRecord": "sources.json#dyson-v10-vacuum",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3ADyson_Cyclone_V10_Absolute_cordless_stick_vacuum.jpg",
+      "sourceReportedDescription": "Dyson Cyclone V10 Absolute",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": null,
+      "visualObservation": "横置きのコードレス掃除機。正確な世代・構成は出典と追加照合が必要。"
+    },
+    {
+      "id": "pen-writing-example",
+      "previousIds": [
+        "pilot-pen"
+      ],
+      "file": "tests/eval/photo-search/images/pen-writing-example.jpg",
+      "gitBlobSha": "3d299e4cb673cdfbd1be049c34e77a7c0a0fc69d",
+      "sourceRecord": "sources.json#pen-writing-example",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3AA_pen_writing_%22Example%22.jpg",
+      "sourceReportedDescription": "Example と書いているペン",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "historical-or-context-image-needs-review",
+      "truth": null,
+      "visualObservation": "exampleと筆記するペンの先端。ブランド・SKUは読めない。"
+    },
+    {
+      "id": "alb-wristwatch",
+      "previousIds": [
+        "rolex-brand-only"
+      ],
+      "file": "tests/eval/photo-search/images/alb-wristwatch.jpg",
+      "gitBlobSha": "52d8465ca500770d3234619c33b913cba400a63f",
+      "sourceRecord": "sources.json#alb-wristwatch",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File%3AA.L.B_Watch_Model_A.L.B_100.JPG",
+      "sourceReportedDescription": "A.L.B の腕時計",
+      "visualReview": "reviewed-2026-10-29",
+      "categoryDiagnostic": true,
+      "exactEvaluation": "excluded-unverified-sku",
+      "searchSuitability": "availability-and-variant-unverified",
+      "truth": {
+        "status": "verified",
+        "productName": null,
+        "brand": "A.L.B",
+        "model": null,
+        "productUrl": null,
+        "identifiers": [],
+        "productNameAliases": [],
+        "brandAliases": [
+          "A.L.B",
+          "ALB"
+        ],
+        "evidence": [
+          "https://github.com/maishu-kobo/butuyokuoh/blob/78161507701a4fc2f49919b8cb91cc3670a215c2/tests/eval/photo-search/images/alb-wristwatch.jpg"
+        ]
+      },
+      "visualObservation": "A.L.Bと読める腕時計。品番は写真内で読めない。"
+    },
+    {
+      "id": "original-bag-247",
+      "previousIds": [],
+      "file": null,
+      "sourceRecord": "docs/capture-evaluation-247.md",
+      "sourcePage": "https://store.shopping.yahoo.co.jp/celebrity/bal-3793.html",
+      "sourceReportedDescription": "BALENCIAGA Rodeo medium",
+      "visualReview": "historical-record-only",
+      "categoryDiagnostic": false,
+      "exactEvaluation": "historical-truth-image-not-redistributed",
+      "searchSuitability": "historical-search-match-current-availability-unverified",
+      "rights": "Not redistributed; source and permission must be confirmed before adding image",
+      "sha256": "70004a0631ea8cfe7e27b3b50ad18378f380a3db726fcdf9bc8231b8dad46a6e",
+      "truth": {
+        "status": "verified",
+        "productName": "BALENCIAGA Rodeo medium",
+        "brand": "BALENCIAGA",
+        "model": "7897722AA4V1000",
+        "productUrl": "https://store.shopping.yahoo.co.jp/celebrity/bal-3793.html",
+        "identifiers": [
+          "7897722AA4V1000"
+        ],
+        "productNameAliases": [
+          "BALENCIAGA Rodeo medium"
+        ],
+        "brandAliases": [
+          "BALENCIAGA",
+          "バレンシアガ"
+        ],
+        "evidence": [
+          "https://github.com/maishu-kobo/butuyokuoh/blob/78161507701a4fc2f49919b8cb91cc3670a215c2/docs/capture-evaluation-247.md",
+          "https://github.com/maishu-kobo/butuyokuoh/issues/100#issuecomment-6497068914"
+        ]
+      }
+    }
+  ]
+}
