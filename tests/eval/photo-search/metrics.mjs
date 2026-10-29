@@ -140,4 +140,3 @@ export function summarizePhotoEvaluation(report, catalog, scoring) {
     rows,
   };
 }
-

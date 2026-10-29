@@ -129,4 +129,3 @@ test('historical reports remain unscored for exact products and preserve their a
     assert.equal(report.usage.callsWithoutReportedNeurons, 0);
   }
 });
-
