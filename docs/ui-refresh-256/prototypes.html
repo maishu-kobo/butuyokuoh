@@ -183,7 +183,7 @@ function render(){
 function show(id){byId(id).showModal();}
 function openAdd(){byId('url-result').hidden=true;byId('photo-result').hidden=true;byId('register-area').hidden=true;byId('candidates').replaceChildren();byId('photo-file').value='';byId('add-status').textContent='';mode('url');show('add-dialog');}
 function mode(m){byId('url-form').hidden=m!=='url';byId('photo-form').hidden=m!=='photo';byId('url-mode').setAttribute('aria-pressed',String(m==='url'));byId('photo-mode').setAttribute('aria-pressed',String(m==='photo'));byId('add-status').textContent='';}
-function usePhoto(src){byId('picked-photo').src=src;byId('photo-result').hidden=false;byId('candidates').replaceChildren();byId('register-area').hidden=true;byId('add-status').textContent='写真は端末内で表示しました。未確定の推定を確認してください。';}
+function usePhoto(src){const image=document.createElement('img');image.id='picked-photo';image.width=110;image.height=100;image.style.objectFit='contain';image.alt='選択した写真';image.onerror=()=>{byId('add-status').textContent='このブラウザでは写真を表示できません。JPEG/PNGまたはサンプルをお試しください。';};image.src=src;byId('picked-photo').replaceWith(image);byId('photo-result').hidden=false;byId('candidates').replaceChildren();byId('register-area').hidden=true;byId('add-status').textContent='写真は端末内で表示しました。未確定の推定を確認してください。';}
 function save(name,price,shop){items.push({id:Math.max(...items.map(x=>x.id))+1,name,price,shop,date:'',kind:'聴く',image:'bose-headphones',note:'この試作で登録したサンプル。'});}
 function finish(message){byId('add-dialog').close();byId('app-status').textContent=message;view='list';byId('query').value='';render();}
 function openDetail(x){
@@ -210,7 +210,6 @@ byId('url-preview').onclick=()=>{let u;try{u=new URL(byId('product-url').value);
 byId('url-save').onclick=()=>{save('サンプルのヘッドホン',18400,'架空ショップA');finish('1件をリストに保存しました（この表示中のみ）');};
 byId('sample-photo').onclick=()=>usePhoto(assets['bose-headphones']);
 byId('photo-file').onchange=()=>{const f=byId('photo-file').files[0];if(!f)return;if(!f.type.startsWith('image/')){byId('add-status').textContent='画像ファイルを選んでください。';return;}if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=URL.createObjectURL(f);usePhoto(objectUrl);};
-byId('picked-photo').onerror=()=>{byId('add-status').textContent='このブラウザでは写真を表示できません。JPEG/PNGまたはサンプルをお試しください。';};
 byId('search-candidates').onclick=()=>{
   if(!byId('photo-query').value.trim()){byId('add-status').textContent='商品名を入力してください。';return;}
   const candidates=[18400,19800].map((p,i)=>{

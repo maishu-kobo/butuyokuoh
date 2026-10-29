@@ -34,7 +34,13 @@ for (const concept of ['a', 'b', 'c']) {
       await expect(page.locator('#app-status')).toContainText('1件');
       await page.locator('#add-top').click();
       await page.locator('#photo-mode').click();
+      await page.locator('#photo-file').setInputFiles({
+        name: 'anonymous.png', mimeType: 'image/png',
+        buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlQAAAABJRU5ErkJggg==', 'base64'),
+      });
+      await expect(page.locator('#picked-photo')).toHaveAttribute('src', /^blob:/);
       await page.locator('#sample-photo').click();
+      await expect(page.locator('#picked-photo')).toHaveAttribute('src', /^data:image\//);
       await expect(page.locator('#photo-result')).toContainText('ブランド・型番は未確定');
       await page.locator('#simulate-error').click();
       await expect(page.locator('#add-status')).toContainText('検索に失敗');
