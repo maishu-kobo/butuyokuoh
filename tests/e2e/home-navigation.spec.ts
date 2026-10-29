@@ -29,6 +29,8 @@ for (const theme of ['light', 'dark'] as const) {
       await purchased.focus();
       await page.keyboard.press('Enter');
       await expect(purchased).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByRole('heading', { name: '購入済み合計' })).toBeVisible();
+      await expect(page.getByText('購入済みのアイテムはありません', { exact: true })).toBeVisible();
       const list = nav.getByRole('button', { name: 'リスト', exact: true });
       await list.focus();
       await page.keyboard.press('Enter');
