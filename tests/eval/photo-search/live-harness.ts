@@ -10,7 +10,9 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { resolveSearchVariant, SEARCH_VARIANTS, estimateNeurons, type SearchVariant } from '../../../src/lib/capture/ai-variants';
 import { ensembleGuess } from '../../../src/lib/capture/ensemble';
-import { createGeminiIdentifier, geminiConfigFromEnv } from '../../../src/lib/capture/gemini';
+import { createGeminiIdentifier, GEMINI_LITE_MODEL, geminiConfigFromEnv } from '../../../src/lib/capture/gemini';
+import { needsGeminiAfterMiss, needsGeminiFallback } from '../../../src/lib/capture/gemini-fallback';
+import { withGeminiHarnessRetry } from './gemini-retry';
 import { parseGuessDocument, searchGuessRows, summarizeLiveReport, type GuessProduct, type HarnessSearchResult } from './split-run';
 import { createEvaluationBudget, UNKNOWN_CALL_NEURONS } from './budget';
 
@@ -205,9 +207,14 @@ async function guessOrAll(selected: 'guess' | 'all') {
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   }) : null;
   if (gemini && (!geminiRun?.model || !geminiRun.apiKey)) {
-    console.error('GEMINI_API_KEY is required, and GEMINI_MODEL must be gemini-2.5-flash or gemini-2.5-flash-lite');
+    console.error('GEMINI_API_KEY is required, and GEMINI_MODEL must be gemini-3.5-flash or gemini-3.5-flash-lite');
     process.exit(1);
   }
+  const fallback = variant.provider === 'fallback';
+  const liteConfig = fallback
+    ? geminiConfigFromEnv({ CAPTURE_AI_MODEL: 'gemini-lite', GEMINI_API_KEY: process.env.GEMINI_API_KEY })
+    : null;
+  const liteKey = liteConfig?.apiKey ?? null;
   const wa = gemini ? null : await mod('src/lib/capture/workers-ai.ts');
   const photo = await mod('src/lib/capture/photo.ts');
   const live = selected === 'all' ? await mod('src/lib/capture/live-search.ts') : null;
@@ -230,9 +237,18 @@ async function guessOrAll(selected: 'guess' | 'all') {
     if (!prep.ok) { row.error = `prepare:${prep.error.code}`; rows.push(row); continue; }
     const calls: unknown[] = [];
     const started = Date.now();
-    const identified = gemini
+    let identified = gemini
       ? await identifyGemini(prep.value, geminiRun!.apiKey!, geminiRun!.model!, calls)
       : await identifyWorkers(prep.value, variant, id, label, wa, budget!, calls, () => identifierUsage, (next) => { identifierUsage = next; }, (model) => { activeModel = model; }, () => activeModel, (charged) => { neurons += charged; identifierUsage += charged; });
+    let askedGemini = gemini;
+    if (fallback && liteKey && needsGeminiFallback(identified)) {
+      askedGemini = true;
+      const second = await identifyGemini(prep.value, liteKey, GEMINI_LITE_MODEL, calls);
+      if (second.ok) {
+        identified = second;
+        row.usedGemini = true;
+      }
+    }
     if (!identified.ok && identified.error.code === 'AI_LIMIT') { rows.push({ ...row, identifyError: 'AI_LIMIT' }); break; }
     row.identifyMs = Date.now() - started;
     row.modelCalls = calls;
@@ -256,12 +272,36 @@ async function guessOrAll(selected: 'guess' | 'all') {
     const product = identified.value.products[0];
     row.query = { name: product.name, brand: product.brand, model: product.model, jan: null };
     if (selected === 'all' && live && fakes && ladder) {
-      const [scored] = await searchGuessRows({
+      let [scored] = await searchGuessRows({
         rows: [row],
         truth,
         ladder: variant.ladder,
         search: (item) => searchLive(item, variant.ladder, id, live, fakes, ladder, referer),
       });
+      const counts = scored.counts as { yahoo?: number; rakuten?: number } | undefined;
+      const hits = (counts?.yahoo ?? 0) + (counts?.rakuten ?? 0);
+      if (fallback && liteKey && needsGeminiAfterMiss({ asked: askedGemini, hits: scored.searchError ? 0 : hits })) {
+        askedGemini = true;
+        const second = await identifyGemini(prep.value, liteKey, GEMINI_LITE_MODEL, calls);
+        if (second.ok && second.value.products.length > 0) {
+          const product = second.value.products[0];
+          const retried: Record<string, unknown> = {
+            ...row,
+            confidence: second.value.confidence,
+            products: second.value.products,
+            queries: guessQueries(second.value),
+            query: { name: product.name, brand: product.brand, model: product.model, jan: null },
+            usedGemini: true,
+            modelCalls: calls,
+          };
+          [scored] = await searchGuessRows({
+            rows: [retried],
+            truth,
+            ladder: true,
+            search: (item) => searchLive(item, true, id, live, fakes, ladder, referer),
+          });
+        }
+      }
       rows.push(scored);
     } else {
       rows.push(row);
@@ -314,11 +354,13 @@ async function identifyGemini(
   model: string,
   calls: unknown[],
 ) {
+  let lastStatus = 0;
   const http = async (request: { url: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => {
     try {
       const response = await fetch(request.url, {
         method: 'POST', redirect: 'manual', cache: 'no-store', headers: request.headers, body: request.body, signal: request.signal,
       });
+      lastStatus = response.status;
       const body = await response.text();
       let text: string | null = null;
       let usage: Record<string, number | null> | null = null;
@@ -341,11 +383,18 @@ async function identifyGemini(
       calls.push({ status: response.status, response: text ? text.slice(0, 2000) : null, usage });
       return { status: response.status, body };
     } catch (error) {
+      lastStatus = 0;
       calls.push({ status: 0, thrown: error instanceof Error ? error.name : 'error' });
       return { status: 0, body: '' };
     }
   };
-  return createGeminiIdentifier({ apiKey, model, http }).identify(photo);
+  return withGeminiHarnessRetry({
+    sleep,
+    run: async () => {
+      const value = await createGeminiIdentifier({ apiKey, model, http, attempts: 1 }).identify(photo);
+      return { status: lastStatus, value };
+    },
+  });
 }
 
 async function identifyWorkers(
@@ -415,7 +464,7 @@ async function identifyWorkers(
   };
   const identified = await identifyWith(variant.model.id, 'a').identify(photo);
   if (!identified.ok && identified.error.code === 'AI_LIMIT') return identified;
-  if (!variant.secondModel) return identified;
+  if (variant.provider !== 'workers' || !variant.secondModel) return identified;
   const second = await identifyWith(variant.secondModel.id, 'b').identify(photo);
   if (identified.ok && second.ok) {
     const combined = ensembleGuess(

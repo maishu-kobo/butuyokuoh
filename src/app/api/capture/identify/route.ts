@@ -8,6 +8,7 @@ import { captureTestEnv, getCapturePorts, portsForRequest } from '@/lib/capture/
 import { identifyHttpBody, resolveProductIdentifier } from '@/lib/capture/workers-ai';
 import { modelIdFromEnv } from '@/lib/capture/ai-variants';
 import { geminiIdentifierForEnv } from '@/lib/capture/gemini';
+import { geminiFallbackIdentifierForEnv } from '@/lib/capture/gemini-fallback';
 import { NextRequest, NextResponse } from 'next/server';
 
 function errorResponse(error: CaptureErrorBody, status: number) {
@@ -28,14 +29,22 @@ async function handlePOST(request: NextRequest) {
     const user = await getCurrentUser();
     if (user?.account_type === 'member') userId = String(user.id);
   }
-  // Gemini は CAPTURE_AI_MODEL で選んだときだけ。未選択なら今までの Workers AI。
+  // 既定は Workers AI。Gemini と llama4 からのフォールバックは CAPTURE_AI_MODEL で選んだときだけ。
   const testEnv = captureTestEnv();
+  const fallback = geminiFallbackIdentifierForEnv({
+    hooked,
+    fake: ports.identifier,
+    env: testEnv,
+    accountId: secrets.cloudflareAccountId,
+    apiToken: secrets.cloudflareApiToken,
+    userId,
+  });
   const gemini = geminiIdentifierForEnv({
     hooked,
     fake: ports.identifier,
     env: testEnv,
   });
-  const identifier = gemini ?? resolveProductIdentifier({
+  const identifier = fallback ?? gemini ?? resolveProductIdentifier({
     hooked,
     accountId: secrets.cloudflareAccountId,
     apiToken: secrets.cloudflareApiToken,

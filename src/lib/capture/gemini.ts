@@ -1,8 +1,9 @@
 // Gemini API の generateContent。キーは呼び出し側が渡す。ここは写真もキーもログに出さない。
 // https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
-// キーは URL に置かず x-goog-api-key だけ。思考は thinkingBudget 0 で止める。
+// キーは URL に置かず x-goog-api-key だけ。思考はモデルごとに切る。
 // https://ai.google.dev/gemini-api/docs/generate-content/thinking
-// 2.5 Flash と 2.5 Flash-Lite は thinkingBudget 0 で思考を切る。2.5 に thinkingLevel は使わない。
+// 3.5 は thinkingBudget を使わない。flash は thinkingLevel low、flash-lite は minimal。
+// flash-lite に thinkingBudget 0 を送ると 400 になる。長い再試行はここではなく評価ハーネスだけ。
 import {
   CaptureMessages,
   captureFailure,
@@ -16,9 +17,9 @@ import {
 import { composeCapturedProduct, copiedPromptExample, guessIsSpecific } from './product-query';
 
 export const GEMINI_HOST = 'generativelanguage.googleapis.com';
-export const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash';
-export const GEMINI_LITE_MODEL = 'gemini-2.5-flash-lite';
-export const GEMINI_TIMEOUT_MS = 30_000;
+export const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash';
+export const GEMINI_LITE_MODEL = 'gemini-3.5-flash-lite';
+export const GEMINI_TIMEOUT_MS = 90_000;
 
 const ALLOWED_MODELS = [GEMINI_DEFAULT_MODEL, GEMINI_LITE_MODEL] as const;
 export type GeminiModelId = (typeof ALLOWED_MODELS)[number];
@@ -102,6 +103,12 @@ export function isGeminiModelId(value: string | null | undefined): value is Gemi
   return ALLOWED_MODELS.some((model) => model === value);
 }
 
+// 3.5 Flash の案内は thinking_level。lite の既定は minimal で、thinkingBudget 0 は 400。
+// https://ai.google.dev/gemini-api/docs/generate-content/whats-new-gemini-3.5
+export function geminiThinkingConfig(model: GeminiModelId): { thinkingLevel: 'low' | 'minimal' } {
+  return { thinkingLevel: model === GEMINI_LITE_MODEL ? 'minimal' : 'low' };
+}
+
 export function geminiConfigFromEnv(env?: EnvBag): GeminiEnvConfig | null {
   const source = (env ?? process.env) as Record<string, string | undefined>;
   const selected = envValue(source, MODEL_ENV);
@@ -137,9 +144,12 @@ export function createGeminiIdentifier(options: {
   model?: string;
   http?: GeminiHttp;
   timeoutMs?: number;
+  // 画面の判定は待たずに1回だけ送り直す。6回の待ちは評価ハーネスが自分で行う。
+  attempts?: 1 | 2;
 }): ProductIdentifier {
   const http = options.http ?? ((request) => dispatchGemini(request));
   const timeoutMs = options.timeoutMs ?? GEMINI_TIMEOUT_MS;
+  const attempts = options.attempts === 1 ? 1 : ATTEMPTS;
   const model = options.model?.trim() || GEMINI_DEFAULT_MODEL;
   const apiKey = normalizeKey(options.apiKey);
 
@@ -149,18 +159,22 @@ export function createGeminiIdentifier(options: {
       if (!photo.ok) return photo;
       const url = isGeminiModelId(model) ? geminiGenerateUrl(model) : null;
       if (!apiKey || !url) return captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
-      const body = JSON.stringify(requestBody(photo.value.mediaType, Buffer.from(photo.value.bytes).toString('base64')));
+      const body = JSON.stringify(requestBody(
+        isGeminiModelId(model) ? model : GEMINI_DEFAULT_MODEL,
+        photo.value.mediaType,
+        Buffer.from(photo.value.bytes).toString('base64'),
+      ));
       let outcome: CaptureResult<IdentifyResponse> = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
-      for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
         const called = await callGemini(http, url, apiKey, body, timeoutMs);
         if (called.kind === 'timeout') {
           outcome = retryable('AI_TIMEOUT', CaptureMessages.aiTimeout, 504);
-          if (attempt === 0) continue;
+          if (attempt + 1 < attempts) continue;
           break;
         }
         if (called.kind === 'failed' || called.response.status === 0) {
           outcome = retryable('AI_UNAVAILABLE', CaptureMessages.aiRetryable, 503);
-          if (attempt === 0) continue;
+          if (attempt + 1 < attempts) continue;
           break;
         }
         const status = called.response.status;
@@ -168,7 +182,7 @@ export function createGeminiIdentifier(options: {
           outcome = status === 408
             ? retryable('AI_TIMEOUT', CaptureMessages.aiTimeout, 504)
             : retryable('AI_UNAVAILABLE', CaptureMessages.aiRetryable, 503);
-          if (attempt === 0) continue;
+          if (attempt + 1 < attempts) continue;
           break;
         }
         if (status !== 200) {
@@ -178,7 +192,7 @@ export function createGeminiIdentifier(options: {
         const parsed = interpret(called.response.body);
         if (parsed === 'invalid') {
           outcome = retryable('AI_INVALID_RESPONSE', CaptureMessages.aiRetryable, 502);
-          if (attempt === 0) continue;
+          if (attempt + 1 < attempts) continue;
           break;
         }
         outcome = { ok: true, value: parsed };
@@ -215,7 +229,7 @@ export async function dispatchGemini(
     || target.password
     || target.search
     || target.hash
-    || !/^\/v1beta\/models\/gemini-2\.5-flash(?:-lite)?:generateContent$/.test(target.pathname)
+    || !/^\/v1beta\/models\/gemini-3\.5-flash(?:-lite)?:generateContent$/.test(target.pathname)
     || !headerKey
     || target.href.includes(headerKey)
   ) {
@@ -246,7 +260,7 @@ export async function dispatchGemini(
   return { status: response.status, body: Buffer.concat(chunks).toString('utf8') };
 }
 
-function requestBody(mimeType: string, data: string): Record<string, unknown> {
+function requestBody(model: GeminiModelId, mimeType: string, data: string): Record<string, unknown> {
   return {
     contents: [{
       role: 'user',
@@ -260,7 +274,7 @@ function requestBody(mimeType: string, data: string): Record<string, unknown> {
       maxOutputTokens: 512,
       responseMimeType: 'application/json',
       responseSchema: RESPONSE_SCHEMA,
-      thinkingConfig: { thinkingBudget: 0 },
+      thinkingConfig: geminiThinkingConfig(model),
     },
   };
 }
@@ -284,7 +298,7 @@ function envValue(env: Record<string, string | undefined>, name: string): string
 
 function normalizeKey(value: string | null): string | null {
   if (!value || value.length < 8 || value.length > 256) return null;
-  return /^[A-Za-z0-9_-]+$/.test(value) ? value : null;
+  return /^[A-Za-z0-9._-]+$/.test(value) ? value : null;
 }
 
 function retryable(code: 'AI_TIMEOUT' | 'AI_UNAVAILABLE' | 'AI_INVALID_RESPONSE', error: string, status: number): CaptureResult<never> {
