@@ -1,0 +1,62 @@
+{
+  "node": "v24.22.1",
+  "platform": "darwin",
+  "arch": "arm64",
+  "method": "In-process route calls, warm SQLite, uncompressed response UTF-8 bytes; no browser/network latency",
+  "results": [
+    {
+      "count": 500,
+      "historyRows": 5000,
+      "samples": 20,
+      "cases": [
+        {
+          "label": "legacy-all",
+          "bytes": 675063,
+          "medianMs": 6.577,
+          "minMs": 6.011,
+          "maxMs": 10.264
+        },
+        {
+          "label": "first-page-50",
+          "bytes": 71605,
+          "medianMs": 2.235,
+          "minMs": 1.928,
+          "maxMs": 2.999
+        }
+      ],
+      "fullWalk": {
+        "requests": 10,
+        "distinctItems": 500,
+        "bytes": 716372,
+        "elapsedMs": 20.982
+      }
+    },
+    {
+      "count": 1000,
+      "historyRows": 10000,
+      "samples": 20,
+      "cases": [
+        {
+          "label": "legacy-all",
+          "bytes": 1351172,
+          "medianMs": 12.171,
+          "minMs": 11.84,
+          "maxMs": 12.785
+        },
+        {
+          "label": "first-page-50",
+          "bytes": 76849,
+          "medianMs": 2.971,
+          "minMs": 2.842,
+          "maxMs": 4.992
+        }
+      ],
+      "fullWalk": {
+        "requests": 20,
+        "distinctItems": 1000,
+        "bytes": 1538361,
+        "elapsedMs": 57.865
+      }
+    }
+  ]
+}
