@@ -65,15 +65,16 @@ for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: '
     await expect(page.getByRole('heading', { name: '500件選択中', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'キャンセル', exact: true }).click();
     await page.getByRole('button', { name: 'もっと見る', exact: true }).click();
-    await expect(page.getByRole('alert')).toContainText('追加読み込みに失敗しました');
+    await expect(page.getByRole('alert').filter({ hasText: '追加読み込みに失敗しました' })).toBeVisible();
     await expect(page.getByText('ページ商品0001', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '追加読み込みを再試行', exact: true }).click();
     await expect(page.getByText('ページ商品0100', { exact: true })).toBeVisible();
     await expect(page.getByText('ページ商品0050', { exact: true })).toHaveCount(1);
     expect(requests.filter(url => url.searchParams.get('cursor') === '50')).toHaveLength(2);
 
-    await page.getByRole('button', { name: /検索・フィルター/ }).click();
-    const search = page.getByPlaceholder('商品名、メモ、カテゴリで検索...');
+    const search = page.getByPlaceholder(/^商品名、メモ、カテゴリで検索/);
+    // Supports the current collapsed panel and the separate #256 always-visible search.
+    if (!(await search.isVisible())) await page.getByRole('button', { name: /検索・フィルター/ }).click();
     await search.fill('ページ商品0500');
     await expect(page.getByRole('heading', { name: 'ほしいものリスト (1件)', exact: true })).toBeVisible();
     await expect(page.getByText('ページ商品0500', { exact: true })).toBeVisible();

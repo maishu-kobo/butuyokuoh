@@ -108,3 +108,20 @@ test('cancelled requests and late failures cannot overwrite a successful replace
   assert.deepEqual(client.getSnapshot().page?.items, []);
   assert.equal(client.getSnapshot().page?.totalCount, 500);
 });
+
+
+test('refresh keeps existing rows mounted until replacement, while a changed query clears them', async () => {
+  const { client, pending } = requests();
+  const first = client.open(query, 1);
+  pending[0].resolve(Response.json(page([1, 2, 3]))); await first;
+  const reload = client.reload();
+  assert.equal(client.getSnapshot().loading, true);
+  assert.deepEqual(client.getSnapshot().page?.items.map(item => item.id), [1, 2, 3]);
+  await client.more();
+  assert.equal(pending.length, 2);
+  pending[1].resolve(Response.json(page([1, 3], { revision: 'after-delete' }))); await reload;
+  assert.deepEqual(client.getSnapshot().page?.items.map(item => item.id), [1, 3]);
+  const changed = client.open({ ...query, searchQuery: 'new' }, 1);
+  assert.equal(client.getSnapshot().page, null);
+  pending[2].resolve(Response.json(page([7], { revision: 'query-changed', nextCursor: null }))); await changed;
+});
