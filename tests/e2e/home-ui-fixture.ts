@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { filterHomeItems, type HomeSortBy } from '../../src/lib/home-wishlist';
 
 export const UI_TIME = '2026-10-29T00:00:00.000Z';
 
@@ -20,7 +21,27 @@ export async function prepareHomeUi(page: Page, theme: 'light' | 'dark') {
   ];
   // This suite checks presentation only. Real auth/persistence stays in the existing guest/capture suites.
   await page.route('**/api/**', async route => {
-    const path = new URL(route.request().url()).pathname;
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+    // Keep the same UI scenarios usable when #36 switches the page to bounded retrieval.
+    if (route.request().method() === 'GET' && path === '/api/items/page') {
+      const params = url.searchParams;
+      const filtered = filterHomeItems(items, {
+        searchQuery: params.get('q') ?? '',
+        selectedPriority: Number(params.get('priority')) || null,
+        selectedCategory: Number(params.get('category')) || null,
+        selectedGroup: Number(params.get('group')) || null,
+        sortBy: (params.get('sort') ?? 'priority') as HomeSortBy,
+      });
+      await route.fulfill({ status: 200, json: {
+        items: filtered, revision: 'fixed-ui-2026-10-29', totalCount: items.length,
+        matchedCount: filtered.length, rowCount: filtered.length,
+        totalAmount: filtered.reduce((sum, item) => sum + item.current_price * item.quantity, 0),
+        lowestPriceInGroup: null, matchedIds: filtered.map(item => item.id),
+        allIds: items.map(item => item.id), nextCursor: null,
+      } });
+      return;
+    }
     const responses: Record<string, unknown> = {
       '/api/auth/session': {}, '/api/auth/providers': {},
       '/api/auth/me': { user: { id: 1, account_type: 'member', email: 'ui@example.test', name: 'テスト利用者' } },
