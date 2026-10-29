@@ -585,6 +585,9 @@ function extractModelOutput(payload: object): unknown {
     if (typeof record.response === 'string' && record.response.trim() && record.response.trim() !== 'null') {
       return visibleAnswer(record.response);
     }
+    if (record.response && typeof record.response === 'object' && !Array.isArray(record.response)) {
+      return record.response;
+    }
     const choice = choiceText(record);
     if (choice) return visibleAnswer(choice);
     if (typeof record.confidence === 'string') return record;

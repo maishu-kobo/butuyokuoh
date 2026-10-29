@@ -122,6 +122,28 @@ test('a photo is sent once as a data URL and the JSON reply becomes a product gu
   });
 });
 
+test('object responses use the same validation as string responses without retrying', async () => {
+  const generic = { confidence: 'sure', products: [{ name: 'black leather shoulder bag', brand: null, model: null, productType: 'shoulder bag', color: 'black', jan: null }] };
+  await withFetchBlocked(async () => {
+    for (const reply of [SURE, generic, { confidence: 'unreadable', products: [] }]) {
+      const object = harness({ responses: [cf({ response: reply })] });
+      const string = harness({ responses: [textResult(JSON.stringify(reply))] });
+      const actual = await object.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+      const expected = await string.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+      assert.equal(actual.ok, true);
+      assert.deepEqual(actual, expected);
+      assert.equal(object.calls.length, 1);
+      if (reply === generic && actual.ok) assert.equal(actual.value.confidence, 'unsure');
+    }
+    for (const reply of [{}, [], { confidence: 'sure', products: [] }, { products: [{ name: 'https://evil.example/secret' }] }]) {
+      const invalid = harness({ responses: [cf({ response: reply }), cf({ response: reply })] });
+      const result = await invalid.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.error.code, 'AI_INVALID_RESPONSE');
+    }
+  });
+});
+
 test('markdown, an OpenAI-shaped reply, and a direct result string all parse into the same guess', async () => {
   const fenced = '説明は捨てる\n```json\n' + JSON.stringify({
     confidence: 'unsure',
