@@ -64,7 +64,7 @@ test('a prompt example copied as the product name is not searched', async () => 
   assert.equal(instruction.includes('世代'), true);
 });
 
-test('example copied from the old prompt is dropped even with a color attached', async () => {
+test('a photo that only shows the word example stays a pen guess', async () => {
   const { identifier } = identify({
     confidence: 'sure',
     products: [{ name: 'example', brand: null, model: null, productType: 'pen', color: 'blue', jan: null }],
@@ -72,7 +72,9 @@ test('example copied from the old prompt is dropped even with a color attached',
   const result = await identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
   assert.equal(result.ok, true);
   if (!result.ok) return;
-  assert.equal(result.value.confidence, 'unreadable');
+  assert.notEqual(result.value.confidence, 'unreadable');
+  assert.equal(result.value.products[0].name.includes('ペン'), true);
+  assert.equal(result.value.confidence, 'unsure');
 });
 
 test('a product type parked in the model field is moved into the searchable name', async () => {

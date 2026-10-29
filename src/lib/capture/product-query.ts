@@ -36,6 +36,7 @@ const TERMS: readonly Term[] = [
   { group: 'shoes', term: 'sandal', canonical: 'サンダル' },
   { group: 'shoes', term: 'shoes', canonical: 'シューズ' },
   { group: 'bags', term: 'ショルダーバッグ', canonical: 'ショルダーバッグ' },
+  { group: 'bags', term: '手提げ袋', canonical: 'ハンドバッグ' },
   { group: 'bags', term: 'ハンドバッグ', canonical: 'ハンドバッグ' },
   { group: 'bags', term: 'トートバッグ', canonical: 'トートバッグ' },
   { group: 'bags', term: 'backpack', canonical: 'バックパック' },
@@ -120,7 +121,7 @@ const COLORS: readonly [string, string][] = [
 ];
 
 // 以前の指示文に書いた見本。モデルがそのまま写した名前は商品にしない。
-export const PROMPT_PRODUCT_EXAMPLES = ['バレンシアガ シューズ', 'example'] as const;
+export const PROMPT_PRODUCT_EXAMPLES = ['バレンシアガ シューズ'] as const;
 
 const NAME_MAX = 200;
 
@@ -238,8 +239,9 @@ export function copiedPromptExample(name: string): boolean {
 }
 
 export function composeCapturedProduct(input: CapturedFields & { recoverSeries?: boolean }): CapturedProduct {
-  const name = input.name.replace(/\s+/g, ' ').trim();
-  const brand = visibleBrand(name, input.brand);
+  const denied = /ブランド名の(?:ない|無い)/.test(input.name);
+  const name = input.name.replace(/ブランド名の(?:ない|無い)/g, ' ').replace(/\s+/g, ' ').trim();
+  const brand = denied ? null : visibleBrand(name, input.brand);
   let model = input.model?.trim() || null;
   if (model?.includes('/')) model = null;
   let typeHint = input.productType;
@@ -280,6 +282,31 @@ function shrinkSentence(name: string): string {
   if (!type) return trimmed;
   const color = colorInText(trimmed);
   return [color, type.canonical].filter(Boolean).join(' ');
+}
+
+export function statedProductType(text: string): string | null {
+  return bestTerm(text)?.canonical ?? null;
+}
+
+export function searchLadderSteps(product: { name: string; brand: string | null; model: string | null }): { name: string; brand: string | null; model: string | null; jan: null }[] {
+  const full = { name: product.name.trim(), brand: product.brand, model: product.model, jan: null as null };
+  const type = statedProductType(product.name);
+  const color = colorInText(product.name);
+  const steps = [full];
+  if (product.brand && type) {
+    steps.push({ name: `${product.brand} ${type}`, brand: product.brand, model: null, jan: null });
+  }
+  if (type && color) steps.push({ name: `${color} ${type}`, brand: null, model: null, jan: null });
+  else if (type) steps.push({ name: type, brand: null, model: null, jan: null });
+  const seen = new Set<string>();
+  const unique = [];
+  for (const step of steps) {
+    const key = storeSearchKeyword(step, { maxChars: 128, maxBytes: 128 });
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(step);
+  }
+  return unique;
 }
 
 export function storeSearchKeyword(

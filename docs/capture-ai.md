@@ -6,6 +6,25 @@
 
 `CAPTURE_ENABLED` と `CAPTURE_AI_ENABLED` が両方 `true` のときだけ呼ぶ。初期値はオフ。判定が使うキーは `src/lib/capture-secrets.ts` が読む `CLOUDFLARE_ACCOUNT_ID` と `CLOUDFLARE_API_TOKEN` だけ。画面の使い方と店の検索のキーは [写真から登録](./capture.md)。
 
+## 比べるモデル
+
+既定は `@cf/meta/llama-3.2-11b-vision-instruct` のまま。変えるときはサーバの `CAPTURE_AI_MODEL` に、下の id か variant 名を置く。評価ハーネスは `--variant` で同じ23枚を比べる。選ぶまで本番の既定は変えない。
+
+料金は [Workers AI の料金](https://developers.cloudflare.com/workers-ai/platform/pricing/)（2026-10-20）。無料枠は1日 10,000 ニューロン。画像入力が付くものは各モデルページの Vision。llama 3.2 はリクエストの `image` に data URL を置く。llama 4、Mistral Small 3.1、Gemma、Moondream はチャットの `image_url` に data URL を置く（[OpenAI 互換](https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/)）。
+
+23枚の llama 3.2 実測は 569 ニューロン（`03ee256`）。他モデルは入力ニューロン単価の比で見積もった。検索の段数を増やしても、この見積もりは増えない。
+
+| variant | モデル | 入力ニューロン / 100万 | 23枚の見積もり |
+| --- | --- | ---: | ---: |
+| llama32 | `@cf/meta/llama-3.2-11b-vision-instruct` | 4410 | 570 |
+| llama4 | `@cf/meta/llama-4-scout-17b-16e-instruct` | 24545 | 3200 |
+| gemma4 | `@cf/google/gemma-4-26b-a4b-it` | 9091 | 1180 |
+| gemma3 | `@cf/google/gemma-3-12b-it` | 31371 | 4070 |
+| mistral31 | `@cf/mistralai/mistral-small-3.1-24b-instruct` | 31876 | 4140 |
+| moondream | `@cf/moondream/moondream3.1-9B-A2B` | 27273 | 3560 |
+
+`-ladder` は同じモデルで、0件のときだけ種類の検索語を足す。ニューロンは増えない。
+
 ## 選んだモデル
 
 `@cf/meta/llama-3.2-11b-vision-instruct`

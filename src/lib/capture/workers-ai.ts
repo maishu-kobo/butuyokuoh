@@ -14,6 +14,7 @@ import {
   type ProductIdentifier,
 } from './contract';
 import { composeCapturedProduct, copiedPromptExample, guessIsSpecific } from './product-query';
+import { aiRequestBody, resolveAiModel } from './ai-variants';
 
 export const WORKERS_AI_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 export const WORKERS_AI_TIMEOUT_MS = 30_000;
@@ -93,6 +94,7 @@ export interface WorkersAiIdentifierOptions {
   accountId: string;
   apiToken: string;
   userId: string;
+  model?: string;
   budget?: AiBudget;
   http?: WorkersAiHttp;
   now?: () => number;
@@ -123,7 +125,8 @@ export function createWorkersAiIdentifier(options: WorkersAiIdentifierOptions): 
       const accountId = normalizeAccount(options.accountId);
       const apiToken = normalizeToken(options.apiToken);
       const userId = normalizeUserId(options.userId);
-      const url = accountId ? endpoint(accountId) : null;
+      const model = resolveAiModel(options.model);
+      const url = accountId ? endpoint(accountId, model.id) : null;
       if (!accountId || !apiToken || !userId || !url) {
         return captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
       }
@@ -143,15 +146,8 @@ export function createWorkersAiIdentifier(options: WorkersAiIdentifierOptions): 
           );
         } else {
           slot = begun.token;
-          const imageBody = JSON.stringify({
-            messages: [
-              { role: 'system', content: INSTRUCTION },
-              { role: 'user', content: 'この写真の商品をJSONで返してください。' },
-            ],
-            image: `data:${photo.value.mediaType};base64,${Buffer.from(photo.value.bytes).toString('base64')}`,
-            max_tokens: AI_MAX_OUTPUT_TOKENS,
-            temperature: 0,
-          });
+          const dataUrl = `data:${photo.value.mediaType};base64,${Buffer.from(photo.value.bytes).toString('base64')}`;
+          const imageBody = JSON.stringify(aiRequestBody(model.shape, INSTRUCTION, 'この写真の商品をJSONで返してください。', dataUrl));
           for (let attempt = 0; attempt < AI_TRANSIENT_ATTEMPTS; attempt += 1) {
             const called = await callModel(http, url, apiToken, imageBody, timeoutMs);
             if (called.kind !== 'response') {
@@ -348,6 +344,7 @@ export function resolveProductIdentifier(input: {
   http?: WorkersAiHttp;
   now?: () => number;
   timeoutMs?: number;
+  model?: string;
 }): ProductIdentifier {
   // 偽物は、本番以外かつ CAPTURE_TEST_HOOKS=1 のときだけ返す。
   const testMode = input.env?.NODE_ENV !== 'production' && input.env?.CAPTURE_TEST_HOOKS === '1';
@@ -364,6 +361,7 @@ export function resolveProductIdentifier(input: {
     http: input.http,
     now: input.now,
     timeoutMs: input.timeoutMs,
+    model: input.model,
   });
 }
 
@@ -461,8 +459,8 @@ function normalizeUserId(value: string): string | null {
   return userId;
 }
 
-function endpoint(accountId: string): string | null {
-  const url = new URL(`https://${HOST}/client/v4/accounts/${accountId}/ai/run/${WORKERS_AI_MODEL}`);
+function endpoint(accountId: string, modelId: string): string | null {
+  const url = new URL(`https://${HOST}/client/v4/accounts/${accountId}/ai/run/${modelId}`);
   if (url.protocol !== 'https:' || url.hostname !== HOST || url.username || url.password || url.search || url.hash) {
     return null;
   }
@@ -635,6 +633,7 @@ function sanitizeGuessProduct(input: { product: ProductGuess; productType: strin
     color: catalog ? null : input.color,
     recoverSeries: !catalog,
   });
+  if (!composed.name) return null;
   return { product: { ...product, name: composed.name, brand: composed.brand, model: composed.model }, catalog };
 }
 

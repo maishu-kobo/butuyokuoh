@@ -6,6 +6,7 @@ import { type CaptureErrorBody } from '@/lib/capture/contract';
 import { readCapturePhoto } from '@/lib/capture/photo';
 import { captureTestEnv, getCapturePorts, portsForRequest } from '@/lib/capture/ports';
 import { identifyHttpBody, resolveProductIdentifier } from '@/lib/capture/workers-ai';
+import { modelIdFromEnv } from '@/lib/capture/ai-variants';
 import { NextRequest, NextResponse } from 'next/server';
 
 function errorResponse(error: CaptureErrorBody, status: number) {
@@ -33,6 +34,7 @@ async function handlePOST(request: NextRequest) {
     userId,
     fake: ports.identifier,
     env: captureTestEnv(),
+    model: modelIdFromEnv(),
   });
   const http = identifyHttpBody(await identifier.identify(photo.value));
   return NextResponse.json(http.body, { status: http.status });
