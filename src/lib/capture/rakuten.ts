@@ -296,7 +296,40 @@ function canonicalItemUrl(raw: string): string | null {
 
 function rakutenKeyword(query: SearchQuery): string {
   if (query.jan && isValidJan(query.jan)) return query.jan;
-  return storeSearchKeyword(query, { maxChars: KEYWORD_MAX_BYTES, maxBytes: KEYWORD_MAX_BYTES });
+  return joinShortRakutenTokens(storeSearchKeyword(query, { maxChars: KEYWORD_MAX_BYTES, maxBytes: KEYWORD_MAX_BYTES }));
+}
+
+// 楽天は空白区切りの語が半角1文字だと keyword が不正で HTTP 400 になる。
+// 例: 「Pixel 7 Pro」の「7」。短い語は隣にくっつけ、Yahoo! の検索語は変えない。
+export function joinShortRakutenTokens(keyword: string): string {
+  const tokens = keyword.split(/ +/).filter(Boolean);
+  const out: string[] = [];
+  let pending = '';
+  const push = (token: string) => {
+    if (rakutenTokenAllowed(token)) {
+      out.push(token);
+      return;
+    }
+    if (out.length > 0 && rakutenTokenAllowed(out[out.length - 1] + token)) {
+      out[out.length - 1] += token;
+      return;
+    }
+    pending = token;
+  };
+  for (const token of tokens) {
+    const chunk = pending + token;
+    pending = '';
+    push(chunk);
+  }
+  if (pending) push(pending);
+  return out.join(' ');
+}
+
+function rakutenTokenAllowed(token: string): boolean {
+  const chars = [...token];
+  if (chars.length >= 2) return true;
+  if (chars.length !== 1) return false;
+  return /^\p{Script=Han}$/u.test(chars[0]);
 }
 
 function aborted(signal: AbortSignal): Promise<never> {

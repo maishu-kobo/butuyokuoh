@@ -6,6 +6,7 @@ import { CAPTURE_PHOTO_MAX_BYTES, CaptureMessages } from '../src/lib/capture/con
 import { CAPTURE_BITMAP_OPTIONS, fitPhotoEdge, shrinkPhotoForUpload } from '../src/lib/capture/photo-client';
 import { createWorkersAiIdentifier, type WorkersAiHttpRequest } from '../src/lib/capture/workers-ai';
 import {
+  CAPTURE_HEIC_TIMEOUT_MS,
   CAPTURE_PHOTO_CONCURRENCY,
   CAPTURE_PHOTO_MAX_EDGE,
   CAPTURE_PHOTO_MAX_PIXELS,
@@ -90,7 +91,8 @@ function multipart(parts: { name: string; filename: string; type: string; bytes:
 
 test('photo limits match the capture spec', () => {
   assert.equal(CAPTURE_PHOTO_MAX_EDGE, 1600);
-  assert.equal(CAPTURE_PHOTO_MAX_PIXELS, 40_000_000);
+  assert.equal(CAPTURE_PHOTO_MAX_PIXELS, 50_000_000);
+  assert.equal(CAPTURE_HEIC_TIMEOUT_MS, 12_000);
   assert.equal(CAPTURE_PHOTO_CONCURRENCY, 2);
   assert.ok(captureBodyByteLimit() > CAPTURE_PHOTO_MAX_BYTES);
   assert.ok(captureBodyByteLimit() <= CAPTURE_PHOTO_MAX_BYTES + 64 * 1024);

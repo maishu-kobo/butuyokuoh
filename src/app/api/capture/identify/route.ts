@@ -3,7 +3,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { withCapture, withCaptureAi } from '@/lib/capture-flags';
 import { readCaptureSecrets } from '@/lib/capture-secrets';
 import { type CaptureErrorBody } from '@/lib/capture/contract';
-import { readCapturePhoto } from '@/lib/capture/photo';
+import { capturePreviewDataUrl, readCapturePhoto } from '@/lib/capture/photo';
 import { captureTestEnv, getCapturePorts, portsForRequest } from '@/lib/capture/ports';
 import { identifyHttpBody, resolveProductIdentifier } from '@/lib/capture/workers-ai';
 import { modelIdFromEnv } from '@/lib/capture/ai-variants';
@@ -37,6 +37,11 @@ async function handlePOST(request: NextRequest) {
     model: modelIdFromEnv(),
   });
   const http = identifyHttpBody(await identifier.identify(photo.value));
+  // ブラウザが HEIC を表示できないときだけ、変換済み JPEG の縮小を返す。画像は保存しない。
+  if (photo.value.sourceHeif) {
+    const preview = await capturePreviewDataUrl(photo.value.bytes);
+    if (preview) http.body.preview = preview;
+  }
   return NextResponse.json(http.body, { status: http.status });
 }
 
