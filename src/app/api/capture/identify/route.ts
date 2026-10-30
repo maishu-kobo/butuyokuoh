@@ -2,7 +2,7 @@ import { requireSameOrigin, withAccess } from '@/lib/api-access';
 import { getCurrentUser } from '@/lib/auth';
 import { withCapture, withCaptureAi } from '@/lib/capture-flags';
 import { amazonAssociateTag, readCaptureSecrets } from '@/lib/capture-secrets';
-import { type CaptureErrorBody } from '@/lib/capture/contract';
+import { type CaptureErrorBody, type CaptureResult, type IdentifyResponse } from '@/lib/capture/contract';
 import { readCapturePhoto } from '@/lib/capture/photo';
 import { captureTestEnv, getCapturePorts, portsForRequest } from '@/lib/capture/ports';
 import { identifyHttpBody, resolveProductIdentifier } from '@/lib/capture/workers-ai';
@@ -11,10 +11,17 @@ import { geminiIdentifierForEnv } from '@/lib/capture/gemini';
 import { identifyEvidenceVariant } from '@/lib/capture/evidence-variant';
 import { llama4GeminiActors, productionLadderSearch, runGeminiFallback } from '@/lib/capture/gemini-fallback';
 import { identifyGroundedVariant } from '@/lib/capture/grounded-variant';
+import { attachWikipediaModel } from '@/lib/capture/wikipedia-lookup';
 import { NextRequest, NextResponse } from 'next/server';
 
 function errorResponse(error: CaptureErrorBody, status: number) {
   const http = identifyHttpBody({ ok: false, error, status });
+  return NextResponse.json(http.body, { status: http.status });
+}
+
+async function respond(photo: { mediaType: string; bytes: Uint8Array }, result: CaptureResult<IdentifyResponse>) {
+  const refined = await attachWikipediaModel(photo, result);
+  const http = identifyHttpBody(refined);
   return NextResponse.json(http.body, { status: http.status });
 }
 
@@ -52,10 +59,7 @@ async function handlePOST(request: NextRequest) {
     userId,
     search,
   });
-  if (evidence) {
-    const http = identifyHttpBody(evidence);
-    return NextResponse.json(http.body, { status: http.status });
-  }
+  if (evidence) return respond(photo.value, evidence);
   const grounded = await identifyGroundedVariant({
     photo: photo.value,
     hooked,
@@ -66,10 +70,7 @@ async function handlePOST(request: NextRequest) {
     userId,
     search,
   });
-  if (grounded) {
-    const http = identifyHttpBody(grounded);
-    return NextResponse.json(http.body, { status: http.status });
-  }
+  if (grounded) return respond(photo.value, grounded);
   const actors = llama4GeminiActors({
     hooked,
     fake: ports.identifier,
@@ -78,10 +79,7 @@ async function handlePOST(request: NextRequest) {
     apiToken: secrets.cloudflareApiToken,
     userId,
   });
-  if (actors?.kind === 'fake') {
-    const http = identifyHttpBody(await actors.identify.identify(photo.value));
-    return NextResponse.json(http.body, { status: http.status });
-  }
+  if (actors?.kind === 'fake') return respond(photo.value, await actors.identify.identify(photo.value));
   if (actors?.kind === 'live') {
     const outcome = await runGeminiFallback({
       photo: photo.value,
@@ -89,8 +87,7 @@ async function handlePOST(request: NextRequest) {
       gemini: actors.gemini,
       search,
     });
-    const http = identifyHttpBody(outcome.guess);
-    return NextResponse.json(http.body, { status: http.status });
+    return respond(photo.value, outcome.guess);
   }
   const gemini = geminiIdentifierForEnv({
     hooked,
@@ -106,8 +103,7 @@ async function handlePOST(request: NextRequest) {
     env: testEnv,
     model: modelIdFromEnv(),
   });
-  const http = identifyHttpBody(await identifier.identify(photo.value));
-  return NextResponse.json(http.body, { status: http.status });
+  return respond(photo.value, await identifier.identify(photo.value));
 }
 
 export const POST = withCapture(withCaptureAi(withAccess(handlePOST)));

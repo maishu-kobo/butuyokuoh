@@ -11,7 +11,8 @@ import { pathToFileURL } from 'node:url';
 import { resolveSearchVariant, SEARCH_VARIANTS, estimateNeurons, type SearchVariant } from '../../../src/lib/capture/ai-variants';
 import { ensembleGuess } from '../../../src/lib/capture/ensemble';
 import { GEMINI_EVIDENCE_SUFFIX, WORKERS_EVIDENCE_SUFFIX } from '../../../src/lib/capture/evidence-prompt';
-import { maybeUpgradeWithFlash, withFlashRetry } from '../../../src/lib/capture/flash-fallback';
+import { appFlashLedger, maybeUpgradeWithFlash, withFlashRetry } from '../../../src/lib/capture/flash-fallback';
+import { attachWikipediaModel } from '../../../src/lib/capture/wikipedia-lookup';
 import { createGeminiIdentifier, GEMINI_DEFAULT_MODEL, GEMINI_LITE_MODEL, geminiConfigFromEnv } from '../../../src/lib/capture/gemini';
 import { runGeminiFallback } from '../../../src/lib/capture/gemini-fallback';
 import { BRAND_EVIDENCE_SUFFIX, guardIdentifyResult } from '../../../src/lib/capture/brand-guard';
@@ -268,6 +269,31 @@ async function guessOrAll(selected: 'guess' | 'all') {
       } : null,
     });
   }
+  async function refineWithWiki<T extends { name: string; brand: string | null; model: string | null; jan?: string | null }>(
+    photo: { mediaType: string; bytes: Uint8Array },
+    product: T,
+  ): Promise<T> {
+    const key = flashKey() ?? process.env.GEMINI_API_KEY ?? null;
+    const refined = await attachWikipediaModel(photo, {
+      ok: true,
+      value: { confidence: 'unsure', products: [{ ...product, jan: product.jan ?? null }] },
+    }, {
+      env: {
+        CAPTURE_WEB_LOOKUP: process.env.CAPTURE_WEB_LOOKUP,
+        GEMINI_API_KEY: key ?? undefined,
+      },
+      ledger: appFlashLedger(),
+      complete: async (request) => {
+        geminiCalls += 1;
+        const response = await fetch(request.url, {
+          method: 'POST', redirect: 'manual', cache: 'no-store', headers: request.headers, body: request.body, signal: request.signal,
+        });
+        return { status: response.status, body: await response.text() };
+      },
+    });
+    const next = refined.ok ? refined.value.products[0] : null;
+    return (next ?? product) as T;
+  }
   const rows: Record<string, unknown>[] = [];
   let neurons = 0;
   let activeModel = variant.model;
@@ -350,7 +376,16 @@ async function guessOrAll(selected: 'guess' | 'all') {
         await sleep(1500);
         continue;
       }
-      const chosen = outcome.guess.value.products[0];
+      const original = outcome.guess.value.products[0];
+      const chosen = await refineWithWiki(prep.value, original);
+      if (chosen.name !== original.name || chosen.model !== original.model) {
+        outcome.guess = { ...outcome.guess, value: { ...outcome.guess.value, products: [chosen, ...outcome.guess.value.products.slice(1)] } };
+        if (live && fakes && ladder) {
+          const value = await searchLive(chosen, true, id, live, fakes, ladder, referer);
+          const visible = value.ok ? dropOtherCategories(value.candidates, chosen.name) : [];
+          outcome.found = { hits: visible.length, value: { ...value, candidates: visible } };
+        }
+      }
       row.confidence = outcome.guess.value.confidence;
       row.products = outcome.guess.value.products;
       row.queries = guessQueries(outcome.guess.value);
@@ -397,10 +432,11 @@ async function guessOrAll(selected: 'guess' | 'all') {
       await sleep(1500);
       continue;
     }
+    const product = await refineWithWiki(prep.value, identified.value.products[0]);
+    const products = [product, ...identified.value.products.slice(1)];
     row.confidence = identified.value.confidence;
-    row.products = identified.value.products;
+    row.products = products;
     row.queries = guessQueries(identified.value);
-    const product = identified.value.products[0];
     row.query = { name: product.name, brand: product.brand, model: product.model, jan: null };
     if (selected === 'all' && live && fakes && ladder) {
       const [scored] = await searchGuessRows({

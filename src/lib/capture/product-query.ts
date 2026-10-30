@@ -348,7 +348,8 @@ export function searchLadderSteps(product: {
   const full = { name: cleaned || product.name.trim(), brand: product.brand, model: product.model, jan: null as null };
   const steps = cleaned ? [full] : [];
   const series = product.series?.trim() || productLine(product.name)?.label || null;
-  if (product.formFactor === 'foldable' && product.brand && series) {
+  const exactModel = Boolean(product.model && /\d/.test(product.model));
+  if (!exactModel && product.formFactor === 'foldable' && product.brand && series) {
     steps.unshift({ name: `${product.brand} ${series} Fold`.replace(/\s+/g, ' ').trim(), brand: product.brand, model: null, jan: null });
   }
   if (product.brand && type) {

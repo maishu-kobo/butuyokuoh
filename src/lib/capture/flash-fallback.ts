@@ -13,6 +13,7 @@ export interface FlashLedger {
   used(now: number): number;
   // 429 や上限のあと、その UTC 日はもう呼ばない。
   trip(now: number): void;
+  blocked(now: number): boolean;
 }
 
 type GuessLike = {
@@ -77,6 +78,9 @@ export function createFlashLedger(cap = FLASH_DAILY_CAP): FlashLedger {
     },
     trip(now: number) {
       blockedDay = utcDay(now);
+    },
+    blocked(now: number) {
+      return blockedDay === utcDay(now);
     },
   };
 }
