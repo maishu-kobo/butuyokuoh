@@ -44,12 +44,14 @@ export function needsGeminiBeforeSearch(result: FallbackGuess): boolean {
   return usableProduct(result) === null;
 }
 
+export type LadderSearchResult<T> = { hits: number; value: T; failed?: boolean };
+
 export async function runGeminiFallback<T, G extends FallbackGuess>(input: {
   photo: IdentifyInput;
   primary: { identify(photo: IdentifyInput): Promise<G> };
   gemini: { identify(photo: IdentifyInput): Promise<G> } | null;
-  search: (product: ProductGuess) => Promise<{ hits: number; value: T }>;
-}): Promise<{ guess: G; found: { hits: number; value: T } | null; usedGemini: boolean }> {
+  search: (product: ProductGuess) => Promise<LadderSearchResult<T>>;
+}): Promise<{ guess: G; found: LadderSearchResult<T> | null; usedGemini: boolean }> {
   const primary = await input.primary.identify(input.photo);
   if (!primary.ok && primary.error?.code === 'AI_LIMIT') {
     return { guess: primary, found: null, usedGemini: false };
@@ -59,7 +61,8 @@ export async function runGeminiFallback<T, G extends FallbackGuess>(input: {
     return adoptGemini(input, primary, null);
   }
   const primarySearch = await input.search(primaryProduct);
-  if (primarySearch.hits > 0 || !input.gemini) {
+  // 店の障害・レート制限は 0 件と区別する。障害時は Gemini で置き換えない。
+  if (primarySearch.failed || primarySearch.hits > 0 || !input.gemini) {
     return { guess: primary, found: primarySearch, usedGemini: false };
   }
   return adoptGemini(input, primary, primarySearch);
@@ -69,11 +72,11 @@ async function adoptGemini<T, G extends FallbackGuess>(
   input: {
     photo: IdentifyInput;
     gemini: { identify(photo: IdentifyInput): Promise<G> } | null;
-    search: (product: ProductGuess) => Promise<{ hits: number; value: T }>;
+    search: (product: ProductGuess) => Promise<LadderSearchResult<T>>;
   },
   primary: G,
-  primarySearch: { hits: number; value: T } | null,
-): Promise<{ guess: G; found: { hits: number; value: T } | null; usedGemini: boolean }> {
+  primarySearch: LadderSearchResult<T> | null,
+): Promise<{ guess: G; found: LadderSearchResult<T> | null; usedGemini: boolean }> {
   const keep = { guess: primary, found: primarySearch, usedGemini: false };
   if (!input.gemini) return keep;
   const second = await input.gemini.identify(input.photo);
@@ -81,7 +84,7 @@ async function adoptGemini<T, G extends FallbackGuess>(
   const product = usableProduct(second);
   if (!product) return keep;
   const geminiSearch = await input.search(product);
-  if (geminiSearch.hits <= 0) return keep;
+  if (geminiSearch.failed || geminiSearch.hits <= 0) return keep;
   return { guess: second, found: geminiSearch, usedGemini: true };
 }
 
@@ -136,7 +139,7 @@ export async function productionLadderSearch(
     origin: string | null;
     associateTag: string | null;
   },
-): Promise<{ hits: number; value: null }> {
+): Promise<LadderSearchResult<null>> {
   const ports = resolveSearchPorts({
     yahooAppId: input.yahooAppId,
     rakutenAppId: input.rakutenAppId,
@@ -146,7 +149,7 @@ export async function productionLadderSearch(
     referer: httpsReferer(input.origin),
   });
   const result = await searchWithLadder(product, ports, input.associateTag);
-  if (!result.ok) return { hits: 0, value: null };
+  if (!result.ok) return { hits: 0, value: null, failed: true };
   return { hits: result.value.candidates.length, value: null };
 }
 

@@ -16,6 +16,7 @@ import {
   type FallbackGuess,
   llama4GeminiActors,
   needsGeminiBeforeSearch,
+  productionLadderSearch,
   runGeminiFallback,
 } from '../src/lib/capture/gemini-fallback';
 import { geminiHarnessBackoffMs, withGeminiHarnessRetry } from './eval/photo-search/gemini-retry';
@@ -500,6 +501,45 @@ test('llama 4 calls Gemini only when unreadable or the ladder has no hits, and k
   });
   assert.equal(afterLimit, 0);
   assert.equal(stopped.guess.ok, false);
+
+  let geminiOnOutage = 0;
+  const outageKept = await runGeminiFallback({
+    photo,
+    primary: { async identify() { return llama; } },
+    gemini: { async identify(): Promise<FallbackGuess> { geminiOnOutage += 1; return geminiHit; } },
+    search: async () => ({ hits: 0, value: 'outage', failed: true }),
+  });
+  assert.equal(geminiOnOutage, 0);
+  assert.equal(outageKept.usedGemini, false);
+  assert.equal(outageKept.guess.ok && outageKept.guess.value?.products[0].name, '白いスニーカー');
+  assert.equal(outageKept.found?.failed, true);
+
+  const emptyStillFallsBack = await runGeminiFallback({
+    photo,
+    primary: { async identify() { return llama; } },
+    gemini: { async identify(): Promise<FallbackGuess> { return geminiHit; } },
+    search: async (product) => ({
+      hits: product.name.includes('Balenciaga') ? 2 : 0,
+      value: product.name,
+    }),
+  });
+  assert.equal(emptyStillFallsBack.usedGemini, true);
+  assert.equal(emptyStillFallsBack.guess.ok && emptyStillFallsBack.guess.value?.products[0].brand, 'Balenciaga');
+
+  const outageSearch = await productionLadderSearch(
+    { name: '白いスニーカー', brand: null, model: null, jan: null },
+    {
+      yahooAppId: null,
+      rakutenAppId: null,
+      rakutenAccessKey: null,
+      rakutenAffiliateId: null,
+      userId: '',
+      origin: null,
+      associateTag: null,
+    },
+  );
+  assert.equal(outageSearch.hits, 0);
+  assert.equal(outageSearch.failed, true);
 
   const fallback = resolveSearchVariant('llama4-gemini-fallback');
   assert.equal(fallback.provider, 'fallback');
