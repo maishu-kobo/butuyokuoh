@@ -81,6 +81,26 @@ test('a Rakuten affiliate wrapper and its product URL are one candidate', async 
   assert.deepEqual(result.value.candidates.map((item) => item.id), [direct.id]);
 });
 
+test('same URL and same listing key do not transitively replace a different product', () => {
+  // Cheapest overall shares listing key with a mid row that shares URL with an expensive phone.
+  // Transitive union would drop the distinct URL; non-transitive keeps both after URL then listing.
+  const expensiveFirst = yahoo('phone.html', 'yahoo:cheap-url', {
+    title: 'Google Pixel 7 Pro 128GB グレー',
+    price: 70_000,
+  });
+  const bridge = yahoo('phone.html', 'yahoo:bridge', {
+    title: '別タイトルの掲載',
+    price: 80_000,
+  });
+  const distinctListing = yahoo('distinct.html', 'yahoo:distinct', {
+    title: '別タイトルの掲載',
+    price: 80_000,
+    url: 'https://store.shopping.yahoo.co.jp/degifarm/distinct.html',
+  });
+  const nonTransitive = dedupeCandidates([expensiveFirst, bridge, distinctListing]);
+  assert.deepEqual(nonTransitive.map((item) => item.id), ['yahoo:cheap-url', 'yahoo:distinct']);
+});
+
 test('a later query variant does not bring the same listing back', async () => {
   let calls = 0;
   const result = await searchWithLadder(

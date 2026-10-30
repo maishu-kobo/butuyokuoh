@@ -1,5 +1,6 @@
 // 候補は店ごとの id だけだと、別 URL の同じ掲載が残る。
-// 正規化した商品 URL と、店・正規化した商品名・価格が同じ組は、先の1件だけ残す。
+// 正規化した商品 URL が同じもの、または店・正規化した商品名・価格が同じ組を、それぞれ直接まとめる。
+// URL と listing key をまたいで推移的には連結しない。
 import type { CaptureCandidate, CaptureSite } from './contract';
 import { rakutenProductIdentity } from './rakuten-link';
 
@@ -25,25 +26,32 @@ export function listingKey(candidate: { shopName: string; title: string; price: 
 }
 
 export function dedupeCandidates<T extends CaptureCandidate>(candidates: readonly T[]): T[] {
-  const groups: T[][] = [];
-  const urlIndex = new Map<string, number>();
-  const listingIndex = new Map<string, number>();
+  const afterUrl = collapseByKey(candidates, (candidate) => normalizedCandidateUrl(candidate));
+  return collapseByKey(afterUrl, (candidate) => listingKey(candidate));
+}
+
+function collapseByKey<T extends CaptureCandidate>(
+  candidates: readonly T[],
+  keyOf: (candidate: T) => string | null,
+): T[] {
+  const groups = new Map<string, T>();
+  const order: string[] = [];
+  const unkeyed: T[] = [];
   for (const candidate of candidates) {
-    const url = normalizedCandidateUrl(candidate);
-    const listing = listingKey(candidate);
-    const existing = (url ? urlIndex.get(url) : undefined) ?? listingIndex.get(listing);
-    if (existing == null) {
-      const index = groups.length;
-      groups.push([candidate]);
-      if (url) urlIndex.set(url, index);
-      listingIndex.set(listing, index);
+    const key = keyOf(candidate);
+    if (key == null) {
+      unkeyed.push(candidate);
       continue;
     }
-    groups[existing].push(candidate);
-    if (url) urlIndex.set(url, existing);
-    listingIndex.set(listing, existing);
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, candidate);
+      order.push(key);
+      continue;
+    }
+    groups.set(key, preferDuplicate(existing, candidate));
   }
-  return groups.map((group) => group.reduce(preferDuplicate));
+  return [...order.map((key) => groups.get(key)!), ...unkeyed];
 }
 
 // 同じ掲載は1件。価格が違うときは安い方を残し、同じ価格なら商品URLをアフィリエイトより先に残す。
