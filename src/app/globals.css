@@ -300,3 +300,99 @@ body {
   background: rgba(197, 61, 67, 0.2);
   color: var(--sumi);
 }
+
+/* Home navigation and discovery: proposal C. Product/capture content retains its existing components. */
+:root {
+  --home-muted: #5c626b;
+  --home-action: #8b3036;
+  --home-action-text: #ffffff;
+  --home-focus: #005fcc;
+}
+.default-scheme { --home-action: #9a3412; }
+.dark {
+  --home-muted: #b7bdc7;
+  --home-action: #f3b0b4;
+  --home-action-text: #202327;
+  --home-focus: #9ac3ff;
+}
+.dark.default-scheme { --home-action: #fdba74; }
+.home-header, .home-nav-shell, .home-filter {
+  background: var(--color-card);
+  color: var(--color-text);
+}
+.home-header { border-bottom: 1px solid var(--color-border); }
+.home-header-inner, .home-nav {
+  max-width: 56rem;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+.home-header-inner {
+  min-height: 4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.home-wordmark { font-size: 1.2rem; font-weight: 700; letter-spacing: .06em; }
+.home-account { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.home-account-name {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .875rem;
+  color: var(--home-muted);
+}
+.home-icon-action {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; min-height: 44px; border-radius: .4rem;
+}
+.home-nav-shell { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid var(--color-border); }
+.home-nav { display: flex; gap: 1.15rem; flex-wrap: wrap; }
+.home-nav-action {
+  display: inline-flex; align-items: center; justify-content: center; gap: .35rem;
+  min-height: 44px; padding: .65rem 0; border-bottom: 2px solid transparent;
+  font-size: .875rem; color: var(--home-muted);
+}
+.home-nav-action[aria-pressed="true"] {
+  color: var(--home-action); border-bottom-color: var(--home-action); font-weight: 600;
+}
+.home-filter { padding: 1rem; border: 1px solid var(--color-border); border-radius: .65rem; }
+.home-search-row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+.home-search { display: flex; gap: .5rem; align-items: center; flex: 1 1 14rem; min-width: 0; }
+.home-search > svg { flex: none; color: var(--home-muted); }
+.home-search input, .home-sort select {
+  border: 1px solid var(--color-border); border-radius: .35rem;
+  background: var(--color-card); color: var(--color-text);
+  padding: .55rem .65rem; font-size: 1rem; min-height: 44px;
+}
+.home-search input { width: 100%; min-width: 0; }
+.home-search input::placeholder { color: var(--home-muted); opacity: 1; }
+.home-filter-toggle, .home-filter-group button {
+  display: inline-flex; align-items: center; gap: .4rem;
+  min-height: 44px; padding: .5rem .7rem; border: 1px solid var(--color-border);
+  border-radius: .35rem; font-size: .875rem;
+}
+.home-filter-toggle { flex: none; }
+.home-sort { display: flex; gap: .75rem; flex-wrap: wrap; align-items: center; margin-top: .75rem; font-size: .875rem; }
+.home-filter-details { border-top: 1px solid var(--color-border); margin-top: .75rem; }
+.home-filter-details[hidden] { display: none; }
+.home-filter-group { margin-top: .8rem; min-width: 0; }
+.home-filter-group legend { font-size: .875rem; margin-bottom: .4rem; }
+.home-filter-group > div { display: flex; gap: .4rem; flex-wrap: wrap; }
+.home-filter-group button[aria-pressed="true"] {
+  background: var(--home-action); border-color: var(--home-action); color: var(--home-action-text);
+}
+.home-category-dot { width: .5rem; height: .5rem; border-radius: 50%; flex: none; }
+.home-icon-action:hover, .home-filter-toggle:hover, .home-filter-group button:not([aria-pressed="true"]):hover { background: var(--color-bg); }
+:is(.home-header,.home-nav,.home-filter) :is(button,a,input,select):focus-visible {
+  outline: 3px solid var(--home-focus); outline-offset: 3px;
+}
+@media (max-width: 640px) {
+  .home-account-name { display: none; }
+  .home-nav { gap: .8rem; }
+  .home-search { flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.home-header,.home-nav,.home-filter) * { transition: none; }
+}
