@@ -434,13 +434,23 @@ function agreementRequired(response: WorkersAiHttpResponse): boolean {
   return errors.some((error) => Boolean(error) && typeof error === 'object' && (error as { code?: unknown }).code === 5016);
 }
 
+// 3036 は以前の無料枠コード。4006 は日次の無料枠を使い切った 429。
+// コードが変わっても、同じ文面ならその日は止める。
+const DAILY_CAP_CODES = new Set<number>([3036, 4006]);
+const DAILY_CAP_MESSAGE = 'daily free allocation';
+
 function isDailyCap(response: WorkersAiHttpResponse): boolean {
   if (response.status !== 429) return false;
   const parsed = parseJson(response.body);
   if (!parsed || typeof parsed !== 'object') return false;
   const errors = (parsed as { errors?: unknown }).errors;
   if (!Array.isArray(errors)) return false;
-  return errors.some((error) => Boolean(error) && typeof error === 'object' && (error as { code?: unknown }).code === 3036);
+  return errors.some((error) => {
+    if (!error || typeof error !== 'object') return false;
+    const record = error as { code?: unknown; message?: unknown };
+    if (typeof record.code === 'number' && DAILY_CAP_CODES.has(record.code)) return true;
+    return typeof record.message === 'string' && record.message.toLowerCase().includes(DAILY_CAP_MESSAGE);
+  });
 }
 
 function normalizeAccount(value: string): string | null {
