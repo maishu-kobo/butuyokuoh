@@ -48,7 +48,7 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 - コミットは Conventional Commits（`feat` `fix` `perf` `docs` `test` `chore`。必要なら scope）。
 - テストを先に書く。新しい機能は API と `src/lib/` を先に作ってテストを通し、そのあと UI をつなぐ。
 - リファクタの機会を見つけたら Issue を先に開く。頼まれていない書き換えはしない。
-- 使い方は `docs/` に書く。進み具合と引き継ぎは GitHub Issue、プロジェクトボード、PR の説明に書く。
+- 使い方は `docs/` に書く。評価結果・確認メモ・引き継ぎ・スクリーンショットは PR の説明か Issue に書く。`docs/` には `docs/README.md` の索引にあるファイルだけを置き、新しいファイルを足すときは索引にも足す。進み具合と引き継ぎは GitHub Issue、プロジェクトボード、PR の説明に書く。
 - 利用者に見える変更は、同じ PR で `CHANGELOG.md` の `[Unreleased]` に1行足す。形式は Keep a Changelog。
 
 ## マージ
@@ -78,6 +78,7 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 
 ## セキュリティ
 
+- このリポは public。コミットの author/committer メールは GitHub の noreply（`<id>+<login>@users.noreply.github.com`）を使う。会社や個人のメール、サーバーの IP、シークレット、実データのスクリーンショットをコミットしない。
 - 秘密をコミットしない。ログ、PR、チャットに出さない。キーはサーバの環境変数だけ。`NEXT_PUBLIC_` に置かない。
 - ローカルは `.env.local`。本番で必須なのは `JWT_SECRET`。認証は `AUTH_SECRET` または `NEXTAUTH_SECRET`。Google は `GOOGLE_CLIENT_ID` と `GOOGLE_CLIENT_SECRET`。
 - Amazon はリンクだけ。スクレイプを新しく足さない。既存の URL 登録と価格チェックは、その作業を頼まれたとき以外、取得範囲を広げない。
