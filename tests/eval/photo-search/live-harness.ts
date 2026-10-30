@@ -11,7 +11,8 @@ import { pathToFileURL } from 'node:url';
 import { resolveSearchVariant, SEARCH_VARIANTS, estimateNeurons, type SearchVariant } from '../../../src/lib/capture/ai-variants';
 import { ensembleGuess } from '../../../src/lib/capture/ensemble';
 import { GEMINI_EVIDENCE_SUFFIX, WORKERS_EVIDENCE_SUFFIX } from '../../../src/lib/capture/evidence-prompt';
-import { createGeminiIdentifier, GEMINI_LITE_MODEL, geminiConfigFromEnv } from '../../../src/lib/capture/gemini';
+import { maybeUpgradeWithFlash } from '../../../src/lib/capture/flash-fallback';
+import { createGeminiIdentifier, GEMINI_DEFAULT_MODEL, GEMINI_LITE_MODEL, geminiConfigFromEnv } from '../../../src/lib/capture/gemini';
 import { runGeminiFallback } from '../../../src/lib/capture/gemini-fallback';
 import { BRAND_EVIDENCE_SUFFIX, guardIdentifyResult } from '../../../src/lib/capture/brand-guard';
 import { rerankCandidates } from '../../../src/lib/capture/candidate-rerank';
@@ -244,6 +245,24 @@ async function guessOrAll(selected: 'guess' | 'all') {
   const have = serviceHave();
   const referer = live ? refererFromEnv(live) : null;
   const files = readdirSync(imgDir).filter((file) => file.endsWith('.jpg')).sort();
+  const flashKey = () => liteKey ?? geminiRun?.apiKey ?? null;
+  async function upgradeGuess<G extends { ok: boolean; value?: { confidence: string; products: { name: string; brand: string | null }[] } }>(
+    photo: { mediaType: string; bytes: Uint8Array },
+    guess: G,
+    calls: unknown[],
+  ) {
+    const key = flashKey();
+    return maybeUpgradeWithFlash({
+      enabled: variant.flashFallback === true,
+      photo,
+      guess,
+      flash: key ? {
+        async identify() {
+          return identifyGemini(photo, key, GEMINI_DEFAULT_MODEL, calls, () => { geminiCalls += 1; }, GEMINI_EVIDENCE_SUFFIX);
+        },
+      } : null,
+    });
+  }
   const rows: Record<string, unknown>[] = [];
   let neurons = 0;
   let activeModel = variant.model;
@@ -275,6 +294,17 @@ async function guessOrAll(selected: 'guess' | 'all') {
           return { hits: visible.length, value: { ...value, candidates: visible } };
         },
       });
+      const flashed = await upgradeGuess(prep.value, outcome.guess, calls);
+      if (flashed.usedFlash) row.usedFlash = true;
+      const previous = outcome.guess.ok ? outcome.guess.value?.products[0] : null;
+      outcome.guess = flashed.guess;
+      const upgraded = outcome.guess.ok ? outcome.guess.value?.products[0] : null;
+      if (flashed.usedFlash && upgraded && (upgraded.name !== previous?.name || upgraded.brand !== previous?.brand)) {
+        const value = await searchLive(upgraded, true, id, live, fakes, ladder, referer);
+        const visible = value.ok ? dropOtherCategories(value.candidates, upgraded.name) : [];
+        outcome.found = { hits: visible.length, value: { ...value, candidates: visible } };
+        outcome.usedGemini = true;
+      }
       row.identifyMs = Date.now() - started;
       row.modelCalls = calls;
       row.neurons = Math.round((neurons - beforeNeurons) * 1000) / 1000;
@@ -339,7 +369,10 @@ async function guessOrAll(selected: 'guess' | 'all') {
     const identifiedRaw = gemini
       ? await identifyGemini(prep.value, geminiRun!.apiKey!, geminiRun!.model!, calls, () => { geminiCalls += 1; }, geminiSuffix)
       : await identifyWorkers(prep.value, variant, id, label, wa, budget!, calls, () => identifierUsage, (next) => { identifierUsage = next; }, (model) => { activeModel = model; }, () => activeModel, (charged) => { neurons += charged; identifierUsage += charged; }, workersSuffix);
-    const identified = brandGuard ? guardIdentifyResult(identifiedRaw) : identifiedRaw;
+    const guarded = brandGuard ? guardIdentifyResult(identifiedRaw) : identifiedRaw;
+    const flashed = await upgradeGuess(prep.value, guarded, calls);
+    const identified = flashed.guess;
+    if (flashed.usedFlash) row.usedFlash = true;
     row.geminiCalls = geminiCallsForPhoto(geminiCalls, geminiBefore);
     if (!identified.ok && identified.error.code === 'AI_LIMIT') { rows.push({ ...row, identifyError: 'AI_LIMIT' }); break; }
     row.identifyMs = Date.now() - started;

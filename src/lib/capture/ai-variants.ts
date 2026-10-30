@@ -105,6 +105,8 @@ export interface SearchVariant {
   rerank?: boolean;
   // 根拠があるときだけブランドを書く。既定の指示文には足さない。
   evidencePrompt?: boolean;
+  // 自信が低くブランドの無い靴・バッグ・服だけ flash を足す。既定の lite フォールバックではない。
+  flashFallback?: boolean;
 }
 
 const GEMINI_FLASH: AiModelSpec = {
@@ -179,6 +181,7 @@ export const SEARCH_VARIANTS: readonly SearchVariant[] = [
     estimatedNeuronsFor23: 904,
     provider: 'fallback',
     evidencePrompt: true,
+    flashFallback: true,
   },
   {
     name: 'gemini-lite-evidence',
@@ -187,6 +190,7 @@ export const SEARCH_VARIANTS: readonly SearchVariant[] = [
     estimatedNeuronsFor23: 0,
     provider: 'gemini',
     evidencePrompt: true,
+    flashFallback: true,
   },
 ];
 

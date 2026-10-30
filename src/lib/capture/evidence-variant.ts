@@ -12,7 +12,8 @@ import {
   type ProductIdentifier,
 } from './contract';
 import { GEMINI_EVIDENCE_SUFFIX, WORKERS_EVIDENCE_SUFFIX } from './evidence-prompt';
-import { createGeminiIdentifier, GEMINI_LITE_MODEL, geminiConfigFromEnv, type GeminiHttp } from './gemini';
+import { maybeUpgradeWithFlash, type FlashLedger } from './flash-fallback';
+import { createGeminiIdentifier, GEMINI_DEFAULT_MODEL, GEMINI_LITE_MODEL, geminiConfigFromEnv, type GeminiHttp } from './gemini';
 import { LLAMA4_MODEL_ID, runGeminiFallback } from './gemini-fallback';
 import { appAiBudget, createWorkersAiIdentifier, type AiBudget, type WorkersAiHttp } from './workers-ai';
 
@@ -45,6 +46,8 @@ export async function identifyEvidenceVariant(input: {
   budget?: AiBudget;
   workersHttp?: WorkersAiHttp;
   geminiHttp?: GeminiHttp;
+  flashLedger?: FlashLedger;
+  now?: number;
   search: (product: ProductGuess) => Promise<{ hits: number; value: unknown }>;
 }): Promise<CaptureResult<IdentifyResponse> | null> {
   const mode = selectedEvidenceMode(input.geminiEnv);
@@ -55,14 +58,16 @@ export async function identifyEvidenceVariant(input: {
   return identifyLlama4(input);
 }
 
-function identifyLite(input: {
+async function identifyLite(input: {
   photo: IdentifyInput;
   geminiEnv?: { CAPTURE_AI_MODEL?: string; GEMINI_API_KEY?: string };
   geminiHttp?: GeminiHttp;
+  flashLedger?: FlashLedger;
+  now?: number;
 }): Promise<CaptureResult<IdentifyResponse>> {
   const gemini = liteIdentifier(input.geminiEnv, input.geminiHttp);
   if (!gemini) return unavailable(input.photo);
-  return gemini.identify(input.photo);
+  return finishWithFlash(input, await gemini.identify(input.photo));
 }
 
 async function identifyLlama4(input: {
@@ -74,6 +79,8 @@ async function identifyLlama4(input: {
   budget?: AiBudget;
   workersHttp?: WorkersAiHttp;
   geminiHttp?: GeminiHttp;
+  flashLedger?: FlashLedger;
+  now?: number;
   search: (product: ProductGuess) => Promise<{ hits: number; value: unknown }>;
 }): Promise<CaptureResult<IdentifyResponse>> {
   if (!input.accountId || !input.apiToken) return unavailable(input.photo);
@@ -92,7 +99,24 @@ async function identifyLlama4(input: {
     gemini: liteIdentifier(input.geminiEnv, input.geminiHttp),
     search: input.search,
   });
-  return outcome.guess;
+  return finishWithFlash(input, outcome.guess);
+}
+
+function finishWithFlash(input: {
+  photo: IdentifyInput;
+  geminiEnv?: { CAPTURE_AI_MODEL?: string; GEMINI_API_KEY?: string };
+  geminiHttp?: GeminiHttp;
+  flashLedger?: FlashLedger;
+  now?: number;
+}, guess: CaptureResult<IdentifyResponse>): Promise<CaptureResult<IdentifyResponse>> {
+  return maybeUpgradeWithFlash({
+    enabled: true,
+    photo: input.photo,
+    guess,
+    flash: flashIdentifier(input.geminiEnv, input.geminiHttp),
+    ledger: input.flashLedger,
+    now: input.now,
+  }).then((upgraded) => upgraded.guess);
 }
 
 function liteIdentifier(
@@ -109,6 +133,25 @@ function liteIdentifier(
   return createGeminiIdentifier({
     apiKey: config.apiKey,
     model: GEMINI_LITE_MODEL,
+    http,
+    instructionSuffix: GEMINI_EVIDENCE_SUFFIX,
+  });
+}
+
+function flashIdentifier(
+  geminiEnv: { CAPTURE_AI_MODEL?: string; GEMINI_API_KEY?: string } | undefined,
+  http: GeminiHttp | undefined,
+): ProductIdentifier | null {
+  const source = (geminiEnv ?? process.env) as Record<string, string | undefined>;
+  const keyRaw = source[KEY_ENV];
+  const config = geminiConfigFromEnv({
+    CAPTURE_AI_MODEL: 'gemini-lite',
+    GEMINI_API_KEY: typeof keyRaw === 'string' ? keyRaw : undefined,
+  });
+  if (!config?.apiKey) return null;
+  return createGeminiIdentifier({
+    apiKey: config.apiKey,
+    model: GEMINI_DEFAULT_MODEL,
     http,
     instructionSuffix: GEMINI_EVIDENCE_SUFFIX,
   });
