@@ -5,6 +5,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createWorkersAiIdentifier, type WorkersAiHttpResponse } from '../src/lib/capture/workers-ai';
 import { copiedPromptExample, storeSearchKeyword } from '../src/lib/capture/product-query';
 import type { ProductGuess } from '../src/lib/capture/contract';
+import catalog from '../tests/eval/photo-search/catalog.json';
+import { summarizePhotoEvaluation } from '../tests/eval/photo-search/metrics.mjs';
+import { scorePhoto, exactProductTop5 } from '../tests/eval/photo-search/rubric';
 
 const jpeg = Uint8Array.of(0xff, 0xd8, 0xff, 0x00);
 
@@ -72,6 +75,16 @@ async function pass(label: string, file: string) {
 }
 
 async function main() {
+  const saved = arg('--summarize');
+  if (saved) {
+    const report = JSON.parse(readFileSync(saved, 'utf8'));
+    const summary = summarizePhotoEvaluation(report, catalog, { scoreExact: exactProductTop5, scoreCategory: scorePhoto });
+    const json = JSON.stringify(summary, null, 2);
+    const output = arg('--out');
+    if (output) writeFileSync(output, json + '\n');
+    console.log(json);
+    return;
+  }
   const report = {
     mode: 'replay-live-model-output',
     liveRerun: 'pending',
