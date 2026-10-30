@@ -10,6 +10,8 @@ export const EVIDENCE_BRAND_RULES = [
   '数字を外してもシリーズと種類は残す。ブランド名だけにしない。靴は靴、バッグはバッグ、服は服のまま。',
 ].join('');
 
-export const WORKERS_EVIDENCE_SUFFIX = `${EVIDENCE_BRAND_RULES}根拠は各productのvisibleTextに短く書く。根拠が無ければvisibleTextは空文字。nameに種類を残す。`;
+const SHAPE_RULES = 'seriesは製品線を1つ。世代の数字はseriesに入れない。formFactorは折りたたみならfoldable、まっすぐな本体ならbar。分からなければnull。';
 
-export const GEMINI_EVIDENCE_SUFFIX = `${EVIDENCE_BRAND_RULES}根拠はevidenceに短く書く。根拠が無ければevidenceは空文字。productNameとcategoryに種類を残す。`;
+export const WORKERS_EVIDENCE_SUFFIX = `${EVIDENCE_BRAND_RULES}${SHAPE_RULES}根拠は各productのvisibleTextに短く書く。根拠が無ければvisibleTextは空文字。nameに種類を残す。`;
+
+export const GEMINI_EVIDENCE_SUFFIX = `${EVIDENCE_BRAND_RULES}${SHAPE_RULES}根拠はevidenceに短く書く。根拠が無ければevidenceは空文字。productNameとcategoryに種類を残す。seriesとformFactorも返す。`;

@@ -307,6 +307,15 @@ const PRODUCT_LINES: { token: string; label: string; category: string }[] = [
   { token: 'pavilion', label: 'Pavilion', category: 'ノートパソコン' },
 ];
 
+export function deviceFormFactor(value: unknown): 'foldable' | 'bar' | null {
+  if (value === 'foldable' || value === 'bar') return value;
+  if (typeof value !== 'string') return null;
+  const folded = fold(value);
+  if (/fold|折りたたみ|フォールド/.test(folded)) return 'foldable';
+  if (folded === 'bar' || /ストレート|直板/.test(folded)) return 'bar';
+  return null;
+}
+
 export function productLine(text: string): { label: string; category: string } | null {
   const folded = fold(text);
   for (const line of PRODUCT_LINES) {
@@ -326,12 +335,22 @@ export function deviceCategory(text: string): string | null {
   return null;
 }
 
-export function searchLadderSteps(product: { name: string; brand: string | null; model: string | null }): { name: string; brand: string | null; model: string | null; jan: null }[] {
+export function searchLadderSteps(product: {
+  name: string;
+  brand: string | null;
+  model: string | null;
+  series?: string | null;
+  formFactor?: 'foldable' | 'bar' | null;
+}): { name: string; brand: string | null; model: string | null; jan: null }[] {
   const type = statedProductType(product.name);
   const color = colorInText(product.name);
   const cleaned = product.name.split(/ +/).filter((token) => token && !isGenericToken(token)).join(' ');
   const full = { name: cleaned || product.name.trim(), brand: product.brand, model: product.model, jan: null as null };
   const steps = cleaned ? [full] : [];
+  const series = product.series?.trim() || productLine(product.name)?.label || null;
+  if (product.formFactor === 'foldable' && product.brand && series) {
+    steps.unshift({ name: `${product.brand} ${series} Fold`.replace(/\s+/g, ' ').trim(), brand: product.brand, model: null, jan: null });
+  }
   if (product.brand && type) {
     steps.push({ name: `${product.brand} ${type}`, brand: product.brand, model: null, jan: null });
   }

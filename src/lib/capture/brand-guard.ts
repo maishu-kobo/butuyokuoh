@@ -118,7 +118,14 @@ function stripUnreadModelNumber(product: ProductGuess, evidence: BrandEvidence |
   }
   const name = unique.join(' ').trim();
   if (!name || (brand && fold(name) === fold(brand))) return null;
-  return { name, brand: product.brand, model: null, jan: null };
+  return copyLine(product, { name, brand: product.brand, model: null, jan: null });
+}
+
+function copyLine(source: ProductGuess, next: ProductGuess): ProductGuess {
+  const series = source.series?.trim() || productLine(`${source.name} ${source.model ?? ''}`)?.label;
+  if (series) next.series = series;
+  if (source.formFactor) next.formFactor = source.formFactor;
+  return next;
 }
 
 function digitTokens(text: string): string[] {

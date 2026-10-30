@@ -22,6 +22,8 @@
 
 ### Added
 
+- 根拠つきの写真推定は、製品線 `series` と形 `formFactor` を返す。折りたたみは `{ブランド} {series} Fold` で探す。
+
 - 写真の推定は、`CAPTURE_AI_MODEL` が `llama4-evidence` または `gemini-lite-evidence` のときだけ、読める文字や見た目の根拠があるブランドを書き、種類は残す。`llama4-evidence` は種類の違う sure のブランドだけ落とす。Flash は、ブランドが無く色と種類だけの靴・バッグ・服に、1日15回まで。既定のモデルと、通常の flash-lite フォールバックは変えていない。
 
 - 写真の推定は、`CAPTURE_AI_MODEL` で選んだときだけ Google Gemini（無料枠）を使える。既定のモデルは変えていない。

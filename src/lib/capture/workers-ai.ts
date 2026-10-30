@@ -13,7 +13,7 @@ import {
   type ProductGuess,
   type ProductIdentifier,
 } from './contract';
-import { composeCapturedProduct, copiedPromptExample, guessIsSpecific } from './product-query';
+import { composeCapturedProduct, copiedPromptExample, deviceFormFactor, guessIsSpecific } from './product-query';
 import { aiRequestBody, resolveAiModel } from './ai-variants';
 
 export const WORKERS_AI_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
@@ -718,18 +718,26 @@ function normalizeProduct(item: unknown): {
   if (!name || isUrlish(name)) return null;
   const seen = visibleEvidence(record);
   return {
-    product: {
+    product: lineFields({
       name,
       brand: optionalLabel(record.brand, 80),
       model: optionalLabel(record.model, 80),
       // LLMのJANはチェックサムが正しくても画像由来と検証できない。
       jan: null,
-    },
+    }, record),
     productType: optionalLabel(record.productType, 40),
     color: optionalLabel(record.color, 40),
     textProvided: seen.provided,
     visibleText: seen.text,
   };
+}
+
+function lineFields(product: ProductGuess, record: Record<string, unknown>): ProductGuess {
+  const series = optionalLabel(record.series, 40);
+  const formFactor = deviceFormFactor(record.formFactor);
+  if (series) product.series = series;
+  if (formFactor) product.formFactor = formFactor;
+  return product;
 }
 
 function visibleEvidence(record: Record<string, unknown>): { provided: boolean; text: string } {

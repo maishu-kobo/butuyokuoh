@@ -73,11 +73,16 @@ export interface CaptureCandidate {
   sourceItemCode?: string;
 }
 
+export type DeviceFormFactor = 'foldable' | 'bar';
+
 export interface ProductGuess {
   name: string;
   brand: string | null;
   model: string | null;
   jan: string | null;
+  // 根拠つきの推定だけが埋める。画面の検索語に使う。
+  series?: string | null;
+  formFactor?: DeviceFormFactor | null;
 }
 
 export type IdentifyConfidence = 'sure' | 'unsure' | 'unreadable';

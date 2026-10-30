@@ -14,7 +14,7 @@ import {
   type IdentifyResponse,
   type ProductIdentifier,
 } from './contract';
-import { composeCapturedProduct, copiedPromptExample, guessIsSpecific } from './product-query';
+import { composeCapturedProduct, copiedPromptExample, deviceFormFactor, guessIsSpecific } from './product-query';
 
 export const GEMINI_HOST = 'generativelanguage.googleapis.com';
 export const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash';
@@ -272,8 +272,10 @@ function requestBody(model: GeminiModelId, mimeType: string, data: string, instr
       properties: {
         ...RESPONSE_SCHEMA.properties,
         evidence: { type: 'STRING', nullable: true },
+        series: { type: 'STRING', nullable: true },
+        formFactor: { type: 'STRING', enum: ['foldable', 'bar'], nullable: true },
       },
-      required: [...RESPONSE_SCHEMA.required, 'evidence'],
+      required: [...RESPONSE_SCHEMA.required, 'evidence', 'series', 'formFactor'],
     }
     : RESPONSE_SCHEMA;
   return {
@@ -439,12 +441,24 @@ function mapCandidate(value: unknown): IdentifyResponse | 'invalid' {
   let next: IdentifyConfidence = confidence;
   if (plain.catalog || !guessIsSpecific(composed)) next = 'unsure';
   const evidence = evidenceFrom(record, category, cleanLabel(record.color, 40));
+  const product = lineFields({ name: composed.name, brand: composed.brand, model: composed.model, jan: null }, record);
   return {
     confidence: next,
-    products: [{ name: composed.name, brand: composed.brand, model: composed.model, jan: null }],
+    products: [product],
     queries,
     ...(evidence ? { evidence } : {}),
   };
+}
+
+function lineFields(
+  product: { name: string; brand: string | null; model: string | null; jan: null; series?: string | null; formFactor?: 'foldable' | 'bar' | null },
+  record: Record<string, unknown>,
+) {
+  const series = cleanLabel(record.series, 40);
+  const formFactor = deviceFormFactor(record.formFactor);
+  if (series) product.series = series;
+  if (formFactor) product.formFactor = formFactor;
+  return product;
 }
 
 function evidenceFrom(

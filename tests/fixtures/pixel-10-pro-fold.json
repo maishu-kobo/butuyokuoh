@@ -9,6 +9,8 @@
       "productType": "スマートフォン",
       "color": null,
       "visibleText": "",
+      "series": "Pixel",
+      "formFactor": "foldable",
       "jan": null
     }
   ]

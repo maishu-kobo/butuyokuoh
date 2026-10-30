@@ -40,6 +40,7 @@ test('a sure Pixel generation with no printed number keeps the line and the phon
   assert.equal(product.name === 'Google', false);
   const keywords = searchLadderSteps(product).map((step) => storeSearchKeyword(step, { maxChars: 128, maxBytes: 128 }));
   assert.equal(keywords.some((keyword) => keyword === 'Google'), false);
-  assert.equal(keywords[0].includes('Pixel'), true);
-  assert.equal(keywords[0].includes('スマートフォン'), true);
+  assert.equal(keywords[0], 'Google Pixel Fold');
+  assert.equal(product.series, 'Pixel');
+  assert.equal(product.formFactor, 'foldable');
 });
