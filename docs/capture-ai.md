@@ -46,7 +46,7 @@ Workers AI のほかに、選んだときだけ Google Gemini API で同じ写�
 
 キーは `GEMINI_API_KEY`。`AQ.` で始まるキーも通す。リクエストの URL には置かず、ヘッダ `x-goog-api-key` だけ。`CAPTURE_SECRETS_FILE` は知らないキーを読まないので、このキーはプロセスの環境変数に置く。`GEMINI_MODEL` の初期値は `gemini-3.5-flash`。思考はモデルごとで、flash は `thinkingLevel: low`、flash-lite は `thinkingLevel: minimal`（lite に `thinkingBudget: 0` を送ると 400。[Gemini 3.5](https://ai.google.dev/gemini-api/docs/generate-content/whats-new-gemini-3.5)、[思考](https://ai.google.dev/gemini-api/docs/generate-content/thinking)）。タイムアウトは 90 秒。画面の判定は待たずに1回だけ送り直す。429 と 503 を 10 秒、20 秒と最大6回待つのは評価ハーネスだけ。返答は `responseMimeType: application/json` と `responseSchema`。ニューロン台帳は増えない。
 
-評価は推測と検索を別のマシンで分けられる。推測側は `GEMINI_API_KEY` だけ、検索側は Yahoo と楽天のキーだけ。最後の JSON は今までのライブ評価と同じ項目（`diagnosticPoints` の満点は 92）なので、Workers の結果と並べられる。
+評価は推測と検索を別のマシンで分けられる。推測側は `GEMINI_API_KEY` だけ、検索側は Yahoo と楽天のキーだけ。最後の JSON は今までのライブ評価と同じ項目（`diagnosticPoints` の満点は 84。ブランドのある15枚は4点、無い8枚は3点）なので、Workers の結果と並べられる。
 
 ```bash
 node --import tsx tests/eval/photo-search/live-harness.ts --mode guess --variant gemini-ladder --images tests/eval/photo-search/images --out /tmp/gemini-ladder-guesses.json
