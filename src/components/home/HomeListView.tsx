@@ -19,7 +19,7 @@ import {
   reduceHomeListPage,
   visibleWishlistRows,
 } from '@/lib/home-list-page';
-import type { HomeSortBy } from '@/lib/home-wishlist';
+import { homeDragEnabled, type HomeSortBy } from '@/lib/home-wishlist';
 import type { Category, ComparisonGroup, Item } from '@/types';
 
 export default function HomeListView({
@@ -274,7 +274,9 @@ export default function HomeListView({
       ) : (
         <>
           {paging?.notice && <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{paging.notice}</p>}
-          {paging?.hasMore && <p className="text-sm text-slate-600 dark:text-slate-300">ドラッグで順序を変えるには、すべての候補を読み込んでください。</p>}
+          {paging?.hasMore && homeDragEnabled({ selectedCategory, selectedPriority, selectedGroup, searchQuery, sortBy }) && <p className="text-sm text-slate-600 dark:text-slate-300">ドラッグで順序を変えるには、すべての候補を読み込んでください。</p>}
+          {loading && <p role="status" className="text-sm text-slate-600 dark:text-slate-300">一覧を更新中です。前の結果を表示しています。</p>}
+          <div inert={loading || undefined} aria-busy={loading}>
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -316,13 +318,14 @@ export default function HomeListView({
               </div>
             </SortableContext>
           </DndContext>
+          </div>
           {hasMore && (
             <div className="text-center">
               {paging?.moreError && <p role="alert" className="mb-2 text-sm text-red-700 dark:text-red-300">追加読み込みに失敗しました。表示中の商品はそのままです。</p>}
               <button
                 type="button"
                 onClick={showMore}
-                disabled={paging?.moreLoading}
+                disabled={loading || paging?.moreLoading}
                 className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
               >
                 {paging?.moreLoading ? '読み込み中...' : paging?.moreError ? '追加読み込みを再試行' : 'もっと見る'}

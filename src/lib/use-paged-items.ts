@@ -12,5 +12,9 @@ export function usePagedItems(query: HomeListQuery, userId: number | null) {
     if (userId != null) void client.open(query, userId);
     return client.cancel;
   }, [client, query, userId]);
-  return { state: state.key === key ? state : emptyItemPageState(key), reload: client.reload, more: client.more };
+  const visible = state.key === key ? state
+    : userId != null && state.userId === userId
+      ? { ...state, key, loading: true, error: false, moreLoading: false, moreError: false }
+      : emptyItemPageState(key, userId);
+  return { state: visible, reload: client.reload, more: client.more };
 }

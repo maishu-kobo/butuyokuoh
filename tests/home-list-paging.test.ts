@@ -157,3 +157,17 @@ test('refresh does not replace existing cards with the initial loading screen', 
   assert.doesNotMatch(initial, /読み込み済み商品/);
   assert.match(initial, /読み込み中/);
 });
+
+
+test('pending search keeps its previous rows visible but prevents stale item actions', () => {
+  const html = render({ loading: true });
+  assert.match(html, /読み込み済み商品/);
+  assert.match(html, /前の結果を表示/);
+  assert.match(html, /inert=""/);
+  assert.match(html, /aria-busy="true"/);
+});
+
+test('drag loading hint is absent when sorting or filtering would still forbid dragging', () => {
+  assert.doesNotMatch(render({ sortBy: 'price_asc' }), /ドラッグで順序を変えるには/);
+  assert.doesNotMatch(render({ searchQuery: '商品' }), /ドラッグで順序を変えるには/);
+});

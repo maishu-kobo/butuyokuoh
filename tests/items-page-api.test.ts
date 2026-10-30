@@ -96,8 +96,11 @@ test('snapshot edits and condition changes require restart; bad cursors do not l
   // No clock advance: content changes must invalidate even with identical updated_at.
   database.prepare('UPDATE items SET name = ? WHERE id = ?').run('changed', (initial.json as Page).items[0].id);
   assert.equal((await call(route, 'GET', query)).status, 409);
-  await createMember('page-other-owner');
-  assert.equal((await call(route, 'GET', query)).status, 409);
+  const refreshed = await call(route, 'GET', '/api/items/page?limit=1');
+  const currentCursor = '/api/items/page?limit=1&cursor=' + encodeURIComponent((refreshed.json as Page).nextCursor!);
+  assert.equal((await call(route, 'GET', currentCursor)).status, 200);
+  await createMember('page-other-owner'); // createMember also switches the authenticated test user.
+  assert.equal((await call(route, 'GET', currentCursor)).status, 409);
   for (const bad of ['limit=0', 'limit=101', 'priority=6', 'category=-1', 'sort=invalid', 'cursor=oops']) {
     assert.equal((await call(route, 'GET', '/api/items/page?' + bad)).status, 400);
   }
