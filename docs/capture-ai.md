@@ -8,7 +8,7 @@
 
 ## 比べるモデル
 
-既定は `@cf/meta/llama-3.2-11b-vision-instruct` のまま。変えるときはサーバの `CAPTURE_AI_MODEL` に、下の id か variant 名を置く。評価ハーネスは `--variant` で同じ23枚を比べる。選ぶまで本番の既定は変えない。
+既定は `@cf/meta/llama-3.2-11b-vision-instruct` のまま。変えるときはサーバの `CAPTURE_AI_MODEL` に、下の id か variant 名を置く。評価ハーネスは `--variant` で同じ23枚を比べる。選ぶまで本番の既定は変えない。本番が llama 4 に切り替えるときは `CAPTURE_AI_MODEL=llama4-evidence` だけを足す。`GEMINI_API_KEY` が無くても Workers AI だけで動き、Flash と照合はしない。`CAPTURE_WEB_LOOKUP` は未設定のままにする。
 
 料金は [Workers AI の料金](https://developers.cloudflare.com/workers-ai/platform/pricing/)（2026-10-20）。無料枠は1日 10,000 ニューロン。画像入力が付くものは各モデルページの Vision。llama 3.2 はリクエストの `image` に data URL を置く。llama 4、Mistral Small 3.1、Gemma、Moondream はチャットの `image_url` に data URL を置く（[OpenAI 互換](https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/)）。
 
