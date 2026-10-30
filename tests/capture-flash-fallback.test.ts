@@ -5,10 +5,13 @@ import { resolveSearchVariant } from '../src/lib/capture/ai-variants';
 import { identifyEvidenceVariant } from '../src/lib/capture/evidence-variant';
 import {
   FLASH_DAILY_CAP,
+  chooseFlashFallback,
   createFlashLedger,
   flashImproves,
   flashUpgradeEligible,
+  geminiQuotaExhausted,
   maybeUpgradeWithFlash,
+  withFlashRetry,
 } from '../src/lib/capture/flash-fallback';
 import { WORKERS_AI_MODEL } from '../src/lib/capture/workers-ai';
 
@@ -46,6 +49,8 @@ test('flash stays off the default model and the lite fallback', () => {
   assert.equal(fallback.includes('flash-fallback'), false);
   assert.equal(fallback.includes('GEMINI_DEFAULT_MODEL'), false);
   assert.equal(harness.includes('maybeUpgradeWithFlash'), true);
+  assert.equal(harness.includes('withFlashRetry'), true);
+  assert.equal(harness.includes("GEMINI_EVIDENCE_SUFFIX, 'flash'"), true);
   assert.equal(harness.includes('GEMINI_DEFAULT_MODEL'), true);
   assert.equal(harness.includes('variant.flashFallback === true'), true);
 });
@@ -113,6 +118,107 @@ test('a disabled flag and a failed flash call do not replace the lite guess', as
   assert.equal(calls, 1);
   assert.equal(kept.usedFlash, true);
   assert.equal(kept.guess.value?.products[0].name, '白いスニーカー');
+});
+
+test('a Flash 429 is not retried and blocks the rest of the UTC day', async () => {
+  assert.equal(geminiQuotaExhausted(429), true);
+  assert.equal(geminiQuotaExhausted(503), false);
+  assert.equal(geminiQuotaExhausted(403, '{"error":{"status":"RESOURCE_EXHAUSTED"}}'), true);
+  let slept = 0;
+  let calls = 0;
+  const quota = await withFlashRetry({
+    sleep: async () => { slept += 1; },
+    run: async () => {
+      calls += 1;
+      return { status: calls === 1 ? 429 : 200, body: 'You exceeded your current quota', value: calls };
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(quota.quotaExceeded, true);
+  assert.equal(quota.value, 1);
+  assert.equal(slept, 0);
+
+  calls = 0;
+  const unavailable = await withFlashRetry({
+    sleep: async () => { slept += 1; },
+    run: async () => {
+      calls += 1;
+      return { status: 503, value: calls };
+    },
+  });
+  assert.equal(calls, 2);
+  assert.equal(unavailable.quotaExceeded, false);
+  assert.equal(unavailable.value, 2);
+  assert.equal(slept, 1);
+
+  const ledger = createFlashLedger();
+  const shoe = guess('unsure', '白いスニーカー', null);
+  let flashCalls = 0;
+  let liteCalls = 0;
+  const once = () => maybeUpgradeWithFlash({
+    enabled: true,
+    photo: { mediaType: 'image/jpeg', bytes: jpeg },
+    guess: shoe,
+    now: DAY,
+    ledger,
+    flash: { async identify() { flashCalls += 1; return { ok: false, quotaExceeded: true }; } },
+    lite: { async identify() { liteCalls += 1; return guess('unsure', 'Balenciaga スニーカー', 'Balenciaga'); } },
+  });
+  const first = await once();
+  const second = await once();
+  assert.equal(flashCalls, 1);
+  assert.equal(liteCalls, 0);
+  assert.equal(first.guess.value?.products[0].name, '白いスニーカー');
+  assert.equal(second.usedFlash, false);
+  assert.equal(ledger.tryConsume(NEXT_DAY), true);
+
+  const empty = { ok: true as const, value: { confidence: 'unreadable' as const, products: [] as { name: string; brand: null }[] } };
+  const liteGuess = guess('unsure', '白いスニーカー', null);
+  assert.equal(chooseFlashFallback(empty, liteGuess).value?.products[0].name, '白いスニーカー');
+  assert.equal(chooseFlashFallback(shoe, liteGuess), shoe);
+});
+
+test('llama4-evidence keeps the current guess after one Flash 429', async () => {
+  const ledger = createFlashLedger();
+  let flashHttp = 0;
+  const run = () => identifyEvidenceVariant({
+    photo: { mediaType: 'image/jpeg', bytes: jpeg },
+    hooked: false,
+    fake: { async identify() { throw new Error('unused'); } },
+    geminiEnv: { CAPTURE_AI_MODEL: 'llama4-evidence', GEMINI_API_KEY: KEY },
+    accountId: ACCOUNT,
+    apiToken: 'test-cloudflare-token',
+    userId: 'flash-429',
+    now: DAY,
+    flashLedger: ledger,
+    budget: {
+      tryBegin() { return { ok: true, token: 1 }; },
+      settle() {},
+      trip() {},
+      usedNeurons() { return 0; },
+    },
+    workersHttp: async () => ({
+      status: 200,
+      body: JSON.stringify({
+        success: true,
+        result: { response: JSON.stringify({ confidence: 'unsure', products: [{ name: '白いスニーカー', brand: null, model: null, productType: 'スニーカー', jan: null }] }) },
+      }),
+    }),
+    geminiHttp: async (request) => {
+      flashHttp += 1;
+      assert.equal(request.url.includes('/models/gemini-3.5-flash:generateContent'), true);
+      return { status: 429, body: '{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"You exceeded your current quota"}}' };
+    },
+    search: async () => ({ hits: 3, value: null }),
+  });
+  const first = await run();
+  assert.equal(first?.ok, true);
+  if (!first?.ok) return;
+  assert.equal(first.value.products[0].name.includes('スニーカー'), true);
+  assert.equal(first.value.products[0].brand, null);
+  assert.equal(flashHttp, 1);
+  await run();
+  assert.equal(flashHttp, 1);
 });
 
 test('llama4-evidence calls flash once for an unbranded shoe and then stops at the daily cap', async () => {

@@ -13,8 +13,8 @@ import {
 } from './contract';
 import { guardIdentifyResult } from './brand-guard';
 import { GEMINI_EVIDENCE_SUFFIX, WORKERS_EVIDENCE_SUFFIX } from './evidence-prompt';
-import { maybeUpgradeWithFlash, type FlashLedger } from './flash-fallback';
-import { createGeminiIdentifier, GEMINI_DEFAULT_MODEL, GEMINI_LITE_MODEL, geminiConfigFromEnv, type GeminiHttp } from './gemini';
+import { maybeUpgradeWithFlash, withFlashRetry, type FlashLedger } from './flash-fallback';
+import { createGeminiIdentifier, dispatchGemini, GEMINI_DEFAULT_MODEL, GEMINI_LITE_MODEL, geminiConfigFromEnv, type GeminiHttp } from './gemini';
 import { LLAMA4_MODEL_ID, runGeminiFallback } from './gemini-fallback';
 import { appAiBudget, createWorkersAiIdentifier, type AiBudget, type WorkersAiHttp } from './workers-ai';
 
@@ -155,12 +155,34 @@ function flashIdentifier(
     GEMINI_API_KEY: typeof keyRaw === 'string' ? keyRaw : undefined,
   });
   if (!config?.apiKey) return null;
-  return createGeminiIdentifier({
-    apiKey: config.apiKey,
-    model: GEMINI_DEFAULT_MODEL,
-    http,
-    instructionSuffix: GEMINI_EVIDENCE_SUFFIX,
-  });
+  const apiKey = config.apiKey;
+  return {
+    async identify(photo) {
+      let lastStatus = 0;
+      let lastBody = '';
+      const wrapped: GeminiHttp = async (request) => {
+        const response = http
+          ? await http(request)
+          : await dispatchGemini(request);
+        lastStatus = response.status;
+        lastBody = response.body;
+        return response;
+      };
+      const ran = await withFlashRetry({
+        run: async () => {
+          const value = await createGeminiIdentifier({
+            apiKey,
+            model: GEMINI_DEFAULT_MODEL,
+            http: wrapped,
+            attempts: 1,
+            instructionSuffix: GEMINI_EVIDENCE_SUFFIX,
+          }).identify(photo);
+          return { status: lastStatus, body: lastBody, value };
+        },
+      });
+      return { ...ran.value, quotaExceeded: ran.quotaExceeded };
+    },
+  };
 }
 
 async function unavailable(photo: IdentifyInput): Promise<CaptureResult<IdentifyResponse>> {

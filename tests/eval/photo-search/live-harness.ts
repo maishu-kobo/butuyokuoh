@@ -11,13 +11,13 @@ import { pathToFileURL } from 'node:url';
 import { resolveSearchVariant, SEARCH_VARIANTS, estimateNeurons, type SearchVariant } from '../../../src/lib/capture/ai-variants';
 import { ensembleGuess } from '../../../src/lib/capture/ensemble';
 import { GEMINI_EVIDENCE_SUFFIX, WORKERS_EVIDENCE_SUFFIX } from '../../../src/lib/capture/evidence-prompt';
-import { maybeUpgradeWithFlash } from '../../../src/lib/capture/flash-fallback';
+import { maybeUpgradeWithFlash, withFlashRetry } from '../../../src/lib/capture/flash-fallback';
 import { createGeminiIdentifier, GEMINI_DEFAULT_MODEL, GEMINI_LITE_MODEL, geminiConfigFromEnv } from '../../../src/lib/capture/gemini';
 import { runGeminiFallback } from '../../../src/lib/capture/gemini-fallback';
 import { BRAND_EVIDENCE_SUFFIX, guardIdentifyResult } from '../../../src/lib/capture/brand-guard';
 import { rerankCandidates } from '../../../src/lib/capture/candidate-rerank';
 import { dropOtherCategories } from '../../../src/lib/capture/product-query';
-import { geminiCallsForPhoto, sumGeminiCalls, withGeminiHarnessRetry } from './gemini-retry';
+import { geminiCallsForPhoto, geminiHarnessBackoffMs, sumGeminiCalls, withGeminiHarnessRetry } from './gemini-retry';
 import { parseGuessDocument, searchGuessRows, summarizeLiveReport, type GuessProduct, type HarnessSearchResult } from './split-run';
 import { createEvaluationBudget, evaluationReservation, UNKNOWN_CALL_NEURONS } from './budget';
 
@@ -258,7 +258,12 @@ async function guessOrAll(selected: 'guess' | 'all') {
       guess,
       flash: key ? {
         async identify() {
-          return identifyGemini(photo, key, GEMINI_DEFAULT_MODEL, calls, () => { geminiCalls += 1; }, GEMINI_EVIDENCE_SUFFIX);
+          return identifyGemini(photo, key, GEMINI_DEFAULT_MODEL, calls, () => { geminiCalls += 1; }, GEMINI_EVIDENCE_SUFFIX, 'flash');
+        },
+      } : null,
+      lite: key ? {
+        async identify() {
+          return identifyGemini(photo, key, GEMINI_LITE_MODEL, calls, () => { geminiCalls += 1; }, GEMINI_EVIDENCE_SUFFIX);
         },
       } : null,
     });
@@ -460,8 +465,10 @@ async function identifyGemini(
   calls: unknown[],
   onCall?: () => void,
   instructionSuffix?: string,
+  policy: 'default' | 'flash' = 'default',
 ) {
   let lastStatus = 0;
+  let lastBody = '';
   const http = async (request: { url: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => {
     try {
       const response = await fetch(request.url, {
@@ -469,6 +476,7 @@ async function identifyGemini(
       });
       lastStatus = response.status;
       const body = await response.text();
+      lastBody = body;
       let text: string | null = null;
       let usage: Record<string, number | null> | null = null;
       try {
@@ -495,14 +503,23 @@ async function identifyGemini(
       return { status: 0, body: '' };
     }
   };
-  return withGeminiHarnessRetry({
+  const once = async () => {
+    onCall?.();
+    const value = await createGeminiIdentifier({ apiKey, model, http, attempts: 1, instructionSuffix }).identify(photo);
+    return { status: lastStatus, body: lastBody, value };
+  };
+  if (policy === 'flash') {
+    const ran = await withFlashRetry({
+      sleep: async () => { await sleep(geminiHarnessBackoffMs(0)); },
+      run: once,
+    });
+    return { ...ran.value, quotaExceeded: ran.quotaExceeded };
+  }
+  const retried = await withGeminiHarnessRetry({
     sleep,
-    run: async () => {
-      onCall?.();
-      const value = await createGeminiIdentifier({ apiKey, model, http, attempts: 1, instructionSuffix }).identify(photo);
-      return { status: lastStatus, value };
-    },
+    run: once,
   });
+  return retried;
 }
 
 async function identifyWorkers(

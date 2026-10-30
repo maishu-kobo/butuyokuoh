@@ -11,16 +11,56 @@ const FASHION_GROUPS = new Set(['shoes', 'bags', 'shirts', 'jackets', 'jeans', '
 export interface FlashLedger {
   tryConsume(now: number): boolean;
   used(now: number): number;
+  // 429 や上限のあと、その UTC 日はもう呼ばない。
+  trip(now: number): void;
 }
 
 type GuessLike = {
   ok: boolean;
   value?: { confidence: string; products: { name: string; brand: string | null; model?: string | null }[] };
+  quotaExceeded?: boolean;
 };
+
+// 429 と、本文が上限を告げる応答。Flash は送り直さない。
+export function geminiQuotaExhausted(status: number, body?: string): boolean {
+  if (status === 429) return true;
+  if (!body || status === 200) return false;
+  return /RESOURCE_EXHAUSTED|quotaExceeded|exceeded your current quota/i.test(body);
+}
+
+// 503 だけ、1回まで送り直す。429 はここまで来ない。
+export async function withFlashRetry<T>(input: {
+  run: () => Promise<{ status: number; body?: string; value: T }>;
+  sleep?: () => Promise<unknown>;
+}): Promise<{ value: T; quotaExceeded: boolean }> {
+  let last!: T;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const step = await input.run();
+    last = step.value;
+    if (geminiQuotaExhausted(step.status, step.body)) return { value: step.value, quotaExceeded: true };
+    if (step.status === 503 && attempt === 0) {
+      if (input.sleep) await input.sleep();
+      continue;
+    }
+    return { value: step.value, quotaExceeded: false };
+  }
+  return { value: last, quotaExceeded: false };
+}
+
+export function chooseFlashFallback<G extends GuessLike>(current: G, lite: GuessLike | null): G | GuessLike {
+  if (usableGuess(current)) return current;
+  if (lite && usableGuess(lite)) return lite;
+  return current;
+}
+
+function usableGuess(guess: GuessLike): boolean {
+  return Boolean(guess.ok && guess.value?.products[0]?.name.trim());
+}
 
 export function createFlashLedger(cap = FLASH_DAILY_CAP): FlashLedger {
   let day = '';
   let used = 0;
+  let blockedDay = '';
   return {
     tryConsume(now: number) {
       const next = utcDay(now);
@@ -28,12 +68,15 @@ export function createFlashLedger(cap = FLASH_DAILY_CAP): FlashLedger {
         day = next;
         used = 0;
       }
-      if (used >= cap) return false;
+      if (blockedDay === next || used >= cap) return false;
       used += 1;
       return true;
     },
     used(now: number) {
       return utcDay(now) === day ? used : 0;
+    },
+    trip(now: number) {
+      blockedDay = utcDay(now);
     },
   };
 }
@@ -68,6 +111,7 @@ export async function maybeUpgradeWithFlash<G extends GuessLike>(input: {
   photo: IdentifyInput;
   guess: G;
   flash: { identify(photo: IdentifyInput): Promise<GuessLike> } | null;
+  lite?: { identify(photo: IdentifyInput): Promise<GuessLike> } | null;
   ledger?: FlashLedger;
   now?: number;
 }): Promise<{ guess: G; usedFlash: boolean }> {
@@ -78,6 +122,14 @@ export async function maybeUpgradeWithFlash<G extends GuessLike>(input: {
   const now = input.now ?? Date.now();
   if (!ledger.tryConsume(now)) return { guess: input.guess, usedFlash: false };
   const next = await input.flash.identify(input.photo);
+  if (next.quotaExceeded) {
+    ledger.trip(now);
+    if (!usableGuess(input.guess) && input.lite) {
+      const lite = await input.lite.identify(input.photo);
+      return { guess: chooseFlashFallback(input.guess, lite) as G, usedFlash: true };
+    }
+    return { guess: input.guess, usedFlash: true };
+  }
   if (!flashImproves(input.guess.value, next)) return { guess: input.guess, usedFlash: true };
   return { guess: next as G, usedFlash: true };
 }
