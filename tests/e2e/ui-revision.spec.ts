@@ -9,11 +9,24 @@ test.use({ locale: 'ja-JP' });
 async function capture(page: Page, name: string) {
   await japaneseScreenshotFont(page);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  const bytes = await page.screenshot({ type: 'jpeg', quality: 80, fullPage: true });
+  const bytes = await page.screenshot({ type: 'jpeg', quality: 80, fullPage: !(await page.locator('dialog[open]').count()) });
   await test.info().attach(name, { body: bytes, contentType: 'image/jpeg' });
   if (!existsSync(path.resolve('docs/ui-refresh-256/v2/screenshots', name + '.jpg'))) {
     console.log('UI_V2|' + name + '|' + bytes.toString('base64'));
   }
+}
+async function expectReadableAction(page: Page, selector: string) {
+  await page.locator(selector).hover();
+  const contrast = await page.locator(selector).evaluate(el => {
+    const css = getComputedStyle(el);
+    const lum = (color: string) => {
+      const c = (color.match(/[\\d.]+/g) || []).slice(0, 3).map(Number).map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+      return .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
+    };
+    const l = [lum(css.color), lum(css.backgroundColor)].sort((a, b) => b - a);
+    return (l[0] + .05) / (l[1] + .05);
+  });
+  expect(contrast).toBeGreaterThanOrEqual(4.5);
 }
 for (const concept of ['a', 'b', 'c']) for (const width of [390, 1280]) {
   test(`revision ${concept} completes photo-to-plan at ${width}`, async ({ page }) => {
@@ -26,6 +39,7 @@ for (const concept of ['a', 'b', 'c']) for (const width of [390, 1280]) {
     await page.route('**/*', route => route.abort());
     await page.setContent(await readFile(path.resolve('docs/ui-refresh-256/v2/prototypes.html'), 'utf8'));
     await page.locator(`[data-choose="${concept}"]`).click();
+    await expectReadableAction(page, '#capture-top');
     await capture(page, concept + '-' + width + '-list');
     await page.locator('#query').fill('存在しない商品');
     await expect(page.getByText(/一致する商品はありません/)).toBeVisible();
@@ -42,6 +56,11 @@ for (const concept of ['a', 'b', 'c']) for (const width of [390, 1280]) {
     await page.keyboard.press('Enter');
     if (concept === 'c') {
       await expect(page.locator('#capture-dialog')).toBeVisible();
+      await page.locator('#capture-close').focus();
+      await page.keyboard.press('Shift+Tab');
+      await expect(page.locator('#sample-photo')).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(page.locator('#capture-close')).toBeFocused();
       await page.keyboard.press('Escape');
       await expect(page.locator('#capture-top')).toBeFocused();
       await page.keyboard.press('Enter');
@@ -78,12 +97,14 @@ for (const concept of ['a', 'b', 'c']) for (const width of [390, 1280]) {
     await expect(cheaper).toBeChecked();
     await expect(page.locator('#plan-date')).toHaveValue('2026-11-25');
     await page.locator('#save-plan').click();
+    await expectReadableAction(page, '#save-plan');
     await capture(page, concept + '-' + width + '-stores');
     await page.locator('#view-plans').click();
     await expect(page.locator('.summary-total')).toContainText('¥153,200');
     await expect(page.getByText('1件は価格未取得のため合計に含みません。')).toBeVisible();
     await capture(page, concept + '-' + width + '-plans');
     await page.locator('#theme').click();
+    await expectReadableAction(page, '#capture-top');
     await capture(page, concept + '-' + width + '-dark');
     await page.locator('#reset').click();
     await expect(page.locator('[data-item]')).toHaveCount(4);
