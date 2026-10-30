@@ -10,6 +10,13 @@ import TermsPage from '../src/app/terms/page';
 import { RootProviders } from '../src/components/RootProviders';
 import LoginForm from '../src/components/LoginForm';
 import { AuthContext, AuthProvider } from '../src/components/AuthProvider';
+import {
+  CONTACT_EMAIL,
+  FOREIGN_PRIVACY_SYSTEMS_URL,
+  JURISDICTION_COURT,
+  LEGAL_EFFECTIVE_DATE,
+  OPERATOR_NAME,
+} from '../src/lib/legal';
 
 const router = {
   back() {},
@@ -36,91 +43,106 @@ const draftMarks = [
   '確定した文面ではありません',
 ];
 
-test('プライバシーポリシーは正式版で、実装どおりの扱いを書く', () => {
+const internalJargon = [
+  'キーが無いとき',
+  'アカウントIDとAPIトークン',
+  '設定がある店',
+  'その設定があるときだけ画面に出ます',
+  'パスワードは6文字以上',
+  '確認メールは送りません',
+  'JWT',
+  'httpOnly',
+  'SameSite',
+  'SQLite',
+  'exe.dev',
+  'api.cloudflare.com',
+  'shopping.yahooapis.jp',
+  'openapi.rakuten.co.jp',
+  'ニューロン',
+  'Auth.js',
+  'NextAuth',
+  'maishu-kobo/butuyokuoh',
+  'GitHub',
+];
+
+test('運営者名・連絡先メール・管轄の定数が入っている', () => {
+  assert.ok(OPERATOR_NAME.trim().length > 0, 'OPERATOR_NAME を src/lib/legal.ts に入れてください');
+  assert.ok(CONTACT_EMAIL.trim().length > 0, 'CONTACT_EMAIL を src/lib/legal.ts に入れてください');
+  assert.ok(JURISDICTION_COURT.trim().length > 0, 'JURISDICTION_COURT を src/lib/legal.ts に入れてください');
+  assert.match(CONTACT_EMAIL, /@/, 'CONTACT_EMAIL はメールアドレス形式にしてください');
+});
+
+test('プライバシーポリシーは正式版で、利用者向けの粒度で書く', () => {
   const page = html(createElement(PrivacyPage));
   assert.match(page, /プライバシーポリシー/);
   assert.equal(page.includes('プライバシーポリシー（下書き）'), false);
   for (const phrase of draftMarks) assert.equal(page.includes(phrase), false, phrase);
+  for (const phrase of internalJargon) assert.equal(page.includes(phrase), false, phrase);
 
-  assert.match(page, /パスワードは6文字以上です/);
-  assert.match(page, /照合用ハッシュ/);
-  assert.match(page, /確認メールは送りません/);
-  assert.match(page, /Googleログインを使うとき/);
-  assert.match(page, /確認済みのGoogleアカウントのメールアドレス、名前、Googleの識別子を会員に結びつけます/);
-  assert.match(page, /同じメールの会員に結ぶと、その会員のパスワードは消します/);
-  assert.match(page, /商品名、URL、店舗の画像URL、価格、メモ、優先度、個数、購入予定日、購入済み、カテゴリ、比較グループ/);
-  assert.match(page, /SQLiteに保存します/);
-  assert.match(page, /その商品URLのページを取得します/);
-  assert.match(page, /まとめて行う価格の確認は、会員の未購入で、ゴミ箱に無く、商品コードが無く、写真の比較グループに入っていない商品が対象です/);
-  assert.match(page, /ショップが2件以上残っている商品は、個別のページ再取得の対象外とすることがあります/);
-  assert.match(page, /SlackまたはDiscordのウェブフック/);
-  assert.match(page, /位置情報などの付随データを落としてから/);
-  assert.match(page, /写真から商品を探すときの推定結果/);
-  assert.match(page, /CloudflareのWorkers AI（api\.cloudflare\.com/);
-  assert.match(page, /キーが無いとき、または使えないときは、写真をそこへは送りません/);
-  assert.match(page, /写真そのものはデータベースに保存しません/);
-  assert.match(page, /各回のニューロン数/);
-  assert.match(page, /検索で見つけた候補（店名・商品名・URL・店舗の商品画像・価格など）は30分で消します/);
-  assert.match(page, /Yahoo!ショッピング（shopping\.yahooapis\.jp）と楽天市場（openapi\.rakuten\.co\.jp）/);
-  assert.match(page, /キーが無い店は使いません/);
-  assert.match(page, /Chrome拡張機能から送られる情報/);
-  assert.match(page, /認証用トークン（JWT）/);
-  assert.match(page, /ゲスト体験の情報/);
-  assert.match(page, /メールアドレスは受け取りません/);
-  assert.match(page, /期限の標準は24時間で、設定で変わります/);
-  assert.match(page, /会員のログインには引き継ぎません/);
-  assert.match(page, /butuyokuoh_token/);
-  assert.match(page, /httpOnly、SameSite=Lax、有効期限は7日です。本番ではSecureを付けます/);
-  assert.match(page, /butuyokuoh_guest/);
-  assert.match(page, /サーバに残すのはトークンのハッシュです/);
-  assert.match(page, /Googleログインのあいだは、ログイン状態を保つ別のクッキー/);
-  assert.match(page, /表示テーマはブラウザのlocalStorageに保存することがあります。サーバには送りません/);
-  assert.match(page, /CSVで書き出せます|会員のデータは、退会するまで/);
-  assert.match(page, /写真判定の利用量の記録は、全体の日次上限の維持のため、会員との紐付けを外した匿名の行として残すことがあります/);
-  assert.match(page, /他の会員が同じファイルを指しているときは、そのファイルを残すことがあります/);
-  assert.match(page, /画面に、広告配信やアクセス解析のための外部タグは入れていません/);
+  assert.match(page, /メールアドレスとパスワード/);
+  assert.match(page, /照合用の値/);
+  assert.match(page, /Googleアカウントでログインするとき/);
+  assert.match(page, /ほしいものリストの内容/);
+  assert.match(page, /位置情報/);
+  assert.match(page, /写真から商品を推定するとき/);
+  assert.match(page, /Cloudflare, Inc\./);
+  assert.match(page, /Yahoo!ショッピングや楽天市場/);
+  assert.match(page, /商品ページを取得します/);
+  assert.match(page, /SlackまたはDiscord/);
+  assert.match(page, /ホスティング事業者のサーバ/);
   assert.match(page, /アメリカ合衆国/);
-  assert.match(page, /exe\.dev/);
-  assert.match(page, /maishu-kobo\/butuyokuoh/);
-  assert.match(page, /制定日・施行日：2026年10月30日/);
+  assert.match(page, /外国における個人情報の保護に関する制度等の調査/);
+  assert.equal(page.includes(FOREIGN_PRIVACY_SYSTEMS_URL), true);
+  assert.match(page, /プライバシーポリシーおよび/);
+  assert.match(page, /butuyokuoh_token/);
+  assert.match(page, /butuyokuoh_guest/);
+  assert.match(page, /広告配信やアクセス解析のための外部タグは入れていません/);
+  assert.match(page, /個人情報取扱事業者の氏名/);
+  assert.match(page, /住所：ご請求に応じて遅滞なくお知らせします/);
+  assert.match(page, /苦情の申出先/);
+  assert.match(page, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
   assert.match(page, /href="\/terms"/);
   assert.equal(page.includes('Gemini'), false);
-  assert.equal(page.includes('generativelanguage.googleapis.com'), false);
 });
 
-test('利用規約は正式版で、免責と変更手続きを法令に沿って書く', () => {
+test('利用規約は正式版で、免責・変更・管轄を書く', () => {
   const page = html(createElement(TermsPage));
   assert.match(page, /利用規約/);
   assert.equal(page.includes('利用規約（下書き）'), false);
   for (const phrase of draftMarks) assert.equal(page.includes(phrase), false, phrase);
+  for (const phrase of internalJargon) assert.equal(page.includes(phrase), false, phrase);
 
   assert.match(page, /本サービスを利用した時点で、本規約に同意したものとみなします/);
   assert.match(page, /ほしいものの一覧、価格、メモ、写真からの候補/);
-  assert.match(page, /会員はメールアドレスと6文字以上のパスワードで作ります。名前は任意です/);
-  assert.match(page, /ゲスト体験は、その設定があるときだけ使えます。期限が切れるか体験を終えるとデータを消し、会員のログインには引き継ぎません/);
-  assert.match(page, /会員がログアウトすると、それまでのログインは使えなくなります/);
-  assert.match(page, /設定の退会は、アカウントと登録したデータを消します。元に戻す操作はありません/);
-  assert.match(page, /未成年の方が本サービスを利用する場合は、親権者その他の法定代理人の同意を得たうえでご利用ください/);
-  assert.match(page, /商品URLを登録したり価格を取り直したりすると、そのURLのページを取得します/);
-  assert.match(page, /CloudflareのWorkers AI（api\.cloudflare\.com）へ送ります/);
-  assert.match(page, /キーが無いとき、または使えないときは、そこへは送りません/);
-  assert.match(page, /写真自体はデータベースに保存しません/);
+  assert.match(page, /未成年の方が本サービスを利用する場合/);
+  assert.match(page, /Cloudflare, Inc\./);
   assert.match(page, /各ストアの表示が正しいものとします/);
   assert.match(page, /アフィリエイト用の識別子が付くことがあります/);
   assert.match(page, /Amazonのアソシエイトとして/);
   assert.match(page, /Supported by Rakuten Developers/);
-  assert.match(page, /このアプリの中に、代金を払う機能はありません|本サービスの中に、代金を払う機能はありません/);
-  assert.match(page, /会員は自分のデータをCSVで書き出せます/);
+  assert.match(page, /代金を払う機能はありません/);
   assert.match(page, /故意または重過失による場合を除き/);
   assert.match(page, /法令で許される範囲で/);
   assert.match(page, /民法第548条の4/);
   assert.match(page, /本規約は日本法に準拠します/);
-  assert.match(page, /第一審の専属的合意管轄裁判所/);
-  assert.match(page, /maishu-kobo\/butuyokuoh/);
-  assert.match(page, /制定日・施行日：2026年10月30日/);
+  assert.match(page, new RegExp(`${JURISDICTION_COURT}を第一審の専属的合意管轄裁判所とします`));
+  assert.match(page, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
   assert.match(page, /href="\/privacy"/);
   assert.equal(page.includes('一切の責任を負いません'), false);
   assert.equal(page.includes('Gemini'), false);
+});
+
+test('定数を埋めたあとは画面に運営者名と連絡先が出る', () => {
+  if (!OPERATOR_NAME.trim() || !CONTACT_EMAIL.trim()) {
+    // 未記入のあいだは上の定数テストが落とす。ここではスキップ相当。
+    return;
+  }
+  const privacy = html(createElement(PrivacyPage));
+  const terms = html(createElement(TermsPage));
+  assert.equal(privacy.includes(OPERATOR_NAME), true);
+  assert.equal(privacy.includes(CONTACT_EMAIL), true);
+  assert.equal(terms.includes(OPERATOR_NAME), true);
+  assert.equal(terms.includes(CONTACT_EMAIL), true);
 });
 
 function authShell(pathname: string, child: ReactNode): string {
@@ -138,8 +160,8 @@ function authShell(pathname: string, child: ReactNode): string {
 test('直接開いた最初の描画でも正式な本文が出る', () => {
   const privacy = renderToStaticMarkup(createElement(RootProviders, null, createElement(PrivacyPage)));
   const terms = renderToStaticMarkup(createElement(RootProviders, null, createElement(TermsPage)));
-  assert.match(privacy, /制定日・施行日：2026年10月30日/);
-  assert.match(terms, /制定日・施行日：2026年10月30日/);
+  assert.match(privacy, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
+  assert.match(terms, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
   assert.equal(privacy.includes('下書き'), false);
   assert.equal(terms.includes('下書き'), false);
   assert.equal(privacy.includes('読み込み中...'), false);
