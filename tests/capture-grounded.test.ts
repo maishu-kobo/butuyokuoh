@@ -88,6 +88,53 @@ test('readable text keeps a sure brand, and a category clash still drops it', ()
   assert.equal(unsure.product.name, '白いスニーカー');
 });
 
+test('sure Apple watch and headphones keep the brand, and MLB on a watch still drops', () => {
+  const watch = guardSureBrand({
+    confidence: 'sure',
+    product: { name: 'Apple Watch', brand: 'Apple', model: null, jan: null },
+    evidence: { textProvided: true, visibleText: 'Apple', productType: '腕時計', color: null },
+  });
+  assert.equal(watch.guarded, false);
+  assert.equal(watch.confidence, 'sure');
+  assert.equal(watch.product.brand, 'Apple');
+
+  const buds = guardSureBrand({
+    confidence: 'sure',
+    product: { name: 'AirPods Pro', brand: 'Apple', model: null, jan: null },
+    evidence: { textProvided: true, visibleText: 'Apple', productType: 'ヘッドホン', color: null },
+  });
+  assert.equal(buds.guarded, false);
+  assert.equal(buds.confidence, 'sure');
+  assert.equal(buds.product.brand, 'Apple');
+
+  const sonyWatch = guardSureBrand({
+    confidence: 'sure',
+    product: { name: 'Sony 腕時計', brand: 'Sony', model: null, jan: null },
+    evidence: { textProvided: true, visibleText: 'Sony', productType: '腕時計', color: null },
+  });
+  assert.equal(sonyWatch.guarded, false);
+  assert.equal(sonyWatch.product.brand, 'Sony');
+
+  const appleShoes = guardSureBrand({
+    confidence: 'sure',
+    product: { name: 'スニーカー', brand: 'Apple', model: null, jan: null },
+    evidence: { textProvided: true, visibleText: 'Apple', productType: 'スニーカー', color: null },
+  });
+  assert.equal(appleShoes.guarded, true);
+  assert.equal(appleShoes.confidence, 'unsure');
+  assert.equal(appleShoes.product.brand, null);
+
+  const mlb = guardSureBrand({
+    confidence: 'sure',
+    product: { name: 'アナログ', brand: 'MLB', model: null, jan: null },
+    evidence: { textProvided: true, visibleText: 'MLB', productType: '腕時計', color: 'シルバー' },
+  });
+  assert.equal(mlb.guarded, true);
+  assert.equal(mlb.confidence, 'unsure');
+  assert.equal(mlb.product.brand, null);
+  assert.equal(mlb.product.name.includes('MLB'), false);
+});
+
 test('gemini reranks the top candidates once and keeps order when it fails', async () => {
   const items = [
     { title: '白いスニーカー', imageUrl: null },

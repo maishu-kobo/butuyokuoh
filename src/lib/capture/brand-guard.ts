@@ -12,15 +12,19 @@ const LICENSORS: { names: string[]; groups: string[] }[] = [
 ];
 
 // 知っているメーカーと、その種類。表に無いブランドは文字が無くても残す。
+// 複数カテゴリのメーカーは実売の範囲を書く。表に無い種類だけを矛盾とみなす。
 const MAKERS: { names: string[]; groups: string[] }[] = [
   { names: ['nike', 'ナイキ'], groups: ['shoes', 'shirts', 'caps', 'jackets'] },
   { names: ['adidas', 'アディダス', 'converse', 'コンバース'], groups: ['shoes'] },
   { names: ['mac'], groups: ['lips'] },
   { names: ['hp', 'dell', 'lenovo', 'asus'], groups: ['computers'] },
-  { names: ['apple', 'アップル'], groups: ['computers', 'phones'] },
+  { names: ['apple', 'アップル'], groups: ['computers', 'phones', 'watches', 'audio'] },
+  { names: ['sony', 'ソニー'], groups: ['audio', 'cameras', 'phones', 'computers', 'watches'] },
+  { names: ['samsung', 'サムスン', 'galaxy'], groups: ['phones', 'watches', 'audio', 'computers'] },
+  { names: ['google', 'グーグル'], groups: ['phones', 'computers', 'watches', 'audio'] },
+  { names: ['xiaomi', 'シャオミ'], groups: ['phones', 'watches', 'audio', 'computers'] },
   { names: ['dyson', 'ダイソン'], groups: ['vacuums'] },
   { names: ['casio', 'カシオ'], groups: ['watches'] },
-  { names: ['sony', 'ソニー'], groups: ['audio', 'cameras', 'phones', 'computers'] },
 ];
 
 export const BRAND_EVIDENCE_SUFFIX = '各productにvisibleTextを足す。visibleTextは写真から読めた文字だけ。ロゴや刻印が無ければ空文字。推測したブランドや型番はvisibleTextに書かない。';
