@@ -8,7 +8,7 @@
 // それだけでは候補を落とさず、並びの点数にだけ使う。
 // 本体が消える誤除外は、付属品が後ろに残るより悪い。
 
-const STRONG_ACCESSORY_TERMS = ['ケース', 'カバー', 'フィルム', '充電器', 'ケーブル', 'ストラップ'] as const;
+const STRONG_ACCESSORY_TERMS = ['ケース', 'カバー', 'フィルム', '充電器', 'ケーブル', 'ストラップ', 'バッテリー', '電池', 'アダプター', 'アダプタ', '互換'] as const;
 const WEAK_ACCESSORY_TERMS = ['保護', 'ガラス', '対応', '用'] as const;
 
 export type AccessoryQuery = {

@@ -162,6 +162,10 @@ export function nameHasProductType(text: string): boolean {
   return bestTerm(text) !== null;
 }
 
+export function dominantTypeGroup(text: string): string | null {
+  return bestTerm(text)?.group ?? null;
+}
+
 function canonicalType(value: string | null): string | null {
   if (!value || value.includes('/')) return null;
   return bestTerm(value)?.canonical ?? null;
@@ -194,6 +198,17 @@ function isOnlyType(value: string): boolean {
     rest = rest.split(fold(entry.term)).join(' ');
   }
   return rest.trim().length === 0;
+}
+
+// 色と種類だけ。ブランドやシリーズの語が残る名前は、ここには入らない。
+export function nameIsColorAndType(text: string): boolean {
+  if (!nameHasProductType(text)) return false;
+  let rest = ` ${fold(text)} `;
+  const terms = [...TERMS].sort((left, right) => right.term.length - left.term.length);
+  for (const entry of terms) rest = rest.split(fold(entry.term)).join(' ');
+  const colors = [...COLORS].sort((left, right) => right[0].length - left[0].length);
+  for (const [from] of colors) rest = rest.split(fold(from)).join(' ');
+  return rest.split(/[^a-z0-9\u3040-\u30ff\u4e00-\u9fff]+/i).every((token) => token.length <= 1);
 }
 
 function clip(value: string): string {
@@ -284,17 +299,65 @@ export function statedProductType(text: string): string | null {
   return bestTerm(text)?.canonical ?? null;
 }
 
-export function searchLadderSteps(product: { name: string; brand: string | null; model: string | null }): { name: string; brand: string | null; model: string | null; jan: null }[] {
+const PRODUCT_LINES: { token: string; label: string; category: string }[] = [
+  { token: 'pixel', label: 'Pixel', category: 'スマートフォン' },
+  { token: 'galaxy', label: 'Galaxy', category: 'スマートフォン' },
+  { token: 'iphone', label: 'iPhone', category: 'スマートフォン' },
+  { token: 'xperia', label: 'Xperia', category: 'スマートフォン' },
+  { token: 'pavilion', label: 'Pavilion', category: 'ノートパソコン' },
+];
+
+export function deviceFormFactor(value: unknown): 'foldable' | 'bar' | null {
+  if (value === 'foldable' || value === 'bar') return value;
+  if (typeof value !== 'string') return null;
+  const folded = fold(value);
+  if (/fold|折りたたみ|フォールド/.test(folded)) return 'foldable';
+  if (folded === 'bar' || /ストレート|直板/.test(folded)) return 'bar';
+  return null;
+}
+
+export function productLine(text: string): { label: string; category: string } | null {
+  const folded = fold(text);
+  for (const line of PRODUCT_LINES) {
+    const escaped = line.token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`).test(folded)) return line;
+  }
+  return null;
+}
+
+const DEVICE_CATEGORIES = new Set(['スマートフォン', 'ノートパソコン', 'ヘッドホン', 'ヘッドフォン', '腕時計']);
+
+export function deviceCategory(text: string): string | null {
+  const type = statedProductType(text);
+  if (type && DEVICE_CATEGORIES.has(type)) return type;
+  const line = productLine(text);
+  if (line && DEVICE_CATEGORIES.has(line.category)) return line.category;
+  return null;
+}
+
+export function searchLadderSteps(product: {
+  name: string;
+  brand: string | null;
+  model: string | null;
+  series?: string | null;
+  formFactor?: 'foldable' | 'bar' | null;
+}): { name: string; brand: string | null; model: string | null; jan: null }[] {
   const type = statedProductType(product.name);
   const color = colorInText(product.name);
   const cleaned = product.name.split(/ +/).filter((token) => token && !isGenericToken(token)).join(' ');
   const full = { name: cleaned || product.name.trim(), brand: product.brand, model: product.model, jan: null as null };
   const steps = cleaned ? [full] : [];
+  const series = product.series?.trim() || productLine(product.name)?.label || null;
+  const exactModel = Boolean(product.model && /\d/.test(product.model));
+  if (!exactModel && product.formFactor === 'foldable' && product.brand && series) {
+    steps.unshift({ name: `${product.brand} ${series} Fold`.replace(/\s+/g, ' ').trim(), brand: product.brand, model: null, jan: null });
+  }
   if (product.brand && type) {
     steps.push({ name: `${product.brand} ${type}`, brand: product.brand, model: null, jan: null });
   }
   if (type && color) steps.push({ name: `${color} ${type}`, brand: null, model: null, jan: null });
   if (type) steps.push({ name: type, brand: null, model: null, jan: null });
+  for (const step of steps) step.name = deviceQueryName(step.name);
   const seen = new Set<string>();
   const unique = [];
   for (const step of steps) {
@@ -304,6 +367,12 @@ export function searchLadderSteps(product: { name: string; brand: string | null;
     unique.push(step);
   }
   return unique;
+}
+
+function deviceQueryName(name: string): string {
+  if (name.includes('本体') || /\bFold\b/i.test(name)) return name;
+  if (!deviceCategory(name)) return name;
+  return `${name} 本体`;
 }
 
 export function storeSearchKeyword(

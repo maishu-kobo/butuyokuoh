@@ -15,7 +15,22 @@ export function reportStoreAttempt(
     provider,
     httpStatus: attempt.httpStatus,
     errorCode: result.ok ? null : result.error.code,
+    error: result.ok ? null : result.error.error,
     hitCount: result.ok ? result.value.length : 0,
   }));
   return result;
+}
+
+// 照合の検索が店へ届かなかったとき。検索語は残さない。
+export function logSearchRefusal(error: { code: string; error: string; failures?: { site: string; code: string; error: string }[] }): void {
+  console.info(JSON.stringify({
+    lookup: true,
+    errorCode: error.code,
+    error: error.error,
+    failures: (error.failures ?? []).map((failure) => ({
+      site: failure.site,
+      code: failure.code,
+      error: failure.error,
+    })),
+  }));
 }

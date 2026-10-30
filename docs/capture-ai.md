@@ -8,7 +8,7 @@
 
 ## 比べるモデル
 
-既定は `@cf/meta/llama-3.2-11b-vision-instruct` のまま。変えるときはサーバの `CAPTURE_AI_MODEL` に、下の id か variant 名を置く。評価ハーネスは `--variant` で同じ23枚を比べる。選ぶまで本番の既定は変えない。
+既定は `@cf/meta/llama-3.2-11b-vision-instruct` のまま。変えるときはサーバの `CAPTURE_AI_MODEL` に、下の id か variant 名を置く。評価ハーネスは `--variant` で同じ23枚を比べる。選ぶまで本番の既定は変えない。本番が llama 4 に切り替えるときは `CAPTURE_AI_MODEL=llama4-evidence` だけを足す。`GEMINI_API_KEY` が無くても Workers AI だけで動き、Flash と照合はしない。`CAPTURE_WEB_LOOKUP` は未設定のままにする。
 
 料金は [Workers AI の料金](https://developers.cloudflare.com/workers-ai/platform/pricing/)（2026-10-20）。無料枠は1日 10,000 ニューロン。画像入力が付くものは各モデルページの Vision。llama 3.2 はリクエストの `image` に data URL を置く。llama 4、Mistral Small 3.1、Gemma、Moondream はチャットの `image_url` に data URL を置く（[OpenAI 互換](https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/)）。
 
@@ -26,6 +26,76 @@
 `-ladder` は同じモデルで、Yahoo か楽天のどちらかが 0 件または失敗なら種類の検索語を足す。ニューロンは増えない。`ensemble` は llama 4 の種類・色・ブランドに、ブランドが一致したときだけ llama 3.2 のシリーズを足す。23枚で約 1,470 ニューロン（ライブの 904 と 569 の合計）。
 
 Gemma 4 は推論モデルで、思考を切らないと `max_tokens` 400 を思考に使い `result.response` が null になる。リクエストは `chat_template_kwargs.enable_thinking: false` と `reasoning_effort: "none"`、上限は `max_completion_tokens`（[モデルページ](https://developers.cloudflare.com/workers-ai/models/gemma-4-26b-a4b-it/)、[Gemma の思考](https://ai.google.dev/gemma/docs/capabilities/thinking)）。本文は `choices[].message.content` も読む。
+
+### Gemini（無料枠）
+
+Workers AI のほかに、選んだときだけ Google Gemini API で同じ写真を推定できる。既定のモデルは変えない。`CAPTURE_AI_MODEL` が未設定、または Workers の variant のときは、今までどおり llama 3.2 で、`GEMINI_API_KEY` は要らない。
+
+| 設定 | モデル |
+| --- | --- |
+| `CAPTURE_AI_MODEL=gemini` または `gemini-ladder` | `gemini-3.5-flash` |
+| `CAPTURE_AI_MODEL=gemini-lite` または `gemini-lite-ladder` | `gemini-3.5-flash-lite` |
+| `CAPTURE_AI_MODEL=llama4-gemini-fallback` | 先に llama 4。失敗・読めない・商品名が無いとき、または検索段が 0 件のときだけ `gemini-3.5-flash-lite`。自信が低いだけでは呼ばない |
+| `GEMINI_MODEL` | 上の2つのどちらか。置いたときだけ、直接の Gemini variant のモデルを上書きする |
+
+`gemini-2.5-flash` と `gemini-2.5-flash-lite` は新規利用者に 404 となるため使わない。`gemini-ladder` と `gemini-lite-ladder` の段は評価ハーネスだけが使う。通常画面でその名前を置いても、推定に使うモデルは同じで、検索の段は増えない。
+
+`llama4-brand-guard` は、ブランドの種類と商品の種類が違う sure だけを種類と色へ落とす。文字が無いだけではブランドは残す。文字を読んでいない数字の型番だけ外す。`llama4-gemini-grounded` は今のフォールバックにその確認を足す。候補の並べ替えはコードに残し、`CAPTURE_AI_RERANK=1` のときだけ動く。失敗したら元の順。どちらも未設定なら動かない。`llama4-gemini-fallback` の動きは変えない。
+
+`llama4-evidence` と `gemini-lite-evidence` は、ブランドを書くのは写真に見える根拠があるときだけにする。読める印刷の文字（瓶、文字盤、ラベル、メダル）はロゴでなくても根拠になり、そのブランドを書く。金具・形・足床のような見た目も根拠になる。種類とシリーズは残し、ブランド名だけにしない。靴は靴のまま。`llama4-evidence` は、ブランドの種類と商品の種類が違う sure だけを `llama4-gemini-grounded` と同じ確認で落とす。文字が無いだけでは落とさない。印刷されていない数字の型番は、sure でも外す。そのあとの検索語にはシリーズと種類を残し、ブランド名だけにはしない。根拠つきの推定は `series`（Pixel、Galaxy Z、iPhone）と `formFactor`（`foldable` または `bar`）を返す。折りたたみなら `{ブランド} {series} Fold` で探す。スマホ、パソコン、ヘッドホン、腕時計の検索語には「本体」を足し、ギフトカード、プリペイドコード、ケース、カバー、フィルムは後ろへ下げる。`CAPTURE_WEB_LOOKUP=wikipedia` のときだけ、印刷された型番が無いスマホ、タブレット、パソコン、カメラ、ゲーム機、ヘッドホン、腕時計を、Wikipedia の英語と日本語の抜粋と `gemini-3.5-flash-lite` 1回で特定する。確信度が high のときだけその型番で探す。`CAPTURE_WEB_LOOKUP=ec` のときは、同じ条件（服は色と種類だけのときも）でシリーズの店の候補を探す。スマホは `formFactor` に依らず「ブランド シリーズ 本体」と「ブランド シリーズ Fold 本体」の両方を取り、ケース、フィルム、バッテリー、充電器を除いたあと、系列名の直後の世代だけを見て新しい未使用の商品を先におよそ20件並べる。写真は番号付き一覧と一緒に送り、ヒンジやカメラバーや色で系列を選ばせる。同じ形の世代が複数あるときは、型番の文字か、その世代だけにある色が無い限り世代を書かない。形とロゴだけの high では「Google Pixel Pro Fold 本体」のように数字を外す。照合の追加検索は全体の1秒枠を待ち、利用者の1分5回には数えない。断られた理由はログに残す。high か medium のときだけ、その商品名で探す。照合の flash-lite はおよそ5秒で打ち切る。Wikipedia の取得はおよそ3秒のまま。両方使うときは `ec,wikipedia`。未設定ならこの通信はしない。429 の回路はモデルごとで、`gemini-3.5-flash` の上限は flash-lite の照合を止めない。通常のフォールバックは今までどおり `gemini-3.5-flash-lite`。未設定ならどちらも動かない。既定のモデルは変えない。Flash は、ブランドが無く、色と種類だけの unsure で、靴・バッグ・服のときだけ `gemini-3.5-flash` を1日15回まで足す。シリーズが残る名前、sure、時計、ヘッドホンでは呼ばない。429 や上限の応答では Flash を送り直さず、今の推定か flash-lite に戻り、そのプロセスではその UTC 日の Flash を呼ばない。flash-lite の照合は別の回路なので、Flash の 429 では止まらない。503 は1回だけ送り直す。`llama4-gemini-fallback` は lite のまま。
+
+無料枠はモデルごとに1日およそ20回で、中央値の待ちは約25秒。Gemini を既定にはしない。`llama4-gemini-fallback` も未設定なら動かない。自信が低い（unsure）だけでは lite を呼ばない。呼ぶのは llama 4 が失敗したとき（1日の上限を除く）、読めないとき、商品名が無いとき、そして llama 4 の検索段が 0 件のとき。lite の検索も 0 件、または lite が失敗・429・時間切れなら、llama 4 の名前と検索結果を残す。この判断は `runGeminiFallback` にあり、写真の推定 API と評価の `--mode all` が同じ関数を使う。推定 API は選んだとき、画面へ返す商品名を決めるために検索段を先に実行する。
+
+キーは `GEMINI_API_KEY`。`AQ.` で始まるキーも通す。リクエストの URL には置かず、ヘッダ `x-goog-api-key` だけ。`CAPTURE_SECRETS_FILE` は知らないキーを読まないので、このキーはプロセスの環境変数に置く。`GEMINI_MODEL` の初期値は `gemini-3.5-flash`。思考はモデルごとで、flash は `thinkingLevel: low`、flash-lite は `thinkingLevel: minimal`（lite に `thinkingBudget: 0` を送ると 400。[Gemini 3.5](https://ai.google.dev/gemini-api/docs/generate-content/whats-new-gemini-3.5)、[思考](https://ai.google.dev/gemini-api/docs/generate-content/thinking)）。タイムアウトは 90 秒。画面の判定は待たずに1回だけ送り直す。429 と 503 を 10 秒、20 秒と最大6回待つのは評価ハーネスだけ。返答は `responseMimeType: application/json` と `responseSchema`。ニューロン台帳は増えない。
+
+評価は推測と検索を別のマシンで分けられる。推測側は `GEMINI_API_KEY` だけ、検索側は Yahoo と楽天のキーだけ。最後の JSON は今までのライブ評価と同じ項目（`diagnosticPoints` の満点は 84。ブランドのある15枚は4点、無い8枚は3点）なので、Workers の結果と並べられる。
+
+```bash
+node --import tsx tests/eval/photo-search/live-harness.ts --mode guess --variant gemini-ladder --images tests/eval/photo-search/images --out /tmp/gemini-ladder-guesses.json
+node --import tsx tests/eval/photo-search/live-harness.ts --mode search --guesses /tmp/gemini-ladder-guesses.json --out /tmp/gemini-ladder.json
+```
+
+lite は `--variant gemini-lite-ladder`。検索側は任意で `--truth /絶対パス/truth.json`。
+
+llama 4 のあと、必要なときだけ lite を足す。推測は Cloudflare のキーとニューロンの申告が要る。Gemini のキーが無いときは llama 4 の推測だけを書く。店のキーは推測には要らない。
+
+```bash
+node --import tsx tests/eval/photo-search/live-harness.ts \
+  --mode guess \
+  --variant llama4-gemini-fallback \
+  --images tests/eval/photo-search/images \
+  --out /tmp/llama4-gemini-guesses.json \
+  --account-used-neurons 0 \
+  --usage-day 2026-10-29
+```
+
+`--mode guess` は llama 4 の JSON だけを書く。0件かどうかは検索しないと分からない。lite を足す判断は `--mode all`（Cloudflare、Gemini、Yahoo、楽天）と、`CAPTURE_AI_MODEL=llama4-gemini-fallback` の `POST /api/capture/identify` が同じ関数で行う。この環境では API キーが無いので、ライブの点数は未確認。
+
+根拠のないブランドを外す評価。並べ替えは `CAPTURE_AI_RERANK=1` のときだけ:
+
+```bash
+node --import tsx tests/eval/photo-search/live-harness.ts \
+  --mode all \
+  --variant llama4-gemini-grounded \
+  --images tests/eval/photo-search/images \
+  --out /tmp/llama4-gemini-grounded.json \
+  --account-used-neurons 0 \
+  --usage-day 2026-10-29
+```
+
+ブランドの確認だけで並べ替えないときは `--variant llama4-brand-guard`。報告書の `geminiCalls` は、その写真の Gemini 呼び出し回数で、照合の flash-lite も含む。`modelCalls` の各要素には使ったモデル名が入る。
+
+根拠があるときだけブランドを書く評価。lite だけを見るときは `--variant gemini-lite-evidence`（Cloudflare は要らない）。
+
+```bash
+node --import tsx tests/eval/photo-search/live-harness.ts \
+  --mode all \
+  --variant llama4-evidence \
+  --images tests/eval/photo-search/images \
+  --out /tmp/llama4-evidence.json \
+  --account-used-neurons 0 \
+  --usage-day 2026-10-29
+```
 
 ## 選んだモデル
 
@@ -92,7 +162,7 @@ npm run dev
 
 `CAPTURE_AI_MODEL` は通常画面の単一モデルを選ぶ設定。`*-ladder` と `ensemble` はライブ評価ツール専用で、通常画面の設定値ではない。評価が済むまで既定モデルを変更しない。種類が合う候補と、写真と同じ商品は区別する。過去の23枚のカテゴリ・ブランド採点は、同一商品の検索成功率を示していない。
 
-評価時はサービスと共用する永続的な評価用SQLiteの絶対パスを `BUTUYOKUOH_DB_PATH` に設定し、Cloudflareの当日UTCのアカウント全体使用量を確認して `--account-used-neurons` と `--usage-day YYYY-MM-DD` を必ず渡す。本番DBは使わない。同じキーを使う別環境の実行を止め、実行をまたいで同じ台帳を使う。台帳は評価IDを固定し、1分3回・1日10回の制限も共有する。1回の判定に2回のAPI通信があり得るため4,000ニューロンを先に予約し、応答の利用量で精算する。不明な通信は1回2,000として計上する。これは保守的な見積もりであり、アカウント全体に強制する課金上限ではない。別環境との並列実行や古い使用量の申告では無料枠を保証できない。
+評価時はサービスと共用する永続的な評価用SQLiteの絶対パスを `BUTUYOKUOH_DB_PATH` に設定し、Cloudflareの当日UTCのアカウント全体使用量を確認して `--account-used-neurons` と `--usage-day YYYY-MM-DD` を必ず渡す。本番DBは使わない。同じキーを使う別環境の実行を止め、実行をまたいで同じ台帳を使う。評価の台帳は写真ごとの `eval-…` を残し、画面の1分3回・1日10回はかけない。かけているのはアカウント全体の 8,000 ニューロンだけ。先に取るのはその variant の見積もり（llama 4 は1回およそ40から100。Gemini は 0）で、応答の利用量で精算する。不明な通信は1回2,000として計上する。これは保守的な見積もりであり、アカウント全体に強制する課金上限ではない。別環境との並列実行や古い使用量の申告では無料枠を保証できない。画面を使う会員の1分3回・1日10回はそのまま。
 
 `--truth /absolute/path/truth.json` は画像IDから正解商品の品番リストへの対応（例: `{"original-bag":["7897722AA4V1000"]}`）。推定結果とは独立に正解を確認して作る。上位5件の商品名に品番が含まれるかを `exactProductTop5` に記録し、正解未設定は未採点にする。品番が商品名にない場合の目視照合は別途必要。カテゴリ採点は `diagnosticPoints` として別に残す。API失敗も正解がある画像の分母に含める。中断時の途中結果も保存する。
 
