@@ -16,6 +16,7 @@ import {
   type SearchResponse,
   type SiteFailure,
 } from './contract';
+import { rememberStoreOrder } from './store-rank';
 
 export const FAKE_SCENARIOS = [
   'default',
@@ -127,6 +128,7 @@ export async function searchWithPorts(query: SearchQuery, ports: CapturePorts, a
       failures.push({ site, code: 'SEARCH_FAILED', error: CaptureMessages.searchFailed });
       continue;
     }
+    rememberStoreOrder(accepted);
     candidates.push(...accepted);
   }
   if (failures.length === 2) {
