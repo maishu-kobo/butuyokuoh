@@ -186,6 +186,7 @@ test('a repeated conflict during multi-page reload is bounded and keeps the prev
   await client.reload();
   assert.equal(call, 6);
   assert.equal(client.getSnapshot().error, true);
+  assert.equal(client.getSnapshot().notice, '');
   assert.deepEqual(client.getSnapshot().page?.items.map(item => item.id), [1, 2]);
 });
 
