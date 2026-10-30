@@ -1,12 +1,19 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import { japaneseScreenshotFont } from './ui-revision-font';
 
+test.use({ locale: 'ja-JP' });
+
 async function capture(page: Page, name: string) {
   await japaneseScreenshotFont(page);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  console.log('UI_V2|' + name + '|' + (await page.screenshot({ type: 'jpeg', quality: 80, fullPage: true })).toString('base64'));
+  const bytes = await page.screenshot({ type: 'jpeg', quality: 80, fullPage: true });
+  await test.info().attach(name, { body: bytes, contentType: 'image/jpeg' });
+  if (!existsSync(path.resolve('docs/ui-refresh-256/v2/screenshots', name + '.jpg'))) {
+    console.log('UI_V2|' + name + '|' + bytes.toString('base64'));
+  }
 }
 for (const concept of ['a', 'b', 'c']) for (const width of [390, 1280]) {
   test(`revision ${concept} completes photo-to-plan at ${width}`, async ({ page }) => {
@@ -38,6 +45,8 @@ for (const concept of ['a', 'b', 'c']) for (const width of [390, 1280]) {
       await page.keyboard.press('Escape');
       await expect(page.locator('#capture-top')).toBeFocused();
       await page.keyboard.press('Enter');
+      await page.locator('#photo-file').setInputFiles({ name: 'invalid.txt', mimeType: 'text/plain', buffer: Buffer.from('fixture') });
+      await expect(page.locator('#capture-status')).toContainText('10MB以下の画像');
     }
     await page.locator('#photo-file').setInputFiles({
       name: 'anonymous.png', mimeType: 'image/png',
@@ -79,6 +88,8 @@ for (const concept of ['a', 'b', 'c']) for (const width of [390, 1280]) {
     await page.locator('#reset').click();
     await expect(page.locator('[data-item]')).toHaveCount(4);
     await expect(page.locator('[data-item="registered-qc25"]')).toHaveCount(0);
+    await page.setViewportSize({ width: 320, height: 844 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(errors).toEqual([]);
     expect(requests).toEqual([]);
   });
