@@ -62,6 +62,12 @@ test('only a low-confidence unbranded shoe, bag, or garment can call flash', () 
   assert.equal(flashUpgradeEligible(guess('unsure', '腕時計', null)), false);
   assert.equal(flashUpgradeEligible(guess('unsure', '香水', null)), false);
   assert.equal(flashUpgradeEligible(guess('unreadable', '', null)), false);
+  assert.equal(flashUpgradeEligible(guess('unsure', 'ナイキ スニーカー', null)), false);
+  assert.equal(flashUpgradeEligible(guess('unsure', 'Arena スニーカー', null)), false);
+  assert.equal(flashUpgradeEligible({
+    ok: true,
+    value: { confidence: 'unsure', products: [{ name: '白いスニーカー', brand: null, model: 'Arena' }] },
+  }), false);
   assert.equal(flashImproves(
     guess('unsure', '白いスニーカー', null).value,
     guess('unsure', 'Balenciaga', null),

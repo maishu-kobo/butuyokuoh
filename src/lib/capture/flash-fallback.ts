@@ -1,7 +1,8 @@
-// 自信が低く、ブランドの無い靴・バッグ・服だけ gemini-3.5-flash を足す。
-// 1日15回で打ち切る。flash-lite の通常フォールバックはここを通らない。
+// ブランドが無く、自信が低く、名前が色と種類だけの靴・バッグ・服だけ gemini-3.5-flash を足す。
+// シリーズやブランドの語が残る推定、sure、時計やヘッドホンでは呼ばない。1日15回で打ち切る。
+// flash-lite の通常フォールバックはここを通らない。
 import type { IdentifyInput } from './contract';
-import { dominantTypeGroup, nameHasProductType } from './product-query';
+import { dominantTypeGroup, nameHasProductType, nameIsColorAndType } from './product-query';
 
 export const FLASH_DAILY_CAP = 15;
 
@@ -14,7 +15,7 @@ export interface FlashLedger {
 
 type GuessLike = {
   ok: boolean;
-  value?: { confidence: string; products: { name: string; brand: string | null }[] };
+  value?: { confidence: string; products: { name: string; brand: string | null; model?: string | null }[] };
 };
 
 export function createFlashLedger(cap = FLASH_DAILY_CAP): FlashLedger {
@@ -48,8 +49,10 @@ export function flashUpgradeEligible(guess: GuessLike): boolean {
   if (!guess.ok || !guess.value || guess.value.confidence !== 'unsure') return false;
   const product = guess.value.products[0];
   if (!product?.name.trim() || product.brand?.trim()) return false;
+  if ('model' in product && typeof product.model === 'string' && product.model.trim()) return false;
   const group = dominantTypeGroup(product.name);
-  return group != null && FASHION_GROUPS.has(group);
+  if (!group || !FASHION_GROUPS.has(group)) return false;
+  return nameIsColorAndType(product.name);
 }
 
 export function flashImproves(current: NonNullable<GuessLike['value']>, next: GuessLike): boolean {

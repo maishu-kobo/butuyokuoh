@@ -294,6 +294,7 @@ async function guessOrAll(selected: 'guess' | 'all') {
           return { hits: visible.length, value: { ...value, candidates: visible } };
         },
       });
+      if (brandGuard) outcome.guess = guardIdentifyResult(outcome.guess);
       const flashed = await upgradeGuess(prep.value, outcome.guess, calls);
       if (flashed.usedFlash) row.usedFlash = true;
       const previous = outcome.guess.ok ? outcome.guess.value?.products[0] : null;

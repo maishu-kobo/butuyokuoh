@@ -18,7 +18,7 @@
 
 ### Added
 
-- 写真の推定は、`CAPTURE_AI_MODEL` が `llama4-evidence` または `gemini-lite-evidence` のときだけ、見える根拠があるブランドを書き、種類は残す。自信が低くブランドの無い靴・バッグ・服だけ、1日15回まで `gemini-3.5-flash` を足す。既定のモデルと、通常の flash-lite フォールバックは変えていない。
+- 写真の推定は、`CAPTURE_AI_MODEL` が `llama4-evidence` または `gemini-lite-evidence` のときだけ、読める文字や見た目の根拠があるブランドを書き、種類は残す。`llama4-evidence` は種類の違う sure のブランドだけ落とす。Flash は、ブランドが無く色と種類だけの靴・バッグ・服に、1日15回まで。既定のモデルと、通常の flash-lite フォールバックは変えていない。
 
 - 写真の推定は、`CAPTURE_AI_MODEL` で選んだときだけ Google Gemini（無料枠）を使える。既定のモデルは変えていない。
 

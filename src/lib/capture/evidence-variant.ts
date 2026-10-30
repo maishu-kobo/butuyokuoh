@@ -11,6 +11,7 @@ import {
   type ProductGuess,
   type ProductIdentifier,
 } from './contract';
+import { guardIdentifyResult } from './brand-guard';
 import { GEMINI_EVIDENCE_SUFFIX, WORKERS_EVIDENCE_SUFFIX } from './evidence-prompt';
 import { maybeUpgradeWithFlash, type FlashLedger } from './flash-fallback';
 import { createGeminiIdentifier, GEMINI_DEFAULT_MODEL, GEMINI_LITE_MODEL, geminiConfigFromEnv, type GeminiHttp } from './gemini';
@@ -84,7 +85,7 @@ async function identifyLlama4(input: {
   search: (product: ProductGuess) => Promise<{ hits: number; value: unknown }>;
 }): Promise<CaptureResult<IdentifyResponse>> {
   if (!input.accountId || !input.apiToken) return unavailable(input.photo);
-  const primary = createWorkersAiIdentifier({
+  const workers = createWorkersAiIdentifier({
     accountId: input.accountId,
     apiToken: input.apiToken,
     userId: input.userId,
@@ -93,13 +94,18 @@ async function identifyLlama4(input: {
     http: input.workersHttp,
     instructionSuffix: WORKERS_EVIDENCE_SUFFIX,
   });
+  const primary = {
+    async identify(photo: IdentifyInput) {
+      return guardIdentifyResult(await workers.identify(photo));
+    },
+  };
   const outcome = await runGeminiFallback({
     photo: input.photo,
     primary,
     gemini: liteIdentifier(input.geminiEnv, input.geminiHttp),
     search: input.search,
   });
-  return finishWithFlash(input, outcome.guess);
+  return finishWithFlash(input, guardIdentifyResult(outcome.guess));
 }
 
 function finishWithFlash(input: {

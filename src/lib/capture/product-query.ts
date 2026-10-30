@@ -200,6 +200,17 @@ function isOnlyType(value: string): boolean {
   return rest.trim().length === 0;
 }
 
+// 色と種類だけ。ブランドやシリーズの語が残る名前は、ここには入らない。
+export function nameIsColorAndType(text: string): boolean {
+  if (!nameHasProductType(text)) return false;
+  let rest = ` ${fold(text)} `;
+  const terms = [...TERMS].sort((left, right) => right.term.length - left.term.length);
+  for (const entry of terms) rest = rest.split(fold(entry.term)).join(' ');
+  const colors = [...COLORS].sort((left, right) => right[0].length - left[0].length);
+  for (const [from] of colors) rest = rest.split(fold(from)).join(' ');
+  return rest.split(/[^a-z0-9\u3040-\u30ff\u4e00-\u9fff]+/i).every((token) => token.length <= 1);
+}
+
 function clip(value: string): string {
   const cleaned = value.replace(/\s+/g, ' ').trim();
   if (cleaned.length <= NAME_MAX) return cleaned;

@@ -182,6 +182,7 @@ export const SEARCH_VARIANTS: readonly SearchVariant[] = [
     provider: 'fallback',
     evidencePrompt: true,
     flashFallback: true,
+    brandGuard: true,
   },
   {
     name: 'gemini-lite-evidence',

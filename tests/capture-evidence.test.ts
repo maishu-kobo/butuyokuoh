@@ -20,7 +20,9 @@ function geminiReply(candidate: unknown) {
 test('evidence prompts name a brand only with visible evidence and keep the product type', () => {
   for (const text of [EVIDENCE_BRAND_RULES, WORKERS_EVIDENCE_SUFFIX, GEMINI_EVIDENCE_SUFFIX]) {
     assert.equal(text.includes('見える根拠があるときだけ'), true);
-    assert.equal(text.includes('ロゴ'), true);
+    assert.equal(text.includes('読めるブランドの文字'), true);
+    assert.equal(text.includes('印刷された文字'), true);
+    assert.equal(text.includes('ロゴでなくても必ず根拠'), true);
     assert.equal(text.includes('足床'), true);
     assert.equal(text.includes('ブランド名だけにしない'), true);
     assert.equal(text.includes('靴は靴'), true);
@@ -44,7 +46,8 @@ test('the evidence variants are opt-in and the production default stays llama 3.
   assert.equal(llama.provider, 'fallback');
   assert.equal(llama.model.id, '@cf/meta/llama-4-scout-17b-16e-instruct');
   assert.equal(llama.secondModel?.id, 'gemini-3.5-flash-lite');
-  assert.equal(llama.brandGuard, undefined);
+  assert.equal(llama.brandGuard, true);
+  assert.equal(resolveSearchVariant('gemini-lite-evidence').brandGuard, undefined);
   const lite = resolveSearchVariant('gemini-lite-evidence');
   assert.equal(lite.evidencePrompt, true);
   assert.equal(lite.provider, 'gemini');
@@ -125,6 +128,50 @@ test('an evidence gemini guess keeps shoes on a brand and records the evidence',
   assert.equal(result.value.products[0].name.includes('スニーカー'), true);
   assert.equal(result.value.products[0].name === 'Balenciaga', false);
   assert.equal(result.value.evidence?.visibleText, '金具の形');
+});
+
+test('llama4-evidence demotes a sure MLB on a watch and keeps a sure A.L.B', async () => {
+  const openBudget = {
+    tryBegin() { return { ok: true as const, token: 1 }; },
+    settle() {},
+    trip() {},
+    usedNeurons() { return 0 },
+  };
+  const run = (body: unknown) => identifyEvidenceVariant({
+    photo: { mediaType: 'image/jpeg', bytes: jpeg },
+    hooked: false,
+    fake: { async identify() { throw new Error('unused'); } },
+    geminiEnv: { CAPTURE_AI_MODEL: 'llama4-evidence' },
+    accountId: ACCOUNT,
+    apiToken: 'test-cloudflare-token',
+    userId: 'mlb-watch',
+    budget: openBudget,
+    workersHttp: async () => ({
+      status: 200,
+      body: JSON.stringify({ success: true, result: { response: JSON.stringify(body) } }),
+    }),
+    search: async () => ({ hits: 2, value: null }),
+  });
+  const mlb = await run({
+    confidence: 'sure',
+    products: [{ name: 'MLB 腕時計', brand: 'MLB', model: null, productType: '腕時計', color: 'シルバー', visibleText: 'MLB', jan: null }],
+  });
+  assert.equal(mlb?.ok, true);
+  if (!mlb?.ok) return;
+  assert.equal(mlb.value.confidence, 'unsure');
+  assert.equal(mlb.value.products[0].brand, null);
+  assert.equal(mlb.value.products[0].name.includes('MLB'), false);
+  assert.equal(mlb.value.products[0].name.includes('腕時計'), true);
+
+  const alb = await run({
+    confidence: 'sure',
+    products: [{ name: 'A.L.B 腕時計', brand: 'A.L.B', model: null, productType: '腕時計', color: 'シルバー', visibleText: 'ALB', jan: null }],
+  });
+  assert.equal(alb?.ok, true);
+  if (!alb?.ok) return;
+  assert.equal(alb.value.confidence, 'sure');
+  assert.equal(alb.value.products[0].brand, 'A.L.B');
+  assert.equal(alb.value.products[0].name.includes('腕時計'), true);
 });
 
 test('llama4-evidence uses the evidence prompt and lite only after an unreadable guess', async () => {
