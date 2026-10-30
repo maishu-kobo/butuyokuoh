@@ -356,6 +356,7 @@ export function searchLadderSteps(product: {
   }
   if (type && color) steps.push({ name: `${color} ${type}`, brand: null, model: null, jan: null });
   if (type) steps.push({ name: type, brand: null, model: null, jan: null });
+  for (const step of steps) step.name = deviceQueryName(step.name);
   const seen = new Set<string>();
   const unique = [];
   for (const step of steps) {
@@ -365,6 +366,12 @@ export function searchLadderSteps(product: {
     unique.push(step);
   }
   return unique;
+}
+
+function deviceQueryName(name: string): string {
+  if (name.includes('本体') || /\bFold\b/i.test(name)) return name;
+  if (!deviceCategory(name)) return name;
+  return `${name} 本体`;
 }
 
 export function storeSearchKeyword(

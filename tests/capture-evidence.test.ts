@@ -184,6 +184,12 @@ test('llama4-evidence uses the evidence prompt and lite only after an unreadable
     accountId: ACCOUNT,
     apiToken: 'test-cloudflare-token',
     userId: 'evidence',
+    budget: {
+      tryBegin() { return { ok: true, token: 1 }; },
+      settle() {},
+      trip() {},
+      usedNeurons() { return 0; },
+    },
     workersHttp: async (request) => {
       urls.push(request.url);
       assert.equal(request.body.includes('足床'), true);
