@@ -3,7 +3,6 @@ import Link from 'next/link';
 import LegalLinks from '@/components/LegalLinks';
 import {
   CONTACT_EMAIL,
-  JURISDICTION_COURT,
   LEGAL_EFFECTIVE_DATE,
   OPERATOR_NAME,
 } from '@/lib/legal';
@@ -88,11 +87,8 @@ export default function TermsPage() {
           運営者は、民法第548条の4に基づき、次の場合に本規約を変更できます。（1）変更が利用者の一般の利益に適合するとき。（2）変更が本規約の目的に反せず、かつ変更の必要性、変更後の内容の相当性その他の事情に照らして合理的なものであるとき。変更後の本規約は、本ページへの掲載その他の適切な方法で周知し、掲載において定める効力発生日から適用します。
         </p>
 
-        <h2 className="text-lg font-semibold pt-2">10. 準拠法・管轄</h2>
+        <h2 className="text-lg font-semibold pt-2">10. 準拠法</h2>
         <p>本規約は日本法に準拠します。</p>
-        <p>
-          本サービスに関して紛争が生じた場合、{JURISDICTION_COURT}を第一審の専属的合意管轄裁判所とします。
-        </p>
 
         <h2 className="text-lg font-semibold pt-2">11. お問い合わせ</h2>
         <p>

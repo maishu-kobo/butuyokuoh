@@ -13,7 +13,6 @@ import { AuthContext, AuthProvider } from '../src/components/AuthProvider';
 import {
   CONTACT_EMAIL,
   FOREIGN_PRIVACY_SYSTEMS_URL,
-  JURISDICTION_COURT,
   LEGAL_EFFECTIVE_DATE,
   OPERATOR_NAME,
 } from '../src/lib/legal';
@@ -65,10 +64,9 @@ const internalJargon = [
   'GitHub',
 ];
 
-test('運営者名・連絡先メール・管轄の定数が入っている', () => {
+test('運営者名・連絡先メールの定数が入っている', () => {
   assert.ok(OPERATOR_NAME.trim().length > 0, 'OPERATOR_NAME を src/lib/legal.ts に入れてください');
   assert.ok(CONTACT_EMAIL.trim().length > 0, 'CONTACT_EMAIL を src/lib/legal.ts に入れてください');
-  assert.ok(JURISDICTION_COURT.trim().length > 0, 'JURISDICTION_COURT を src/lib/legal.ts に入れてください');
   assert.match(CONTACT_EMAIL, /@/, 'CONTACT_EMAIL はメールアドレス形式にしてください');
 });
 
@@ -107,7 +105,7 @@ test('プライバシーポリシーは正式版で、利用者向けの粒度�
   assert.equal(page.includes('GitHub'), false);
 });
 
-test('利用規約は正式版で、免責・変更・管轄を書く', () => {
+test('利用規約は正式版で、免責・変更・準拠法を書く', () => {
   const page = html(createElement(TermsPage));
   assert.match(page, /利用規約/);
   assert.equal(page.includes('利用規約（下書き）'), false);
@@ -126,8 +124,10 @@ test('利用規約は正式版で、免責・変更・管轄を書く', () => {
   assert.match(page, /故意または重過失による場合を除き/);
   assert.match(page, /法令で許される範囲で/);
   assert.match(page, /民法第548条の4/);
+  assert.match(page, /準拠法/);
   assert.match(page, /本規約は日本法に準拠します/);
-  assert.match(page, new RegExp(`${JURISDICTION_COURT}を第一審の専属的合意管轄裁判所とします`));
+  assert.equal(page.includes('専属的合意管轄'), false);
+  assert.equal(page.includes('東京地方裁判所'), false);
   assert.match(page, new RegExp(`href="mailto:${CONTACT_EMAIL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
   assert.match(page, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
   assert.match(page, /href="\/privacy"/);
