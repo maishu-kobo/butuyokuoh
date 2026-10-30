@@ -97,12 +97,14 @@ test('プライバシーポリシーは正式版で、利用者向けの粒度�
   assert.match(page, /butuyokuoh_token/);
   assert.match(page, /butuyokuoh_guest/);
   assert.match(page, /広告配信やアクセス解析のための外部タグは入れていません/);
-  assert.match(page, /個人情報取扱事業者の氏名/);
-  assert.match(page, /住所：ご請求に応じて遅滞なくお知らせします/);
-  assert.match(page, /苦情の申出先/);
+  assert.match(page, new RegExp(`運営：${OPERATOR_NAME}`));
+  assert.match(page, /運営者の氏名及び住所は、上記窓口へのご請求に応じて遅滞なくお知らせします/);
+  assert.match(page, /開示等の請求、苦情の申出、お問い合わせ/);
+  assert.match(page, new RegExp(`href="mailto:${CONTACT_EMAIL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
   assert.match(page, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
   assert.match(page, /href="\/terms"/);
   assert.equal(page.includes('Gemini'), false);
+  assert.equal(page.includes('GitHub'), false);
 });
 
 test('利用規約は正式版で、免責・変更・管轄を書く', () => {
@@ -126,23 +128,23 @@ test('利用規約は正式版で、免責・変更・管轄を書く', () => {
   assert.match(page, /民法第548条の4/);
   assert.match(page, /本規約は日本法に準拠します/);
   assert.match(page, new RegExp(`${JURISDICTION_COURT}を第一審の専属的合意管轄裁判所とします`));
+  assert.match(page, new RegExp(`href="mailto:${CONTACT_EMAIL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
   assert.match(page, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
   assert.match(page, /href="\/privacy"/);
   assert.equal(page.includes('一切の責任を負いません'), false);
   assert.equal(page.includes('Gemini'), false);
+  assert.equal(page.includes('GitHub'), false);
 });
 
-test('定数を埋めたあとは画面に運営者名と連絡先が出る', () => {
-  if (!OPERATOR_NAME.trim() || !CONTACT_EMAIL.trim()) {
-    // 未記入のあいだは上の定数テストが落とす。ここではスキップ相当。
-    return;
-  }
+test('画面に運営者名と mailto の連絡先が出る', () => {
   const privacy = html(createElement(PrivacyPage));
   const terms = html(createElement(TermsPage));
   assert.equal(privacy.includes(OPERATOR_NAME), true);
   assert.equal(privacy.includes(CONTACT_EMAIL), true);
+  assert.equal(privacy.includes(`mailto:${CONTACT_EMAIL}`), true);
   assert.equal(terms.includes(OPERATOR_NAME), true);
   assert.equal(terms.includes(CONTACT_EMAIL), true);
+  assert.equal(terms.includes(`mailto:${CONTACT_EMAIL}`), true);
 });
 
 function authShell(pathname: string, child: ReactNode): string {

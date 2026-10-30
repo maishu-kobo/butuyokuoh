@@ -1,6 +1,6 @@
-// 運営者名・連絡先・管轄は Sota 確認後に埋める。空のままだと tests/legal-pages.test.ts が落ちる。
-export const OPERATOR_NAME = '';
-export const CONTACT_EMAIL = '';
+// 運営者名・連絡先・管轄。空のままだと tests/legal-pages.test.ts が落ちる。
+export const OPERATOR_NAME = '物欲王 運営チーム';
+export const CONTACT_EMAIL = 'sota+butuyokuoh@mail.grokbot.com';
 export const JURISDICTION_COURT = '東京地方裁判所';
 
 export const FOREIGN_PRIVACY_SYSTEMS_URL =

@@ -96,7 +96,9 @@ export default function TermsPage() {
 
         <h2 className="text-lg font-semibold pt-2">11. お問い合わせ</h2>
         <p>
-          本規約に関するお問い合わせは、{CONTACT_EMAIL} までご連絡ください。
+          本規約に関するお問い合わせは、
+          <a href={`mailto:${CONTACT_EMAIL}`} className="underline underline-offset-2">{CONTACT_EMAIL}</a>
+          までご連絡ください。
         </p>
 
         <p>制定日・施行日：{LEGAL_EFFECTIVE_DATE}</p>

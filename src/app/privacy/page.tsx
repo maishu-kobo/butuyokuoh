@@ -159,15 +159,14 @@ export default function PrivacyPage() {
 
         <h2 className="text-lg font-semibold pt-2">8. 保有個人データに関する事項・開示等の請求</h2>
         <ul className="list-disc pl-6 space-y-2">
-          <li>個人情報取扱事業者の氏名：{OPERATOR_NAME}</li>
-          <li>住所：ご請求に応じて遅滞なくお知らせします。</li>
+          <li>運営：{OPERATOR_NAME}</li>
           <li>
-            保有個人データの利用目的：本ポリシー「利用目的」に記載のとおりです。
-          </li>
-          <li>
-            開示等の請求、苦情の申出先：{CONTACT_EMAIL}
+            開示等の請求、苦情の申出、お問い合わせ：
+            <a href={`mailto:${CONTACT_EMAIL}`} className="underline underline-offset-2">{CONTACT_EMAIL}</a>
             （利用目的の通知、開示、訂正、追加、削除、利用停止等。本人確認のため、追加の情報をお願いすることがあります。）
           </li>
+          <li>運営者の氏名及び住所は、上記窓口へのご請求に応じて遅滞なくお知らせします。</li>
+          <li>保有個人データの利用目的：本ポリシー「利用目的」に記載のとおりです。</li>
         </ul>
 
         <h2 className="text-lg font-semibold pt-2">9. 本ポリシーの変更</h2>
