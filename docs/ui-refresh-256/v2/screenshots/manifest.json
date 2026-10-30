@@ -1,0 +1,135 @@
+{
+  "sourceCommit": "f1f750ace87a22d49c6556809e7eafd15fd28eae",
+  "workflowRun": 41108997032,
+  "job": 124246089948,
+  "format": "jpeg",
+  "viewportHeight": 844,
+  "widths": [
+    390,
+    1280
+  ],
+  "syntheticDataOnly": true,
+  "baselineSourceCommit": "87f4e3fc9cb09256738d54243b2ec81dcb4425f7",
+  "screenshots": [
+    {
+      "file": "a-390-list.jpg",
+      "blob": "bb76cc644099836ebaf10b3982569dff2ea2a354"
+    },
+    {
+      "file": "a-390-candidates.jpg",
+      "blob": "91103e0262913eecc99957897d902a448b290ea5"
+    },
+    {
+      "file": "a-390-stores.jpg",
+      "blob": "00f1257288f2d2283fe709bde45a6d05c62389e6"
+    },
+    {
+      "file": "a-390-plans.jpg",
+      "blob": "da79d251816431b024c5c2e70d1dca088e9f32f4"
+    },
+    {
+      "file": "a-390-dark.jpg",
+      "blob": "0a58790ad3cb34b71248db005788c0c47c49dc3a"
+    },
+    {
+      "file": "a-1280-list.jpg",
+      "blob": "19a420be09092a87b284fb3739e0144bd77f62c4"
+    },
+    {
+      "file": "a-1280-candidates.jpg",
+      "blob": "f93fae2b3fad734f74f778888ac2306af90f3a8b"
+    },
+    {
+      "file": "a-1280-stores.jpg",
+      "blob": "871b34b3793923f24d9e319ebae7807949d688bf"
+    },
+    {
+      "file": "a-1280-plans.jpg",
+      "blob": "005f107aefcba976ae11f9365177f70660fc84cc"
+    },
+    {
+      "file": "a-1280-dark.jpg",
+      "blob": "fbca729e28bca4c8fb980d6d423d048c780bedaf"
+    },
+    {
+      "file": "b-390-list.jpg",
+      "blob": "50094789df193fc939dc52528e70eb47e6d5f1bb"
+    },
+    {
+      "file": "b-390-candidates.jpg",
+      "blob": "867a49807a2610df4e336c8532b0846d69421762"
+    },
+    {
+      "file": "b-390-stores.jpg",
+      "blob": "15e2e7e02880bc511d97626b74d8ccc804234c90"
+    },
+    {
+      "file": "b-390-plans.jpg",
+      "blob": "a630b39ca4b5f41fd82041512c6ae19868f269c6"
+    },
+    {
+      "file": "b-390-dark.jpg",
+      "blob": "491c6bbfb484199bf470074b72e0d3b0f940a4df"
+    },
+    {
+      "file": "b-1280-list.jpg",
+      "blob": "552c265d02b4390ed25e2f887daa467491f0b133"
+    },
+    {
+      "file": "b-1280-candidates.jpg",
+      "blob": "030bfc3dfb0237ea783e00fc46ee5acb3ccfa4d0"
+    },
+    {
+      "file": "b-1280-stores.jpg",
+      "blob": "f8bfcf263516e28ba4a2f89ccee9680e909b1306"
+    },
+    {
+      "file": "b-1280-plans.jpg",
+      "blob": "ef0c27e439d8c3a438ef0448666c65492afaee15"
+    },
+    {
+      "file": "b-1280-dark.jpg",
+      "blob": "70187bf551684239279f478a34121bbbf7e90dc0"
+    },
+    {
+      "file": "c-390-list.jpg",
+      "blob": "10b505d95133b40011237fb00a7fec79ff7a6564"
+    },
+    {
+      "file": "c-390-candidates.jpg",
+      "blob": "95c3f975b9483960a45de6f806c774c63d37c0ee"
+    },
+    {
+      "file": "c-390-stores.jpg",
+      "blob": "f6ef41af16e6ad7bbafa0ef3d997805959b66685"
+    },
+    {
+      "file": "c-390-plans.jpg",
+      "blob": "dadfa4600899a12dc192366e1fc9ed049cc98fd8"
+    },
+    {
+      "file": "c-390-dark.jpg",
+      "blob": "d0969e25b493ea8f89268b05c8cc81b8fc983694"
+    },
+    {
+      "file": "c-1280-list.jpg",
+      "blob": "433d47dabf0aa233ed1d2ba5edd8ba51b95f78dc"
+    },
+    {
+      "file": "c-1280-candidates.jpg",
+      "blob": "a4a5069cfef89cac6cdf7893964fdc96ec449fdc"
+    },
+    {
+      "file": "c-1280-stores.jpg",
+      "blob": "c537c57a47450217db86b8bba08db2546bac79bb"
+    },
+    {
+      "file": "c-1280-plans.jpg",
+      "blob": "68c6269a262fc8ad99687f3ecd016d2e7bfe7ebb"
+    },
+    {
+      "file": "c-1280-dark.jpg",
+      "blob": "099d635af8123390a90ded3fda14a7c5ab528b5a"
+    }
+  ]
+}
