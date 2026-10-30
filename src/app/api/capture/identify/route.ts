@@ -8,6 +8,7 @@ import { captureTestEnv, getCapturePorts, portsForRequest } from '@/lib/capture/
 import { identifyHttpBody, resolveProductIdentifier } from '@/lib/capture/workers-ai';
 import { modelIdFromEnv } from '@/lib/capture/ai-variants';
 import { geminiIdentifierForEnv } from '@/lib/capture/gemini';
+import { identifyEvidenceVariant } from '@/lib/capture/evidence-variant';
 import { llama4GeminiActors, productionLadderSearch, runGeminiFallback } from '@/lib/capture/gemini-fallback';
 import { identifyGroundedVariant } from '@/lib/capture/grounded-variant';
 import { NextRequest, NextResponse } from 'next/server';
@@ -30,8 +31,31 @@ async function handlePOST(request: NextRequest) {
     const user = await getCurrentUser();
     if (user?.account_type === 'member') userId = String(user.id);
   }
-  // 既定は Workers AI。根拠の確認と並べ替えは、選んだ variant だけ。
+  // 既定は Workers AI。根拠の書き方と、確認と並べ替えは、選んだ variant だけ。
   const testEnv = captureTestEnv();
+  const search = (product: Parameters<typeof productionLadderSearch>[0]) => productionLadderSearch(product, {
+    yahooAppId: secrets.yahooAppId,
+    rakutenAppId: secrets.rakutenAppId,
+    rakutenAccessKey: secrets.rakutenAccessKey,
+    rakutenAffiliateId: secrets.rakutenAffiliateId,
+    userId,
+    origin: request.headers.get('origin'),
+    associateTag: amazonAssociateTag(),
+  });
+  const evidence = await identifyEvidenceVariant({
+    photo: photo.value,
+    hooked,
+    fake: ports.identifier,
+    env: testEnv,
+    accountId: secrets.cloudflareAccountId,
+    apiToken: secrets.cloudflareApiToken,
+    userId,
+    search,
+  });
+  if (evidence) {
+    const http = identifyHttpBody(evidence);
+    return NextResponse.json(http.body, { status: http.status });
+  }
   const grounded = await identifyGroundedVariant({
     photo: photo.value,
     hooked,
@@ -40,15 +64,7 @@ async function handlePOST(request: NextRequest) {
     accountId: secrets.cloudflareAccountId,
     apiToken: secrets.cloudflareApiToken,
     userId,
-    search: (product) => productionLadderSearch(product, {
-      yahooAppId: secrets.yahooAppId,
-      rakutenAppId: secrets.rakutenAppId,
-      rakutenAccessKey: secrets.rakutenAccessKey,
-      rakutenAffiliateId: secrets.rakutenAffiliateId,
-      userId,
-      origin: request.headers.get('origin'),
-      associateTag: amazonAssociateTag(),
-    }),
+    search,
   });
   if (grounded) {
     const http = identifyHttpBody(grounded);
@@ -71,15 +87,7 @@ async function handlePOST(request: NextRequest) {
       photo: photo.value,
       primary: actors.primary,
       gemini: actors.gemini,
-      search: (product) => productionLadderSearch(product, {
-        yahooAppId: secrets.yahooAppId,
-        rakutenAppId: secrets.rakutenAppId,
-        rakutenAccessKey: secrets.rakutenAccessKey,
-        rakutenAffiliateId: secrets.rakutenAffiliateId,
-        userId,
-        origin: request.headers.get('origin'),
-        associateTag: amazonAssociateTag(),
-      }),
+      search,
     });
     const http = identifyHttpBody(outcome.guess);
     return NextResponse.json(http.body, { status: http.status });

@@ -103,6 +103,8 @@ export interface SearchVariant {
   provider: 'workers' | 'gemini' | 'fallback';
   brandGuard?: boolean;
   rerank?: boolean;
+  // 根拠があるときだけブランドを書く。既定の指示文には足さない。
+  evidencePrompt?: boolean;
 }
 
 const GEMINI_FLASH: AiModelSpec = {
@@ -168,6 +170,23 @@ export const SEARCH_VARIANTS: readonly SearchVariant[] = [
     provider: 'fallback',
     brandGuard: true,
     rerank: true,
+  },
+  {
+    name: 'llama4-evidence',
+    model: AI_MODELS[1],
+    secondModel: GEMINI_LITE,
+    ladder: true,
+    estimatedNeuronsFor23: 904,
+    provider: 'fallback',
+    evidencePrompt: true,
+  },
+  {
+    name: 'gemini-lite-evidence',
+    model: GEMINI_LITE,
+    ladder: true,
+    estimatedNeuronsFor23: 0,
+    provider: 'gemini',
+    evidencePrompt: true,
   },
 ];
 

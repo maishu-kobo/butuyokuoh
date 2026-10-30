@@ -35,6 +35,7 @@ const VARIANT_MODELS: Record<string, GeminiModelId> = {
   'gemini-ladder': GEMINI_DEFAULT_MODEL,
   'gemini-lite': GEMINI_LITE_MODEL,
   'gemini-lite-ladder': GEMINI_LITE_MODEL,
+  'gemini-lite-evidence': GEMINI_LITE_MODEL,
   [GEMINI_DEFAULT_MODEL]: GEMINI_DEFAULT_MODEL,
   [GEMINI_LITE_MODEL]: GEMINI_LITE_MODEL,
 };
@@ -146,6 +147,8 @@ export function createGeminiIdentifier(options: {
   timeoutMs?: number;
   // 画面の判定は待たずに1回だけ送り直す。6回の待ちは評価ハーネスが自分で行う。
   attempts?: 1 | 2;
+  // 既定の指示文は変えない。選んだ variant だけが根拠の条件を足す。
+  instructionSuffix?: string;
 }): ProductIdentifier {
   const http = options.http ?? ((request) => dispatchGemini(request));
   const timeoutMs = options.timeoutMs ?? GEMINI_TIMEOUT_MS;
@@ -163,6 +166,7 @@ export function createGeminiIdentifier(options: {
         isGeminiModelId(model) ? model : GEMINI_DEFAULT_MODEL,
         photo.value.mediaType,
         Buffer.from(photo.value.bytes).toString('base64'),
+        options.instructionSuffix,
       ));
       let outcome: CaptureResult<IdentifyResponse> = captureFailure('AI_UNAVAILABLE', CaptureMessages.aiFailed, 503);
       for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -260,12 +264,23 @@ export async function dispatchGemini(
   return { status: response.status, body: Buffer.concat(chunks).toString('utf8') };
 }
 
-function requestBody(model: GeminiModelId, mimeType: string, data: string): Record<string, unknown> {
+function requestBody(model: GeminiModelId, mimeType: string, data: string, instructionSuffix?: string): Record<string, unknown> {
+  const evidence = Boolean(instructionSuffix);
+  const schema = evidence
+    ? {
+      ...RESPONSE_SCHEMA,
+      properties: {
+        ...RESPONSE_SCHEMA.properties,
+        evidence: { type: 'STRING', nullable: true },
+      },
+      required: [...RESPONSE_SCHEMA.required, 'evidence'],
+    }
+    : RESPONSE_SCHEMA;
   return {
     contents: [{
       role: 'user',
       parts: [
-        { text: INSTRUCTION },
+        { text: evidence ? `${INSTRUCTION}${instructionSuffix}` : INSTRUCTION },
         { inlineData: { mimeType, data } },
       ],
     }],
@@ -273,7 +288,7 @@ function requestBody(model: GeminiModelId, mimeType: string, data: string): Reco
       temperature: 0,
       maxOutputTokens: 512,
       responseMimeType: 'application/json',
-      responseSchema: RESPONSE_SCHEMA,
+      responseSchema: schema,
       thinkingConfig: geminiThinkingConfig(model),
     },
   };
@@ -423,11 +438,23 @@ function mapCandidate(value: unknown): IdentifyResponse | 'invalid' {
   if (!composed.name || copiedPromptExample(composed.name)) return { confidence: 'unreadable', products: [], queries: [] };
   let next: IdentifyConfidence = confidence;
   if (plain.catalog || !guessIsSpecific(composed)) next = 'unsure';
+  const evidence = evidenceFrom(record, category, cleanLabel(record.color, 40));
   return {
     confidence: next,
     products: [{ name: composed.name, brand: composed.brand, model: composed.model, jan: null }],
     queries,
+    ...(evidence ? { evidence } : {}),
   };
+}
+
+function evidenceFrom(
+  record: Record<string, unknown>,
+  productType: string | null,
+  color: string | null,
+): IdentifyResponse['evidence'] | null {
+  if (!Object.prototype.hasOwnProperty.call(record, 'evidence')) return null;
+  const text = cleanLabel(record.evidence, 200) ?? '';
+  return { textProvided: true, visibleText: text, productType, color };
 }
 
 function plainName(value: string): { name: string; catalog: boolean } {

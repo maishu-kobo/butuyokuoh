@@ -18,6 +18,8 @@
 
 ### Added
 
+- 写真の推定は、`CAPTURE_AI_MODEL` が `llama4-evidence` または `gemini-lite-evidence` のときだけ、見える根拠があるブランドを書き、種類は残す。既定のモデルは変えていない。
+
 - 写真の推定は、`CAPTURE_AI_MODEL` で選んだときだけ Google Gemini（無料枠）を使える。既定のモデルは変えていない。
 
 - 写真の Gemini 推定は `gemini-3.5-flash` と `gemini-3.5-flash-lite` を使い、`AQ.` のキーを受ける。llama 4 から lite へのフォールバックは、読めないときと検索 0 件のときだけ。

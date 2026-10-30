@@ -10,6 +10,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { resolveSearchVariant, SEARCH_VARIANTS, estimateNeurons, type SearchVariant } from '../../../src/lib/capture/ai-variants';
 import { ensembleGuess } from '../../../src/lib/capture/ensemble';
+import { GEMINI_EVIDENCE_SUFFIX, WORKERS_EVIDENCE_SUFFIX } from '../../../src/lib/capture/evidence-prompt';
 import { createGeminiIdentifier, GEMINI_LITE_MODEL, geminiConfigFromEnv } from '../../../src/lib/capture/gemini';
 import { runGeminiFallback } from '../../../src/lib/capture/gemini-fallback';
 import { BRAND_EVIDENCE_SUFFIX, guardIdentifyResult } from '../../../src/lib/capture/brand-guard';
@@ -200,6 +201,7 @@ async function guessOrAll(selected: 'guess' | 'all') {
     console.error(`unknown variant. use: ${SEARCH_VARIANTS.map((item) => item.name).join(', ')}`);
     process.exit(1);
   }
+  const evidencePrompt = variant.evidencePrompt === true;
   const gemini = variant.provider === 'gemini';
   const truth = selected === 'all' ? loadTruth(arg('--truth')) : {};
   const label = labelArg ?? variantName;
@@ -216,8 +218,8 @@ async function guessOrAll(selected: 'guess' | 'all') {
     );
   }
   const geminiRun = gemini ? geminiConfigFromEnv({
-    CAPTURE_AI_MODEL: variant.name,
-    GEMINI_MODEL: process.env.GEMINI_MODEL,
+    CAPTURE_AI_MODEL: evidencePrompt ? 'gemini-lite' : variant.name,
+    GEMINI_MODEL: evidencePrompt ? undefined : process.env.GEMINI_MODEL,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   }) : null;
   if (gemini && (!geminiRun?.model || !geminiRun.apiKey)) {
@@ -226,6 +228,8 @@ async function guessOrAll(selected: 'guess' | 'all') {
   }
   const fallback = variant.provider === 'fallback';
   const brandGuard = variant.brandGuard === true;
+  const workersSuffix = evidencePrompt ? WORKERS_EVIDENCE_SUFFIX : (brandGuard ? BRAND_EVIDENCE_SUFFIX : undefined);
+  const geminiSuffix = evidencePrompt ? GEMINI_EVIDENCE_SUFFIX : undefined;
   let geminiCalls = 0;
   const rerankOn = variant.rerank === true && (process.env.CAPTURE_AI_RERANK === '1' || process.env.CAPTURE_AI_RERANK === 'true');
   const liteConfig = fallback
@@ -260,11 +264,11 @@ async function guessOrAll(selected: 'guess' | 'all') {
         photo: prep.value,
         primary: {
           async identify() {
-            const raw = await identifyWorkers(prep.value, variant, id, label, wa, budget!, calls, () => identifierUsage, (next) => { identifierUsage = next; }, (model) => { activeModel = model; }, () => activeModel, (charged) => { neurons += charged; identifierUsage += charged; }, brandGuard ? BRAND_EVIDENCE_SUFFIX : undefined);
+            const raw = await identifyWorkers(prep.value, variant, id, label, wa, budget!, calls, () => identifierUsage, (next) => { identifierUsage = next; }, (model) => { activeModel = model; }, () => activeModel, (charged) => { neurons += charged; identifierUsage += charged; }, workersSuffix);
             return brandGuard ? guardIdentifyResult(raw) : raw;
           },
         },
-        gemini: liteKey ? { async identify() { return identifyGemini(prep.value, liteKey, GEMINI_LITE_MODEL, calls, () => { geminiCalls += 1; }); } } : null,
+        gemini: liteKey ? { async identify() { return identifyGemini(prep.value, liteKey, GEMINI_LITE_MODEL, calls, () => { geminiCalls += 1; }, geminiSuffix); } } : null,
         search: async (product) => {
           const value = await searchLive(product, true, id, live, fakes, ladder, referer);
           const visible = value.ok ? dropOtherCategories(value.candidates, product.name) : [];
@@ -333,8 +337,8 @@ async function guessOrAll(selected: 'guess' | 'all') {
       continue;
     }
     const identifiedRaw = gemini
-      ? await identifyGemini(prep.value, geminiRun!.apiKey!, geminiRun!.model!, calls, () => { geminiCalls += 1; })
-      : await identifyWorkers(prep.value, variant, id, label, wa, budget!, calls, () => identifierUsage, (next) => { identifierUsage = next; }, (model) => { activeModel = model; }, () => activeModel, (charged) => { neurons += charged; identifierUsage += charged; }, brandGuard ? BRAND_EVIDENCE_SUFFIX : undefined);
+      ? await identifyGemini(prep.value, geminiRun!.apiKey!, geminiRun!.model!, calls, () => { geminiCalls += 1; }, geminiSuffix)
+      : await identifyWorkers(prep.value, variant, id, label, wa, budget!, calls, () => identifierUsage, (next) => { identifierUsage = next; }, (model) => { activeModel = model; }, () => activeModel, (charged) => { neurons += charged; identifierUsage += charged; }, workersSuffix);
     const identified = brandGuard ? guardIdentifyResult(identifiedRaw) : identifiedRaw;
     row.geminiCalls = geminiCallsForPhoto(geminiCalls, geminiBefore);
     if (!identified.ok && identified.error.code === 'AI_LIMIT') { rows.push({ ...row, identifyError: 'AI_LIMIT' }); break; }
@@ -421,6 +425,7 @@ async function identifyGemini(
   model: string,
   calls: unknown[],
   onCall?: () => void,
+  instructionSuffix?: string,
 ) {
   let lastStatus = 0;
   const http = async (request: { url: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => {
@@ -460,7 +465,7 @@ async function identifyGemini(
     sleep,
     run: async () => {
       onCall?.();
-      const value = await createGeminiIdentifier({ apiKey, model, http, attempts: 1 }).identify(photo);
+      const value = await createGeminiIdentifier({ apiKey, model, http, attempts: 1, instructionSuffix }).identify(photo);
       return { status: lastStatus, value };
     },
   });

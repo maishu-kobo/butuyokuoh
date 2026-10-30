@@ -733,7 +733,7 @@ function normalizeProduct(item: unknown): {
 }
 
 function visibleEvidence(record: Record<string, unknown>): { provided: boolean; text: string } {
-  for (const key of ['visibleText', 'readText', 'logoText']) {
+  for (const key of ['visibleText', 'readText', 'logoText', 'evidence']) {
     if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
     const value = record[key];
     if (typeof value !== 'string') return { provided: true, text: '' };

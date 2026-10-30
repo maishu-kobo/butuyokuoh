@@ -42,6 +42,8 @@ Workers AI のほかに、選んだときだけ Google Gemini API で同じ写�
 
 `llama4-brand-guard` は、ブランドの種類と商品の種類が違う sure だけを種類と色へ落とす。文字が無いだけではブランドは残す。文字を読んでいない数字の型番だけ外す。`llama4-gemini-grounded` は今のフォールバックにその確認を足す。候補の並べ替えはコードに残し、`CAPTURE_AI_RERANK=1` のときだけ動く。失敗したら元の順。どちらも未設定なら動かない。`llama4-gemini-fallback` の動きは変えない。
 
+`llama4-evidence` と `gemini-lite-evidence` は、ブランドを書くのは写真に見える根拠があるときだけにする。根拠はロゴや刻印の文字、または金具・形・足床のようにそのブランドだと分かる見た目で、その根拠を回答に書く。種類とシリーズは残し、ブランド名だけにしない。靴は靴のまま。`llama4-evidence` の通常のフォールバックは今までどおり `gemini-3.5-flash-lite`。未設定ならどちらも動かない。既定のモデルは変えない。
+
 無料枠はモデルごとに1日およそ20回で、中央値の待ちは約25秒。Gemini を既定にはしない。`llama4-gemini-fallback` も未設定なら動かない。自信が低い（unsure）だけでは lite を呼ばない。呼ぶのは llama 4 が失敗したとき（1日の上限を除く）、読めないとき、商品名が無いとき、そして llama 4 の検索段が 0 件のとき。lite の検索も 0 件、または lite が失敗・429・時間切れなら、llama 4 の名前と検索結果を残す。この判断は `runGeminiFallback` にあり、写真の推定 API と評価の `--mode all` が同じ関数を使う。推定 API は選んだとき、画面へ返す商品名を決めるために検索段を先に実行する。
 
 キーは `GEMINI_API_KEY`。`AQ.` で始まるキーも通す。リクエストの URL には置かず、ヘッダ `x-goog-api-key` だけ。`CAPTURE_SECRETS_FILE` は知らないキーを読まないので、このキーはプロセスの環境変数に置く。`GEMINI_MODEL` の初期値は `gemini-3.5-flash`。思考はモデルごとで、flash は `thinkingLevel: low`、flash-lite は `thinkingLevel: minimal`（lite に `thinkingBudget: 0` を送ると 400。[Gemini 3.5](https://ai.google.dev/gemini-api/docs/generate-content/whats-new-gemini-3.5)、[思考](https://ai.google.dev/gemini-api/docs/generate-content/thinking)）。タイムアウトは 90 秒。画面の判定は待たずに1回だけ送り直す。429 と 503 を 10 秒、20 秒と最大6回待つのは評価ハーネスだけ。返答は `responseMimeType: application/json` と `responseSchema`。ニューロン台帳は増えない。
@@ -82,6 +84,18 @@ node --import tsx tests/eval/photo-search/live-harness.ts \
 ```
 
 ブランドの確認だけで並べ替えないときは `--variant llama4-brand-guard`。報告書の `geminiCalls` が lite の呼び出し回数。
+
+根拠があるときだけブランドを書く評価。lite だけを見るときは `--variant gemini-lite-evidence`（Cloudflare は要らない）。
+
+```bash
+node --import tsx tests/eval/photo-search/live-harness.ts \
+  --mode all \
+  --variant llama4-evidence \
+  --images tests/eval/photo-search/images \
+  --out /tmp/llama4-evidence.json \
+  --account-used-neurons 0 \
+  --usage-day 2026-10-29
+```
 
 ## 選んだモデル
 
