@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { createRequire } from 'node:module';
 import { CAPTURE_PHOTO_MAX_BYTES, CaptureMessages, decodeCapturePhoto, sniffImage } from '../src/lib/capture/contract';
-import { CAPTURE_PHOTO_CONCURRENCY, CAPTURE_PHOTO_MAX_PIXELS, prepareCapturePhoto, withPhotoSlot } from '../src/lib/capture/photo';
+import { CAPTURE_HEIC_TIMEOUT_MS, CAPTURE_PHOTO_CONCURRENCY, CAPTURE_PHOTO_MAX_PIXELS, capturePreviewDataUrl, prepareCapturePhoto, withPhotoSlot } from '../src/lib/capture/photo';
+import { capturePreviewSrc, serverPhotoPreview } from '../src/lib/capture/photo-preview';
 import { photoForUpload } from '../src/lib/capture/photo-pick';
 import type { ShrinkDeps, ShrinkSource } from '../src/lib/capture/photo-client';
 
@@ -125,6 +126,62 @@ async function expectNoHeicDecode(bytes: Uint8Array): Promise<void> {
   }
 }
 
+test('an iPhone 48MP frame is within the pixel budget and a larger frame is refused before decode', async () => {
+  const photo = await import('../src/lib/capture/photo');
+  assert.equal(CAPTURE_PHOTO_MAX_PIXELS, 50_000_000);
+  assert.equal(CAPTURE_HEIC_TIMEOUT_MS, 12_000);
+  assert.equal(8064 * 6048 < CAPTURE_PHOTO_MAX_PIXELS, true);
+  assert.equal(photo.heifIspeWithinBudget(heifWithIspe(8064, 6048)), true);
+  assert.equal(photo.heifIspeWithinBudget(heifWithIspe(10_000, 5_000)), true);
+  await expectNoHeicDecode(heifWithIspe(10_000, 5_001));
+});
+
+test('HEIC conversion logs only the failure type', async () => {
+  const logs: string[] = [];
+  const original = console.info;
+  console.info = (...args: unknown[]) => {
+    logs.push(args.map((value) => String(value)).join(' '));
+  };
+  try {
+    const over = await prepareCapturePhoto(heifWithIspe(10_000, 5_001), 'image/heic');
+    assert.equal(over.ok, false);
+    const brand = new Uint8Array(8);
+    brand.set([0x68, 0x65, 0x69, 0x63], 0);
+    const missing = await prepareCapturePhoto(box('ftyp', brand), 'library.heic');
+    assert.equal(missing.ok, false);
+  } finally {
+    console.info = original;
+  }
+  assert.deepEqual(logs, [
+    '{"event":"capture-photo","failure":"pixel-budget"}',
+    '{"event":"capture-photo","failure":"unreadable"}',
+  ]);
+  const text = logs.join('\n');
+  assert.equal(text.includes('ftyp'), false);
+  assert.equal(text.includes('heic'), false);
+  assert.equal(text.includes('library'), false);
+  assert.equal(text.includes('10000'), false);
+});
+
+test('a server-converted HEIC can be shown as a small jpeg data URL', async () => {
+  const prepared = await prepareCapturePhoto(heic, 'image/heic');
+  assert.equal(prepared.ok, true);
+  if (!prepared.ok) return;
+  const preview = await capturePreviewDataUrl(prepared.value.bytes);
+  assert.equal(capturePreviewSrc(preview), preview);
+  assert.equal(serverPhotoPreview('image/heic', preview), preview);
+  assert.equal(serverPhotoPreview('image/jpeg', preview), null);
+  assert.equal(serverPhotoPreview('image/heic', 'https://example.test/photo.jpg'), null);
+  if (!preview) return;
+  assert.equal(preview.includes('library'), false);
+  assert.equal(preview.includes('ftyp'), false);
+  const bytes = Buffer.from(preview.slice('data:image/jpeg;base64,'.length), 'base64');
+  const meta = await sharp(bytes).metadata();
+  assert.equal(meta.format, 'jpeg');
+  assert.equal((meta.width ?? 0) > 0 && (meta.width ?? 0) <= 192, true);
+  assert.equal((meta.height ?? 0) > 0 && (meta.height ?? 0) <= 192, true);
+});
+
 test('an HEIF ispe over the pixel budget is refused before heic-decode', async () => {
   await expectNoHeicDecode(heifWithIspe(100_000, 100_000));
   const photo = await import('../src/lib/capture/photo') as typeof import('../src/lib/capture/photo') & {
@@ -166,9 +223,20 @@ test('a timed-out HEIC decode keeps its concurrency slot until the decode settle
     return original(input);
   };
   const holders: Array<Promise<unknown>> = [];
+  const logs: string[] = [];
+  const originalInfo = console.info;
+  console.info = (...args: unknown[]) => {
+    logs.push(args.map((value) => String(value)).join(' '));
+  };
+  const started = Date.now();
   try {
     const result = await prepareCapturePhoto(heic, 'image/heic');
+    const elapsed = Date.now() - started;
     assert.equal(result.ok, false);
+    assert.equal(elapsed >= 11_000, true);
+    assert.equal(elapsed < 20_000, true);
+    assert.deepEqual(logs, ['{"event":"capture-photo","failure":"timeout"}']);
+    assert.equal(logs.join('\n').includes('photo timeout'), false);
     if (!result.ok) assert.equal(result.error.code, 'PHOTO_UNREADABLE');
     let entered = 0;
     for (let index = 0; index < CAPTURE_PHOTO_CONCURRENCY; index += 1) {
@@ -180,6 +248,7 @@ test('a timed-out HEIC decode keeps its concurrency slot until the decode settle
     await Promise.resolve();
     assert.equal(entered, CAPTURE_PHOTO_CONCURRENCY - 1);
   } finally {
+    console.info = originalInfo;
     release();
     decode.all = original;
     await Promise.all(holders);

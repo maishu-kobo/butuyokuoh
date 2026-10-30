@@ -1,4 +1,5 @@
 // 片方の店が0件か失敗なら、種類の検索語を足す。種類の違う候補は出さない。
+import { dedupeCandidates } from './candidate-dedupe';
 import { searchWithPorts } from './fakes';
 import {
   sortCandidates,
@@ -57,7 +58,7 @@ export async function searchWithLadder(
   return {
     ok: true,
     value: {
-      candidates: merged,
+      candidates: dedupeCandidates(merged),
       amazonUrl,
       failures,
     },

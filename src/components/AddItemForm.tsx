@@ -26,6 +26,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
   if (!captureOpen && captureEnabled) setCaptureEnabled(false);
   const [photoRevision, setPhotoRevision] = useState(0);
   const [pickedFile, setPickedFile] = useState<File | null>(null);
+  const [serverPreview, setServerPreview] = useState<string | null>(null);
   const [isPhotoMode, setIsPhotoMode] = useState(false);
   const [isManualMode, setIsManualMode] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -39,6 +40,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
     (file) => {
       setPhotoRevision(value => value + 1);
       setPickedFile(file);
+      setServerPreview(null);
       setIsPhotoMode(true);
       setIsManualMode(false);
       setError('');
@@ -94,6 +96,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
     setError('');
     setCanAddManually(false);
     setPickedFile(null);
+    setServerPreview(null);
     setIsPhotoMode(false);
   };
 
@@ -243,11 +246,12 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
           <X size={20} />
         </button>
       </div>
-      <CapturePhotoControls pick={photoPick} file={pickedFile} />
+      <CapturePhotoControls pick={photoPick} file={pickedFile} previewSrc={serverPreview} />
       {photoPick.enabled && pickedFile && (
         <CaptureSearchPanel
           key={photoRevision}
           file={pickedFile}
+          onPreview={setServerPreview}
           onSearching={startPhotoSearch}
           onManual={enterManual}
           onRegistered={(summary) => { resetForm(); setIsOpen(false); setPhotoSuccess(summary); onAdd(); }}
@@ -259,7 +263,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
         <div className="flex justify-between gap-3 mt-4">
           <button
             type="button"
-            onClick={() => { photoPick.clear(); setPickedFile(null); setIsPhotoMode(false); setIsManualMode(false); setError(''); setCanAddManually(false); }}
+            onClick={() => { photoPick.clear(); setPickedFile(null); setServerPreview(null); setIsPhotoMode(false); setIsManualMode(false); setError(''); setCanAddManually(false); }}
             className="min-h-[24px] text-sm text-blue-600 dark:text-blue-300 underline"
           >URL・手入力に切り替える</button>
           <button

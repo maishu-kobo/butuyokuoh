@@ -19,6 +19,7 @@ import {
   type SearchQuery,
 } from '../src/lib/capture/contract';
 import { orderCandidates } from '../src/lib/capture/capture-flow';
+import { listingKey, normalizedCandidateUrl } from '../src/lib/capture/candidate-dedupe';
 import { searchWithPorts } from '../src/lib/capture/fakes';
 import { formatYen } from '../src/lib/capture/list-card';
 import { createRakutenLimiter, createRakutenSearch } from '../src/lib/capture/rakuten';
@@ -233,9 +234,10 @@ function assertGroupInvariants(actual: GroupModel) {
 test('AI の結果から作る検索語は空にならず、長さが収まり、制御文字も改行も含まない', async () => {
   // 性質: 妥当な商品名（制御文字を除くと文字が残り、URL ではない）から
   // createWorkersAiIdentifier が返す名前・任意のブランドと型番、そして
-  // parseSearchQuery を通した Yahoo! / 楽天の検索語は、空にならない。
+  // parseSearchQuery を通した Yahoo! の検索語は、空にならない。
   // 名前は 200 文字、ブランドと型番は 80 文字、Yahoo! の query は 400 文字、
   // 楽天の keyword は 128 バイト以内。制御文字と改行を含まない。
+  // 楽天は半角1文字や仮名1字だけだと送らない。送る語は2文字以上か、漢字1字。
   await withNetworkBlocked(async () => {
     await fc.assert(fc.asyncProperty(
       noisyTextArb,
@@ -273,12 +275,18 @@ test('AI の結果から作る検索語は空にならず、長さが収まり�
 
         const yahoo = await yahooKeyword(parsed.value);
         const rakuten = await rakutenKeyword(parsed.value);
-        if (yahoo == null || rakuten == null) {
-          assert.fail(`search text was empty for ${JSON.stringify(parsed.value)}`);
-        }
+        if (yahoo == null) assert.fail(`search text was empty for ${JSON.stringify(parsed.value)}`);
         assertPlain(yahoo, 400);
-        assertPlain(rakuten, 128);
-        assert.ok(new TextEncoder().encode(rakuten).byteLength <= 128);
+        if (rakuten == null) {
+          assert.equal([...yahoo].length < 2, true);
+          assert.equal(/^\p{Script=Han}$/u.test(yahoo), false);
+        } else {
+          assertPlain(rakuten, 128);
+          assert.ok(new TextEncoder().encode(rakuten).byteLength <= 128);
+          for (const token of rakuten.split(' ')) {
+            assert.equal([...token].length >= 2 || /^\p{Script=Han}$/u.test(token), true);
+          }
+        }
       },
     ), FAST);
   });
@@ -416,8 +424,9 @@ test('候補のソートは冪等で、候補を足しも消しもしない', ()
 });
 
 test('検索結果の候補は、受け付けた入力だけを一度だけ並べる', async () => {
-  // 性質: searchWithPorts は acceptCandidate を通った候補だけを sortCandidates で並べる。
-  // 二度並べても同じ。入力に無い候補は出てこない。受け付けた候補は消えない。
+  // 性質: searchWithPorts は acceptCandidate を通った候補だけを sortCandidates で並べ、
+  // 同じ商品 URL、または同じ店・正規化した商品名・価格は 1 件にまとめる。
+  // 二度並べても同じ。入力に無い候補は出てこない。別の掲載は消えない。
   await fc.assert(fc.asyncProperty(
     fc.array(fc.oneof(
       candidateArb('yahoo'),
@@ -443,8 +452,19 @@ test('検索結果の候補は、受け付けた入力だけを一度だけ並�
       }
       assert.equal(result.ok, true);
       if (!result.ok) return;
-      assert.equal(sameCounts(result.value.candidates.map((item) => item.id), accepted.map((item) => item.id)), true);
-      assert.deepEqual(sortCandidates(result.value.candidates, query), result.value.candidates);
+      const kept = result.value.candidates;
+      const urls = kept.map((item) => normalizedCandidateUrl(item)).filter((item): item is string => item !== null);
+      assert.equal(new Set(urls).size, urls.length);
+      assert.equal(new Set(kept.map((item) => listingKey(item))).size, kept.length);
+      for (const candidate of kept) {
+        assert.equal(accepted.some((item) => item.id === candidate.id && item.url === candidate.url), true);
+      }
+      for (const item of accepted) {
+        const url = normalizedCandidateUrl(item);
+        const key = listingKey(item);
+        assert.equal(kept.some((candidate) => normalizedCandidateUrl(candidate) === url || listingKey(candidate) === key), true);
+      }
+      assert.deepEqual(sortCandidates(kept, query), kept);
       const again = await searchWithPorts(query, {
         ...ports,
         yahoo: { async search() { return { ok: true, value: result.value.candidates.filter((item) => item.site === 'yahoo') }; } },
