@@ -1,16 +1,41 @@
 import { requireSameOrigin, withAccess } from '@/lib/api-access';
 import { getCurrentUser } from '@/lib/auth';
 import { withCapture, withCaptureAi } from '@/lib/capture-flags';
-import { readCaptureSecrets } from '@/lib/capture-secrets';
-import { type CaptureErrorBody } from '@/lib/capture/contract';
+import { amazonAssociateTag, readCaptureSecrets } from '@/lib/capture-secrets';
+import { type CaptureErrorBody, type CaptureResult, type IdentifyResponse } from '@/lib/capture/contract';
 import { capturePreviewDataUrl, readCapturePhoto } from '@/lib/capture/photo';
 import { captureTestEnv, getCapturePorts, portsForRequest } from '@/lib/capture/ports';
 import { identifyHttpBody, resolveProductIdentifier } from '@/lib/capture/workers-ai';
 import { modelIdFromEnv } from '@/lib/capture/ai-variants';
+import { geminiIdentifierForEnv } from '@/lib/capture/gemini';
+import { identifyEvidenceVariant } from '@/lib/capture/evidence-variant';
+import { llama4GeminiActors, productionLadderSearch, runGeminiFallback } from '@/lib/capture/gemini-fallback';
+import { identifyGroundedVariant } from '@/lib/capture/grounded-variant';
+import { attachEcSeriesLookup } from '@/lib/capture/ec-lookup';
+import { searchWithPorts } from '@/lib/capture/fakes';
+import { httpsReferer, resolveSearchPorts } from '@/lib/capture/live-search';
+import { logSearchRefusal } from '@/lib/capture/search-log';
+import { attachWikipediaModel } from '@/lib/capture/wikipedia-lookup';
 import { NextRequest, NextResponse } from 'next/server';
 
 function errorResponse(error: CaptureErrorBody, status: number) {
   const http = identifyHttpBody({ ok: false, error, status });
+  return NextResponse.json(http.body, { status: http.status });
+}
+
+async function respond(
+  photo: { mediaType: string; bytes: Uint8Array; sourceHeif?: boolean },
+  result: CaptureResult<IdentifyResponse>,
+  searchTitles: (query: string) => Promise<readonly string[]>,
+) {
+  const wiki = await attachWikipediaModel(photo, result);
+  const refined = await attachEcSeriesLookup(photo, wiki, { search: searchTitles });
+  const http = identifyHttpBody(refined);
+  // ブラウザが HEIC を表示できないときだけ、変換済み JPEG の縮小を返す。画像は保存しない。
+  if (photo.sourceHeif) {
+    const preview = await capturePreviewDataUrl(photo.bytes);
+    if (preview) http.body.preview = preview;
+  }
   return NextResponse.json(http.body, { status: http.status });
 }
 
@@ -27,22 +52,88 @@ async function handlePOST(request: NextRequest) {
     const user = await getCurrentUser();
     if (user?.account_type === 'member') userId = String(user.id);
   }
-  const identifier = resolveProductIdentifier({
+  // 既定は Workers AI。根拠の書き方と、確認と並べ替えは、選んだ variant だけ。
+  const testEnv = captureTestEnv();
+  const search = (product: Parameters<typeof productionLadderSearch>[0]) => productionLadderSearch(product, {
+    yahooAppId: secrets.yahooAppId,
+    rakutenAppId: secrets.rakutenAppId,
+    rakutenAccessKey: secrets.rakutenAccessKey,
+    rakutenAffiliateId: secrets.rakutenAffiliateId,
+    userId,
+    origin: request.headers.get('origin'),
+    associateTag: amazonAssociateTag(),
+  });
+  const searchTitles = async (query: string) => {
+    const ports = resolveSearchPorts({
+      yahooAppId: secrets.yahooAppId,
+      rakutenAppId: secrets.rakutenAppId,
+      rakutenAccessKey: secrets.rakutenAccessKey,
+      rakutenAffiliateId: secrets.rakutenAffiliateId,
+      userId,
+      referer: httpsReferer(request.headers.get('origin')),
+    });
+    const found = await searchWithPorts({ name: query, brand: null, model: null, jan: null, lookup: true }, ports, amazonAssociateTag());
+    if (!found.ok) {
+      logSearchRefusal(found.error);
+      return [];
+    }
+    return found.value.candidates.map((item) => item.title);
+  };
+  const evidence = await identifyEvidenceVariant({
+    photo: photo.value,
+    hooked,
+    fake: ports.identifier,
+    env: testEnv,
+    accountId: secrets.cloudflareAccountId,
+    apiToken: secrets.cloudflareApiToken,
+    userId,
+    search,
+  });
+  if (evidence) return respond(photo.value, evidence, searchTitles);
+  const grounded = await identifyGroundedVariant({
+    photo: photo.value,
+    hooked,
+    fake: ports.identifier,
+    env: testEnv,
+    accountId: secrets.cloudflareAccountId,
+    apiToken: secrets.cloudflareApiToken,
+    userId,
+    search,
+  });
+  if (grounded) return respond(photo.value, grounded, searchTitles);
+  const actors = llama4GeminiActors({
+    hooked,
+    fake: ports.identifier,
+    env: testEnv,
+    accountId: secrets.cloudflareAccountId,
+    apiToken: secrets.cloudflareApiToken,
+    userId,
+  });
+  if (actors?.kind === 'fake') return respond(photo.value, await actors.identify.identify(photo.value), searchTitles);
+  if (actors?.kind === 'live') {
+    const outcome = await runGeminiFallback({
+      photo: photo.value,
+      primary: actors.primary,
+      gemini: actors.gemini,
+      search,
+    });
+    return respond(photo.value, outcome.guess, searchTitles);
+  }
+  const gemini = geminiIdentifierForEnv({
+    hooked,
+    fake: ports.identifier,
+    env: testEnv,
+  });
+  const identifier = gemini ?? resolveProductIdentifier({
     hooked,
     accountId: secrets.cloudflareAccountId,
     apiToken: secrets.cloudflareApiToken,
     userId,
     fake: ports.identifier,
-    env: captureTestEnv(),
+    env: testEnv,
     model: modelIdFromEnv(),
   });
-  const http = identifyHttpBody(await identifier.identify(photo.value));
-  // ブラウザが HEIC を表示できないときだけ、変換済み JPEG の縮小を返す。画像は保存しない。
-  if (photo.value.sourceHeif) {
-    const preview = await capturePreviewDataUrl(photo.value.bytes);
-    if (preview) http.body.preview = preview;
-  }
-  return NextResponse.json(http.body, { status: http.status });
+  return respond(photo.value, await identifier.identify(photo.value), searchTitles);
 }
 
 export const POST = withCapture(withCaptureAi(withAccess(handlePOST)));

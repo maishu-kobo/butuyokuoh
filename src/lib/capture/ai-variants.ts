@@ -100,14 +100,39 @@ export interface SearchVariant {
   secondModel?: AiModelSpec;
   ladder: boolean;
   estimatedNeuronsFor23: number;
+  provider: 'workers' | 'gemini' | 'fallback';
+  brandGuard?: boolean;
+  rerank?: boolean;
+  // 根拠があるときだけブランドを書く。既定の指示文には足さない。
+  evidencePrompt?: boolean;
+  // 自信が低くブランドの無い靴・バッグ・服だけ flash を足す。既定の lite フォールバックではない。
+  flashFallback?: boolean;
 }
+
+const GEMINI_FLASH: AiModelSpec = {
+  id: 'gemini-3.5-flash',
+  variant: 'gemini',
+  shape: 'chat-image',
+  vision: true,
+  inputNeuronsPerMillion: 0,
+  outputNeuronsPerMillion: 0,
+  maxTokens: 512,
+  reasoning: false,
+  estimatedNeuronsPerPhoto: 0,
+};
+
+const GEMINI_LITE: AiModelSpec = {
+  ...GEMINI_FLASH,
+  id: 'gemini-3.5-flash-lite',
+  variant: 'gemini-lite',
+};
 
 export const SEARCH_VARIANTS: readonly SearchVariant[] = [
   ...AI_MODELS.flatMap((model) => {
     const once = model.estimatedNeuronsPerPhoto * 23;
     return [
-      { name: model.variant, model, ladder: false, estimatedNeuronsFor23: once },
-      { name: `${model.variant}-ladder`, model, ladder: true, estimatedNeuronsFor23: once },
+      { name: model.variant, model, ladder: false, estimatedNeuronsFor23: once, provider: 'workers' as const },
+      { name: `${model.variant}-ladder`, model, ladder: true, estimatedNeuronsFor23: once, provider: 'workers' as const },
     ];
   }),
   {
@@ -116,6 +141,57 @@ export const SEARCH_VARIANTS: readonly SearchVariant[] = [
     secondModel: AI_MODELS[0],
     ladder: true,
     estimatedNeuronsFor23: 904 + 569,
+    provider: 'workers',
+  },
+  { name: 'gemini', model: GEMINI_FLASH, ladder: false, estimatedNeuronsFor23: 0, provider: 'gemini' },
+  { name: 'gemini-ladder', model: GEMINI_FLASH, ladder: true, estimatedNeuronsFor23: 0, provider: 'gemini' },
+  { name: 'gemini-lite', model: GEMINI_LITE, ladder: false, estimatedNeuronsFor23: 0, provider: 'gemini' },
+  { name: 'gemini-lite-ladder', model: GEMINI_LITE, ladder: true, estimatedNeuronsFor23: 0, provider: 'gemini' },
+  {
+    name: 'llama4-gemini-fallback',
+    model: AI_MODELS[1],
+    secondModel: GEMINI_LITE,
+    ladder: true,
+    estimatedNeuronsFor23: 904,
+    provider: 'fallback',
+  },
+  {
+    name: 'llama4-brand-guard',
+    model: AI_MODELS[1],
+    ladder: true,
+    estimatedNeuronsFor23: 904,
+    provider: 'workers',
+    brandGuard: true,
+  },
+  {
+    name: 'llama4-gemini-grounded',
+    model: AI_MODELS[1],
+    secondModel: GEMINI_LITE,
+    ladder: true,
+    estimatedNeuronsFor23: 904,
+    provider: 'fallback',
+    brandGuard: true,
+    rerank: true,
+  },
+  {
+    name: 'llama4-evidence',
+    model: AI_MODELS[1],
+    secondModel: GEMINI_LITE,
+    ladder: true,
+    estimatedNeuronsFor23: 904,
+    provider: 'fallback',
+    evidencePrompt: true,
+    flashFallback: true,
+    brandGuard: true,
+  },
+  {
+    name: 'gemini-lite-evidence',
+    model: GEMINI_LITE,
+    ladder: true,
+    estimatedNeuronsFor23: 0,
+    provider: 'gemini',
+    evidencePrompt: true,
+    flashFallback: true,
   },
 ];
 

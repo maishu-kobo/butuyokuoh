@@ -412,6 +412,7 @@ export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
       let chargedUser = false;
       let waitedMs = 0;
       const seen = new Set<string>();
+      const lookup = query.lookup === true;
 
       async function acquireYahooSlot(later: boolean): Promise<{ ok: true; at: number } | { ok: false; result: CaptureResult<CaptureCandidate[]> }> {
         if (!later) {
@@ -441,8 +442,8 @@ export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
         const at = now();
         const limit = gate.take(userId, at, false);
         if (!limit) return { ok: true, at };
-        if (limit === 'minute' || limit === 'second') {
-          return { ok: false, result: lastEmpty ?? { ok: true, value: [] } };
+        if ((limit === 'minute' || limit === 'second') && lastEmpty) {
+          return { ok: false, result: lastEmpty };
         }
         return {
           ok: false,
@@ -457,7 +458,7 @@ export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
         const key = yahooAttemptKey(appId, variant);
         if (!key || seen.has(key)) continue;
         seen.add(key);
-        const acquired = await acquireYahooSlot(chargedUser);
+        const acquired = await acquireYahooSlot(chargedUser || lookup);
         if (!acquired.ok) return acquired.result;
         chargedUser = true;
         const result = reportStoreAttempt('yahoo', await requestOnce(appId, variant, acquired.at));

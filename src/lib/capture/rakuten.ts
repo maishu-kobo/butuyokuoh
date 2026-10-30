@@ -193,6 +193,7 @@ export function createRakutenSearch(options: {
       let chargedUser = false;
       let waitedMs = 0;
       const seen = new Set<string>();
+      const lookup = query.lookup === true;
 
       async function acquireRakutenSlot(later: boolean): Promise<{ ok: true } | { ok: false; result: CaptureResult<CaptureCandidate[]> }> {
         const slotWait = (at: number) => options.limiter.globalSlotWait?.(at) ?? 0;
@@ -221,8 +222,8 @@ export function createRakutenSearch(options: {
         }
         const slot = options.limiter.tryAcquire(userId, now().getTime(), false);
         if (slot.ok) return { ok: true };
-        if (slot.reason === RakutenMessages.globalRate) {
-          return { ok: false, result: lastEmpty ?? { ok: true, value: [] } };
+        if (slot.reason === RakutenMessages.globalRate && lastEmpty) {
+          return { ok: false, result: lastEmpty };
         }
         return {
           ok: false,
@@ -237,7 +238,7 @@ export function createRakutenSearch(options: {
         const keyword = rakutenKeyword(variant);
         if (!keyword || seen.has(keyword)) continue;
         seen.add(keyword);
-        const acquired = await acquireRakutenSlot(chargedUser);
+        const acquired = await acquireRakutenSlot(chargedUser || lookup);
         if (!acquired.ok) return acquired.result;
         chargedUser = true;
         const result = reportStoreAttempt('rakuten', await requestOnce(credentials, referer, variant));

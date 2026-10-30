@@ -21,17 +21,17 @@ export const PHOTO_SCORECARDS: readonly PhotoScoreCard[] = [
   { id: 'iphone-5', brand: 'Apple', aliases: ['iphone', 'apple', 'アップル'], categoryTerms: ['iphone', 'スマホ', 'スマートフォン'] },
   { id: 'bose-headphones', brand: 'Bose', aliases: ['bose', 'ボーズ'], categoryTerms: ['ヘッドホン', 'ヘッドフォン'] },
   { id: 'adapted-mirrorless-camera', brand: 'Olympus', aliases: ['olympus', 'オリンパス', 'om-d'], categoryTerms: ['カメラ'] },
-  { id: 'broken-laptop-2006', brand: null, aliases: [], categoryTerms: ['ノート', 'パソコン', 'laptop'] },
+  { id: 'broken-laptop-2006', brand: 'HP', aliases: ['hp'], categoryTerms: ['ノート', 'パソコン', 'laptop'] },
   { id: 'casio-g-shock', brand: 'Casio', aliases: ['casio', 'カシオ', 'g-shock'], categoryTerms: ['腕時計', 'g-shock', '時計'] },
   { id: 'mac-lipstick', brand: 'MAC', aliases: ['mac', 'マック'], categoryTerms: ['リップ', '口紅'] },
-  { id: 'coty-suma-perfume', brand: null, aliases: [], categoryTerms: ['香水', 'フレグランス'] },
+  { id: 'coty-suma-perfume', brand: 'Coty', aliases: ['coty', 'コティ'], categoryTerms: ['香水', 'フレグランス'] },
   { id: 'denim-jacket', brand: null, aliases: [], categoryTerms: ['ジャケット', 'デニム', 'gジャン'] },
   { id: 'blue-jeans', brand: null, aliases: [], categoryTerms: ['ジーンズ', 'デニム', 'パンツ'] },
   { id: 'hema-white-tshirt', brand: null, aliases: [], categoryTerms: ['tシャツ', 'シャツ'] },
   { id: 'ceramic-mugs', brand: null, aliases: [], categoryTerms: ['マグ', 'カップ'] },
   { id: 'dyson-v10-vacuum', brand: 'Dyson', aliases: ['dyson', 'ダイソン'], categoryTerms: ['掃除機'] },
   { id: 'pen-writing-example', brand: null, aliases: [], categoryTerms: ['ペン', 'ボールペン'] },
-  { id: 'alb-wristwatch', brand: null, aliases: [], categoryTerms: ['腕時計', '時計', 'ウォッチ'] },
+  { id: 'alb-wristwatch', brand: 'A.L.B', aliases: ['a.l.b', 'alb'], categoryTerms: ['腕時計', '時計', 'ウォッチ'] },
 ];
 
 export interface PhotoScoreInput {

@@ -13,7 +13,7 @@ import {
   type ProductGuess,
   type ProductIdentifier,
 } from './contract';
-import { composeCapturedProduct, copiedPromptExample, guessIsSpecific } from './product-query';
+import { composeCapturedProduct, copiedPromptExample, deviceFormFactor, guessIsSpecific } from './product-query';
 import { aiRequestBody, resolveAiModel } from './ai-variants';
 
 export const WORKERS_AI_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
@@ -100,6 +100,8 @@ export interface WorkersAiIdentifierOptions {
   now?: () => number;
   timeoutMs?: number;
   onTiming?: (timing: WorkersAiTiming) => void;
+  // 既定の指示文は変えない。選んだ variant だけが読めた文字の欄を足す。
+  instructionSuffix?: string;
 }
 
 type CallOutcome =
@@ -147,7 +149,8 @@ export function createWorkersAiIdentifier(options: WorkersAiIdentifierOptions): 
         } else {
           slot = begun.token;
           const dataUrl = `data:${photo.value.mediaType};base64,${Buffer.from(photo.value.bytes).toString('base64')}`;
-          const imageBody = JSON.stringify(aiRequestBody(model, INSTRUCTION, 'この写真の商品をJSONで返してください。', dataUrl));
+          const instruction = options.instructionSuffix ? `${INSTRUCTION}${options.instructionSuffix}` : INSTRUCTION;
+          const imageBody = JSON.stringify(aiRequestBody(model, instruction, 'この写真の商品をJSONで返してください。', dataUrl));
           for (let attempt = 0; attempt < AI_TRANSIENT_ATTEMPTS; attempt += 1) {
             const called = await callModel(http, url, apiToken, imageBody, timeoutMs);
             if (called.kind !== 'response') {
@@ -618,6 +621,7 @@ function parseGuess(output: unknown): ParsedGuess {
   const products: ProductGuess[] = [];
   let catalog = false;
   let echoed = false;
+  let evidence: IdentifyResponse['evidence'];
   for (const item of record.products) {
     if (products.length >= MAX_PRODUCTS) break;
     const product = normalizeProduct(item);
@@ -633,6 +637,14 @@ function parseGuess(output: unknown): ParsedGuess {
       continue;
     }
     if (sanitized.catalog) catalog = true;
+    if (!evidence && (product.textProvided || product.productType || product.color)) {
+      evidence = {
+        textProvided: product.textProvided,
+        visibleText: product.visibleText,
+        productType: product.productType,
+        color: product.color,
+      };
+    }
     products.push(sanitized.product);
   }
   if (products.length === 0) {
@@ -645,7 +657,7 @@ function parseGuess(output: unknown): ParsedGuess {
   if (confidence === 'sure' && products.length !== 1) confidence = 'unsure';
   // 一般名や非表示の推測値では商品を特定できた扱いにしない。
   if (catalog || products.some(product => !guessIsSpecific(product))) confidence = 'unsure';
-  return { kind: 'guess', value: { confidence, products } };
+  return { kind: 'guess', value: evidence ? { confidence, products, evidence } : { confidence, products } };
 }
 
 function sanitizeGuessProduct(input: { product: ProductGuess; productType: string | null; color: string | null }): { product: ProductGuess; catalog: boolean } | null {
@@ -702,23 +714,50 @@ function sanitizeProductName(name: string): { name: string; catalog: boolean } {
   return { name: next, catalog: hadList || next !== normalized.trim() };
 }
 
-function normalizeProduct(item: unknown): { product: ProductGuess; productType: string | null; color: string | null } | null {
+function normalizeProduct(item: unknown): {
+  product: ProductGuess;
+  productType: string | null;
+  color: string | null;
+  textProvided: boolean;
+  visibleText: string;
+} | null {
   if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
   const record = item as Record<string, unknown>;
   if (typeof record.name !== 'string') return null;
   const name = cleanLabel(record.name, 200);
   if (!name || isUrlish(name)) return null;
+  const seen = visibleEvidence(record);
   return {
-    product: {
+    product: lineFields({
       name,
       brand: optionalLabel(record.brand, 80),
       model: optionalLabel(record.model, 80),
       // LLMのJANはチェックサムが正しくても画像由来と検証できない。
       jan: null,
-    },
+    }, record),
     productType: optionalLabel(record.productType, 40),
     color: optionalLabel(record.color, 40),
+    textProvided: seen.provided,
+    visibleText: seen.text,
   };
+}
+
+function lineFields(product: ProductGuess, record: Record<string, unknown>): ProductGuess {
+  const series = optionalLabel(record.series, 40);
+  const formFactor = deviceFormFactor(record.formFactor);
+  if (series) product.series = series;
+  if (formFactor) product.formFactor = formFactor;
+  return product;
+}
+
+function visibleEvidence(record: Record<string, unknown>): { provided: boolean; text: string } {
+  for (const key of ['visibleText', 'readText', 'logoText', 'evidence']) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) continue;
+    const value = record[key];
+    if (typeof value !== 'string') return { provided: true, text: '' };
+    return { provided: true, text: cleanLabel(value, 200) };
+  }
+  return { provided: false, text: '' };
 }
 
 function optionalLabel(value: unknown, max: number): string | null {
