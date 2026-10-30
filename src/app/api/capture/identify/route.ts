@@ -11,6 +11,9 @@ import { geminiIdentifierForEnv } from '@/lib/capture/gemini';
 import { identifyEvidenceVariant } from '@/lib/capture/evidence-variant';
 import { llama4GeminiActors, productionLadderSearch, runGeminiFallback } from '@/lib/capture/gemini-fallback';
 import { identifyGroundedVariant } from '@/lib/capture/grounded-variant';
+import { attachEcSeriesLookup } from '@/lib/capture/ec-lookup';
+import { searchWithPorts } from '@/lib/capture/fakes';
+import { httpsReferer, resolveSearchPorts } from '@/lib/capture/live-search';
 import { attachWikipediaModel } from '@/lib/capture/wikipedia-lookup';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -19,8 +22,13 @@ function errorResponse(error: CaptureErrorBody, status: number) {
   return NextResponse.json(http.body, { status: http.status });
 }
 
-async function respond(photo: { mediaType: string; bytes: Uint8Array }, result: CaptureResult<IdentifyResponse>) {
-  const refined = await attachWikipediaModel(photo, result);
+async function respond(
+  photo: { mediaType: string; bytes: Uint8Array },
+  result: CaptureResult<IdentifyResponse>,
+  searchTitles: (query: string) => Promise<readonly string[]>,
+) {
+  const wiki = await attachWikipediaModel(photo, result);
+  const refined = await attachEcSeriesLookup(photo, wiki, { search: searchTitles });
   const http = identifyHttpBody(refined);
   return NextResponse.json(http.body, { status: http.status });
 }
@@ -49,6 +57,19 @@ async function handlePOST(request: NextRequest) {
     origin: request.headers.get('origin'),
     associateTag: amazonAssociateTag(),
   });
+  const searchTitles = async (query: string) => {
+    const ports = resolveSearchPorts({
+      yahooAppId: secrets.yahooAppId,
+      rakutenAppId: secrets.rakutenAppId,
+      rakutenAccessKey: secrets.rakutenAccessKey,
+      rakutenAffiliateId: secrets.rakutenAffiliateId,
+      userId,
+      referer: httpsReferer(request.headers.get('origin')),
+    });
+    const found = await searchWithPorts({ name: query, brand: null, model: null, jan: null }, ports, amazonAssociateTag());
+    if (!found.ok) return [];
+    return found.value.candidates.map((item) => item.title);
+  };
   const evidence = await identifyEvidenceVariant({
     photo: photo.value,
     hooked,
@@ -59,7 +80,7 @@ async function handlePOST(request: NextRequest) {
     userId,
     search,
   });
-  if (evidence) return respond(photo.value, evidence);
+  if (evidence) return respond(photo.value, evidence, searchTitles);
   const grounded = await identifyGroundedVariant({
     photo: photo.value,
     hooked,
@@ -70,7 +91,7 @@ async function handlePOST(request: NextRequest) {
     userId,
     search,
   });
-  if (grounded) return respond(photo.value, grounded);
+  if (grounded) return respond(photo.value, grounded, searchTitles);
   const actors = llama4GeminiActors({
     hooked,
     fake: ports.identifier,
@@ -79,7 +100,7 @@ async function handlePOST(request: NextRequest) {
     apiToken: secrets.cloudflareApiToken,
     userId,
   });
-  if (actors?.kind === 'fake') return respond(photo.value, await actors.identify.identify(photo.value));
+  if (actors?.kind === 'fake') return respond(photo.value, await actors.identify.identify(photo.value), searchTitles);
   if (actors?.kind === 'live') {
     const outcome = await runGeminiFallback({
       photo: photo.value,
@@ -87,7 +108,7 @@ async function handlePOST(request: NextRequest) {
       gemini: actors.gemini,
       search,
     });
-    return respond(photo.value, outcome.guess);
+    return respond(photo.value, outcome.guess, searchTitles);
   }
   const gemini = geminiIdentifierForEnv({
     hooked,
@@ -103,7 +124,7 @@ async function handlePOST(request: NextRequest) {
     env: testEnv,
     model: modelIdFromEnv(),
   });
-  return respond(photo.value, await identifier.identify(photo.value));
+  return respond(photo.value, await identifier.identify(photo.value), searchTitles);
 }
 
 export const POST = withCapture(withCaptureAi(withAccess(handlePOST)));

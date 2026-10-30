@@ -12,6 +12,7 @@ import { resolveSearchVariant, SEARCH_VARIANTS, estimateNeurons, type SearchVari
 import { ensembleGuess } from '../../../src/lib/capture/ensemble';
 import { GEMINI_EVIDENCE_SUFFIX, WORKERS_EVIDENCE_SUFFIX } from '../../../src/lib/capture/evidence-prompt';
 import { appFlashLedger, maybeUpgradeWithFlash, withFlashRetry } from '../../../src/lib/capture/flash-fallback';
+import { attachEcSeriesLookup } from '../../../src/lib/capture/ec-lookup';
 import { attachWikipediaModel } from '../../../src/lib/capture/wikipedia-lookup';
 import { createGeminiIdentifier, GEMINI_DEFAULT_MODEL, GEMINI_LITE_MODEL, geminiConfigFromEnv } from '../../../src/lib/capture/gemini';
 import { runGeminiFallback } from '../../../src/lib/capture/gemini-fallback';
@@ -240,9 +241,10 @@ async function guessOrAll(selected: 'guess' | 'all') {
   const liteKey = liteConfig?.apiKey ?? null;
   const wa = gemini ? null : await mod('src/lib/capture/workers-ai.ts');
   const photo = await mod('src/lib/capture/photo.ts');
-  const live = selected === 'all' ? await mod('src/lib/capture/live-search.ts') : null;
-  const fakes = selected === 'all' ? await mod('src/lib/capture/fakes.ts') : null;
-  const ladder = selected === 'all' ? await mod('src/lib/capture/search-ladder.ts') : null;
+  const ecOn = (process.env.CAPTURE_WEB_LOOKUP ?? '').split(/[, ]+/).some((part) => part.trim() === 'ec');
+  const live = selected === 'all' || ecOn ? await mod('src/lib/capture/live-search.ts') : null;
+  const fakes = selected === 'all' || ecOn ? await mod('src/lib/capture/fakes.ts') : null;
+  const ladder = selected === 'all' || ecOn ? await mod('src/lib/capture/search-ladder.ts') : null;
   const have = serviceHave();
   const referer = live ? refererFromEnv(live) : null;
   const files = readdirSync(imgDir).filter((file) => file.endsWith('.jpg')).sort();
@@ -272,26 +274,39 @@ async function guessOrAll(selected: 'guess' | 'all') {
   async function refineWithWiki<T extends { name: string; brand: string | null; model: string | null; jan?: string | null }>(
     photo: { mediaType: string; bytes: Uint8Array },
     product: T,
+    searchId: string,
   ): Promise<T> {
     const key = flashKey() ?? process.env.GEMINI_API_KEY ?? null;
-    const refined = await attachWikipediaModel(photo, {
+    const env = {
+      CAPTURE_WEB_LOOKUP: process.env.CAPTURE_WEB_LOOKUP,
+      GEMINI_API_KEY: key ?? undefined,
+    };
+    const complete = async (request: { url: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => {
+      geminiCalls += 1;
+      const response = await fetch(request.url, {
+        method: 'POST', redirect: 'manual', cache: 'no-store', headers: request.headers, body: request.body, signal: request.signal,
+      });
+      return { status: response.status, body: await response.text() };
+    };
+    const wiki = await attachWikipediaModel(photo, {
+      ok: true,
+      value: { confidence: 'unsure', products: [{ ...product, jan: product.jan ?? null }] },
+    }, { env, ledger: appFlashLedger(), complete });
+    const afterWiki = wiki.ok ? wiki.value.products[0] : null;
+    const ec = await attachEcSeriesLookup(photo, wiki.ok ? wiki : {
       ok: true,
       value: { confidence: 'unsure', products: [{ ...product, jan: product.jan ?? null }] },
     }, {
-      env: {
-        CAPTURE_WEB_LOOKUP: process.env.CAPTURE_WEB_LOOKUP,
-        GEMINI_API_KEY: key ?? undefined,
-      },
+      env,
       ledger: appFlashLedger(),
-      complete: async (request) => {
-        geminiCalls += 1;
-        const response = await fetch(request.url, {
-          method: 'POST', redirect: 'manual', cache: 'no-store', headers: request.headers, body: request.body, signal: request.signal,
-        });
-        return { status: response.status, body: await response.text() };
+      complete,
+      search: async (query) => {
+        if (!live || !fakes || !ladder) return [];
+        const value = await searchLive({ name: query, brand: null, model: null, jan: null }, false, searchId, live, fakes, ladder, referer);
+        return value.ok ? value.candidates.map((item) => item.title) : [];
       },
     });
-    const next = refined.ok ? refined.value.products[0] : null;
+    const next = ec.ok ? ec.value.products[0] : afterWiki;
     return (next ?? product) as T;
   }
   const rows: Record<string, unknown>[] = [];
@@ -377,7 +392,7 @@ async function guessOrAll(selected: 'guess' | 'all') {
         continue;
       }
       const original = outcome.guess.value.products[0];
-      const chosen = await refineWithWiki(prep.value, original);
+      const chosen = await refineWithWiki(prep.value, original, id);
       if (chosen.name !== original.name || chosen.model !== original.model) {
         outcome.guess = { ...outcome.guess, value: { ...outcome.guess.value, products: [chosen, ...outcome.guess.value.products.slice(1)] } };
         if (live && fakes && ladder) {
@@ -432,7 +447,7 @@ async function guessOrAll(selected: 'guess' | 'all') {
       await sleep(1500);
       continue;
     }
-    const product = await refineWithWiki(prep.value, identified.value.products[0]);
+    const product = await refineWithWiki(prep.value, identified.value.products[0], id);
     const products = [product, ...identified.value.products.slice(1)];
     row.confidence = identified.value.confidence;
     row.products = products;

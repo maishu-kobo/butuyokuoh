@@ -24,6 +24,8 @@
 
 ### Added
 
+- `CAPTURE_WEB_LOOKUP=ec` のときだけ、シリーズの店の候補から番号で1件選ぶ。high か medium のときだけその商品名で探す。`ec,wikipedia` で両方。既定ではオフ。
+
 - `CAPTURE_WEB_LOOKUP=wikipedia` のときだけ、印刷された型番が無い端末を Wikipedia の抜粋と flash-lite 1回で特定する。確信度が高いときだけその型番で探す。既定ではオフ。
 
 - 根拠つきの写真推定は、製品線 `series` と形 `formFactor` を返す。折りたたみは `{ブランド} {series} Fold` で探す。

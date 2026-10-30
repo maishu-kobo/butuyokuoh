@@ -34,9 +34,14 @@ export interface WikiPick {
   evidence: string;
 }
 
-export function wikipediaLookupEnabled(env?: { CAPTURE_WEB_LOOKUP?: string }): boolean {
+export function webLookupHas(mode: 'wikipedia' | 'ec', env?: { CAPTURE_WEB_LOOKUP?: string }): boolean {
   const source = (env ?? process.env) as { CAPTURE_WEB_LOOKUP?: string };
-  return source.CAPTURE_WEB_LOOKUP?.trim() === 'wikipedia';
+  const raw = source.CAPTURE_WEB_LOOKUP ?? '';
+  return raw.split(/[, ]+/).some((part) => part.trim().toLowerCase() === mode);
+}
+
+export function wikipediaLookupEnabled(env?: { CAPTURE_WEB_LOOKUP?: string }): boolean {
+  return webLookupHas('wikipedia', env);
 }
 
 export function modelSensitiveText(text: string): boolean {
