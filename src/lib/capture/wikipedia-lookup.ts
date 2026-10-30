@@ -51,9 +51,42 @@ export function modelSensitiveText(text: string): boolean {
   return SENSITIVE.some((word) => folded.includes(word.normalize('NFKC').toLocaleLowerCase('en-US')));
 }
 
+// 5G・容量・年号だけでは型番とみなさない。英字と数字が混ざった型番らしい語だけ。
 export function printedModelNumber(product: ProductGuess, visibleText = ''): boolean {
-  if (/\d/.test(visibleText)) return true;
-  return Boolean(product.model && /\d/.test(product.model));
+  if (hasModelLikeToken(visibleText)) return true;
+  const model = product.model?.trim();
+  if (!model) return false;
+  if (hasModelLikeToken(model)) return true;
+  // モデル欄の「Pixel 8」のように、系列名と世代番号が分かれていても型番ありとみなす。
+  return /\d/.test(model) && /[A-Za-z\u3040-\u30ff\u4e00-\u9fff]/.test(model) && !onlyNonModelDigits(model);
+}
+
+function hasModelLikeToken(text: string): boolean {
+  return text.split(/\s+/).some((token) => isModelLikeToken(token));
+}
+
+function onlyNonModelDigits(text: string): boolean {
+  const digitTokens = text.split(/\s+/).filter((token) => /\d/.test(token));
+  return digitTokens.length > 0 && digitTokens.every((token) => isNonModelDigitToken(token));
+}
+
+function isNonModelDigitToken(token: string): boolean {
+  const core = token.normalize('NFKC').replace(/[^A-Za-z0-9]/g, '');
+  if (!core) return true;
+  if (/^\d{1,2}G$/i.test(core)) return true;
+  if (/^\d+(gb|tb|mb)$/i.test(core)) return true;
+  if (/^(gb|tb|mb)\d+$/i.test(core)) return true;
+  if (/^(19|20)\d{2}$/.test(core)) return true;
+  if (/^\d{3,}$/.test(core) && !/[A-Za-z]/.test(core)) return true;
+  return false;
+}
+
+function isModelLikeToken(token: string): boolean {
+  const core = token.normalize('NFKC').replace(/[^A-Za-z0-9]/g, '');
+  if (!core) return false;
+  if (!/[A-Za-z]/.test(core) || !/\d/.test(core)) return false;
+  if (isNonModelDigitToken(core)) return false;
+  return true;
 }
 
 export function needsWikipediaLookup(product: ProductGuess, visibleText = ''): boolean {

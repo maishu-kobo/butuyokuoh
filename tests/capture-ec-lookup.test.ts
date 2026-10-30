@@ -49,6 +49,10 @@ test('ec lookup is off unless the flag lists ec', () => {
   assert.equal(wikipediaLookupEnabled({ CAPTURE_WEB_LOOKUP: 'ec,wikipedia' }), true);
   assert.equal(wikipediaLookupEnabled({ CAPTURE_WEB_LOOKUP: 'ec' }), false);
   assert.equal(needsEcLookup(pixel, ''), true);
+  assert.equal(needsEcLookup(pixel, '5G'), true);
+  assert.equal(needsEcLookup(pixel, '256'), true);
+  assert.equal(needsEcLookup(pixel, '2024'), true);
+  assert.equal(needsEcLookup(pixel, 'SM-S918'), false);
   assert.equal(needsEcLookup({ ...pixel, model: 'Pixel 10 Pro Fold' }, ''), false);
   assert.equal(needsEcLookup({
     name: '白いスニーカー',

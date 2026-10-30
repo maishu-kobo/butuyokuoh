@@ -12,6 +12,7 @@ import {
   attachWikipediaModel,
   needsWikipediaLookup,
   parseWikiPick,
+  printedModelNumber,
   trimWikiText,
   wikipediaLookupEnabled,
   wikipediaQueries,
@@ -65,6 +66,21 @@ function wikiMock(seen: string[]): WikiFetch {
     return { status: 200, body: parseBody(page) };
   };
 }
+
+test('printed model numbers need letter-digit tokens, not 5G, capacity, or years', () => {
+  assert.equal(printedModelNumber(pixel, ''), false);
+  assert.equal(printedModelNumber(pixel, '5G'), false);
+  assert.equal(printedModelNumber(pixel, '256'), false);
+  assert.equal(printedModelNumber(pixel, '256GB'), false);
+  assert.equal(printedModelNumber(pixel, '2024'), false);
+  assert.equal(printedModelNumber(pixel, 'A2631'), true);
+  assert.equal(printedModelNumber(pixel, 'MG674J'), true);
+  assert.equal(printedModelNumber({ ...pixel, model: 'Pixel 8' }, ''), true);
+  assert.equal(printedModelNumber({ ...pixel, model: 'Pixel 10 Pro Fold' }, ''), true);
+  assert.equal(needsWikipediaLookup(pixel, '5G'), true);
+  assert.equal(needsWikipediaLookup(pixel, '256'), true);
+  assert.equal(needsWikipediaLookup(pixel, 'A2631'), false);
+});
 
 test('wikipedia lookup stays off unless the flag is wikipedia', () => {
   assert.equal(wikipediaLookupEnabled({}), false);
