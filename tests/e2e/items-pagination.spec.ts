@@ -13,7 +13,8 @@ const catalogue: Item[] = Array.from({ length: 500 }, (_, i) => ({
   created_at: '2026-10-01 00:00:00', updated_at: '2026-10-01 00:00:00',
 }));
 
-async function mockCatalogue(page: Page) {
+async function mockCatalogue(page: Page, searchGate?: Promise<void>) {
+  let records = [...catalogue];
   const requests: URL[] = [];
   let failMore = true;
   await page.clock.setFixedTime(new Date('2026-10-29T00:00:00Z'));
@@ -28,19 +29,24 @@ async function mockCatalogue(page: Page) {
     if (path === '/api/comparison-groups' || path === '/api/categories') return respond([]);
     if (path === '/api/purchased') return respond({ items: [] });
     if (path === '/api/capture') return respond({ enabled: false });
+    if (/^\/api\/items\/\d+$/.test(path) && route.request().method() === 'DELETE') {
+      records = records.filter(item => item.id !== Number(path.split('/').at(-1)));
+      return respond({ success: true });
+    }
     if (path === '/api/items/page') {
       requests.push(url);
       const q = url.searchParams.get('q') || '';
       const sort = url.searchParams.get('sort');
-      const rows = catalogue.filter(item => item.name.includes(q));
+      if (q && searchGate) await searchGate;
+      const rows = records.filter(item => item.name.includes(q));
       if (sort === 'price_desc') rows.reverse();
       const offset = Number(url.searchParams.get('cursor') || 0);
       if (offset && failMore) { failMore = false; return respond({ error: 'simulated offline' }, 503); }
       return respond({
-        items: rows.slice(offset, offset + 50), revision: JSON.stringify([q, sort]),
-        totalCount: 500, matchedCount: rows.length, rowCount: rows.length,
-        totalAmount: 12525000, lowestPriceInGroup: null,
-        allIds: catalogue.map(item => item.id), matchedIds: rows.map(item => item.id),
+        items: rows.slice(offset, offset + 50), revision: JSON.stringify([q, sort, records.length]),
+        totalCount: records.length, matchedCount: rows.length, rowCount: rows.length,
+        totalAmount: records.reduce((sum, item) => sum + (item.current_price ?? 0), 0), lowestPriceInGroup: null,
+        allIds: records.map(item => item.id), matchedIds: rows.map(item => item.id),
         nextCursor: offset + 50 < rows.length ? String(offset + 50) : null,
       });
     }
@@ -95,3 +101,40 @@ for (const viewport of [{ name: 'desktop', width: 1280, height: 900 }, { name: '
     await testInfo.attach(`pagination-${viewport.name}`, { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
   });
 }
+
+
+test('a delayed search retains readable previous results and totals without allowing stale actions', async ({ page }) => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await mockCatalogue(page, gate);
+  await page.goto('/');
+  await expect(page.getByText('ページ商品0001', { exact: true })).toBeVisible();
+  const search = page.getByPlaceholder(/^商品名、メモ、カテゴリで検索/);
+  if (!(await search.isVisible())) await page.getByRole('button', { name: /検索・フィルター/ }).click();
+  await search.fill('ページ商品0500');
+  await expect(page.getByRole('status').filter({ hasText: '前の結果を表示' })).toBeVisible();
+  await expect(page.getByText('ページ商品0001', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'ほしいものリスト (500件)', exact: true })).toBeVisible();
+  await expect(page.locator('[inert]')).toHaveAttribute('aria-busy', 'true');
+  release();
+  await expect(page.getByText('ページ商品0500', { exact: true })).toBeVisible();
+  await expect(page.getByText('ページ商品0001', { exact: true })).toHaveCount(0);
+  await expect(page.locator('[inert]')).toHaveCount(0);
+});
+
+test('deleting from the third page preserves the loaded window and remaining selection', async ({ page }) => {
+  await mockCatalogue(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'もっと見る', exact: true }).click();
+  await page.getByRole('button', { name: '追加読み込みを再試行', exact: true }).click();
+  await expect(page.getByText('ページ商品0100', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'もっと見る', exact: true }).click();
+  await expect(page.getByText('ページ商品0150', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '選択', exact: true }).click();
+  await page.getByRole('button', { name: '全選択', exact: true }).click();
+  const card = page.getByText('ページ商品0110', { exact: true }).locator('xpath=ancestor::div[contains(@class,"shadow-md")][1]');
+  await card.getByRole('button', { name: '削除', exact: true }).click();
+  await expect(page.getByText('ページ商品0110', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('ページ商品0151', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '499件選択中', exact: true })).toBeVisible();
+});

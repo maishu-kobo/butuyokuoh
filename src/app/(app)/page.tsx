@@ -7,6 +7,7 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import { useSwipeable } from 'react-swipeable';
 import { Item, ComparisonGroup, Category } from '@/types';
 import { usePagedItems } from '@/lib/use-paged-items';
+import { itemPageKey, selectedItemPageIds } from '@/lib/item-page-client';
 import { wishlistRows } from '@/lib/capture/list-card';
 import { homeListDragOrders } from '@/lib/home-list-page';
 import BudgetView from '@/components/BudgetView';
@@ -46,7 +47,7 @@ export default function Home() {
   const [selectedPriority, setSelectedPriority] = useState<number | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
-  const [selection, setSelection] = useState<{ revision: string | null; ids: Set<number> }>({ revision: null, ids: new Set() });
+  const [selection, setSelection] = useState<{ key: string; ids: Set<number> }>({ key: '', ids: new Set() });
   const listQuery: HomeListQuery = useMemo(() => ({
     selectedCategory, selectedPriority, selectedGroup, searchQuery, sortBy,
   }), [selectedCategory, selectedPriority, selectedGroup, searchQuery, sortBy]);
@@ -56,11 +57,13 @@ export default function Home() {
   const filteredItems = items;
   const loading = pageState.loading;
   const loadError = pageState.error;
-  const selectedItems = useMemo(() => selection.revision === page?.revision ? selection.ids : new Set<number>(), [selection, page?.revision]);
+  const selectionKey = itemPageKey(listQuery, user?.id ?? null);
+  if (selection.key !== selectionKey) setSelection({ key: selectionKey, ids: new Set() });
+  const selectedItems = useMemo(() => selectedItemPageIds(selection, selectionKey, page), [selection, selectionKey, page]);
   const setSelectedItems = useCallback((value: Set<number> | ((previous: Set<number>) => Set<number>)) => {
-    setSelection(current => ({ revision: page?.revision ?? null, ids: typeof value === 'function'
-      ? value(current.revision === page?.revision ? current.ids : new Set()) : value }));
-  }, [page?.revision]);
+    setSelection(current => ({ key: selectionKey, ids: typeof value === 'function'
+      ? value(selectedItemPageIds(current, selectionKey, page)) : value }));
+  }, [selectionKey, page]);
 
   // 補助データ: 失敗しても空配列のままにしてクラッシュを防ぐ（エラーUIは出さない）
   const fetchPurchased = useCallback(async () => {
@@ -388,7 +391,7 @@ export default function Home() {
         </div>
       </main>
 
-      {selectionMode && selectedItems.size > 0 && (
+      {!loading && selectionMode && selectedItems.size > 0 && (
         <HomeBulkBar
           count={selectedItems.size}
           categories={categories}
