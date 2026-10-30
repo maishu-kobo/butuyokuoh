@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
+import { japaneseScreenshotFont } from './ui-revision-font';
 import { prepareHomeUi } from './home-ui-fixture';
 
 // Temporary transport of synthetic-data screenshots; no application data or API calls.
@@ -13,6 +14,7 @@ test('revision baseline screenshots', async ({ page }) => {
     for (const concept of ['a', 'b', 'c']) {
       await page.locator(`.study-controls [data-choose="${concept}"]`).click();
       await expect(page.locator('.prototype')).toHaveAttribute('data-concept', concept);
+      await japaneseScreenshotFont(page);
       const bytes = await page.screenshot({ type: 'jpeg', quality: 65, fullPage: true });
       console.log('UI_BASELINE|' + concept + '-' + width + '|' + bytes.toString('base64'));
     }
@@ -23,5 +25,6 @@ test('revision baseline screenshots', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('searchbox', { name: '商品名、メモ、カテゴリで検索' })).toBeVisible();
   await page.clock.runFor(250);
+  await japaneseScreenshotFont(page);
   console.log('UI_BASELINE|app-1280|' + (await page.screenshot({ type: 'jpeg', quality: 65, fullPage: true })).toString('base64'));
 });
