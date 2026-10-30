@@ -1,4 +1,5 @@
 // キーも通信も使わない偽物。あとから本物の判定と検索に差し替える。
+import { dedupeCandidates } from './candidate-dedupe';
 import {
   CaptureMessages,
   acceptCandidate,
@@ -146,7 +147,7 @@ export async function searchWithPorts(query: SearchQuery, ports: CapturePorts, a
   return {
     ok: true,
     value: {
-      candidates: sortCandidates(candidates, query),
+      candidates: dedupeCandidates(sortCandidates(candidates, query)),
       amazonUrl: amazonSearchUrl(query, associateTag),
       failures,
     },

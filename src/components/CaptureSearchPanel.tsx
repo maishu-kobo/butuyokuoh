@@ -22,6 +22,7 @@ import type { RegisteredLocation, RegisteredCandidateLocation } from '@/lib/capt
 import { useEffect, useRef, useState } from 'react';
 import { ImageOff } from 'lucide-react';
 import { filenameProductCode } from '@/lib/capture/filename-hint';
+import { capturePreviewSrc } from '@/lib/capture/photo-preview';
 
 type ListedCandidate = CaptureCandidate & { candidateId?: number; registeredIn?: RegisteredCandidateLocation | null };
 
@@ -31,12 +32,14 @@ export function CaptureSearchPanel({
   onSearching,
   onRegistered,
   onViewRegistered,
+  onPreview,
 }: {
   file: File | null;
   onManual: (name: string) => void;
   onSearching: () => void;
   onRegistered: (summary: string) => void;
   onViewRegistered?: (location: RegisteredLocation) => void;
+  onPreview?: (src: string) => void;
 }) {
   const [status, setStatus] = useState('');
   const [products, setProducts] = useState<ProductGuess[]>([]);
@@ -60,6 +63,10 @@ export function CaptureSearchPanel({
   const searchBlockedRef = useRef(false);
   const searchVersionRef = useRef(0);
   const searchRetryRef = useRef<{ product: ProductGuess | null; name: string } | null>(null);
+  const onPreviewRef = useRef(onPreview);
+  useEffect(() => {
+    onPreviewRef.current = onPreview;
+  });
 
   useEffect(() => {
     if (!file) return;
@@ -93,6 +100,8 @@ export function CaptureSearchPanel({
       const response = await apiFetch('/api/capture/identify', { method: 'POST', body }, { notifyError: false });
       const data = await response.json().catch(() => null);
       if (cancelled) return;
+      const preview = capturePreviewSrc(data && typeof data === 'object' ? (data as { preview?: unknown }).preview : null);
+      if (preview) onPreviewRef.current?.(preview);
       const fallback = fallbackFromIdentify(data, response.ok);
       const failure = statusAfterIdentify(data, response.ok);
       if (failure) {

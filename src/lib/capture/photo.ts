@@ -14,10 +14,14 @@ import { CAPTURE_PHOTO_MAX_EDGE } from './photo-client';
 
 export { CAPTURE_PHOTO_MAX_EDGE };
 
-export const CAPTURE_PHOTO_MAX_PIXELS = 40_000_000;
+// iPhone の 48MP（8064×6048）は約 4877 万画素。ファイルのバイト数ではなく幅×高さで見る。
+export const CAPTURE_PHOTO_MAX_PIXELS = 50_000_000;
 export const CAPTURE_PHOTO_CONCURRENCY = 2;
 export const CAPTURE_PHOTO_TIMEOUT_MS = 5_000;
+export const CAPTURE_HEIC_TIMEOUT_MS = 12_000;
 export const CAPTURE_JPEG_QUALITY = 80;
+export const CAPTURE_PREVIEW_MAX_EDGE = 192;
+const PREVIEW_MAX_BYTES = 48_000;
 
 const BODY_SLACK = 8 * 1024;
 const ALLOWED_DECLARED = new Set([
@@ -154,8 +158,16 @@ const require = createRequire(import.meta.url);
 function withinPixelBudget(width: number, height: number): boolean {
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height)) return false;
   if (width < 1 || height < 1) return false;
+  // 一辺だけを画素上限と比べ、積が安全整数を超える組み合わせは復号しない。
   if (width > CAPTURE_PHOTO_MAX_PIXELS || height > CAPTURE_PHOTO_MAX_PIXELS) return false;
   return width * height <= CAPTURE_PHOTO_MAX_PIXELS;
+}
+
+type HeifDimension = 'ok' | 'pixel-budget' | 'unreadable';
+
+function logHeifFailure(failure: 'timeout' | 'pixel-budget' | 'decode' | 'unreadable'): void {
+  // 失敗の種類だけ。画像、ファイル名、例外メッセージは出さない。
+  console.info(JSON.stringify({ event: 'capture-photo', failure }));
 }
 
 const HEIF_CONTAINERS = new Set([
@@ -172,26 +184,32 @@ function boxType(bytes: Uint8Array, offset: number): string {
 }
 
 export function heifIspeWithinBudget(bytes: Uint8Array): boolean {
+  return heifDimensionCheck(bytes) === 'ok';
+}
+
+function heifDimensionCheck(bytes: Uint8Array): HeifDimension {
   let found = false;
-  let ok = true;
+  let over = false;
+  let broken = false;
   const walk = (start: number, end: number, depth: number) => {
+    if (broken) return;
     if (depth > 32) {
-      ok = false;
+      broken = true;
       return;
     }
     let offset = start;
-    while (ok && offset + 8 <= end) {
+    while (!broken && offset + 8 <= end) {
       const size32 = readU32(bytes, offset);
       const type = boxType(bytes, offset + 4);
       let header = 8;
       let size = size32;
       if (size32 === 1) {
         if (offset + 16 > end) {
-          ok = false;
+          broken = true;
           return;
         }
         if (readU32(bytes, offset + 8) !== 0) {
-          ok = false;
+          broken = true;
           return;
         }
         size = readU32(bytes, offset + 12);
@@ -200,21 +218,21 @@ export function heifIspeWithinBudget(bytes: Uint8Array): boolean {
         size = end - offset;
       }
       if (!Number.isSafeInteger(size) || size < header || offset + size > end) {
-        ok = false;
+        broken = true;
         return;
       }
       const boxEnd = offset + size;
       if (type === 'ispe') {
         if (boxEnd < offset + header + 12) {
-          ok = false;
+          broken = true;
           return;
         }
         found = true;
-        if (!withinPixelBudget(readU32(bytes, offset + header + 4), readU32(bytes, offset + header + 8))) ok = false;
+        if (!withinPixelBudget(readU32(bytes, offset + header + 4), readU32(bytes, offset + header + 8))) over = true;
       } else if (HEIF_CONTAINERS.has(type)) {
         const inner = offset + header + (type === 'meta' ? 4 : 0);
         if (inner > boxEnd) {
-          ok = false;
+          broken = true;
           return;
         }
         walk(inner, boxEnd, depth + 1);
@@ -223,7 +241,9 @@ export function heifIspeWithinBudget(bytes: Uint8Array): boolean {
     }
   };
   walk(0, bytes.length, 0);
-  return found && ok;
+  if (broken || !found) return 'unreadable';
+  if (over) return 'pixel-budget';
+  return 'ok';
 }
 
 async function decodeHeicPixels(bytes: Uint8Array): Promise<{ width: number; height: number; data: Uint8ClampedArray } | null> {
@@ -249,16 +269,21 @@ export async function prepareCapturePhoto(
     return captureFailure('PHOTO_TOO_LARGE', CaptureMessages.photoTooLarge, 413);
   }
   const heif = sniffImage(bytes) === 'heif';
-  // libheif の既定上限はこちらの画素上限より大きい。復号の前に ispe を見る。
-  if (heif && !heifIspeWithinBudget(bytes)) {
-    return captureFailure('PHOTO_UNREADABLE', CaptureMessages.photoUnreadable, 400);
+  // libheif の既定上限はこちらの画素上限より大きい。復号の前に ispe の幅と高さを見る。
+  if (heif) {
+    const dimensions = heifDimensionCheck(bytes);
+    if (dimensions !== 'ok') {
+      logHeifFailure(dimensions);
+      return captureFailure('PHOTO_UNREADABLE', CaptureMessages.photoUnreadable, 400);
+    }
   }
   if (!heif) {
     const decoded = decodeCapturePhoto([{ mediaType, bytes }]);
     if (!decoded.ok) return decoded;
   }
+  const timeoutMs = heif ? CAPTURE_HEIC_TIMEOUT_MS : CAPTURE_PHOTO_TIMEOUT_MS;
   try {
-    // 枠を取ってから5秒を数える。時間切れでも、画素化が終わるまで枠は手放さない。
+    // 枠を取ってから数える。HEIC は 12 秒。時間切れでも、画素化が終わるまで枠は手放さない。
     const encoded = await runPhotoWithinSlot(async () => {
       let input: Buffer;
       let raw: { width: number; height: number; channels: 4 } | undefined;
@@ -278,7 +303,7 @@ export async function prepareCapturePhoto(
       });
       const killer = setTimeout(() => {
         image.destroy();
-      }, CAPTURE_PHOTO_TIMEOUT_MS);
+      }, timeoutMs);
       try {
         if (!raw) {
           const meta = await image.metadata();
@@ -303,17 +328,45 @@ export async function prepareCapturePhoto(
       } finally {
         clearTimeout(killer);
       }
-    }, CAPTURE_PHOTO_TIMEOUT_MS);
+    }, timeoutMs);
     if (!encoded || encoded.length === 0 || encoded.length > CAPTURE_PHOTO_MAX_BYTES) {
+      if (heif) logHeifFailure('unreadable');
       return captureFailure('PHOTO_UNREADABLE', CaptureMessages.photoUnreadable, 400);
     }
     return { ok: true, value: { mediaType: 'image/jpeg', bytes: new Uint8Array(encoded) } };
-  } catch {
+  } catch (error) {
+    if (heif) {
+      const timeout = error instanceof Error && error.message === 'photo timeout';
+      logHeifFailure(timeout ? 'timeout' : 'decode');
+    }
     return captureFailure('PHOTO_UNREADABLE', CaptureMessages.photoUnreadable, 400);
   }
 }
 
-export async function readCapturePhoto(request: Request): Promise<CaptureResult<{ mediaType: 'image/jpeg'; bytes: Uint8Array }>> {
+export async function capturePreviewDataUrl(bytes: Uint8Array): Promise<string | null> {
+  try {
+    const thumb = await sharp(Buffer.from(bytes), {
+      limitInputPixels: CAPTURE_PHOTO_MAX_PIXELS,
+      failOn: 'warning',
+      animated: false,
+    })
+      .rotate()
+      .resize({
+        width: CAPTURE_PREVIEW_MAX_EDGE,
+        height: CAPTURE_PREVIEW_MAX_EDGE,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: 60, mozjpeg: false })
+      .toBuffer();
+    if (thumb.length === 0 || thumb.length > PREVIEW_MAX_BYTES) return null;
+    return `data:image/jpeg;base64,${thumb.toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
+export async function readCapturePhoto(request: Request): Promise<CaptureResult<{ mediaType: 'image/jpeg'; bytes: Uint8Array; sourceHeif: boolean }>> {
   if (contentLengthExceedsCaptureBody(request.headers.get('content-length'))) {
     await request.body?.cancel().catch(() => undefined);
     return captureFailure('PHOTO_TOO_LARGE', CaptureMessages.photoTooLarge, 413);
@@ -344,5 +397,7 @@ export async function readCapturePhoto(request: Request): Promise<CaptureResult<
     return captureFailure('PHOTO_UNREADABLE', CaptureMessages.photoUnreadable, 400);
   }
   const bytes = new Uint8Array(await file.arrayBuffer());
-  return prepareCapturePhoto(bytes, mediaType === 'image/jpg' ? 'image/jpeg' : mediaType);
+  const prepared = await prepareCapturePhoto(bytes, mediaType === 'image/jpg' ? 'image/jpeg' : mediaType);
+  if (!prepared.ok) return prepared;
+  return { ok: true, value: { ...prepared.value, sourceHeif: sniffImage(bytes) === 'heif' } };
 }

@@ -11,8 +11,8 @@ function candidate(overrides: Partial<CaptureCandidate> & Pick<CaptureCandidate,
   return {
     site,
     url: site === 'yahoo'
-      ? 'https://store.shopping.yahoo.co.jp/example/item'
-      : 'https://item.rakuten.co.jp/example/item',
+      ? `https://store.shopping.yahoo.co.jp/example/${overrides.id}`
+      : `https://item.rakuten.co.jp/example/${overrides.id}`,
     fetchedAt: NOW,
     shopName: '店',
     ...overrides,

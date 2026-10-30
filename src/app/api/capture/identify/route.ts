@@ -3,7 +3,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { withCapture, withCaptureAi } from '@/lib/capture-flags';
 import { amazonAssociateTag, readCaptureSecrets } from '@/lib/capture-secrets';
 import { type CaptureErrorBody, type CaptureResult, type IdentifyResponse } from '@/lib/capture/contract';
-import { readCapturePhoto } from '@/lib/capture/photo';
+import { capturePreviewDataUrl, readCapturePhoto } from '@/lib/capture/photo';
 import { captureTestEnv, getCapturePorts, portsForRequest } from '@/lib/capture/ports';
 import { identifyHttpBody, resolveProductIdentifier } from '@/lib/capture/workers-ai';
 import { modelIdFromEnv } from '@/lib/capture/ai-variants';
@@ -24,13 +24,18 @@ function errorResponse(error: CaptureErrorBody, status: number) {
 }
 
 async function respond(
-  photo: { mediaType: string; bytes: Uint8Array },
+  photo: { mediaType: string; bytes: Uint8Array; sourceHeif?: boolean },
   result: CaptureResult<IdentifyResponse>,
   searchTitles: (query: string) => Promise<readonly string[]>,
 ) {
   const wiki = await attachWikipediaModel(photo, result);
   const refined = await attachEcSeriesLookup(photo, wiki, { search: searchTitles });
   const http = identifyHttpBody(refined);
+  // ブラウザが HEIC を表示できないときだけ、変換済み JPEG の縮小を返す。画像は保存しない。
+  if (photo.sourceHeif) {
+    const preview = await capturePreviewDataUrl(photo.bytes);
+    if (preview) http.body.preview = preview;
+  }
   return NextResponse.json(http.body, { status: http.status });
 }
 

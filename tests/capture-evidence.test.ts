@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { resolveSearchVariant } from '../src/lib/capture/ai-variants';
+import { modelIdFromEnv, resolveSearchVariant } from '../src/lib/capture/ai-variants';
 import { EVIDENCE_BRAND_RULES, GEMINI_EVIDENCE_SUFFIX, WORKERS_EVIDENCE_SUFFIX } from '../src/lib/capture/evidence-prompt';
 import { identifyEvidenceVariant, selectedEvidenceMode } from '../src/lib/capture/evidence-variant';
 import { createGeminiIdentifier, type GeminiHttpRequest } from '../src/lib/capture/gemini';
-import { createWorkersAiIdentifier, WORKERS_AI_MODEL, type WorkersAiHttpRequest } from '../src/lib/capture/workers-ai';
+import { attachEcSeriesLookup, ecLookupEnabled } from '../src/lib/capture/ec-lookup';
+import { attachWikipediaModel, wikipediaLookupEnabled } from '../src/lib/capture/wikipedia-lookup';
+import { AI_LIMIT_MESSAGE, createAiBudget, createWorkersAiIdentifier, WORKERS_AI_MODEL, type WorkersAiHttpRequest } from '../src/lib/capture/workers-ai';
 
 const jpeg = Uint8Array.of(0xff, 0xd8, 0xff, 0x00);
 const KEY = 'test-gemini-key';
@@ -262,4 +264,117 @@ test('a selected evidence variant does not fall through when its key is missing'
     search: async () => ({ hits: 0, value: null }),
   });
   assert.equal(absent, null);
+});
+
+test('llama4-evidence without a Gemini key stays on Workers AI and skips Flash and lookups', async () => {
+  assert.equal(modelIdFromEnv({}), WORKERS_AI_MODEL);
+  assert.equal(modelIdFromEnv({ CAPTURE_AI_MODEL: '' }), WORKERS_AI_MODEL);
+  assert.equal(selectedEvidenceMode({}), null);
+  assert.equal(wikipediaLookupEnabled({}), false);
+  assert.equal(ecLookupEnabled({}), false);
+  let workers = 0;
+  let gemini = 0;
+  let searches = 0;
+  const started = Date.now();
+  const result = await identifyEvidenceVariant({
+    photo: { mediaType: 'image/jpeg', bytes: jpeg },
+    hooked: false,
+    fake: { async identify() { throw new Error('unused'); } },
+    geminiEnv: { CAPTURE_AI_MODEL: 'llama4-evidence' },
+    accountId: ACCOUNT,
+    apiToken: 'test-cloudflare-token',
+    userId: 'llama4-no-gemini',
+    budget: createAiBudget(),
+    workersHttp: async (request) => {
+      workers += 1;
+      assert.equal(request.url.includes('llama-4-scout'), true);
+      assert.equal(request.url.includes('llama-3.2'), false);
+      return {
+        status: 200,
+        body: JSON.stringify({
+          success: true,
+          result: { response: JSON.stringify({ confidence: 'sure', products: [{ name: 'Google Pixel スマートフォン 本体', brand: 'Google', model: null, series: 'Pixel', jan: null }] }) },
+        }),
+      };
+    },
+    geminiHttp: async () => {
+      gemini += 1;
+      throw new Error('gemini should not be called');
+    },
+    search: async () => {
+      searches += 1;
+      return { hits: 0, value: null };
+    },
+  });
+  assert.equal(Date.now() - started < 1_000, true);
+  assert.equal(workers, 1);
+  assert.equal(gemini, 0);
+  assert.equal(searches, 1);
+  assert.equal(result?.ok, true);
+  if (!result?.ok) return;
+  assert.equal(result.value.products[0].brand, 'Google');
+  const photo = { mediaType: 'image/jpeg', bytes: jpeg };
+  const wiki = await attachWikipediaModel(photo, result, {
+    env: {},
+    wikiFetch: async () => { throw new Error('wikipedia should stay off'); },
+    complete: async () => { gemini += 1; throw new Error('lookup gemini should stay off'); },
+  });
+  const ec = await attachEcSeriesLookup(photo, wiki, {
+    env: {},
+    search: async () => { throw new Error('lookup search should stay off'); },
+    complete: async () => { gemini += 1; throw new Error('lookup gemini should stay off'); },
+  });
+  assert.equal(gemini, 0);
+  assert.equal(ec.ok && ec.value.products[0].name, result.value.products[0].name);
+});
+
+test('llama4-evidence treats Workers AI 4006 as the daily cap and does not retry', async () => {
+  const budget = createAiBudget();
+  let workers = 0;
+  let gemini = 0;
+  let searches = 0;
+  const once = () => identifyEvidenceVariant({
+    photo: { mediaType: 'image/jpeg', bytes: jpeg },
+    hooked: false,
+    fake: { async identify() { throw new Error('unused'); } },
+    geminiEnv: { CAPTURE_AI_MODEL: 'llama4-evidence' },
+    accountId: ACCOUNT,
+    apiToken: 'test-cloudflare-token',
+    userId: 'llama4-cap',
+    budget,
+    workersHttp: async (request) => {
+      workers += 1;
+      assert.equal(request.url.includes('@cf/meta/llama-4-scout-17b-16e-instruct'), true);
+      return {
+        status: 429,
+        body: JSON.stringify({
+          success: false,
+          errors: [{ code: 4006, message: 'you have used up your daily free allocation of 10,000 neurons' }],
+        }),
+      };
+    },
+    geminiHttp: async () => {
+      gemini += 1;
+      throw new Error('gemini should not be called');
+    },
+    search: async () => {
+      searches += 1;
+      return { hits: 0, value: null };
+    },
+  });
+  const hit = await once();
+  assert.equal(hit?.ok, false);
+  if (hit?.ok !== false) return;
+  assert.equal(hit.error.code, 'AI_LIMIT');
+  assert.equal(hit.error.error, AI_LIMIT_MESSAGE);
+  assert.equal(hit.error.retryable, undefined);
+  assert.equal(JSON.stringify(hit).includes('4006'), false);
+  assert.equal(JSON.stringify(hit).includes('allocation'), false);
+  const again = await once();
+  assert.equal(again?.ok, false);
+  if (again?.ok !== false) return;
+  assert.equal(again.error.code, 'AI_LIMIT');
+  assert.equal(workers, 1);
+  assert.equal(gemini, 0);
+  assert.equal(searches, 0);
 });
