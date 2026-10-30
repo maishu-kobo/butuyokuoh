@@ -20,7 +20,7 @@ async function expectReadableAction(page: Page, selector: string) {
   const contrast = await page.locator(selector).evaluate(el => {
     const css = getComputedStyle(el);
     const lum = (color: string) => {
-      const c = (color.match(/[\\d.]+/g) || []).slice(0, 3).map(Number).map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+      const c = (color.match(/[0-9.]+/g) || []).slice(0, 3).map(Number).map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
       return .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
     };
     const l = [lum(css.color), lum(css.backgroundColor)].sort((a, b) => b - a);
