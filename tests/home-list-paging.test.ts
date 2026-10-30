@@ -168,6 +168,17 @@ test('pending search keeps its previous rows visible but prevents stale item act
 });
 
 test('drag loading hint is absent when sorting or filtering would still forbid dragging', () => {
+  assert.match(render(), /ドラッグで順序を変えるには/);
   assert.doesNotMatch(render({ sortBy: 'price_asc' }), /ドラッグで順序を変えるには/);
   assert.doesNotMatch(render({ searchQuery: '商品' }), /ドラッグで順序を変えるには/);
+});
+
+
+test('failed query hides stale rows and their actions behind the retry screen', () => {
+  const html = render({ loading: false, loadError: true });
+  assert.match(html, /読み込みに失敗/);
+  assert.match(html, /再試行/);
+  assert.doesNotMatch(html, /読み込み済み商品/);
+  assert.doesNotMatch(html, /もっと見る/);
+  assert.doesNotMatch(html, /aria-label="削除"/);
 });

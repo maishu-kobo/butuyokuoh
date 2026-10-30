@@ -74,7 +74,7 @@ export class ItemPageClient {
         const response = await this.transport('/api/items/page?' + params, abort.signal);
         if (generation !== this.generation) return;
         if (response.status === 409 && restarts < 1) {
-          this.publish({ ...this.state, notice: '一覧が変更されたため読み込み済みの範囲を更新しました。' });
+          this.publish({ ...this.state, notice: '一覧が変更されました。表示を更新しています。' });
           await this.request(false, restarts + 1);
           return;
         }
@@ -94,10 +94,11 @@ export class ItemPageClient {
       }
       this.loadedPages = append ? this.loadedPages + readPages : readPages;
       // Replace the visible window only after its entire new snapshot is ready.
-      this.publish({ ...this.state, page: collected, loading: false, error: false, moreLoading: false, moreError: false });
+      this.publish({ ...this.state, page: collected, loading: false, error: false, moreLoading: false, moreError: false,
+        notice: restarts ? '一覧が変更されたため読み込み済みの範囲を更新しました。' : this.state.notice });
     } catch {
       if (generation !== this.generation) return;
-      this.publish({ ...this.state, loading: false, error: !append, moreLoading: false, moreError: append });
+      this.publish({ ...this.state, loading: false, error: !append, moreLoading: false, moreError: append, notice: '' });
     }
   }
 }
