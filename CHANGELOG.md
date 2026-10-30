@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `/privacy` と `/terms` を正式版の文面にし、画面から「下書き」「確認待ち」などの表記を外す（#119）。
+
 ### Fixed
 
 - 写真のブランド保護は、Apple / Sony / Samsung / Google / Xiaomi など複数カテゴリのメーカーで腕時計・ヘッドホン等を矛盾とみなさない。MLB など許諾元の腕時計はこれまでどおり外す。
