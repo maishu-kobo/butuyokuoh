@@ -26,6 +26,11 @@ for (const concept of ['a', 'b', 'c']) for (const width of [390, 1280]) {
     await expect(page.locator('[data-item]')).toHaveCount(1);
     await expect(page.getByText('価格未取得', { exact: true }).first()).toBeVisible();
     await page.locator('#query').fill('');
+    if (concept === 'c' && width === 1280) {
+      await page.locator('[data-item="shoes"]').focus();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('[data-item="shoes"]')).toBeFocused();
+    }
     await page.locator('#capture-top').focus();
     await page.keyboard.press('Enter');
     if (concept === 'c') {
@@ -56,12 +61,13 @@ for (const concept of ['a', 'b', 'c']) for (const width of [390, 1280]) {
     await page.locator('#register-candidate').click();
     await expect(page.locator('#heading')).toContainText('Bose QuietComfort 25');
     await expect(page.locator('.offers .offer')).toHaveCount(2);
+    await page.locator('#plan-date').fill('2026-11-25');
     const cheaper = page.getByRole('radio', { name: 'リユース音楽店（架空）を選ぶ' });
     await cheaper.focus();
     await page.keyboard.press('Space');
     await expect(cheaper).toBeFocused();
     await expect(cheaper).toBeChecked();
-    await page.locator('#plan-date').fill('2026-11-25');
+    await expect(page.locator('#plan-date')).toHaveValue('2026-11-25');
     await page.locator('#save-plan').click();
     await capture(page, concept + '-' + width + '-stores');
     await page.locator('#view-plans').click();
