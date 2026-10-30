@@ -2,6 +2,7 @@
 // シリーズやブランドの語が残る推定、sure、時計やヘッドホンでは呼ばない。1日15回で打ち切る。
 // flash-lite の通常フォールバックはここを通らない。
 import type { IdentifyInput } from './contract';
+import { GEMINI_DEFAULT_MODEL, GEMINI_LITE_MODEL } from './gemini';
 import { dominantTypeGroup, nameHasProductType, nameIsColorAndType } from './product-query';
 
 export const FLASH_DAILY_CAP = 15;
@@ -85,11 +86,25 @@ export function createFlashLedger(cap = FLASH_DAILY_CAP): FlashLedger {
   };
 }
 
-let sharedLedger: FlashLedger | null = null;
+const ledgers = new Map<string, FlashLedger>();
+
+// Flash と flash-lite は無料枠が別なので、429 の回路もモデルごとに分ける。
+export function appModelLedger(model: string): FlashLedger {
+  const key = model.trim();
+  let ledger = ledgers.get(key);
+  if (!ledger) {
+    ledger = createFlashLedger(FLASH_DAILY_CAP);
+    ledgers.set(key, ledger);
+  }
+  return ledger;
+}
 
 export function appFlashLedger(): FlashLedger {
-  if (!sharedLedger) sharedLedger = createFlashLedger(FLASH_DAILY_CAP);
-  return sharedLedger;
+  return appModelLedger(GEMINI_DEFAULT_MODEL);
+}
+
+export function appFlashLiteLedger(): FlashLedger {
+  return appModelLedger(GEMINI_LITE_MODEL);
 }
 
 export function flashUpgradeEligible(guess: GuessLike): boolean {

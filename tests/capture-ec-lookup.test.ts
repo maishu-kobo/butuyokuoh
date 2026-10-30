@@ -7,13 +7,14 @@ import {
   bodyListings,
   ecLookupEnabled,
   ecPickInstruction,
+  ecSeriesQueries,
   ecSeriesQuery,
   needsEcLookup,
   parseEcPick,
 } from '../src/lib/capture/ec-lookup';
 import { createFlashLedger } from '../src/lib/capture/flash-fallback';
 import { searchLadderSteps, storeSearchKeyword } from '../src/lib/capture/product-query';
-import { wikipediaLookupEnabled } from '../src/lib/capture/wikipedia-lookup';
+import { LOOKUP_LITE_TIMEOUT_MS, wikipediaLookupEnabled } from '../src/lib/capture/wikipedia-lookup';
 import type { ProductGuess } from '../src/lib/capture/contract';
 
 const jpeg = Uint8Array.of(0xff, 0xd8, 0xff, 0x00);
@@ -63,14 +64,40 @@ test('ec lookup is off unless the flag lists ec', () => {
     jan: null,
     series: 'Arena',
   }), false);
-  assert.equal(ecSeriesQuery(pixel), 'Google Pixel Fold 本体');
+  assert.deepEqual(ecSeriesQueries(pixel), ['Google Pixel 本体', 'Google Pixel Fold 本体']);
+  assert.deepEqual(ecSeriesQueries({ ...pixel, formFactor: 'bar' }), ['Google Pixel 本体', 'Google Pixel Fold 本体']);
+  assert.equal(ecSeriesQuery(pixel), 'Google Pixel 本体');
+  assert.deepEqual(ecSeriesQueries({
+    name: 'HP Pavilion ノートパソコン',
+    brand: 'HP',
+    model: null,
+    jan: null,
+    series: 'Pavilion',
+  }), ['HP Pavilion ノートパソコン 本体']);
   assert.deepEqual(bodyListings(listings), [
-    'Google Pixel 9 Pro Fold Obsidian',
     'Google Pixel 10 Pro Fold 256GB Moonstone',
+    'Google Pixel 9 Pro Fold Obsidian',
   ]);
+  assert.deepEqual(bodyListings([
+    'Google Pixel 9 Pro Fold Obsidian',
+    'Google Pixel 10 Pro Fold 256GB Moonstone 中古',
+    'Google Pixel 10 Pro Fold 256GB Moonstone',
+    'Google Pixel 8 中古',
+  ]), [
+    'Google Pixel 10 Pro Fold 256GB Moonstone',
+    'Google Pixel 9 Pro Fold Obsidian',
+    'Google Pixel 10 Pro Fold 256GB Moonstone 中古',
+    'Google Pixel 8 中古',
+  ]);
+  assert.equal(LOOKUP_LITE_TIMEOUT_MS, 5_000);
   const harness = readFileSync(new URL('./eval/photo-search/live-harness.ts', import.meta.url), 'utf8');
+  const ecSource = readFileSync(new URL('../src/lib/capture/ec-lookup.ts', import.meta.url), 'utf8');
   assert.equal(harness.includes('attachEcSeriesLookup'), true);
   assert.equal(harness.includes("part.trim() === 'ec'"), true);
+  assert.equal(harness.includes('ledger: appFlashLiteLedger()'), true);
+  assert.equal(harness.includes('ledger: appFlashLedger()'), false);
+  assert.equal(harness.includes('model: GEMINI_LITE_MODEL'), true);
+  assert.equal(ecSource.includes('LOOKUP_LITE_TIMEOUT_MS'), true);
 });
 
 test('the prompt may only choose a listing number, and a high pick uses that title', async () => {
@@ -78,8 +105,8 @@ test('the prompt may only choose a listing number, and a high pick uses that tit
   const instruction = ecPickInstruction(kept);
   assert.equal(instruction.includes('none'), true);
   assert.equal(instruction.includes('一覧に無い型番を作ってはいけない'), true);
-  assert.equal(instruction.includes('1. Google Pixel 9 Pro Fold Obsidian'), true);
-  assert.equal(instruction.includes('2. Google Pixel 10 Pro Fold 256GB Moonstone'), true);
+  assert.equal(instruction.includes('1. Google Pixel 10 Pro Fold 256GB Moonstone'), true);
+  assert.equal(instruction.includes('2. Google Pixel 9 Pro Fold Obsidian'), true);
   const invented = parseEcPick(geminiBody({ pick: 'none', confidence: 'low', model: 'Pixel 9 Pro Fold' }), kept.length);
   assert.equal(applyEcListing(pixel, kept, invented), pixel);
   const queries: string[] = [];
@@ -100,11 +127,11 @@ test('the prompt may only choose a listing number, and a high pick uses that tit
       assert.equal(request.url.includes('gemini-3.5-flash-lite'), true);
       assert.equal(request.url.includes(KEY), false);
       assert.equal(request.body.includes('一覧に無い型番を作ってはいけない'), true);
-      assert.equal(request.body.includes('2. Google Pixel 10 Pro Fold 256GB Moonstone'), true);
-      return { status: 200, body: geminiBody({ pick: '2', confidence: 'medium' }) };
+      assert.equal(request.body.includes('1. Google Pixel 10 Pro Fold 256GB Moonstone'), true);
+      return { status: 200, body: geminiBody({ pick: '1', confidence: 'medium' }) };
     },
   });
-  assert.equal(queries[0], 'Google Pixel Fold 本体');
+  assert.deepEqual(queries, ['Google Pixel 本体', 'Google Pixel Fold 本体']);
   assert.equal(gemini, 1);
   assert.equal(picked.ok, true);
   if (!picked.ok) return;
@@ -137,10 +164,10 @@ test('a Gemini 429 keeps the series query and blocks the rest of the day', async
   const first = await once();
   assert.equal(first.ok && first.value.products[0].name, pixel.name);
   assert.equal(gemini, 1);
-  assert.equal(searches, 1);
+  assert.equal(searches, 2);
   assert.equal(ledger.blocked(DAY), true);
   const second = await once();
   assert.equal(second.ok && second.value.products[0].name, pixel.name);
   assert.equal(gemini, 1);
-  assert.equal(searches, 1);
+  assert.equal(searches, 2);
 });

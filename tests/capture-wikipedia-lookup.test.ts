@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { createFlashLedger } from '../src/lib/capture/flash-fallback';
 import { searchLadderSteps, storeSearchKeyword } from '../src/lib/capture/product-query';
 import {
+  LOOKUP_LITE_TIMEOUT_MS,
+  WIKIPEDIA_TIMEOUT_MS,
   WIKIPEDIA_USER_AGENT,
   allowedWikipediaUrl,
   applyHighConfidenceModel,
@@ -78,7 +80,13 @@ test('wikipedia lookup stays off unless the flag is wikipedia', () => {
   const route = readFileSync(new URL('../src/app/api/capture/identify/route.ts', import.meta.url), 'utf8');
   assert.equal(harness.includes('attachWikipediaModel'), true);
   assert.equal(harness.includes('CAPTURE_WEB_LOOKUP'), true);
+  assert.equal(harness.includes('ledger: appFlashLiteLedger()'), true);
   assert.equal(/process\.env/.test(route), false);
+  assert.equal(LOOKUP_LITE_TIMEOUT_MS, 5_000);
+  assert.equal(WIKIPEDIA_TIMEOUT_MS, 3_000);
+  const wiki = readFileSync(new URL('../src/lib/capture/wikipedia-lookup.ts', import.meta.url), 'utf8');
+  assert.equal(wiki.includes('setTimeout(() => controller.abort(), LOOKUP_LITE_TIMEOUT_MS)'), true);
+  assert.equal(wiki.includes('setTimeout(() => controller.abort(), WIKIPEDIA_TIMEOUT_MS)'), true);
 });
 
 test('a foldable Pixel keeps the series query until Wikipedia snippets support a high pick', async () => {

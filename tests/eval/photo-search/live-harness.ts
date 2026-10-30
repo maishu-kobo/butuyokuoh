@@ -11,7 +11,7 @@ import { pathToFileURL } from 'node:url';
 import { resolveSearchVariant, SEARCH_VARIANTS, estimateNeurons, type SearchVariant } from '../../../src/lib/capture/ai-variants';
 import { ensembleGuess } from '../../../src/lib/capture/ensemble';
 import { GEMINI_EVIDENCE_SUFFIX, WORKERS_EVIDENCE_SUFFIX } from '../../../src/lib/capture/evidence-prompt';
-import { appFlashLedger, maybeUpgradeWithFlash, withFlashRetry } from '../../../src/lib/capture/flash-fallback';
+import { appFlashLiteLedger, maybeUpgradeWithFlash, withFlashRetry } from '../../../src/lib/capture/flash-fallback';
 import { attachEcSeriesLookup } from '../../../src/lib/capture/ec-lookup';
 import { attachWikipediaModel } from '../../../src/lib/capture/wikipedia-lookup';
 import { createGeminiIdentifier, GEMINI_DEFAULT_MODEL, GEMINI_LITE_MODEL, geminiConfigFromEnv } from '../../../src/lib/capture/gemini';
@@ -275,6 +275,7 @@ async function guessOrAll(selected: 'guess' | 'all') {
     photo: { mediaType: string; bytes: Uint8Array },
     product: T,
     searchId: string,
+    calls: unknown[],
   ): Promise<T> {
     const key = flashKey() ?? process.env.GEMINI_API_KEY ?? null;
     const env = {
@@ -283,22 +284,29 @@ async function guessOrAll(selected: 'guess' | 'all') {
     };
     const complete = async (request: { url: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => {
       geminiCalls += 1;
-      const response = await fetch(request.url, {
-        method: 'POST', redirect: 'manual', cache: 'no-store', headers: request.headers, body: request.body, signal: request.signal,
-      });
-      return { status: response.status, body: await response.text() };
+      try {
+        const response = await fetch(request.url, {
+          method: 'POST', redirect: 'manual', cache: 'no-store', headers: request.headers, body: request.body, signal: request.signal,
+        });
+        const body = await response.text();
+        calls.push({ status: response.status, model: GEMINI_LITE_MODEL, response: geminiResponseText(body) });
+        return { status: response.status, body };
+      } catch (error) {
+        calls.push({ status: 0, model: GEMINI_LITE_MODEL, thrown: error instanceof Error ? error.name : 'error' });
+        return { status: 0, body: '' };
+      }
     };
     const wiki = await attachWikipediaModel(photo, {
       ok: true,
       value: { confidence: 'unsure', products: [{ ...product, jan: product.jan ?? null }] },
-    }, { env, ledger: appFlashLedger(), complete });
+    }, { env, ledger: appFlashLiteLedger(), complete });
     const afterWiki = wiki.ok ? wiki.value.products[0] : null;
     const ec = await attachEcSeriesLookup(photo, wiki.ok ? wiki : {
       ok: true,
       value: { confidence: 'unsure', products: [{ ...product, jan: product.jan ?? null }] },
     }, {
       env,
-      ledger: appFlashLedger(),
+      ledger: appFlashLiteLedger(),
       complete,
       search: async (query) => {
         if (!live || !fakes || !ladder) return [];
@@ -363,10 +371,17 @@ async function guessOrAll(selected: 'guess' | 'all') {
           apiKey: liteKey,
           complete: async (request) => {
             geminiCalls += 1;
-            const response = await fetch(request.url, {
-              method: 'POST', redirect: 'manual', cache: 'no-store', headers: request.headers, body: request.body, signal: request.signal,
-            });
-            return { status: response.status, body: await response.text() };
+            try {
+              const response = await fetch(request.url, {
+                method: 'POST', redirect: 'manual', cache: 'no-store', headers: request.headers, body: request.body, signal: request.signal,
+              });
+              const body = await response.text();
+              calls.push({ status: response.status, model: GEMINI_LITE_MODEL, response: geminiResponseText(body) });
+              return { status: response.status, body };
+            } catch (error) {
+              calls.push({ status: 0, model: GEMINI_LITE_MODEL, thrown: error instanceof Error ? error.name : 'error' });
+              return { status: 0, body: '' };
+            }
           },
         });
         outcome.found = { hits: outcome.found.hits, value: { ...outcome.found.value, candidates: ranked.candidates } };
@@ -392,7 +407,8 @@ async function guessOrAll(selected: 'guess' | 'all') {
         continue;
       }
       const original = outcome.guess.value.products[0];
-      const chosen = await refineWithWiki(prep.value, original, id);
+      const chosen = await refineWithWiki(prep.value, original, id, calls);
+      row.geminiCalls = geminiCallsForPhoto(geminiCalls, geminiBefore);
       if (chosen.name !== original.name || chosen.model !== original.model) {
         outcome.guess = { ...outcome.guess, value: { ...outcome.guess.value, products: [chosen, ...outcome.guess.value.products.slice(1)] } };
         if (live && fakes && ladder) {
@@ -447,7 +463,8 @@ async function guessOrAll(selected: 'guess' | 'all') {
       await sleep(1500);
       continue;
     }
-    const product = await refineWithWiki(prep.value, identified.value.products[0], id);
+    const product = await refineWithWiki(prep.value, identified.value.products[0], id, calls);
+    row.geminiCalls = geminiCallsForPhoto(geminiCalls, geminiBefore);
     const products = [product, ...identified.value.products.slice(1)];
     row.confidence = identified.value.confidence;
     row.products = products;
@@ -509,6 +526,19 @@ function writePartial(selected: 'guess' | 'all', label: string, variant: SearchV
   writeFileSync(out, `${JSON.stringify(body, null, 2)}\n`);
 }
 
+function geminiResponseText(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body) as {
+      candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
+    };
+    const parts = parsed.candidates?.[0]?.content?.parts ?? [];
+    const text = parts.filter((part) => part && typeof part.text === 'string' && part.thought !== true).map((part) => part.text).join('');
+    return text ? text.slice(0, 2000) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function identifyGemini(
   photo: { mediaType: string; bytes: Uint8Array },
   apiKey: string,
@@ -546,11 +576,11 @@ async function identifyGemini(
           }
         }
       } catch { /* not json */ }
-      calls.push({ status: response.status, response: text ? text.slice(0, 2000) : null, usage });
+      calls.push({ status: response.status, model, response: text ? text.slice(0, 2000) : null, usage });
       return { status: response.status, body };
     } catch (error) {
       lastStatus = 0;
-      calls.push({ status: 0, thrown: error instanceof Error ? error.name : 'error' });
+      calls.push({ status: 0, model, thrown: error instanceof Error ? error.name : 'error' });
       return { status: 0, body: '' };
     }
   };
@@ -616,6 +646,7 @@ async function identifyWorkers(
       charge(charged);
       calls.push({
         status: response.status,
+        model: model().id,
         response: typeof text === 'string' ? text.slice(0, 2000) : JSON.stringify(text)?.slice(0, 2000),
         usage: tokenUsage,
         errors,
@@ -623,7 +654,7 @@ async function identifyWorkers(
       return { status: response.status, body };
     } catch (error) {
       charge(UNKNOWN_CALL_NEURONS);
-      calls.push({ status: 0, thrown: error instanceof Error ? error.name : 'error' });
+      calls.push({ status: 0, model: model().id, thrown: error instanceof Error ? error.name : 'error' });
       throw error;
     }
   };

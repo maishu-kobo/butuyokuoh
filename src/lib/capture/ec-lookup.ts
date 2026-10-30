@@ -1,10 +1,10 @@
 // CAPTURE_WEB_LOOKUP=ec のときだけ。wikipedia と並べるときは ec,wikipedia。既定では呼ばない。
 // シリーズの店の候補から、番号で1件だけ選ばせる。一覧に無い型番は使わない。
 import type { CaptureResult, IdentifyInput, IdentifyResponse, ProductGuess } from './contract';
-import { appFlashLedger, geminiQuotaExhausted, withFlashRetry, type FlashLedger } from './flash-fallback';
+import { appFlashLiteLedger, geminiQuotaExhausted, withFlashRetry, type FlashLedger } from './flash-fallback';
 import { GEMINI_LITE_MODEL, geminiGenerateUrl, geminiThinkingConfig, type GeminiHttpRequest, type GeminiHttpResponse } from './gemini';
 import { deviceCategory, dominantTypeGroup, nameIsColorAndType, productLine, statedProductType } from './product-query';
-import { needsWikipediaLookup, printedModelNumber, webLookupHas } from './wikipedia-lookup';
+import { LOOKUP_LITE_TIMEOUT_MS, needsWikipediaLookup, printedModelNumber, webLookupHas } from './wikipedia-lookup';
 
 export const EC_LISTING_LIMIT = 20;
 
@@ -25,25 +25,44 @@ export function needsEcLookup(product: ProductGuess, visibleText = ''): boolean 
   return Boolean(group && FASHION.has(group) && nameIsColorAndType(product.name));
 }
 
-export function ecSeriesQuery(product: ProductGuess): string {
+export function ecSeriesQueries(product: ProductGuess): string[] {
   const brand = product.brand?.trim() ?? '';
   const series = product.series?.trim() || productLine(`${product.name} ${product.model ?? ''}`)?.label || '';
-  const type = deviceCategory(`${product.name} ${series}`) || statedProductType(product.name);
-  if (product.formFactor === 'foldable') return `${brand} ${series} Fold 本体`.replace(/\s+/g, ' ').trim();
-  const body = deviceCategory(`${product.name} ${series}`) ? '本体' : '';
-  return [brand, series, type, body].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  if (!brand || !series) return [];
+  const described = `${product.name} ${series}`;
+  if (deviceCategory(described) === 'スマートフォン') {
+    return [`${brand} ${series} 本体`, `${brand} ${series} Fold 本体`];
+  }
+  const type = statedProductType(product.name);
+  const body = deviceCategory(described) ? '本体' : '';
+  return [[brand, series, type, body].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()];
+}
+
+export function ecSeriesQuery(product: ProductGuess): string {
+  return ecSeriesQueries(product)[0] ?? '';
 }
 
 export function bodyListings(titles: readonly string[], limit = EC_LISTING_LIMIT): string[] {
-  const kept: string[] = [];
-  for (const title of titles) {
-    const cleaned = title.replace(/\s+/g, ' ').trim();
-    if (!cleaned || NOT_BODY.test(cleaned)) continue;
-    if (kept.includes(cleaned)) continue;
-    kept.push(cleaned);
-    if (kept.length >= limit) break;
+  const ranked = titles.map((title, index) => ({ title: title.replace(/\s+/g, ' ').trim(), index }))
+    .filter((item) => item.title && !NOT_BODY.test(item.title));
+  const unique: { title: string; index: number }[] = [];
+  for (const item of ranked) {
+    if (unique.some((kept) => kept.title === item.title)) continue;
+    unique.push(item);
   }
-  return kept;
+  unique.sort((left, right) => Number(usedListing(left.title)) - Number(usedListing(right.title))
+    || generationNumber(right.title) - generationNumber(left.title)
+    || left.index - right.index);
+  return unique.slice(0, limit).map((item) => item.title);
+}
+
+function usedListing(title: string): boolean {
+  return /中古|ジャンク|リファービッシュ|整備済|\bused\b/i.test(title);
+}
+
+function generationNumber(title: string): number {
+  const numbers = title.match(/\d+/g)?.map(Number).filter((value) => value > 0 && value < 80) ?? [];
+  return numbers.length > 0 ? Math.max(...numbers) : 0;
 }
 
 export function ecPickInstruction(titles: readonly string[]): string {
@@ -107,22 +126,24 @@ export async function attachEcSeriesLookup(
   const product = result.value.products[0];
   const visible = result.value.evidence?.visibleText ?? '';
   if (!needsEcLookup(product, visible)) return result;
-  const ledger = deps?.ledger ?? appFlashLedger();
+  const ledger = deps?.ledger ?? appFlashLiteLedger();
   const now = deps?.now ?? Date.now();
   if (ledger.blocked(now)) return result;
-  const query = ecSeriesQuery(product);
-  if (!query || !deps?.search) return result;
+  const queries = ecSeriesQueries(product);
+  if (queries.length === 0 || !deps?.search) return result;
   const key = geminiKey(deps.env);
   if (!key) return result;
   try {
-    const listings = bodyListings(await deps.search(query));
+    const merged: string[] = [];
+    for (const query of queries) merged.push(...await deps.search(query));
+    const listings = bodyListings(merged);
     if (listings.length === 0) return result;
     let lastStatus = 0;
     let lastBody = '';
     const ran = await withFlashRetry({
       run: async () => {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 30_000);
+        const timer = setTimeout(() => controller.abort(), LOOKUP_LITE_TIMEOUT_MS);
         try {
           const request = liteRequest(photo, listings, key, controller.signal);
           const response = deps.complete ? await deps.complete(request) : await postGemini(request);

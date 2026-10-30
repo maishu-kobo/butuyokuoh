@@ -1,12 +1,13 @@
 // CAPTURE_WEB_LOOKUP=wikipedia のときだけ。既定では呼ばない。
 // 印刷された型番が無い端末を、Wikipedia の抜粋と flash-lite で1回だけ特定する。
 import type { CaptureResult, IdentifyInput, IdentifyResponse, ProductGuess } from './contract';
-import { appFlashLedger, geminiQuotaExhausted, withFlashRetry, type FlashLedger } from './flash-fallback';
+import { appFlashLiteLedger, geminiQuotaExhausted, withFlashRetry, type FlashLedger } from './flash-fallback';
 import { GEMINI_LITE_MODEL, geminiGenerateUrl, geminiThinkingConfig, type GeminiHttpRequest, type GeminiHttpResponse } from './gemini';
 import { deviceCategory, productLine } from './product-query';
 
 export const WIKIPEDIA_USER_AGENT = 'Butuyokuoh/1.0 (photo product lookup; https://butsuyokuoh.exe.xyz/)';
 export const WIKIPEDIA_TIMEOUT_MS = 3_000;
+export const LOOKUP_LITE_TIMEOUT_MS = 5_000;
 const PAGE_LIMIT = 4;
 const SNIPPET_CHARS = 1_600;
 const TOTAL_CHARS = 6_000;
@@ -194,7 +195,7 @@ export async function attachWikipediaModel(
   const product = result.value.products[0];
   const visible = result.value.evidence?.visibleText ?? '';
   if (!needsWikipediaLookup(product, visible)) return result;
-  const ledger = deps?.ledger ?? appFlashLedger();
+  const ledger = deps?.ledger ?? appFlashLiteLedger();
   const now = deps?.now ?? Date.now();
   if (ledger.blocked(now)) return result;
   const key = geminiKey(deps?.env);
@@ -207,7 +208,7 @@ export async function attachWikipediaModel(
     const ran = await withFlashRetry({
       run: async () => {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), WIKIPEDIA_TIMEOUT_MS);
+        const timer = setTimeout(() => controller.abort(), LOOKUP_LITE_TIMEOUT_MS);
         try {
           const request = liteRequest(photo, snippets, key, controller.signal);
           const response = deps?.complete ? await deps.complete(request) : await postGemini(request);

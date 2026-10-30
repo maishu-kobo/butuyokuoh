@@ -5,6 +5,9 @@ import { resolveSearchVariant } from '../src/lib/capture/ai-variants';
 import { identifyEvidenceVariant } from '../src/lib/capture/evidence-variant';
 import {
   FLASH_DAILY_CAP,
+  appFlashLedger,
+  appFlashLiteLedger,
+  appModelLedger,
   chooseFlashFallback,
   createFlashLedger,
   flashImproves,
@@ -13,6 +16,7 @@ import {
   maybeUpgradeWithFlash,
   withFlashRetry,
 } from '../src/lib/capture/flash-fallback';
+import { GEMINI_DEFAULT_MODEL, GEMINI_LITE_MODEL } from '../src/lib/capture/gemini';
 import { WORKERS_AI_MODEL } from '../src/lib/capture/workers-ai';
 
 const jpeg = Uint8Array.of(0xff, 0xd8, 0xff, 0x00);
@@ -53,6 +57,22 @@ test('flash stays off the default model and the lite fallback', () => {
   assert.equal(harness.includes("GEMINI_EVIDENCE_SUFFIX, 'flash'"), true);
   assert.equal(harness.includes('GEMINI_DEFAULT_MODEL'), true);
   assert.equal(harness.includes('variant.flashFallback === true'), true);
+});
+
+test('flash and flash-lite keep separate daily circuit breakers', () => {
+  const day = Date.parse('2031-01-02T00:00:00.000Z');
+  const flash = appModelLedger(GEMINI_DEFAULT_MODEL);
+  const lite = appModelLedger(GEMINI_LITE_MODEL);
+  assert.equal(appFlashLedger(), flash);
+  assert.equal(appFlashLiteLedger(), lite);
+  assert.equal(flash === lite, false);
+  flash.trip(day);
+  assert.equal(flash.blocked(day), true);
+  assert.equal(lite.blocked(day), false);
+  assert.equal(flash.blocked(DAY), false);
+  lite.trip(day);
+  assert.equal(lite.blocked(day), true);
+  assert.equal(flash.blocked(DAY), false);
 });
 
 test('only a low-confidence unbranded shoe, bag, or garment can call flash', () => {
