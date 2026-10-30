@@ -121,8 +121,12 @@ test('利用規約は正式版で、免責・変更・準拠法を書く', () =>
   assert.match(page, /Amazonのアソシエイトとして/);
   assert.match(page, /Supported by Rakuten Developers/);
   assert.match(page, /代金を払う機能はありません/);
-  assert.match(page, /故意または重過失による場合を除き/);
-  assert.match(page, /法令で許される範囲で/);
+  assert.match(page, /運営者の責めに帰すべき事由により利用者に損害が生じた場合、その損害を賠償します/);
+  assert.match(page, /故意または重大な過失がある場合を除き/);
+  assert.match(page, /現実に生じた通常かつ直接の損害に限られ/);
+  assert.match(page, /逸失利益その他の特別な事情による損害は含みません/);
+  assert.equal(page.includes('法令で許される範囲で責任を負いません'), false);
+  assert.match(page, /法令で許される範囲で保証しません/);
   assert.match(page, /民法第548条の4/);
   assert.match(page, /準拠法/);
   assert.match(page, /本規約は日本法に準拠します/);
