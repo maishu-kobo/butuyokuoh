@@ -58,6 +58,7 @@ async function main() {
   let referer: string | null = null;
   try { referer = env.AUTH_URL ? live.httpsReferer(new URL(env.AUTH_URL).origin) : null; } catch { referer = null; }
   const files = readdirSync(imgDir).filter((file) => file.endsWith('.jpg')).sort();
+  const plannedIds = files.map((file) => file.replace(/\.jpg$/, '')).filter((id) => !only || only.split(',').includes(id));
   const rows: Record<string, unknown>[] = [];
   let neurons = 0;
   let identifierUsage = 0;
@@ -211,12 +212,15 @@ async function main() {
       });
     }
     rows.push(row);
-    writeFileSync(out, `${JSON.stringify({ partial: true, variant: variant.name, rows }, null, 2)}\n`);
+    writeFileSync(out, `${JSON.stringify({ partial: true, condition: 'photo-only', inputProtocol: 'prepared-pixels-only-v1', plannedIds, variant: variant.name, rows }, null, 2)}\n`);
     console.log(`${variant.name} ${id} conf=${row.confidence ?? row.identifyError} q=${JSON.stringify(row.query ?? null)} n=${JSON.stringify(row.counts ?? row.searchError ?? null)}`);
     await sleep(1500);
   }
   const scores = rows.map((row) => row.score).filter((score): score is { points: number } => Boolean(score));
   const report = {
+    condition: 'photo-only',
+    inputProtocol: 'prepared-pixels-only-v1',
+    plannedIds,
     label,
     variant: variant.name,
     model: variant.model.id,
