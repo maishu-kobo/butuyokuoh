@@ -8,7 +8,7 @@ exe.dev環境への本番デプロイ手順。
 - Node.js 22.12 以上、npm 10.x インストール済み。22.12 未満では `npm install` に進まない
 - systemdが利用可能
 
-**develop にマージする前に、本番 VM の Node.js を 22.12 以上へ上げること。** puppeteer 25 は `engines.node >=22.12.0` を要求する。本番が Node.js 20 のままだと、価格チェックのブラウザが起動しない。この変更では本番環境、本番データベース、秘密情報はいじらない。上げる作業は develop へ入れる前に、このリポジトリの外で行う。
+本番の Node.js は 22.12 以上にする。puppeteer 25 は `engines.node >=22.12.0` を要求する。Node.js 20 では価格チェックのブラウザが起動しない。上げる作業はこのリポジトリの外で行う。
 
 `npm install` の直後は、同じディレクトリで `npm rebuild better-sqlite3` を実行する。better-sqlite3 はネイティブアドオンで、今の Node.js 向けに作り直してからビルドと起動をする。更新では、この2つを動いているアプリのディレクトリでは実行しない。手順は「安全な更新」。
 
@@ -42,7 +42,7 @@ npm rebuild better-sqlite3
 
 ```bash
 # NextAuth設定
-NEXTAUTH_URL=https://butsuyokuoh.exe.xyz:8000
+NEXTAUTH_URL=https://butsuyokuoh.exe.xyz
 NEXTAUTH_SECRET=<openssl rand -base64 32で生成>
 
 # JWT
@@ -104,7 +104,7 @@ systemctl status butuyokuoh
 curl http://localhost:8000
 ```
 
-外部アクセス: https://butsuyokuoh.exe.xyz:8000/
+外部アクセス: https://butsuyokuoh.exe.xyz/
 
 ---
 
@@ -335,7 +335,7 @@ du -sh public/uploads/
 exe.devのプロキシが自動でHTTPS終端を行う。
 
 - 内部: `http://localhost:8000`
-- 外部: `https://butsuyokuoh.exe.xyz:8000`
+- 外部: `https://butsuyokuoh.exe.xyz`
 
 追加設定は不要。
 

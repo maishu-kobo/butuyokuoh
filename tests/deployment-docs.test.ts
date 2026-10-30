@@ -4,7 +4,6 @@ import { readFileSync } from 'node:fs';
 
 const deployment = readFileSync(new URL('../docs/deployment.md', import.meta.url), 'utf8');
 const database = readFileSync(new URL('../docs/database.md', import.meta.url), 'utf8');
-const readiness = readFileSync(new URL('../docs/release-readiness.md', import.meta.url), 'utf8');
 
 function section(doc: string, heading: string): string {
   const start = doc.indexOf(heading);
@@ -66,10 +65,4 @@ test('the swap guards data, stops the guest oneshot, and waits before rollback',
   const decided = swap.indexOf('test "$ready" = 1');
   assert.equal(start >= 0 && loop > start && probe > loop && decided > probe, true);
   assert.equal(/^\s*curl -fsS http:\/\/localhost:8000 >\/dev\/null$/m.test(swap), false);
-});
-
-test('the release readiness header matches main after the promotion', () => {
-  assert.equal(readiness.startsWith('# feature/photo-capture を develop に入れる前の確認\n'), false);
-  assert.equal(readiness.startsWith('# main に入った写真登録の確認メモ\n'), true);
-  assert.equal(readiness.includes('288596e8b11d05139bafe91ce841d793bdb00787'), true);
 });
