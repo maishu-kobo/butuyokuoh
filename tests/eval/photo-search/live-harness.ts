@@ -12,7 +12,7 @@ import { resolveSearchVariant, SEARCH_VARIANTS, estimateNeurons, type SearchVari
 import { ensembleGuess } from '../../../src/lib/capture/ensemble';
 import { GEMINI_EVIDENCE_SUFFIX, WORKERS_EVIDENCE_SUFFIX } from '../../../src/lib/capture/evidence-prompt';
 import { appFlashLiteLedger, maybeUpgradeWithFlash, withFlashRetry } from '../../../src/lib/capture/flash-fallback';
-import { attachEcSeriesLookup } from '../../../src/lib/capture/ec-lookup';
+import { attachEcSeriesLookup, EC_PICK_MARKER } from '../../../src/lib/capture/ec-lookup';
 import { attachWikipediaModel } from '../../../src/lib/capture/wikipedia-lookup';
 import { createGeminiIdentifier, GEMINI_DEFAULT_MODEL, GEMINI_LITE_MODEL, geminiConfigFromEnv } from '../../../src/lib/capture/gemini';
 import { runGeminiFallback } from '../../../src/lib/capture/gemini-fallback';
@@ -289,7 +289,14 @@ async function guessOrAll(selected: 'guess' | 'all') {
           method: 'POST', redirect: 'manual', cache: 'no-store', headers: request.headers, body: request.body, signal: request.signal,
         });
         const body = await response.text();
-        calls.push({ status: response.status, model: GEMINI_LITE_MODEL, response: geminiResponseText(body) });
+        const prompt = numberedPrompt(request.body);
+        calls.push({
+          status: response.status,
+          model: GEMINI_LITE_MODEL,
+          response: geminiResponseText(body),
+          ...(prompt ? { prompt, raw: body.slice(0, 4_000) } : {}),
+        });
+        if (prompt) console.info(JSON.stringify({ ecPick: true, prompt, raw: geminiResponseText(body) }));
         return { status: response.status, body };
       } catch (error) {
         calls.push({ status: 0, model: GEMINI_LITE_MODEL, thrown: error instanceof Error ? error.name : 'error' });
@@ -528,6 +535,17 @@ function writePartial(selected: 'guess' | 'all', label: string, variant: SearchV
     ? { mode: 'guess', partial: true, label, variant: variant.name, model, ladder: variant.ladder, estimatedNeuronsFor23: variant.estimatedNeuronsFor23, rows }
     : { partial: true, variant: variant.name, rows };
   writeFileSync(out, `${JSON.stringify(body, null, 2)}\n`);
+}
+
+function numberedPrompt(requestBody: string): string | null {
+  try {
+    const parsed = JSON.parse(requestBody) as { contents?: { parts?: { text?: string }[] }[] };
+    const text = (parsed.contents?.[0]?.parts ?? []).map((part) => part.text ?? '').filter(Boolean).join('\n');
+    if (!text.includes(EC_PICK_MARKER)) return null;
+    return text.slice(0, 8_000);
+  } catch {
+    return null;
+  }
 }
 
 function geminiResponseText(body: string): string | null {

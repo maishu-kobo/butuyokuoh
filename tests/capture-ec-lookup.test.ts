@@ -113,6 +113,9 @@ test('ec lookup is off unless the flag lists ec', () => {
   assert.equal(harness.includes('ledger: appFlashLedger()'), false);
   assert.equal(harness.includes('model: GEMINI_LITE_MODEL'), true);
   assert.equal(harness.includes('lookup: true'), true);
+  assert.equal(harness.includes('ecPick: true'), true);
+  assert.equal(harness.includes('numberedPrompt'), true);
+  assert.equal(ecSource.includes('番号付き一覧'), true);
   assert.equal(route.includes('lookup: true'), true);
   assert.equal(route.includes('logSearchRefusal'), true);
   assert.equal(/process\.env/.test(route), false);
@@ -124,7 +127,9 @@ test('the prompt may only choose a listing number, and a high pick uses that tit
   const instruction = ecPickInstruction(kept, 'Google のスマートフォン（Pixel 系）');
   assert.equal(instruction.includes('ヒンジ'), true);
   assert.equal(instruction.includes('カメラバー'), true);
+  assert.equal(instruction.includes('番号付き一覧'), true);
   assert.equal(instruction.includes('Pixel 10 Pro Fold'), true);
+  assert.equal(instruction.includes('世代を決められない根拠で high にしてはいけない'), true);
   assert.equal(instruction.includes('一覧に無い機種名は作らない'), true);
   assert.equal(instruction.includes('1. Google Pixel 10 Pro Fold 256GB Moonstone'), true);
   assert.equal(instruction.includes('2. Google Pixel 9 Pro Fold Obsidian'), true);
@@ -227,8 +232,9 @@ test('a recorded shop list can pick the Pixel 10 Pro Fold series without a color
     evidence: '閉じた折り目と横長のカメラバー',
   }), kept.length);
   const seriesPick = applyEcListing(pixel, kept, uncertain);
-  assert.equal(seriesPick.name, 'Google Pixel 10 Pro Fold');
-  assert.equal(seriesPick.model, 'Pixel 10 Pro Fold');
+  assert.equal(seriesPick.name, 'Google Pixel Pro Fold 本体');
+  assert.equal(seriesPick.model, 'Pixel Pro Fold');
+  assert.equal(/\d/.test(seriesPick.model ?? ''), false);
   const wrongGeneration = parseEcPick(geminiBody({
     index: index + 1,
     model: 'Pixel 9 Pro Fold',
@@ -251,10 +257,10 @@ test('a recorded shop list can pick the Pixel 10 Pro Fold series without a color
       assert.equal(body.contents[0].parts[0].inlineData?.data, Buffer.from(jpeg).toString('base64'));
       const text = body.contents[0].parts[1].text ?? '';
       assert.equal(text.includes('256GB Moonstone'), true);
-      assert.equal(text.includes('形と色で選んでよい'), true);
-      const line = text.split('\n').find((item) => item.includes('256GB Moonstone SIMフリー'));
+      assert.equal(text.includes('形と色で系列は選んでよい'), true);
+      const line = text.split('\n').find((item) => /^\d+\. /.test(item) && item.includes('256GB Moonstone SIMフリー'));
       seen.push(line ?? '');
-      const number = Number((line ?? '').split('.')[0]);
+      const number = Number((line ?? '').match(/^(\d+)\. /)?.[1]);
       return {
         status: 200,
         body: geminiBody({ index: number, model: 'Pixel 10 Pro Fold', color: '', confidence: 'high', evidence: '折り目' }),
@@ -263,5 +269,84 @@ test('a recorded shop list can pick the Pixel 10 Pro Fold series without a color
   });
   assert.equal(picked.ok, true);
   if (!picked.ok) return;
-  assert.equal(picked.value.products[0].name, 'Google Pixel 10 Pro Fold');
+  assert.equal(picked.value.products[0].name, 'Google Pixel Pro Fold 本体');
+  assert.equal(/\d/.test(String(picked.value.products[0].model)), false);
+});
+
+const mixedFoldListings = [
+  '【新品】Google Pixel 10 Pro Fold 256GB Moonstone SIMフリー',
+  'Google Pixel 10 Pro Fold 256GB SIMフリー [Moonstone]',
+  '【新品】Google Pixel 10 Pro Fold 512GB SIMフリー Moonstone',
+  '★Google Google Pixel 10 Pro Fold 256GB SIMフリー [Moonstone]',
+  'Google Pixel 11 Pro Fold 256GB Obsidian',
+  '新品 Google Pixel 11 pro fold 256GB',
+  'Google Pixel 11 Pro Fold 512GB SIMフリー',
+  'Google Pixel 11 Pro Fold 256GB Jade',
+];
+
+test('generic fold evidence does not rewrite a mixed list to one generation', () => {
+  const kept = bodyListings(mixedFoldListings, 20, 'Pixel');
+  const index = kept.findIndex((title) => /pixel\s*11 pro fold/i.test(title));
+  assert.equal(index >= 0, true);
+  const generic = parseEcPick(geminiBody({
+    index: index + 1,
+    model: 'Pixel 11 Pro Fold',
+    color: '',
+    confidence: 'high',
+    evidence: 'fold shape, camera module, Google logo',
+  }), kept.length);
+  const rewritten = applyEcListing(pixel, kept, generic);
+  assert.equal(rewritten.name, 'Google Pixel Pro Fold 本体');
+  assert.equal(rewritten.model, 'Pixel Pro Fold');
+  assert.equal(rewritten.name.includes('11'), false);
+  assert.equal(rewritten.name.includes('10'), false);
+  const keywords = searchLadderSteps(rewritten).map((step) => storeSearchKeyword(step, { maxChars: 128, maxBytes: 128 }));
+  assert.equal(keywords[0], 'Google Pixel Pro Fold 本体');
+  const mismatch = parseEcPick(geminiBody({
+    index: index + 1,
+    model: 'Pixel 9 Pro Fold',
+    color: '',
+    confidence: 'high',
+    evidence: '背面に 11 と読める',
+  }), kept.length);
+  assert.equal(applyEcListing(pixel, kept, mismatch), pixel);
+  const readable = parseEcPick(geminiBody({
+    index: index + 1,
+    model: 'Pixel 11 Pro Fold',
+    color: '',
+    confidence: 'high',
+    evidence: '背面に 11 と読める',
+  }), kept.length);
+  const keptGeneration = applyEcListing(pixel, kept, readable);
+  assert.equal(keptGeneration.name.includes('11'), true);
+  assert.equal(keptGeneration.name.includes('Pixel 11 Pro Fold'), true);
+});
+
+test('a color may choose a generation only when that color belongs to one generation', () => {
+  const kept = bodyListings(mixedFoldListings, 20, 'Pixel');
+  const moonstone = kept.findIndex((title) => title.includes('Moonstone'));
+  const byColor = parseEcPick(geminiBody({
+    index: moonstone + 1,
+    model: 'Pixel 10 Pro Fold',
+    color: 'Moonstone',
+    confidence: 'high',
+    evidence: 'fold shape, camera module, Google logo',
+  }), kept.length);
+  const colored = applyEcListing(pixel, kept, byColor);
+  assert.equal(colored.name, 'Google Pixel 10 Pro Fold Moonstone');
+  const shared = [
+    'Google Pixel 10 Pro Fold 256GB Moonstone',
+    'Google Pixel 11 Pro Fold 256GB Moonstone',
+  ];
+  const both = parseEcPick(geminiBody({
+    index: 1,
+    model: 'Pixel 10 Pro Fold',
+    color: 'Moonstone',
+    confidence: 'sure',
+    evidence: 'grey-blue camera bar and Google logo',
+  }), shared.length);
+  const tied = applyEcListing(pixel, shared, both);
+  assert.equal(tied.name, 'Google Pixel Pro Fold 本体');
+  assert.equal(tied.name.includes('10'), false);
+  assert.equal(tied.name.includes('11'), false);
 });

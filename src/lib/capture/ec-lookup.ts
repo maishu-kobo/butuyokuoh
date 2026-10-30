@@ -71,18 +71,21 @@ function generationNumber(title: string, series: string): number {
   return value > 0 && value < 80 ? value : 0;
 }
 
+export const EC_PICK_MARKER = '番号付き一覧';
+
 export function ecPickInstruction(titles: readonly string[], hint = ''): string {
   const lines = titles.map((title, index) => `${index + 1}. ${title}`).join('\n');
   return [
     `写真の商品を特定する。最初の見立て: ${hint || '系列は分かっているが型番は未確定'}`,
-    '以下は日本の店で系列名を検索した出品タイトルである。知識より新しい機種も含む。',
+    `以下は日本の店で系列名を検索した${EC_PICK_MARKER}である。知識より新しい機種も含む。`,
     'ケース、フィルム、バッテリー、充電器、アダプターは無視する。',
-    '写真に見える特徴で選ぶ。ヒンジや折り目、カメラバーの形、色、ロゴ。文字が写っていなくても、形と色で選んでよい。',
-    '必ず一覧の番号を1つ選ぶ。選んだタイトルに書いてある機種名だけを使う。一覧に無い機種名は作らない。',
-    '色や容量が写真から決まらないときは、機種の系列（例: Pixel 10 Pro Fold）までで止め、色は空でよい。',
+    '写真に見える特徴で選ぶ。ヒンジや折り目、カメラバーの形、色、ロゴ。文字が写っていなくても、形と色で系列は選んでよい。',
+    '同じ形の世代が複数あるとき（例: Pixel 10 Pro Fold と Pixel 11 Pro Fold）、折り目・カメラ・ロゴだけでは世代を決めない。型番の文字が読めるか、その色がその世代だけにあるときだけ世代を書く。',
+    '世代が分からなければ数字を外した系列（例: Pixel Pro Fold）にする。',
+    '選んだ番号のタイトルに書いてある機種名だけを使う。一覧に無い機種名は作らない。',
     '合う本体が無ければ index は null。',
-    '{"index":1,"model":"Pixel 10 Pro Fold","color":"","confidence":"high","evidence":"折り目とカメラバー"}',
-    'confidenceは high、medium、low、none のどれか。',
+    '{"index":null,"model":"Pixel Pro Fold","color":"","confidence":"low","evidence":"折り目とロゴでは世代は分からない"}',
+    'confidenceは high、medium、low、none のどれか。世代を決められない根拠で high にしてはいけない。',
     lines,
   ].join('\n');
 }
@@ -92,6 +95,7 @@ export interface EcPick {
   confidence: 'high' | 'medium' | 'low' | 'none';
   model: string | null;
   color: string | null;
+  evidence: string | null;
 }
 
 export function parseEcPick(body: string, limit: number): EcPick | null {
@@ -104,19 +108,21 @@ export function parseEcPick(body: string, limit: number): EcPick | null {
     return null;
   }
   if (!parsed || typeof parsed !== 'object') return null;
-  const record = parsed as { pick?: unknown; index?: unknown; confidence?: unknown; model?: unknown; color?: unknown };
-  const confidence = record.confidence === 'high' || record.confidence === 'medium' || record.confidence === 'low' || record.confidence === 'none'
-    ? record.confidence
+  const record = parsed as { pick?: unknown; index?: unknown; confidence?: unknown; model?: unknown; color?: unknown; evidence?: unknown };
+  const stated = record.confidence === 'sure' ? 'high' : record.confidence;
+  const confidence = stated === 'high' || stated === 'medium' || stated === 'low' || stated === 'none'
+    ? stated
     : 'none';
   const model = plainText(record.model);
   const color = plainText(record.color);
+  const evidence = plainText(record.evidence);
   const raw = record.index ?? record.pick;
   if (raw === 'none' || raw === 'null' || raw === null || raw === undefined || raw === '') {
-    return { pick: 'none', confidence, model, color };
+    return { pick: 'none', confidence, model, color, evidence };
   }
   const number = typeof raw === 'number' ? raw : Number(raw);
-  if (!Number.isInteger(number) || number < 1 || number > limit) return { pick: 'none', confidence: 'none', model, color };
-  return { pick: number, confidence, model, color };
+  if (!Number.isInteger(number) || number < 1 || number > limit) return { pick: 'none', confidence: 'none', model, color, evidence };
+  return { pick: number, confidence, model, color, evidence };
 }
 
 function plainText(value: unknown): string | null {
@@ -130,11 +136,22 @@ function folded(value: string): string {
   return value.toLowerCase().replace(/[\s　]+/g, '');
 }
 
+const FORM_WORD = 'pro|fold|xl|plus|ultra|mini|fe';
+const NOT_COLOR = new Set(['pixel', 'google', 'pro', 'fold', 'sim', 'free', 'gb', 'tb', 'moon', 'logo', 'shape', 'camera', 'module', 'foldable']);
+
 export function applyEcListing(product: ProductGuess, titles: readonly string[], pick: EcPick | null): ProductGuess {
   if (!pick || (pick.confidence !== 'high' && pick.confidence !== 'medium')) return product;
   if (pick.pick === 'none') return product;
   const title = titles[pick.pick - 1];
-  if (!title || !pick.model || !/\d/.test(pick.model) || !folded(title).includes(folded(pick.model))) return product;
+  const series = product.series?.trim() || productLine(`${product.name} ${product.model ?? ''}`)?.label || '';
+  if (!title || !pick.model || !folded(title).includes(folded(pick.model))) return product;
+  const line = lineOf(pick.model, series) ?? lineOf(title, series);
+  if (line?.form && line.generation && competingGenerations(titles, series, line.form).size > 1) {
+    const colorGeneration = uniqueColorGeneration(titles, series, line.form, reportedColors(pick));
+    const readable = citesGeneration(pick.evidence, line.generation);
+    if (!readable && colorGeneration !== line.generation) return generationLess(product, series, line.form);
+  }
+  if (!/\d/.test(pick.model)) return generationLess(product, series, line?.form ?? '');
   const color = pick.color && folded(title).includes(folded(pick.color)) && !folded(pick.model).includes(folded(pick.color))
     ? pick.color
     : '';
@@ -143,6 +160,71 @@ export function applyEcListing(product: ProductGuess, titles: readonly string[],
   const head = brand && folded(model).startsWith(folded(brand)) ? model : [brand, model].filter(Boolean).join(' ');
   const name = [head, color].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
   return { ...product, name, model: [model, color].filter(Boolean).join(' ') };
+}
+
+function generationLess(product: ProductGuess, series: string, form: string): ProductGuess {
+  const shape = displayForm(form);
+  if (!series || !shape) return product;
+  const brand = product.brand?.trim() ?? '';
+  const name = [brand, series, shape, '本体'].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  return { ...product, name, model: [series, shape].filter(Boolean).join(' '), formFactor: null };
+}
+
+function displayForm(form: string): string {
+  return form.split(/\s+/).filter(Boolean).map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+}
+
+function lineOf(text: string, series: string): { generation: number | null; form: string } | null {
+  const label = series.trim();
+  if (!label) return null;
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = text.match(new RegExp(`${escaped}\\s*(\\d+)?(?![\\d-])(?![A-Za-z]{2})\\s*((?:${FORM_WORD})(?:\\s+(?:${FORM_WORD}))*)?`, 'i'));
+  if (!match) return null;
+  const generation = match[1] ? Number(match[1]) : null;
+  const form = (match[2] ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (!form && !generation) return null;
+  return { generation: generation && generation > 0 && generation < 80 ? generation : null, form };
+}
+
+function competingGenerations(titles: readonly string[], series: string, form: string): Set<number> {
+  const generations = new Set<number>();
+  for (const title of titles) {
+    const line = lineOf(title, series);
+    if (!line?.generation || line.form !== form) continue;
+    generations.add(line.generation);
+  }
+  return generations;
+}
+
+function reportedColors(pick: EcPick): string[] {
+  const colors = new Set<string>();
+  if (pick.color) colors.add(pick.color);
+  const evidence = pick.evidence ?? '';
+  for (const token of evidence.match(/[A-Za-z][A-Za-z-]{4,}/g) ?? []) {
+    if (NOT_COLOR.has(token.toLowerCase())) continue;
+    colors.add(token);
+  }
+  return [...colors];
+}
+
+function uniqueColorGeneration(titles: readonly string[], series: string, form: string, colors: readonly string[]): number | null {
+  for (const color of colors) {
+    const needle = folded(color);
+    if (needle.length < 4) continue;
+    const generations = new Set<number>();
+    for (const title of titles) {
+      const line = lineOf(title, series);
+      if (!line?.generation || line.form !== form || !folded(title).includes(needle)) continue;
+      generations.add(line.generation);
+    }
+    if (generations.size === 1) return [...generations][0];
+  }
+  return null;
+}
+
+function citesGeneration(evidence: string | null, generation: number): boolean {
+  if (!evidence) return false;
+  return new RegExp(`(^|[^\\d])${generation}([^\\d]|$)`).test(evidence);
 }
 
 export async function attachEcSeriesLookup(
