@@ -34,9 +34,10 @@ test('a league mark on the wrong category is dropped, and an unread model number
   assert.equal(laptop.product.brand, 'HP');
   assert.equal(laptop.product.model, null);
   assert.equal(laptop.product.name.includes('HP'), true);
-  assert.equal(laptop.product.name.includes('Pavilion'), false);
+  assert.equal(laptop.product.name.includes('Pavilion'), true);
   assert.equal(laptop.product.name.includes('15'), false);
   assert.equal(laptop.product.name.includes('ノートパソコン'), true);
+  assert.equal(laptop.product.name === 'HP', false);
 
   const lipstick = guardSureBrand({
     confidence: 'sure',

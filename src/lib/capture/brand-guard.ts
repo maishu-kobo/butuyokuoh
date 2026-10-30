@@ -2,7 +2,7 @@
 // 文字を読んでいない型番（数字を含む）だけは外し、ブランドは残す。
 // 写真のファイル名では判断しない。既定の推定はこの関数を通さない。
 import type { IdentifyConfidence, IdentifyResponse, ProductGuess } from './contract';
-import { colorInText, dominantTypeGroup, statedProductType } from './product-query';
+import { colorInText, deviceCategory, dominantTypeGroup, productLine, statedProductType } from './product-query';
 
 // メーカーではない許諾元。服や帽子の範囲を外れた種類を sure のブランドにしない。
 const LICENSORS: { names: string[]; groups: string[] }[] = [
@@ -38,14 +38,15 @@ export function guardSureBrand(input: {
   evidence?: BrandEvidence | null;
 }): { confidence: IdentifyConfidence; product: ProductGuess; guarded: boolean } {
   const evidence = input.evidence ?? null;
-  if (input.confidence !== 'sure') return { confidence: input.confidence, product: input.product, guarded: false };
-  const brand = claimedBrand(input.product);
-  if (brand && domainConflicts(brand, evidence?.productType || input.product.name)) {
-    return {
-      confidence: 'unsure',
-      product: { name: categoryLevelName(input.product, evidence), brand: null, model: null, jan: null },
-      guarded: true,
-    };
+  if (input.confidence === 'sure') {
+    const brand = claimedBrand(input.product);
+    if (brand && domainConflicts(brand, evidence?.productType || input.product.name)) {
+      return {
+        confidence: 'unsure',
+        product: { name: categoryLevelName(input.product, evidence), brand: null, model: null, jan: null },
+        guarded: true,
+      };
+    }
   }
   const trimmed = stripUnreadModelNumber(input.product, evidence);
   if (!trimmed) return { confidence: input.confidence, product: input.product, guarded: false };
@@ -100,32 +101,28 @@ function stripUnreadModelNumber(product: ProductGuess, evidence: BrandEvidence |
   if (!/\d/.test(blob)) return null;
   const text = evidence?.textProvided ? evidence.visibleText : '';
   if (text && (!model || includesFold(text, model)) && digitTokens(blob).every((token) => includesFold(text, token))) return null;
-  let name = model && /\d/.test(model) ? removePhrase(product.name, model) : product.name;
-  name = name.split(/\s+/).filter((token) => token && !/\d/.test(token) && !latinModelToken(token, product.brand)).join(' ');
-  const typeWord = statedProductType(evidence?.productType || '') || statedProductType(product.name);
+  const line = productLine(blob);
+  const typeWord = statedProductType(evidence?.productType || '')
+    || statedProductType(product.name)
+    || line?.category
+    || null;
   const color = colorInText(evidence?.color || '') || colorInText(product.name);
-  if (product.brand && !includesFold(name, product.brand)) name = `${product.brand} ${name}`.trim();
-  if (typeWord && !statedProductType(name)) name = `${name} ${typeWord}`.trim();
-  if (color && !includesFold(name, color)) name = `${name} ${color}`.trim();
-  name = name.replace(/\s+/g, ' ').trim();
-  if (!name) return null;
+  const brand = product.brand?.trim() || '';
+  const parts = [brand, line?.label, typeWord].filter((part): part is string => Boolean(part));
+  if (typeWord && deviceCategory(typeWord) && !parts.some((part) => part.includes('本体'))) parts.push('本体');
+  if (color && !parts.some((part) => includesFold(part, color))) parts.push(color);
+  const unique: string[] = [];
+  for (const part of parts) {
+    if (unique.some((item) => includesFold(item, part) || includesFold(part, item))) continue;
+    unique.push(part);
+  }
+  const name = unique.join(' ').trim();
+  if (!name || (brand && fold(name) === fold(brand))) return null;
   return { name, brand: product.brand, model: null, jan: null };
-}
-
-function latinModelToken(token: string, brand: string | null): boolean {
-  if (!/[A-Za-z]/.test(token)) return false;
-  if (brand && fold(token) === fold(brand)) return false;
-  return true;
 }
 
 function digitTokens(text: string): string[] {
   return text.split(/\s+/).filter((token) => /\d/.test(token));
-}
-
-function removePhrase(name: string, phrase: string): string {
-  if (!phrase) return name;
-  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return name.replace(new RegExp(escaped, 'ig'), ' ').replace(/\s+/g, ' ').trim();
 }
 
 function fold(value: string): string {
