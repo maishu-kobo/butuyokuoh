@@ -81,6 +81,13 @@ $('theme').onclick=()=>{const dark=document.body.classList.toggle('dark');$('the
 $('reset').onclick=()=>{closeCapture(false);items=structuredClone(initial);dateDraft={};view='list';selected='camera';query='';candidate='';photoReady=false;render();announce('全案共通のテストデータを初期状態に戻しました。');};
 $('capture-close').onclick=()=>closeCapture();
 $('capture-dialog').addEventListener('cancel',e=>{e.preventDefault();closeCapture();});
+$('capture-dialog').addEventListener('keydown',e=>{
+ if(e.key!=='Tab')return;
+ const controls=[...$('capture-dialog').querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),a[href],[tabindex="0"]')].filter(el=>el.getClientRects().length>0);
+ const first=controls[0],last=controls[controls.length-1];
+ if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}
+ else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}
+});
 const creditList=$('credits');for(const c of credits){const li=n('li');const a=n('a',c.title);a.href=c.page;a.target='_blank';a.rel='noopener noreferrer';li.append(a,n('span',' — '+c.artist+' / '+c.license));creditList.append(li);}
 render();
 })();
