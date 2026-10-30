@@ -37,7 +37,7 @@ const listings = [
   'Google Pixel 10 Pro Fold 256GB Moonstone',
 ];
 
-function geminiBody(pick: { pick: string | number; confidence: string; model?: string }) {
+function geminiBody(pick: Record<string, unknown>) {
   return JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(pick) }] } }] });
 }
 
@@ -74,7 +74,7 @@ test('ec lookup is off unless the flag lists ec', () => {
     jan: null,
     series: 'Pavilion',
   }), ['HP Pavilion ノートパソコン 本体']);
-  assert.deepEqual(bodyListings(listings), [
+  assert.deepEqual(bodyListings(listings, 20, 'Pixel'), [
     'Google Pixel 10 Pro Fold 256GB Moonstone',
     'Google Pixel 9 Pro Fold Obsidian',
   ]);
@@ -83,31 +83,52 @@ test('ec lookup is off unless the flag lists ec', () => {
     'Google Pixel 10 Pro Fold 256GB Moonstone 中古',
     'Google Pixel 10 Pro Fold 256GB Moonstone',
     'Google Pixel 8 中古',
-  ]), [
+  ], 20, 'Pixel'), [
     'Google Pixel 10 Pro Fold 256GB Moonstone',
     'Google Pixel 9 Pro Fold Obsidian',
     'Google Pixel 10 Pro Fold 256GB Moonstone 中古',
     'Google Pixel 8 中古',
   ]);
+  assert.deepEqual(bodyListings([
+    'HP Pavilion Android15 ノート',
+    'HP Pavilion 16GB メモリ',
+    'HP 16-ag000jp ノート Pavilion',
+    'バッテリー HT03XL',
+    'HP Pavilion 充電器',
+    '互換 ACアダプター',
+    'HP Pavilion 15 ノートパソコン 新品',
+  ], 20, 'Pavilion'), [
+    'HP Pavilion 15 ノートパソコン 新品',
+    'HP Pavilion Android15 ノート',
+    'HP Pavilion 16GB メモリ',
+    'HP 16-ag000jp ノート Pavilion',
+  ]);
   assert.equal(LOOKUP_LITE_TIMEOUT_MS, 5_000);
   const harness = readFileSync(new URL('./eval/photo-search/live-harness.ts', import.meta.url), 'utf8');
   const ecSource = readFileSync(new URL('../src/lib/capture/ec-lookup.ts', import.meta.url), 'utf8');
+  const route = readFileSync(new URL('../src/app/api/capture/identify/route.ts', import.meta.url), 'utf8');
   assert.equal(harness.includes('attachEcSeriesLookup'), true);
   assert.equal(harness.includes("part.trim() === 'ec'"), true);
   assert.equal(harness.includes('ledger: appFlashLiteLedger()'), true);
   assert.equal(harness.includes('ledger: appFlashLedger()'), false);
   assert.equal(harness.includes('model: GEMINI_LITE_MODEL'), true);
+  assert.equal(harness.includes('lookup: true'), true);
+  assert.equal(route.includes('lookup: true'), true);
+  assert.equal(route.includes('logSearchRefusal'), true);
+  assert.equal(/process\.env/.test(route), false);
   assert.equal(ecSource.includes('LOOKUP_LITE_TIMEOUT_MS'), true);
 });
 
 test('the prompt may only choose a listing number, and a high pick uses that title', async () => {
-  const kept = bodyListings(listings);
-  const instruction = ecPickInstruction(kept);
-  assert.equal(instruction.includes('none'), true);
-  assert.equal(instruction.includes('一覧に無い型番を作ってはいけない'), true);
+  const kept = bodyListings(listings, 20, 'Pixel');
+  const instruction = ecPickInstruction(kept, 'Google のスマートフォン（Pixel 系）');
+  assert.equal(instruction.includes('ヒンジ'), true);
+  assert.equal(instruction.includes('カメラバー'), true);
+  assert.equal(instruction.includes('Pixel 10 Pro Fold'), true);
+  assert.equal(instruction.includes('一覧に無い機種名は作らない'), true);
   assert.equal(instruction.includes('1. Google Pixel 10 Pro Fold 256GB Moonstone'), true);
   assert.equal(instruction.includes('2. Google Pixel 9 Pro Fold Obsidian'), true);
-  const invented = parseEcPick(geminiBody({ pick: 'none', confidence: 'low', model: 'Pixel 9 Pro Fold' }), kept.length);
+  const invented = parseEcPick(geminiBody({ index: null, confidence: 'low', model: 'Pixel 9 Pro Fold' }), kept.length);
   assert.equal(applyEcListing(pixel, kept, invented), pixel);
   const queries: string[] = [];
   let gemini = 0;
@@ -126,16 +147,22 @@ test('the prompt may only choose a listing number, and a high pick uses that tit
       gemini += 1;
       assert.equal(request.url.includes('gemini-3.5-flash-lite'), true);
       assert.equal(request.url.includes(KEY), false);
-      assert.equal(request.body.includes('一覧に無い型番を作ってはいけない'), true);
-      assert.equal(request.body.includes('1. Google Pixel 10 Pro Fold 256GB Moonstone'), true);
-      return { status: 200, body: geminiBody({ pick: '1', confidence: 'medium' }) };
+      const body = JSON.parse(request.body) as { contents: { parts: { text?: string; inlineData?: { mimeType: string; data: string } }[] }[] };
+      const parts = body.contents[0].parts;
+      assert.equal(parts[0].inlineData?.mimeType, 'image/jpeg');
+      assert.equal(parts[0].inlineData?.data, Buffer.from(jpeg).toString('base64'));
+      assert.equal(parts[1].text?.includes('ヒンジ'), true);
+      assert.equal(parts[1].text?.includes('1. Google Pixel 10 Pro Fold 256GB Moonstone'), true);
+      assert.equal(request.body.includes('"index"'), true);
+      return { status: 200, body: geminiBody({ index: 1, model: 'Pixel 10 Pro Fold', color: 'Moonstone', confidence: 'medium', evidence: '折り目' }) };
     },
   });
   assert.deepEqual(queries, ['Google Pixel 本体', 'Google Pixel Fold 本体']);
   assert.equal(gemini, 1);
   assert.equal(picked.ok, true);
   if (!picked.ok) return;
-  assert.equal(picked.value.products[0].name, 'Google Pixel 10 Pro Fold 256GB Moonstone');
+  assert.equal(picked.value.products[0].name, 'Google Pixel 10 Pro Fold Moonstone');
+  assert.equal(picked.value.products[0].model, 'Pixel 10 Pro Fold Moonstone');
   const keywords = searchLadderSteps(picked.value.products[0]).map((step) => storeSearchKeyword(step, { maxChars: 128, maxBytes: 128 }));
   assert.equal(keywords[0].includes('10 Pro Fold'), true);
   assert.equal(keywords[0].includes('Moonstone'), true);
@@ -170,4 +197,71 @@ test('a Gemini 429 keeps the series query and blocks the rest of the day', async
   assert.equal(second.ok && second.value.products[0].name, pixel.name);
   assert.equal(gemini, 1);
   assert.equal(searches, 2);
+});
+
+const recordedPixelListings = [
+  '【中古】Google Pixel Fold 256GB Bランク スマホ 本体 SIMフリー 美品 リファービッシュ',
+  'アラミドケース Google Pixel 11 10 9 Pro Fold Google Pixel Fold ケース カバー',
+  'Google Pixel 10 Pro Fold フィルム 保護フィルム 耐衝撃 本体 保護',
+  '【新品】Google Pixel fold 256GB Obsidian SIMフリー',
+  '【新品】Google グーグル Pixel 10 Pro Fold 256GB Moonstone SIMフリー',
+  '★Google LLC（グーグル） / Google Google Pixel 10 Pro Fold 256GB SIMフリー [Moonstone]',
+  '「新品 未開封品」SIMフリー Google Pixel 10 Pro Fold [256GB/512GB][Moonstone][Jade]',
+  'Google Pixel 10 Pro Fold 256GB SIMフリー [Moonstone][ラッピング可]',
+  '【新品】Google Pixel 10 Pro Fold 512GB SIMフリー Moonstone',
+  '新品 未開封 /Google ストア版 SIMフリー Google Pixel11 pro fold 256GB',
+  'バッテリー HT03XL',
+];
+
+test('a recorded shop list can pick the Pixel 10 Pro Fold series without a color', async () => {
+  const kept = bodyListings(recordedPixelListings, 20, 'Pixel');
+  assert.equal(kept.some((title) => title.includes('ケース') || title.includes('フィルム') || title.includes('バッテリー')), false);
+  assert.equal(kept.filter((title) => title.includes('10 Pro Fold') && title.includes('Moonstone')).length >= 4, true);
+  const index = kept.findIndex((title) => title.includes('256GB Moonstone SIMフリー'));
+  assert.equal(index >= 0, true);
+  const uncertain = parseEcPick(geminiBody({
+    index: index + 1,
+    model: 'Pixel 10 Pro Fold',
+    color: '',
+    confidence: 'high',
+    evidence: '閉じた折り目と横長のカメラバー',
+  }), kept.length);
+  const seriesPick = applyEcListing(pixel, kept, uncertain);
+  assert.equal(seriesPick.name, 'Google Pixel 10 Pro Fold');
+  assert.equal(seriesPick.model, 'Pixel 10 Pro Fold');
+  const wrongGeneration = parseEcPick(geminiBody({
+    index: index + 1,
+    model: 'Pixel 9 Pro Fold',
+    color: 'Moonstone',
+    confidence: 'high',
+    evidence: '一覧に無い',
+  }), kept.length);
+  assert.equal(applyEcListing(pixel, kept, wrongGeneration), pixel);
+  const seen: string[] = [];
+  const picked = await attachEcSeriesLookup({ mediaType: 'image/jpeg', bytes: jpeg }, {
+    ok: true,
+    value: { confidence: 'unsure', products: [{ ...pixel, formFactor: 'bar' }] },
+  }, {
+    env: { CAPTURE_WEB_LOOKUP: 'ec', GEMINI_API_KEY: KEY },
+    now: DAY,
+    ledger: createFlashLedger(),
+    search: async () => recordedPixelListings,
+    complete: async (request) => {
+      const body = JSON.parse(request.body) as { contents: { parts: { inlineData?: { data: string }; text?: string }[] }[] };
+      assert.equal(body.contents[0].parts[0].inlineData?.data, Buffer.from(jpeg).toString('base64'));
+      const text = body.contents[0].parts[1].text ?? '';
+      assert.equal(text.includes('256GB Moonstone'), true);
+      assert.equal(text.includes('形と色で選んでよい'), true);
+      const line = text.split('\n').find((item) => item.includes('256GB Moonstone SIMフリー'));
+      seen.push(line ?? '');
+      const number = Number((line ?? '').split('.')[0]);
+      return {
+        status: 200,
+        body: geminiBody({ index: number, model: 'Pixel 10 Pro Fold', color: '', confidence: 'high', evidence: '折り目' }),
+      };
+    },
+  });
+  assert.equal(picked.ok, true);
+  if (!picked.ok) return;
+  assert.equal(picked.value.products[0].name, 'Google Pixel 10 Pro Fold');
 });

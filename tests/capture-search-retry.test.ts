@@ -77,7 +77,7 @@ function logEvents(lines: string[]): Array<Record<string, unknown>> {
 }
 
 function assertLogShape(event: Record<string, unknown>) {
-  assert.deepEqual(Object.keys(event).sort(), ['errorCode', 'hitCount', 'httpStatus', 'provider']);
+  assert.deepEqual(Object.keys(event).sort(), ['error', 'errorCode', 'hitCount', 'httpStatus', 'provider']);
 }
 
 test('zero hits for Mnemosyne human A5 are searched again as Mnemosyne A5 and then stop', async () => {
@@ -290,6 +290,66 @@ function waitedClock(start = NOW) {
     },
   };
 }
+
+test('lookup searches wait for the global slot and do not spend the user minute', async () => {
+  const clock = waitedClock();
+  let rakutenCalls = 0;
+  let yahooCalls = 0;
+  const lines = await withInfo(async () => {
+    const rakuten = createRakutenSearch({
+      credentials: { applicationId: RAKUTEN_APP_ID, accessKey: RAKUTEN_ACCESS_KEY },
+      limiter: createRakutenLimiter(),
+      userId: 'member',
+      now: clock.date,
+      delay: clock.delay,
+      http: async () => {
+        rakutenCalls += 1;
+        return rakutenResponse({ items: [rakutenItem()] });
+      },
+    });
+    const yahoo = createYahooSearch({
+      appId: YAHOO_APP_ID,
+      userId: 'member',
+      gate: createYahooRateGate(),
+      now: clock.now,
+      delay: clock.delay,
+      schedule: () => () => {},
+      fetch: (async () => {
+        yahooCalls += 1;
+        return jsonResponse({ hits: [yahooHit()] });
+      }) as YahooFetch,
+    });
+    const lookupQuery: SearchQuery = { ...MNEMOSYNE, name: 'Google Pixel Fold 本体', lookup: true };
+    for (let count = 0; count < 4; count += 1) {
+      assert.equal((await rakuten.search(MNEMOSYNE)).ok, true, `rakuten ${count}`);
+      assert.equal((await yahoo.search(MNEMOSYNE)).ok, true, `yahoo ${count}`);
+      if (count < 3) clock.advance(1000);
+    }
+    const blocked = await rakuten.search(MNEMOSYNE);
+    assert.equal(blocked.ok, false);
+    if (!blocked.ok) assert.equal(blocked.error.error, RakutenMessages.globalRate);
+    const beforeLookup = rakutenCalls;
+    const rakutenLookup = await rakuten.search(lookupQuery);
+    const yahooLookup = await yahoo.search(lookupQuery);
+    assert.equal(rakutenLookup.ok, true);
+    assert.equal(yahooLookup.ok, true);
+    assert.equal(rakutenCalls, beforeLookup + 1);
+    assert.equal(yahooCalls, 5);
+    clock.advance(1000);
+    assert.equal((await rakuten.search(MNEMOSYNE)).ok, true);
+    assert.equal((await yahoo.search(MNEMOSYNE)).ok, true);
+    clock.advance(1000);
+    const rakutenSixth = await rakuten.search(MNEMOSYNE);
+    const yahooSixth = await yahoo.search(MNEMOSYNE);
+    assert.equal(rakutenSixth.ok, false);
+    assert.equal(yahooSixth.ok, false);
+    if (!rakutenSixth.ok) assert.equal(rakutenSixth.error.error, RakutenMessages.userMinute);
+    if (!yahooSixth.ok) assert.equal(yahooSixth.error.error, 'この検索は1分に5回までです');
+  });
+  const refused = logEvents(lines).find((event) => event.errorCode === 'SEARCH_FAILED');
+  assert.equal(refused?.error, RakutenMessages.globalRate);
+  assert.equal(JSON.stringify(refused).includes('Google Pixel'), false);
+});
 
 test('a frozen clock keeps the first zero-hit and does not send the shorter queries', async () => {
   const yahooQueries: string[] = [];

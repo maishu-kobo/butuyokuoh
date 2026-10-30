@@ -7,6 +7,7 @@ export interface GuessProduct {
   brand: string | null;
   model: string | null;
   jan: string | null;
+  lookup?: boolean;
 }
 
 export interface ParsedGuessFile {
@@ -22,7 +23,7 @@ export interface HarnessSearchResult {
   ok: boolean;
   code?: string;
   sent: { site: string; keyword: string; status?: number }[];
-  failures: { site: string; code: string }[];
+  failures: { site: string; code: string; error?: string }[];
   candidates: { site: string; title: string; price: number }[];
 }
 

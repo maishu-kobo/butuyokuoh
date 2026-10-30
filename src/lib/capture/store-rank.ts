@@ -8,7 +8,7 @@ const STORE_RANK = Symbol.for('butuyokuoh.capture.storeRank');
 const STORE_RANK_MISSING = 100_000;
 
 // 本体の強い付属品語に、交換部品と英語の kit を足す。クエリ自身がその語を含むときは足さない。
-const EXTRA_ACCESSORY = /(ケース|カバー|フィルム|充電器|ケーブル|ストラップ|イヤーパッド|イヤークッション|交換用|交換|互換|バッテリー|替え|部品|パーツ|リペア|修理|\bcase\b|\bcushion|\bcover\b|\bbattery\b|\breplacement\b|\bparts?\b|\bkit\b)/i;
+const EXTRA_ACCESSORY = /(ケース|カバー|フィルム|充電器|ケーブル|ストラップ|イヤーパッド|イヤークッション|交換用|交換|互換|バッテリー|電池|アダプター|アダプタ|替え|部品|パーツ|リペア|修理|\bcase\b|\bcushion|\bcover\b|\bbattery\b|\badapters?\b|\bchargers?\b|\breplacement\b|\bparts?\b|\bkit\b)/i;
 
 const DEVICE_GIFT = /(ギフトカード|ギフト券|プリペイド|prepaid|google\s*play|グーグルプレイ|itunes|ギフトコード|電子ギフト|商品券)/i;
 const DEVICE_SHELL = /(ケース|カバー|フィルム|\bcase\b|\bcover\b|\bfilm\b)/i;

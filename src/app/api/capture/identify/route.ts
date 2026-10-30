@@ -14,6 +14,7 @@ import { identifyGroundedVariant } from '@/lib/capture/grounded-variant';
 import { attachEcSeriesLookup } from '@/lib/capture/ec-lookup';
 import { searchWithPorts } from '@/lib/capture/fakes';
 import { httpsReferer, resolveSearchPorts } from '@/lib/capture/live-search';
+import { logSearchRefusal } from '@/lib/capture/search-log';
 import { attachWikipediaModel } from '@/lib/capture/wikipedia-lookup';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -66,8 +67,11 @@ async function handlePOST(request: NextRequest) {
       userId,
       referer: httpsReferer(request.headers.get('origin')),
     });
-    const found = await searchWithPorts({ name: query, brand: null, model: null, jan: null }, ports, amazonAssociateTag());
-    if (!found.ok) return [];
+    const found = await searchWithPorts({ name: query, brand: null, model: null, jan: null, lookup: true }, ports, amazonAssociateTag());
+    if (!found.ok) {
+      logSearchRefusal(found.error);
+      return [];
+    }
     return found.value.candidates.map((item) => item.title);
   };
   const evidence = await identifyEvidenceVariant({

@@ -111,6 +111,8 @@ export interface SearchQuery {
   brand: string | null;
   model: string | null;
   jan: string | null;
+  // 照合の追加検索。全体の1秒枠は待つが、利用者の1分5回には数えない。
+  lookup?: boolean;
 }
 
 export interface SearchResponse {

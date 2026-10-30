@@ -136,8 +136,8 @@ async function searchLive(
     resolveSearchPorts: (input: object) => unknown;
     httpsReferer: (origin: string | null) => string | null;
   },
-  fakes: { searchWithPorts: (query: object, ports: unknown, tag: null) => Promise<{ ok: boolean; error?: { code: string; failures?: { site: string; code: string }[] }; value?: { candidates: { site: string; title: string; price: number }[]; failures: { site: string; code: string }[] } }> },
-  ladder: { searchWithLadder: (product: GuessProduct, ports: unknown, tag: null) => Promise<{ ok: boolean; error?: { code: string; failures?: { site: string; code: string }[] }; value?: { candidates: { site: string; title: string; price: number }[]; failures: { site: string; code: string }[] } }> },
+  fakes: { searchWithPorts: (query: object, ports: unknown, tag: null) => Promise<{ ok: boolean; error?: { code: string; error?: string; failures?: { site: string; code: string; error?: string }[] }; value?: { candidates: { site: string; title: string; price: number }[]; failures: { site: string; code: string; error?: string }[] } }> },
+  ladder: { searchWithLadder: (product: GuessProduct, ports: unknown, tag: null) => Promise<{ ok: boolean; error?: { code: string; error?: string; failures?: { site: string; code: string; error?: string }[] }; value?: { candidates: { site: string; title: string; price: number }[]; failures: { site: string; code: string; error?: string }[] } }> },
   referer: string | null,
   label = labelArg ?? 'search',
 ): Promise<HarnessSearchResult> {
@@ -168,7 +168,7 @@ async function searchLive(
     userId: `eval-${label}-${id}`,
     referer,
   });
-  const query = { name: product.name, brand: product.brand, model: product.model, jan: null };
+  const query = { name: product.name, brand: product.brand, model: product.model, jan: null, lookup: product.lookup === true };
   const result = ladderOn
     ? await ladder.searchWithLadder(product, ports, null)
     : await fakes.searchWithPorts(query, ports, null);
@@ -177,14 +177,14 @@ async function searchLive(
       ok: false,
       code: result.error?.code ?? 'SEARCH_FAILED',
       sent,
-      failures: (result.error?.failures ?? []).map((failure) => ({ site: failure.site, code: failure.code })),
+      failures: (result.error?.failures ?? []).map((failure) => ({ site: failure.site, code: failure.code, error: failure.error })),
       candidates: [],
     };
   }
   return {
     ok: true,
     sent,
-    failures: (result.value?.failures ?? []).map((failure) => ({ site: failure.site, code: failure.code })),
+    failures: (result.value?.failures ?? []).map((failure) => ({ site: failure.site, code: failure.code, error: failure.error })),
     candidates: (result.value?.candidates ?? []).map((item) => ({
       site: item.site,
       title: item.title,
@@ -310,8 +310,12 @@ async function guessOrAll(selected: 'guess' | 'all') {
       complete,
       search: async (query) => {
         if (!live || !fakes || !ladder) return [];
-        const value = await searchLive({ name: query, brand: null, model: null, jan: null }, false, searchId, live, fakes, ladder, referer);
-        return value.ok ? value.candidates.map((item) => item.title) : [];
+        const value = await searchLive({ name: query, brand: null, model: null, jan: null, lookup: true }, false, searchId, live, fakes, ladder, referer);
+        if (!value.ok) {
+          console.info(JSON.stringify({ lookup: true, errorCode: value.code, failures: value.failures }));
+          return [];
+        }
+        return value.candidates.map((item) => item.title);
       },
     });
     const next = ec.ok ? ec.value.products[0] : afterWiki;

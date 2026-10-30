@@ -9,7 +9,7 @@ import { LOOKUP_LITE_TIMEOUT_MS, needsWikipediaLookup, printedModelNumber, webLo
 export const EC_LISTING_LIMIT = 20;
 
 const FASHION = new Set(['shoes', 'bags', 'shirts', 'jackets', 'jeans', 'caps', 'socks']);
-const NOT_BODY = /(ケース|カバー|フィルム|ギフトカード|ギフト券|プリペイド|部品|パーツ|交換|保護ガラス|\bcase\b|\bcover\b|\bfilm\b|\bgift\b|\bparts?\b)/i;
+const NOT_BODY = /(ケース|カバー|フィルム|ギフトカード|ギフト券|プリペイド|部品|パーツ|交換|保護ガラス|バッテリー|電池|充電器|アダプター|アダプタ|互換|\bcase\b|\bcover\b|\bfilm\b|\bgift\b|\bparts?\b|\bbatter(?:y|ies)\b|\bchargers?\b|\badapters?\b)/i;
 
 export function ecLookupEnabled(env?: { CAPTURE_WEB_LOOKUP?: string }): boolean {
   return webLookupHas('ec', env);
@@ -42,7 +42,7 @@ export function ecSeriesQuery(product: ProductGuess): string {
   return ecSeriesQueries(product)[0] ?? '';
 }
 
-export function bodyListings(titles: readonly string[], limit = EC_LISTING_LIMIT): string[] {
+export function bodyListings(titles: readonly string[], limit = EC_LISTING_LIMIT, series = ''): string[] {
   const ranked = titles.map((title, index) => ({ title: title.replace(/\s+/g, ' ').trim(), index }))
     .filter((item) => item.title && !NOT_BODY.test(item.title));
   const unique: { title: string; index: number }[] = [];
@@ -51,7 +51,7 @@ export function bodyListings(titles: readonly string[], limit = EC_LISTING_LIMIT
     unique.push(item);
   }
   unique.sort((left, right) => Number(usedListing(left.title)) - Number(usedListing(right.title))
-    || generationNumber(right.title) - generationNumber(left.title)
+    || generationNumber(right.title, series) - generationNumber(left.title, series)
     || left.index - right.index);
   return unique.slice(0, limit).map((item) => item.title);
 }
@@ -60,18 +60,28 @@ function usedListing(title: string): boolean {
   return /中古|ジャンク|リファービッシュ|整備済|\bused\b/i.test(title);
 }
 
-function generationNumber(title: string): number {
-  const numbers = title.match(/\d+/g)?.map(Number).filter((value) => value > 0 && value < 80) ?? [];
-  return numbers.length > 0 ? Math.max(...numbers) : 0;
+// 系列名の直後の数字だけを世代にする。16GB や Android15 や 16-ag は世代にしない。
+function generationNumber(title: string, series: string): number {
+  const label = series.trim();
+  if (!label) return 0;
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = title.match(new RegExp(`${escaped}\\s*(\\d+)(?![\\d-])(?![A-Za-z]{2})`, 'i'));
+  if (!match) return 0;
+  const value = Number(match[1]);
+  return value > 0 && value < 80 ? value : 0;
 }
 
-export function ecPickInstruction(titles: readonly string[]): string {
+export function ecPickInstruction(titles: readonly string[], hint = ''): string {
   const lines = titles.map((title, index) => `${index + 1}. ${title}`).join('\n');
   return [
-    '写真と、下の番号付きの商品名だけを比べる。',
-    '答えは一覧の番号か none だけ。一覧に無い型番を作ってはいけない。',
-    '選んだ番号の商品名に書いてある型番と色だけを使う。別の世代や色を足さない。',
-    '{"pick":1,"confidence":"high"} または {"pick":"none","confidence":"none"}',
+    `写真の商品を特定する。最初の見立て: ${hint || '系列は分かっているが型番は未確定'}`,
+    '以下は日本の店で系列名を検索した出品タイトルである。知識より新しい機種も含む。',
+    'ケース、フィルム、バッテリー、充電器、アダプターは無視する。',
+    '写真に見える特徴で選ぶ。ヒンジや折り目、カメラバーの形、色、ロゴ。文字が写っていなくても、形と色で選んでよい。',
+    '必ず一覧の番号を1つ選ぶ。選んだタイトルに書いてある機種名だけを使う。一覧に無い機種名は作らない。',
+    '色や容量が写真から決まらないときは、機種の系列（例: Pixel 10 Pro Fold）までで止め、色は空でよい。',
+    '合う本体が無ければ index は null。',
+    '{"index":1,"model":"Pixel 10 Pro Fold","color":"","confidence":"high","evidence":"折り目とカメラバー"}',
     'confidenceは high、medium、low、none のどれか。',
     lines,
   ].join('\n');
@@ -80,6 +90,8 @@ export function ecPickInstruction(titles: readonly string[]): string {
 export interface EcPick {
   pick: number | 'none';
   confidence: 'high' | 'medium' | 'low' | 'none';
+  model: string | null;
+  color: string | null;
 }
 
 export function parseEcPick(body: string, limit: number): EcPick | null {
@@ -92,22 +104,45 @@ export function parseEcPick(body: string, limit: number): EcPick | null {
     return null;
   }
   if (!parsed || typeof parsed !== 'object') return null;
-  const record = parsed as { pick?: unknown; confidence?: unknown };
+  const record = parsed as { pick?: unknown; index?: unknown; confidence?: unknown; model?: unknown; color?: unknown };
   const confidence = record.confidence === 'high' || record.confidence === 'medium' || record.confidence === 'low' || record.confidence === 'none'
     ? record.confidence
     : 'none';
-  if (record.pick === 'none' || record.pick === null) return { pick: 'none', confidence };
-  const number = typeof record.pick === 'number' ? record.pick : Number(record.pick);
-  if (!Number.isInteger(number) || number < 1 || number > limit) return { pick: 'none', confidence: 'none' };
-  return { pick: number, confidence };
+  const model = plainText(record.model);
+  const color = plainText(record.color);
+  const raw = record.index ?? record.pick;
+  if (raw === 'none' || raw === 'null' || raw === null || raw === undefined || raw === '') {
+    return { pick: 'none', confidence, model, color };
+  }
+  const number = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isInteger(number) || number < 1 || number > limit) return { pick: 'none', confidence: 'none', model, color };
+  return { pick: number, confidence, model, color };
+}
+
+function plainText(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (!text || /^(none|null|不明|なし)$/i.test(text)) return null;
+  return text;
+}
+
+function folded(value: string): string {
+  return value.toLowerCase().replace(/[\s　]+/g, '');
 }
 
 export function applyEcListing(product: ProductGuess, titles: readonly string[], pick: EcPick | null): ProductGuess {
   if (!pick || (pick.confidence !== 'high' && pick.confidence !== 'medium')) return product;
   if (pick.pick === 'none') return product;
   const title = titles[pick.pick - 1];
-  if (!title) return product;
-  return { ...product, name: title, model: title };
+  if (!title || !pick.model || !/\d/.test(pick.model) || !folded(title).includes(folded(pick.model))) return product;
+  const color = pick.color && folded(title).includes(folded(pick.color)) && !folded(pick.model).includes(folded(pick.color))
+    ? pick.color
+    : '';
+  const brand = product.brand?.trim() ?? '';
+  const model = pick.model.trim();
+  const head = brand && folded(model).startsWith(folded(brand)) ? model : [brand, model].filter(Boolean).join(' ');
+  const name = [head, color].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  return { ...product, name, model: [model, color].filter(Boolean).join(' ') };
 }
 
 export async function attachEcSeriesLookup(
@@ -134,9 +169,10 @@ export async function attachEcSeriesLookup(
   const key = geminiKey(deps.env);
   if (!key) return result;
   try {
+    const series = product.series?.trim() || productLine(`${product.name} ${product.model ?? ''}`)?.label || '';
     const merged: string[] = [];
     for (const query of queries) merged.push(...await deps.search(query));
-    const listings = bodyListings(merged);
+    const listings = bodyListings(merged, EC_LISTING_LIMIT, series);
     if (listings.length === 0) return result;
     let lastStatus = 0;
     let lastBody = '';
@@ -145,7 +181,9 @@ export async function attachEcSeriesLookup(
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), LOOKUP_LITE_TIMEOUT_MS);
         try {
-          const request = liteRequest(photo, listings, key, controller.signal);
+          const type = statedProductType(product.name) ?? '商品';
+          const hint = `${product.brand?.trim() ?? ''} の${type}（${series} 系）`.trim();
+          const request = liteRequest(photo, listings, key, controller.signal, hint);
           const response = deps.complete ? await deps.complete(request) : await postGemini(request);
           lastStatus = response.status;
           lastBody = response.body;
@@ -167,8 +205,9 @@ export async function attachEcSeriesLookup(
   }
 }
 
-function liteRequest(photo: IdentifyInput, titles: readonly string[], apiKey: string, signal: AbortSignal): GeminiHttpRequest {
+function liteRequest(photo: IdentifyInput, titles: readonly string[], apiKey: string, signal: AbortSignal, hint: string): GeminiHttpRequest {
   const url = geminiGenerateUrl(GEMINI_LITE_MODEL) ?? '';
+  const image = Buffer.from(photo.bytes).toString('base64');
   return {
     url,
     method: 'POST',
@@ -183,21 +222,24 @@ function liteRequest(photo: IdentifyInput, titles: readonly string[], apiKey: st
       contents: [{
         role: 'user',
         parts: [
-          { text: ecPickInstruction(titles) },
-          { inlineData: { mimeType: photo.mediaType, data: Buffer.from(photo.bytes).toString('base64') } },
+          { inlineData: { mimeType: photo.mediaType, data: image } },
+          { text: ecPickInstruction(titles, hint) },
         ],
       }],
       generationConfig: {
         temperature: 0,
-        maxOutputTokens: 128,
+        maxOutputTokens: 512,
         responseMimeType: 'application/json',
         responseSchema: {
           type: 'OBJECT',
           properties: {
-            pick: { type: 'STRING' },
+            index: { type: 'INTEGER', nullable: true },
+            model: { type: 'STRING', nullable: true },
+            color: { type: 'STRING', nullable: true },
             confidence: { type: 'STRING', enum: ['high', 'medium', 'low', 'none'] },
+            evidence: { type: 'STRING', nullable: true },
           },
-          required: ['pick', 'confidence'],
+          required: ['confidence', 'evidence'],
         },
         thinkingConfig: geminiThinkingConfig(GEMINI_LITE_MODEL),
       },
