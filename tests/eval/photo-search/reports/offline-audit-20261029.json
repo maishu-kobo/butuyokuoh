@@ -1,0 +1,1063 @@
+{
+  "baseline": "78161507701a4fc2f49919b8cb91cc3670a215c2",
+  "mode": "saved-response-summary",
+  "newApiCalls": 0,
+  "runs": [
+    {
+      "schemaVersion": 1,
+      "label": "main",
+      "condition": "legacy-unspecified",
+      "coverage": {
+        "declared": false,
+        "planned": 23,
+        "observed": 23,
+        "missing": [],
+        "excluded": [
+          {
+            "id": "gucci-brand-only",
+            "reason": "Duplicate of lv-handbag in historical runs, documented in sources.json; retain resource usage but exclude duplicate accuracy row",
+            "duplicateOf": "prada-tooled-handbag"
+          }
+        ]
+      },
+      "accuracy": {
+        "exactProductTop5": {
+          "eligible": 0,
+          "hits": 0,
+          "rate": null
+        },
+        "productName": {
+          "eligible": 0,
+          "hits": 0,
+          "rate": null
+        },
+        "brand": {
+          "eligible": 8,
+          "hits": 5,
+          "rate": 0.625
+        },
+        "categoryDiagnostic": {
+          "eligible": 23,
+          "hits": 16,
+          "rate": 0.6956521739130435
+        }
+      },
+      "latencyMs": {
+        "identify": {
+          "recorded": 23,
+          "median": 1718,
+          "max": 2413,
+          "total": 39148
+        },
+        "search": {
+          "recorded": 23,
+          "median": 403,
+          "max": 1935,
+          "total": 14600
+        },
+        "combined": {
+          "recorded": 23,
+          "median": 2103,
+          "max": 3710,
+          "total": 53748
+        }
+      },
+      "usage": {
+        "modelCalls": 24,
+        "reportedNeurons": {
+          "recorded": 24,
+          "median": 17.606658219000003,
+          "max": 31.821208101375003,
+          "total": 570.833494403
+        },
+        "reportedNeuronsPerRecordedInput": 23.78472893345833,
+        "callsWithoutReportedNeurons": 0,
+        "reportedPromptTokens": {
+          "recorded": 24,
+          "median": 3511,
+          "max": 6713,
+          "total": 119486
+        },
+        "reportedCompletionTokens": {
+          "recorded": 24,
+          "median": 29,
+          "max": 36,
+          "total": 713
+        },
+        "ledgerChargedNeurons": {
+          "recorded": 0,
+          "median": null,
+          "max": null,
+          "total": null
+        },
+        "scope": "all-recorded-calls-including-excluded-duplicates"
+      },
+      "errors": {
+        "identifyRows": 0,
+        "searchRows": 0,
+        "preparationRows": 0,
+        "partialSearchFailureRows": 1,
+        "failedModelRequests": 0,
+        "failedSearchRequests": 1
+      },
+      "rows": [
+        {
+          "id": "balenciaga-arena",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "adidas-leather-tennis",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "birkenstock-arizona",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "adapted-mirrorless-camera",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "coty-suma-perfume",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": false,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "converse-all-star",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "mac-lipstick",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "dyson-v10-vacuum",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "casio-g-shock",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": false,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "ceramic-mugs",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "iphone-5",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "denim-jacket",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "blue-jeans",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "prada-tooled-handbag",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "broken-laptop-2006",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "rune-cotton-tote",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "nike-cortez",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "trekking-backpack",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "pen-writing-example",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "oxford-brogue",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "alb-wristwatch",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": false,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "bose-headphones",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "hema-white-tshirt",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        }
+      ],
+      "source": "tests/eval/photo-search/fixtures/live-main.json"
+    },
+    {
+      "schemaVersion": 1,
+      "label": "pr",
+      "condition": "legacy-unspecified",
+      "coverage": {
+        "declared": false,
+        "planned": 23,
+        "observed": 23,
+        "missing": [],
+        "excluded": [
+          {
+            "id": "gucci-brand-only",
+            "reason": "Duplicate of lv-handbag in historical runs, documented in sources.json; retain resource usage but exclude duplicate accuracy row",
+            "duplicateOf": "prada-tooled-handbag"
+          }
+        ]
+      },
+      "accuracy": {
+        "exactProductTop5": {
+          "eligible": 0,
+          "hits": 0,
+          "rate": null
+        },
+        "productName": {
+          "eligible": 0,
+          "hits": 0,
+          "rate": null
+        },
+        "brand": {
+          "eligible": 8,
+          "hits": 5,
+          "rate": 0.625
+        },
+        "categoryDiagnostic": {
+          "eligible": 23,
+          "hits": 13,
+          "rate": 0.5652173913043478
+        }
+      },
+      "latencyMs": {
+        "identify": {
+          "recorded": 23,
+          "median": 1848,
+          "max": 2920,
+          "total": 43747
+        },
+        "search": {
+          "recorded": 23,
+          "median": 553,
+          "max": 1239,
+          "total": 14662
+        },
+        "combined": {
+          "recorded": 23,
+          "median": 2364,
+          "max": 4159,
+          "total": 58409
+        }
+      },
+      "usage": {
+        "modelCalls": 24,
+        "reportedNeurons": {
+          "recorded": 24,
+          "median": 18.856316889250003,
+          "max": 33.409079194250005,
+          "total": 600.8253024890003
+        },
+        "reportedNeuronsPerRecordedInput": 25.034387603708335,
+        "callsWithoutReportedNeurons": 0,
+        "reportedPromptTokens": {
+          "recorded": 24,
+          "median": 3634,
+          "max": 6836,
+          "total": 122438
+        },
+        "reportedCompletionTokens": {
+          "recorded": 24,
+          "median": 41,
+          "max": 53,
+          "total": 989
+        },
+        "ledgerChargedNeurons": {
+          "recorded": 0,
+          "median": null,
+          "max": null,
+          "total": null
+        },
+        "scope": "all-recorded-calls-including-excluded-duplicates"
+      },
+      "errors": {
+        "identifyRows": 0,
+        "searchRows": 0,
+        "preparationRows": 0,
+        "partialSearchFailureRows": 1,
+        "failedModelRequests": 0,
+        "failedSearchRequests": 1
+      },
+      "rows": [
+        {
+          "id": "balenciaga-arena",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "adidas-leather-tennis",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "birkenstock-arizona",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "adapted-mirrorless-camera",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "coty-suma-perfume",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": false,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "converse-all-star",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "mac-lipstick",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "dyson-v10-vacuum",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "casio-g-shock",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": false,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "ceramic-mugs",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "iphone-5",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "denim-jacket",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "blue-jeans",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "prada-tooled-handbag",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "broken-laptop-2006",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "rune-cotton-tote",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "nike-cortez",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "trekking-backpack",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "pen-writing-example",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "oxford-brogue",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "alb-wristwatch",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": false,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "bose-headphones",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "hema-white-tshirt",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        }
+      ],
+      "source": "tests/eval/photo-search/fixtures/live-pr.json"
+    },
+    {
+      "schemaVersion": 1,
+      "label": "pr03",
+      "condition": "legacy-unspecified",
+      "coverage": {
+        "declared": false,
+        "planned": 23,
+        "observed": 23,
+        "missing": [],
+        "excluded": []
+      },
+      "accuracy": {
+        "exactProductTop5": {
+          "eligible": 0,
+          "hits": 0,
+          "rate": null
+        },
+        "productName": {
+          "eligible": 0,
+          "hits": 0,
+          "rate": null
+        },
+        "brand": {
+          "eligible": 8,
+          "hits": 5,
+          "rate": 0.625
+        },
+        "categoryDiagnostic": {
+          "eligible": 23,
+          "hits": 17,
+          "rate": 0.7391304347826086
+        }
+      },
+      "latencyMs": {
+        "identify": {
+          "recorded": 23,
+          "median": 1839,
+          "max": 2450,
+          "total": 43142
+        },
+        "search": {
+          "recorded": 22,
+          "median": 943,
+          "max": 1871,
+          "total": 20507
+        },
+        "combined": {
+          "recorded": 22,
+          "median": 2753.5,
+          "max": 4321,
+          "total": 62333
+        }
+      },
+      "usage": {
+        "modelCalls": 23,
+        "reportedNeurons": {
+          "recorded": 23,
+          "median": 18.905085355875002,
+          "max": 32.965902318875,
+          "total": 568.845363865875
+        },
+        "reportedNeuronsPerRecordedInput": 24.732407124603263,
+        "callsWithoutReportedNeurons": 0,
+        "reportedPromptTokens": {
+          "recorded": 23,
+          "median": 3659,
+          "max": 6861,
+          "total": 116177
+        },
+        "reportedCompletionTokens": {
+          "recorded": 23,
+          "median": 40,
+          "max": 46,
+          "total": 918
+        },
+        "ledgerChargedNeurons": {
+          "recorded": 0,
+          "median": null,
+          "max": null,
+          "total": null
+        },
+        "scope": "all-recorded-calls-including-excluded-duplicates"
+      },
+      "errors": {
+        "identifyRows": 0,
+        "searchRows": 0,
+        "preparationRows": 0,
+        "partialSearchFailureRows": 0,
+        "failedModelRequests": 0,
+        "failedSearchRequests": 0
+      },
+      "rows": [
+        {
+          "id": "adapted-mirrorless-camera",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "adidas-leather-tennis",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "alb-wristwatch",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": false,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "balenciaga-arena",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "birkenstock-arizona",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "blue-jeans",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "bose-headphones",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "broken-laptop-2006",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "casio-g-shock",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": false,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "ceramic-mugs",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "converse-all-star",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "coty-suma-perfume",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": false,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "denim-jacket",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "dyson-v10-vacuum",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "hema-white-tshirt",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "iphone-5",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "mac-lipstick",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": true,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "nike-cortez",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "oxford-brogue",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "pen-writing-example",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "prada-tooled-handbag",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "rune-cotton-tote",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": false,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        },
+        {
+          "id": "trekking-backpack",
+          "observed": true,
+          "exactProductTop5": null,
+          "productNameMatch": null,
+          "brandMatch": null,
+          "categoryDiagnostic": true,
+          "identifyError": null,
+          "searchError": null,
+          "preparationError": null
+        }
+      ],
+      "source": "tests/eval/photo-search/fixtures/live-pr03.json"
+    }
+  ]
+}
