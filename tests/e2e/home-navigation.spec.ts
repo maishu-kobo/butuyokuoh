@@ -38,6 +38,10 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(search).toBeVisible();
       await expect(page.getByRole('link', { name: '設定', exact: true })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
+      // Advance the controlled clock past tab transitions before recording evidence.
+      await page.clock.runFor(250);
+      await expect(page.locator('main > div')).toHaveCSS('opacity', '1');
+      await expect(page.locator('main > div')).toHaveCSS('transform', 'none');
       await page.screenshot({ path: testInfo.outputPath(`home-${theme}-${width}.png`), fullPage: true });
     });
   }
