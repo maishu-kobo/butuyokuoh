@@ -3,7 +3,7 @@ import { GuestError } from '@/lib/guest';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getUserIdFromToken } from '@/lib/auth';
-import { isStorableItemUrl } from '@/lib/http-url';
+import { normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
 
 interface ImportItem {
   name: string;
@@ -61,19 +61,20 @@ export async function POST(request: NextRequest) {
 
     for (const item of items) {
       try {
-        if (!item.url || !isStorableItemUrl(item.url)) {
+        const url = typeof item.url === 'string' ? sanitizeStoredItemUrl(item.url) : null;
+        const name = typeof item.name === 'string' ? normalizeItemName(item.name) : null;
+        if (!url || !name) {
           skipped++;
           continue;
         }
 
-        const fields: Record<string, unknown> = { url: item.url };
-        if (item.name !== undefined) fields.name = item.name;
+        const fields: Record<string, unknown> = { url, name };
         if (item.price !== undefined) fields.price = item.price;
         if (item.imageUrl !== undefined) fields.image_url = item.imageUrl;
         validateMemberInput(fields, 'POST');
 
         // 既存チェック
-        const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, item.url);
+        const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, url);
         if (existing) {
           skipped++;
           continue;
@@ -81,8 +82,8 @@ export async function POST(request: NextRequest) {
 
         const result = insertStmt.run(
           userId,
-          item.name,
-          item.url,
+          name,
+          url,
           item.imageUrl,
           item.price,
           item.price,

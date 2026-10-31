@@ -3,6 +3,7 @@
 import { apiFetch } from '@/lib/api-fetch';
 import { photoGroupSaveWrites } from '@/lib/capture/photo-group-actions';
 import { sourceBadgeClass } from '@/lib/capture/photo-card-view';
+import { displayableItemImageUrl } from '@/lib/capture/image-hosts';
 import { linkableHttpUrl } from '@/lib/http-url';
 
 import { useId, useState, useRef, type ReactNode } from 'react';
@@ -224,7 +225,10 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     yahoo: 'Yahoo!ショッピング',
     other: 'その他',
   };
-  const shownImage = displayImageUrl !== undefined ? displayImageUrl : item.image_url;
+  const shownImage = displayableItemImageUrl(
+    displayImageUrl !== undefined ? displayImageUrl : item.image_url,
+  );
+  const editPreviewImage = displayableItemImageUrl(editData.image_url);
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
@@ -636,8 +640,8 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                     <Upload size={16} className="text-gray-400" />
                   </button>
                 </div>
-                {editData.image_url && (
-                  <img src={editData.image_url} alt="プレビュー" className="h-12 w-12 object-cover rounded" />
+                {editPreviewImage && (
+                  <img src={editPreviewImage} alt="プレビュー" className="h-12 w-12 object-cover rounded" />
                 )}
               </div>
             </details>

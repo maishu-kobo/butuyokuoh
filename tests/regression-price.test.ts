@@ -184,51 +184,60 @@ test('extension add and import keep ownership, source, and an already active url
   assert.equal((await call(extensionAdd, 'POST', '/api/extension-add', { item: { name: 'x', url: 'https://example.test/x' } })).status, 401);
   assert.equal((await call(extensionAdd, 'POST', '/api/extension-add', { token: 'nope', item: { name: 'x', url: 'https://example.test/x' } })).status, 401);
 
-  const amazon = await call(extensionAdd, 'POST', '/api/extension-add', {
-    token,
-    item: {
-      name: '本', url: 'https://www.amazon.co.jp/dp/ABCDEFGHIJ', price: 1200, imageUrl: null, priority: 2,
-      categoryId: String((ownCategory.json as { id: number }).id),
-    },
-  });
-  assert.equal(amazon.status, 200);
-  const amazonId = (amazon.json as { id: number }).id;
-  const stored = database.prepare('SELECT source, source_name, current_price, category_id, priority FROM items WHERE id = ?').get(amazonId) as {
-    source: string; source_name: string; current_price: number; category_id: number; priority: number;
-  };
-  assert.equal(stored.source, 'amazon');
-  assert.equal(stored.source_name, 'Amazon');
-  assert.equal(stored.current_price, 1200);
-  assert.equal(stored.category_id, (ownCategory.json as { id: number }).id);
-  assert.equal(stored.priority, 2);
-  assert.equal((database.prepare('SELECT price FROM price_history WHERE item_id = ?').get(amazonId) as { price: number }).price, 1200);
+  const fixtures = await import('../src/lib/product-regression-fixtures');
+  const port = await import('../src/lib/product-fetch-port');
+  port.installProductFetchPort(fixtures.regressionFetchPort());
+  let amazonId = 0;
+  try {
+    const amazon = await call(extensionAdd, 'POST', '/api/extension-add', {
+      token,
+      item: {
+        name: '本', url: `${fixtures.AMAZON_PRODUCT_URL}?tag=shop-22`, price: 1200, imageUrl: null, priority: 2,
+        categoryId: String((ownCategory.json as { id: number }).id),
+      },
+    });
+    assert.equal(amazon.status, 200);
+    amazonId = (amazon.json as { id: number }).id;
+    const stored = database.prepare('SELECT source, source_name, current_price, category_id, priority, url FROM items WHERE id = ?').get(amazonId) as {
+      source: string; source_name: string; current_price: number; category_id: number; priority: number; url: string;
+    };
+    assert.equal(stored.source, 'amazon');
+    assert.equal(stored.source_name, 'Amazon');
+    assert.equal(stored.current_price, fixtures.AMAZON_PRICE);
+    assert.equal(stored.url, fixtures.AMAZON_PRODUCT_URL);
+    assert.equal(stored.category_id, (ownCategory.json as { id: number }).id);
+    assert.equal(stored.priority, 2);
+    assert.equal((database.prepare('SELECT price FROM price_history WHERE item_id = ?').get(amazonId) as { price: number }).price, fixtures.AMAZON_PRICE);
 
-  const again = await call(extensionAdd, 'POST', '/api/extension-add', {
-    token, item: { name: '本', url: 'https://www.amazon.co.jp/dp/ABCDEFGHIJ', price: 1, imageUrl: null, priority: 3, categoryId: null },
-  });
-  assert.equal(again.status, 409);
+    const again = await call(extensionAdd, 'POST', '/api/extension-add', {
+      token, item: { name: '本', url: fixtures.AMAZON_PRODUCT_URL, price: 1, imageUrl: null, priority: 3, categoryId: null },
+    });
+    assert.equal(again.status, 409);
 
-  const crossed = await call(extensionAdd, 'POST', '/api/extension-add', {
-    token,
-    item: {
-      name: '越境', url: 'https://item.rakuten.co.jp/shop/item', price: 10, imageUrl: null, priority: 3,
-      categoryId: String((foreignCategory.json as { id: number }).id),
-    },
-  });
-  assert.equal(crossed.status, 400);
+    const crossed = await call(extensionAdd, 'POST', '/api/extension-add', {
+      token,
+      item: {
+        name: '越境', url: 'https://item.rakuten.co.jp/shop/item', price: 10, imageUrl: null, priority: 3,
+        categoryId: String((foreignCategory.json as { id: number }).id),
+      },
+    });
+    assert.equal(crossed.status, 400);
 
-  const rakuten = await call(extensionAdd, 'POST', '/api/extension-add', {
-    token, item: { name: '楽天', url: 'https://item.rakuten.co.jp/shop/item', price: null, imageUrl: null, priority: 3, categoryId: null },
-  });
-  assert.equal(rakuten.status, 200);
-  assert.equal((database.prepare('SELECT source_name FROM items WHERE id = ?').get((rakuten.json as { id: number }).id) as { source_name: string }).source_name, '楽天市場');
+    const rakuten = await call(extensionAdd, 'POST', '/api/extension-add', {
+      token, item: { name: '楽天', url: 'https://item.rakuten.co.jp/shop/item', price: null, imageUrl: null, priority: 3, categoryId: null },
+    });
+    assert.equal(rakuten.status, 200);
+    assert.equal((database.prepare('SELECT source_name FROM items WHERE id = ?').get((rakuten.json as { id: number }).id) as { source_name: string }).source_name, '楽天市場');
+  } finally {
+    port.installProductFetchPort(null);
+  }
 
   database.prepare("UPDATE items SET deleted_at = datetime('now') WHERE id = ?").run(amazonId);
   const imported = await call(extensionImport, 'POST', '/api/extension-import', {
     token,
     source: 'amazon',
     items: [
-      { name: '本', url: 'https://www.amazon.co.jp/dp/ABCDEFGHIJ', price: 1, imageUrl: null },
+      { name: '本', url: fixtures.AMAZON_PRODUCT_URL, price: 1, imageUrl: null },
       { name: '新しい', url: 'https://example.test/new', price: 50, imageUrl: null },
     ],
   });
@@ -236,7 +245,7 @@ test('extension add and import keep ownership, source, and an already active url
   const importedBody = imported.json as { imported: number; skipped: number };
   assert.equal(importedBody.imported, 1);
   assert.equal(importedBody.skipped, 1);
-  assert.equal((database.prepare('SELECT COUNT(*) AS n FROM items WHERE url = ?').get('https://www.amazon.co.jp/dp/ABCDEFGHIJ') as { n: number }).n, 1);
+  assert.equal((database.prepare('SELECT COUNT(*) AS n FROM items WHERE url = ?').get(fixtures.AMAZON_PRODUCT_URL) as { n: number }).n, 1);
 
   assert.equal((await call(extensionCategories, 'GET', '/api/extension-categories')).status, 401);
   const { NextRequest } = await import('next/server');

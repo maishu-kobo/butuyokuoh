@@ -9,6 +9,7 @@ import { itemUrlTaken } from '@/lib/capture/register';
 import { isUnusableScrape, scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
+import { normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
 import { PRODUCT_FETCH_HELP } from '@/lib/public-page';
 import { annotateSpend, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
 
@@ -82,15 +83,21 @@ async function handlePOST(request: NextRequest) {
 
   const db = getDb();
 
-  if (typeof url === 'string' && url && !isStorableItemUrl(url)) {
-    return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
+  // 新規書き込みの URL からトラッキング等を落とす。空や未指定は手動モードのダミー用に残す。
+  let storedUrl: string | null = null;
+  if (typeof url === 'string' && url) {
+    storedUrl = sanitizeStoredItemUrl(url);
+    if (!storedUrl || !isStorableItemUrl(storedUrl)) {
+      return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
+    }
   }
 
   assertOwnedRelations(db, user.id, body);
 
   // 手動追加モード
   if (manual) {
-    if (!manualName) {
+    const name = typeof manualName === 'string' ? normalizeItemName(manualName) : null;
+    if (!name) {
       return NextResponse.json({ error: '商品名は必須です' }, { status: 400 });
     }
 
@@ -102,10 +109,10 @@ async function handlePOST(request: NextRequest) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      const manualUrl = url || `manual://${randomUUID()}`; // URLなしの場合はダミーURL
+      const manualUrl = storedUrl || `manual://${randomUUID()}`; // URLなしの場合はダミーURL
       const result = stmt.run(
         user.id,
-        manualName,
+        name,
         manualUrl,
         manualImageUrl || null,
         manualPrice || null,
@@ -129,21 +136,22 @@ async function handlePOST(request: NextRequest) {
   }
 
   // URLベースの追加（通常モード）
-  if (!url) {
+  if (!storedUrl) {
     return NextResponse.json({ error: 'URL is required' }, { status: 400 });
   }
 
   // 重複チェック（同じユーザー内で）。楽天は包装を解いた商品ページが同じなら登録済み。
-  if (itemUrlTaken(db, user.id, url)) {
+  if (itemUrlTaken(db, user.id, storedUrl)) {
     return NextResponse.json({ error: 'このURLは既に登録されています' }, { status: 400 });
   }
 
   // スクレイピング
   assertGuestCapacity(user, 'items', db);
-  const scraped = user.account_type === 'guest' ? await scrapeGuestUrl(url, user.id) : await scrapeUrl(url);
+  const scraped = user.account_type === 'guest' ? await scrapeGuestUrl(storedUrl, user.id) : await scrapeUrl(storedUrl);
   if (isUnusableScrape(scraped)) {
     return NextResponse.json({ error: PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' }, { status: 422 });
   }
+  const scrapedName = normalizeItemName(scraped.name) || scraped.name.slice(0, 200);
 
   return db.transaction(() => {
     assertGuestSessionActive(user, db);
@@ -158,8 +166,8 @@ async function handlePOST(request: NextRequest) {
 
     const result = stmt.run(
       user.id,
-      scraped.name,
-      url,
+      scrapedName,
+      storedUrl,
       scraped.imageUrl,
       scraped.price,
       scraped.price,

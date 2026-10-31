@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { displayableItemImageUrl } from '@/lib/capture/image-hosts';
 
 import { useAuth } from './AuthProvider';
 import { useCallback, useEffect, useState, useRef } from 'react';
@@ -233,6 +234,8 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
     );
   }
 
+  const manualImagePreview = displayableItemImageUrl(formData.image_url);
+
   return (
     <div
       data-testid="capture-photo-card"
@@ -357,9 +360,9 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
                   {uploading ? '...' : 'アップロード'}
                 </button>
               </div>
-              {formData.image_url && (
+              {manualImagePreview && (
                 <div className="mt-2">
-                  <img src={formData.image_url} alt="プレビュー" className="h-16 w-16 object-cover rounded" />
+                  <img src={manualImagePreview} alt="プレビュー" className="h-16 w-16 object-cover rounded" />
                 </div>
               )}
             </div>}

@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
+import { normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
 import { localCalendarDate } from '@/lib/local-date';
 
 async function handleGET(
@@ -45,8 +46,20 @@ async function handlePATCH(
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
 
-  if (typeof body.url === 'string' && body.url && !isStorableItemUrl(body.url)) {
-    return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
+  if (typeof body.url === 'string' && body.url) {
+    const cleaned = sanitizeStoredItemUrl(body.url);
+    if (!cleaned || !isStorableItemUrl(cleaned)) {
+      return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
+    }
+    body.url = cleaned;
+  }
+
+  if (typeof body.name === 'string') {
+    const name = normalizeItemName(body.name);
+    if (!name) {
+      return NextResponse.json({ error: '商品名は必須です' }, { status: 400 });
+    }
+    body.name = name;
   }
 
   assertOwnedRelations(db, user.id, body);

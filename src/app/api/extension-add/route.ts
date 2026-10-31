@@ -3,8 +3,8 @@ import { GuestError } from '@/lib/guest';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getUserIdFromToken } from '@/lib/auth';
-import { validateAndSanitizeUrl } from '@/lib/url-validator';
-import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
+import { fetchServerItemMedia, normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
+import { ITEM_URL_ERROR } from '@/lib/http-url';
 
 interface AddItemRequest {
   token: string;
@@ -45,23 +45,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!item || !item.name || !item.url) {
+    if (!item || typeof item.name !== 'string' || typeof item.url !== 'string') {
       return NextResponse.json(
         { error: '商品名とURLは必須です' },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    if (!isStorableItemUrl(item.url)) {
+    const name = normalizeItemName(item.name);
+    const url = sanitizeStoredItemUrl(item.url);
+    if (!name || !url) {
       return NextResponse.json(
-        { error: ITEM_URL_ERROR },
+        { error: !url ? ITEM_URL_ERROR : '商品名とURLは必須です' },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    const fields: Record<string, unknown> = { name: item.name, url: item.url };
-    if (item.price !== undefined) fields.price = item.price;
-    if (item.imageUrl !== undefined) fields.image_url = item.imageUrl;
+    // 価格と画像はクライアント値を使わない（サーバ取得を優先）。優先度などだけ検証する。
+    const fields: Record<string, unknown> = { name, url };
     if (item.priority !== undefined) fields.priority = item.priority;
     validateMemberInput(fields, 'POST');
 
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
 
     // 重複チェック
     // ゴミ箱の行も UNIQUE(user_id, url) に残る。ここを外すと INSERT が 500 になる。
-    const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, item.url) as { id: number } | undefined;
+    const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, url) as { id: number } | undefined;
     if (existing) {
       return NextResponse.json(
         { error: 'この商品はすでに登録されています' },
@@ -78,17 +79,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ソースを判定（URL検証を使用）
-    const urlValidation = validateAndSanitizeUrl(item.url);
-    const source = urlValidation.source;
-    let sourceName = 'その他';
-    if (source === 'amazon') {
-      sourceName = 'Amazon';
-    } else if (source === 'rakuten') {
-      sourceName = '楽天市場';
-    }
+    const media = await fetchServerItemMedia(url);
+    const priority = item.priority || 3;
 
-    // アイテムを追加
+    // アイテムを追加（価格・画像はサーバ取得のみ。取れなければ空）
     const result = db.prepare(`
       INSERT INTO items (
         user_id, name, url, image_url, current_price, original_price,
@@ -96,22 +90,22 @@ export async function POST(request: NextRequest) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       userId,
-      item.name,
-      item.url,
-      item.imageUrl,
-      item.price,
-      item.price,
-      source,
-      sourceName,
-      item.priority || 3,
+      name,
+      url,
+      media.imageUrl,
+      media.price,
+      media.price,
+      media.source,
+      media.sourceName,
+      priority,
       item.categoryId || null
     );
 
     // 価格履歴を記録
-    if (item.price && result.lastInsertRowid) {
+    if (media.price && result.lastInsertRowid) {
       db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(
         result.lastInsertRowid,
-        item.price
+        media.price
       );
     }
 
