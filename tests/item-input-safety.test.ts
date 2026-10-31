@@ -1,8 +1,9 @@
+import './bugfix-harness';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fetchServerItemMedia, normalizeItemName, sanitizeStoredItemUrl } from '../src/lib/item-input';
-import { displayableItemImageUrl } from '../src/lib/capture/image-hosts';
+import { displayableItemImageUrl, safeImgSrc } from '../src/lib/capture/image-hosts';
 import {
   AMAZON_IMAGE,
   AMAZON_NAME,
@@ -14,7 +15,7 @@ import { call, createMember, db } from './bugfix-harness';
 
 const extensionAdd = '../src/app/api/extension-add/route.ts';
 
-test('sanitizeStoredItemUrl strips tracking and amazon affiliate params without dropping identity', () => {
+test('sanitizeStoredItemUrl strips tracking without dropping product identity', () => {
   assert.equal(
     sanitizeStoredItemUrl('https://www.amazon.co.jp/dp/B0TESTASIN/ref=sr_1_1?tag=shop-22&utm_source=x&gclid=1&th=1&psc=1'),
     'https://www.amazon.co.jp/dp/B0TESTASIN?th=1&psc=1',
@@ -27,9 +28,39 @@ test('sanitizeStoredItemUrl strips tracking and amazon affiliate params without 
     sanitizeStoredItemUrl('https://hb.afl.rakuten.co.jp/hgc/link/?pc=https%3A%2F%2Fitem.rakuten.co.jp%2Fshop%2Fitem'),
     'https://item.rakuten.co.jp/shop/item',
   );
-  assert.equal(sanitizeStoredItemUrl('https://hb.afl.rakuten.co.jp/hgc/link/?pc=https%3A%2F%2Fevil.example%2Fx'), null);
+  // 解けない包装は 400 にせずラッパーを残す
+  const brokenAffiliate = 'https://hb.afl.rakuten.co.jp/hgc/link/?pc=https%3A%2F%2Fevil.example%2Fx';
+  assert.equal(sanitizeStoredItemUrl(brokenAffiliate), brokenAffiliate);
   assert.equal(sanitizeStoredItemUrl('javascript:alert(1)'), null);
   assert.equal(sanitizeStoredItemUrl('manual://memo-1'), 'manual://memo-1');
+});
+
+test('sanitizeStoredItemUrl keeps generic-site affiliate-ish params and only drops shared trackers', () => {
+  assert.equal(
+    sanitizeStoredItemUrl('https://shop.example/item?tag=aff&si=1&camp=2&creative=3&adid=4&ref=x&sc_foo=1&pk_campaign=1&utm_source=x&gclid=1'),
+    'https://shop.example/item?tag=aff&si=1&camp=2&creative=3&adid=4&ref=x&sc_foo=1&pk_campaign=1',
+  );
+});
+
+test('sanitizeStoredItemUrl is lossless for encoded values, empty values, and no-op when nothing matches', () => {
+  // Shift_JIS 風の %82%A0 を URLSearchParams で壊さない
+  assert.equal(
+    sanitizeStoredItemUrl('https://example.com/p?q=%82%A0&utm_source=x'),
+    'https://example.com/p?q=%82%A0',
+  );
+  // EUC-JP 風
+  assert.equal(
+    sanitizeStoredItemUrl('https://example.com/p?q=%A4%A2&fbclid=1'),
+    'https://example.com/p?q=%A4%A2',
+  );
+  // 値なしキーと %20
+  assert.equal(
+    sanitizeStoredItemUrl('https://example.com/p?flag&q=a%20b&gclid=zz'),
+    'https://example.com/p?flag&q=a%20b',
+  );
+  // 一致がなければ一切変えない（末尾の余計な & も残す）
+  const untouched = 'https://example.com/p?keep=%82%A0&flag&q=a%20b&';
+  assert.equal(sanitizeStoredItemUrl(untouched), untouched);
 });
 
 test('normalizeItemName trims and caps at 200 characters', () => {
@@ -39,24 +70,30 @@ test('normalizeItemName trims and caps at 200 characters', () => {
   assert.equal(normalizeItemName('\n\t'), null);
 });
 
-test('displayableItemImageUrl allows known hosts and local uploads, rejects others', () => {
+test('displayableItemImageUrl allows https/http and safe uploads without a host allowlist', () => {
   assert.equal(
-    displayableItemImageUrl('https://m.media-amazon.com/images/I/case.jpg'),
-    'https://m.media-amazon.com/images/I/case.jpg',
+    displayableItemImageUrl('https://pitakajapan.com/cdn/grip.webp?a=1&b=2'),
+    'https://pitakajapan.com/cdn/grip.webp?a=1&b=2',
   );
   assert.equal(
-    displayableItemImageUrl('https://thumbnail.image.rakuten.co.jp/x.jpg'),
-    'https://thumbnail.image.rakuten.co.jp/x.jpg',
+    displayableItemImageUrl('http://m.media-amazon.com/images/I/case.jpg'),
+    'http://m.media-amazon.com/images/I/case.jpg',
   );
   assert.equal(
-    displayableItemImageUrl(`/uploads/${'a'.repeat(64)}.jpg`),
-    `/uploads/${'a'.repeat(64)}.jpg`,
+    displayableItemImageUrl('https://image.rakuten.co.jp/shop/cabinet/x.jpg'),
+    'https://image.rakuten.co.jp/shop/cabinet/x.jpg',
   );
+  assert.equal(displayableItemImageUrl('/uploads/1_2.jpg'), '/uploads/1_2.jpg');
+  assert.equal(displayableItemImageUrl('/uploads/abc.avif'), '/uploads/abc.avif');
   assert.equal(displayableItemImageUrl('/demo/wishlist.svg'), '/demo/wishlist.svg');
-  assert.equal(displayableItemImageUrl('https://evil.example/track.png'), null);
-  assert.equal(displayableItemImageUrl('http://m.media-amazon.com/images/I/case.jpg'), null);
+  assert.equal(displayableItemImageUrl('javascript:alert(1)'), null);
+  assert.equal(displayableItemImageUrl('data:text/html,x'), null);
+  assert.ok(displayableItemImageUrl('data:image/png;base64,xx'));
+  assert.equal(displayableItemImageUrl('//evil.example/a.png'), null);
   assert.equal(displayableItemImageUrl('/uploads/../secret.jpg'), null);
-  assert.equal(displayableItemImageUrl(null), null);
+  assert.equal(displayableItemImageUrl('https://user:pass@example.com/a.png'), null);
+  assert.equal(safeImgSrc('https://cdn.example/a.png'), 'https://cdn.example/a.png');
+  assert.equal(safeImgSrc('javascript:alert(1)'), null);
 });
 
 test('ItemCard and list views gate images through displayableItemImageUrl', () => {
@@ -69,6 +106,10 @@ test('ItemCard and list views gate images through displayableItemImageUrl', () =
     assert.match(source, /displayableItemImageUrl\(/, file);
     assert.equal(source.includes('src={item.image_url}'), false, file);
   }
+  const addForm = readFileSync('src/components/AddItemForm.tsx', 'utf8');
+  const itemCard = readFileSync('src/components/ItemCard.tsx', 'utf8');
+  assert.match(addForm, /safeImgSrc\(/);
+  assert.match(itemCard, /safeImgSrc\(/);
 });
 
 test('fetchServerItemMedia prefers scraped price and image, and leaves both empty when unusable', async () => {
@@ -83,6 +124,21 @@ test('fetchServerItemMedia prefers scraped price and image, and leaves both empt
     const miss = await fetchServerItemMedia('https://example.test/no-fixture');
     assert.equal(miss.price, null);
     assert.equal(miss.imageUrl, null);
+
+    const timedOut = await fetchServerItemMedia(AMAZON_PRODUCT_URL, {
+      timeoutMs: 1,
+      deps: {
+        request: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return { status: 200, body: Buffer.from(''), contentType: 'text/html' };
+        },
+        resolve: async () => [{ address: '8.8.8.8', family: 4 as const }],
+        maxRetries: 0,
+        timeoutMs: 50,
+      },
+    });
+    assert.equal(timedOut.price, null);
+    assert.equal(timedOut.imageUrl, null);
   } finally {
     port.installProductFetchPort(null);
   }
@@ -132,7 +188,6 @@ test('extension-add stores server-fetched price and image, ignores client values
       AMAZON_PRICE,
     );
 
-    // 取得できない公開 URL でも、クライアントの価格・画像は保存しない。
     const empty = await call(extensionAdd, 'POST', '/api/extension-add', {
       token,
       item: {

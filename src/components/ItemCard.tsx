@@ -3,7 +3,7 @@
 import { apiFetch } from '@/lib/api-fetch';
 import { photoGroupSaveWrites } from '@/lib/capture/photo-group-actions';
 import { sourceBadgeClass } from '@/lib/capture/photo-card-view';
-import { displayableItemImageUrl } from '@/lib/capture/image-hosts';
+import { displayableItemImageUrl, safeImgSrc } from '@/lib/capture/image-hosts';
 import { linkableHttpUrl } from '@/lib/http-url';
 
 import { useId, useState, useRef, type ReactNode } from 'react';
@@ -74,8 +74,6 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   const [saveError, setSaveError] = useState('');
   const [showImageEdit, setShowImageEdit] = useState(false);
   const [uploading, setUploading] = useState(false);
-  // プレビューはアップロード API の戻りだけ。入力欄の文字列を img に載せない。
-  const [uploadPreviewSrc, setUploadPreviewSrc] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const purchaseLocked = shopCount != null && shopCount >= 2;
   const purchaseHintId = useId();
@@ -115,7 +113,6 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
       if (res.ok) {
         const { url } = await res.json();
         setEditData({ ...editData, image_url: url });
-        setUploadPreviewSrc(typeof url === 'string' ? url : null);
       }
     } finally {
       setUploading(false);
@@ -231,6 +228,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   const shownImage = displayableItemImageUrl(
     displayImageUrl !== undefined ? displayImageUrl : item.image_url,
   );
+  const editPreviewImage = safeImgSrc(editData.image_url);
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
@@ -402,7 +400,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             価格推移
           </button>
           <button
-            onClick={() => { setSaveError(''); setUploadPreviewSrc(null); if (!editing) setEditData(initialEditData()); setEditing(!editing); }}
+            onClick={() => { setSaveError(''); if (!editing) setEditData(initialEditData()); setEditing(!editing); }}
             className={`text-sm ${auxiliaryActionClass}`}
           >
             編集
@@ -620,10 +618,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                     type="text"
                     disabled={isGuest}
                     value={editData.image_url}
-                    onChange={(e) => {
-                      setEditData({ ...editData, image_url: e.target.value });
-                      setUploadPreviewSrc(null);
-                    }}
+                    onChange={(e) => setEditData({ ...editData, image_url: e.target.value })}
                     placeholder="画像URL"
                     className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:border-orange-500"
                   />
@@ -645,8 +640,8 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                     <Upload size={16} className="text-gray-400" />
                   </button>
                 </div>
-                {uploadPreviewSrc && (
-                  <img src={uploadPreviewSrc} alt="プレビュー" className="h-12 w-12 object-cover rounded" />
+                {editPreviewImage && (
+                  <img src={editPreviewImage} alt="プレビュー" className="h-12 w-12 object-cover rounded" />
                 )}
               </div>
             </details>
@@ -659,7 +654,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             {/* ボタン */}
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
-                onClick={() => { setSaveError(''); setUploadPreviewSrc(null); setEditing(false); }}
+                onClick={() => { setSaveError(''); setEditing(false); }}
                 className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 キャンセル

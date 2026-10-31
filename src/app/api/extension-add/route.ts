@@ -1,9 +1,14 @@
 import { assertOwnedRelations, guestErrorResponse, validateMemberInput } from '@/lib/api-access';
-import { GuestError } from '@/lib/guest';
+import { consumeGuestRate, GuestError } from '@/lib/guest';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getUserIdFromToken } from '@/lib/auth';
-import { fetchServerItemMedia, normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
+import {
+  fetchServerItemMedia,
+  normalizeItemName,
+  sanitizeStoredItemUrl,
+  SERVER_ITEM_MEDIA_TIMEOUT_MS,
+} from '@/lib/item-input';
 import { ITEM_URL_ERROR } from '@/lib/http-url';
 
 interface AddItemRequest {
@@ -24,12 +29,28 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
+function extensionAddsPerMinute(): number {
+  const raw = process.env.EXTENSION_ADDS_PER_MINUTE;
+  if (!raw) return 20;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return 20;
+  return parsed;
+}
+
+function urlAlreadyStored(db: ReturnType<typeof getDb>, userId: number, cleanedUrl: string): boolean {
+  if (db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, cleanedUrl)) {
+    return true;
+  }
+  // 保存済みの汚い URL もクリーン後で同じなら重複とみなす。
+  const rows = db.prepare('SELECT url FROM items WHERE user_id = ?').all(userId) as { url: string }[];
+  return rows.some((row) => sanitizeStoredItemUrl(row.url) === cleanedUrl);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as AddItemRequest;
     const { token, item } = body;
 
-    // トークンからユーザーIDを取得
     if (!token) {
       return NextResponse.json(
         { error: '認証トークンが必要です' },
@@ -61,28 +82,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 価格と画像はクライアント値を使わない（サーバ取得を優先）。優先度などだけ検証する。
     const fields: Record<string, unknown> = { name, url };
     if (item.priority !== undefined) fields.priority = item.priority;
     validateMemberInput(fields, 'POST');
 
     const db = getDb();
+    const user = db.prepare(
+      'SELECT id, account_type FROM users WHERE id = ?'
+    ).get(userId) as { id: number; account_type: 'member' | 'guest' } | undefined;
+    if (!user) {
+      return NextResponse.json(
+        { error: '無効なトークンです' },
+        { status: 401, headers: corsHeaders }
+      );
+    }
+
+    consumeGuestRate(`extension-add:${userId}`, extensionAddsPerMinute(), db);
+
     assertOwnedRelations(db, userId, { category_id: item.categoryId ? Number(item.categoryId) : null });
 
-    // 重複チェック
     // ゴミ箱の行も UNIQUE(user_id, url) に残る。ここを外すと INSERT が 500 になる。
-    const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, url) as { id: number } | undefined;
-    if (existing) {
+    if (urlAlreadyStored(db, userId, url)) {
       return NextResponse.json(
         { error: 'この商品はすでに登録されています' },
         { status: 409, headers: corsHeaders }
       );
     }
 
-    const media = await fetchServerItemMedia(url);
+    const media = await fetchServerItemMedia(url, {
+      userId,
+      accountType: user.account_type,
+      timeoutMs: SERVER_ITEM_MEDIA_TIMEOUT_MS,
+    });
     const priority = item.priority || 3;
 
-    // アイテムを追加（価格・画像はサーバ取得のみ。取れなければ空）
     const result = db.prepare(`
       INSERT INTO items (
         user_id, name, url, image_url, current_price, original_price,
@@ -101,7 +134,6 @@ export async function POST(request: NextRequest) {
       item.categoryId || null
     );
 
-    // 価格履歴を記録
     if (media.price && result.lastInsertRowid) {
       db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(
         result.lastInsertRowid,

@@ -18,9 +18,7 @@ test('guest fixture URL shows the price and image, and editing keeps the image',
   const card = page.locator('div.rounded-lg.shadow-md').filter({ has: page.getByRole('heading', { name: pitakaName, exact: true }) }).first();
   await expect(card).toBeVisible();
   await expect(card).toContainText('¥3,999');
-  // 許可ホスト外の画像は API には残るが、画面には出さない。
-  await expect(card.getByRole('img', { name: pitakaName })).toHaveCount(0);
-  await expect(card.getByText('No Image', { exact: true })).toBeVisible();
+  await expect(card.getByRole('img', { name: pitakaName })).toHaveAttribute('src', pitakaImage);
   const items = await (await request.get('/api/items')).json();
   const item = items.find((row: { url: string }) => row.url === pitakaUrl);
   expect(item).toMatchObject({ name: pitakaName, current_price: 3999, image_url: pitakaImage });
@@ -33,8 +31,7 @@ test('guest fixture URL shows the price and image, and editing keeps the image',
   await cleared.getByRole('button', { name: '価格を更新', exact: true }).click();
   const restored = page.locator('div.rounded-lg.shadow-md').filter({ has: page.getByRole('heading', { name: pitakaName, exact: true }) }).first();
   await expect(restored).toContainText('¥3,999');
-  await expect(restored.getByRole('img', { name: pitakaName })).toHaveCount(0);
-  await expect(restored.getByText('No Image', { exact: true })).toBeVisible();
+  await expect(restored.getByRole('img', { name: pitakaName })).toHaveAttribute('src', pitakaImage);
   await restored.getByRole('button', { name: '編集', exact: true }).click();
   await restored.getByPlaceholder('商品名', { exact: true }).fill('編集後のグリップ');
   await restored.getByRole('button', { name: '保存', exact: true }).click();

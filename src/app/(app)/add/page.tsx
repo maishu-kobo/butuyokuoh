@@ -1,7 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
-import { displayableItemImageUrl } from '@/lib/capture/image-hosts';
+import { safeImgSrc } from '@/lib/capture/image-hosts';
 
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -198,7 +198,7 @@ function AddPageContent() {
     );
   }
 
-  const productImage = displayableItemImageUrl(productInfo?.image_url);
+  const productImage = safeImgSrc(productInfo?.image_url);
 
   return (
     <div className="min-h-screen bg-stone-100">

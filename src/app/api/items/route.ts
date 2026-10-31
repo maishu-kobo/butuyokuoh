@@ -151,7 +151,10 @@ async function handlePOST(request: NextRequest) {
   if (isUnusableScrape(scraped)) {
     return NextResponse.json({ error: PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' }, { status: 422 });
   }
-  const scrapedName = normalizeItemName(scraped.name) || scraped.name.slice(0, 200);
+  const scrapedName = normalizeItemName(scraped.name);
+  if (!scrapedName) {
+    return NextResponse.json({ error: PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' }, { status: 422 });
+  }
 
   return db.transaction(() => {
     assertGuestSessionActive(user, db);

@@ -5,6 +5,9 @@ import { getDb } from '@/lib/db';
 import { getUserIdFromToken } from '@/lib/auth';
 import { normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
 
+// 既知の課題: 一括 import はまだクライアントの価格・画像を保存する。
+// サーバ取得に揃えると件数・タイムアウトの影響が大きいため、別 Issue で扱う（PR #275）。
+
 interface ImportItem {
   name: string;
   url: string;
