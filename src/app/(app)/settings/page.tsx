@@ -5,11 +5,23 @@ import { apiFetch } from '@/lib/api-fetch';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
-import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2, Download, Tag, Layers, Plus, Pencil, X, ChevronDown, ChevronUp, Sun, Moon, Monitor, Palette } from 'lucide-react';
+import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2, Download, Tag, Layers, Plus, Pencil, X, ChevronDown, ChevronUp, Sun, Moon, Monitor, Palette, Bot, Lock } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import Link from 'next/link';
 import LegalLinks from '@/components/LegalLinks';
 import { Category, ComparisonGroup } from '@/types';
+
+type AgentTokenRecord = {
+  id: number;
+  name: string;
+  token_prefix: string;
+  scopes: ('read' | 'write')[];
+  expires_at: string;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+  active: boolean;
+};
 
 export default function SettingsPage() {
   const { user, isGuest, token, loading, logout } = useAuth();
@@ -27,6 +39,27 @@ export default function SettingsPage() {
   const [notifySaved, setNotifySaved] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [accountError, setAccountError] = useState('');
+
+  // エージェント用トークン
+  const [agentTokens, setAgentTokens] = useState<AgentTokenRecord[]>([]);
+  const [agentName, setAgentName] = useState('');
+  const [agentScopeRead, setAgentScopeRead] = useState(true);
+  const [agentScopeWrite, setAgentScopeWrite] = useState(true);
+  const [agentDays, setAgentDays] = useState(90);
+  const [creatingAgentToken, setCreatingAgentToken] = useState(false);
+  const [createdAgentPlaintext, setCreatedAgentPlaintext] = useState<string | null>(null);
+  const [copiedAgent, setCopiedAgent] = useState(false);
+  const [agentError, setAgentError] = useState('');
+  const [agentBusyId, setAgentBusyId] = useState<number | null>(null);
+  const [agentAuditId, setAgentAuditId] = useState<number | null>(null);
+  const [agentAuditEntries, setAgentAuditEntries] = useState<{ id: number; action: string; meta: string | null; created_at: string }[]>([]);
+
+  // パスワード変更
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
   
   // カテゴリ管理
   const [categories, setCategories] = useState<Category[]>([]);
@@ -49,6 +82,8 @@ export default function SettingsPage() {
     theme: false,
     notify: false,
     token: false,
+    agentTokens: false,
+    password: false,
     export: false,
   });
   const toggleSection = (key: string) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
@@ -67,6 +102,13 @@ export default function SettingsPage() {
   const fetchGroups = async () => {
     const res = await apiFetch('/api/comparison-groups');
     if (res.ok) setGroups(await res.json());
+  };
+
+  const fetchAgentTokens = async () => {
+    const res = await apiFetch('/api/agent-tokens');
+    if (!res.ok) return;
+    const data = await res.json() as { tokens: AgentTokenRecord[] };
+    setAgentTokens(data.tokens || []);
   };
 
   useEffect(() => {
@@ -106,6 +148,7 @@ export default function SettingsPage() {
       if (!isGuest) {
         void (async () => { await fetchToken(); })();
         void (async () => { await fetchNotifySettings(); })();
+        void (async () => { await fetchAgentTokens(); })();
       }
       void (async () => { await fetchCategories(); })();
       void (async () => { await fetchGroups(); })();
@@ -214,6 +257,127 @@ export default function SettingsPage() {
       await navigator.clipboard.writeText(displayToken);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const createAgentAccessToken = async () => {
+    if (creatingAgentToken) return;
+    setAgentError('');
+    setCreatedAgentPlaintext(null);
+    const scopes: ('read' | 'write')[] = [];
+    if (agentScopeRead) scopes.push('read');
+    if (agentScopeWrite) scopes.push('write');
+    if (!scopes.length) {
+      setAgentError('権限を1つ以上選んでください');
+      return;
+    }
+    setCreatingAgentToken(true);
+    try {
+      const res = await apiFetch('/api/agent-tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: agentName, scopes, expiresInDays: agentDays }),
+      });
+      const data = await res.json().catch(() => ({})) as { token?: string; error?: string };
+      if (!res.ok || !data.token) {
+        setAgentError(data.error || 'トークンを作成できませんでした');
+        return;
+      }
+      setCreatedAgentPlaintext(data.token);
+      setAgentName('');
+      await fetchAgentTokens();
+    } catch {
+      setAgentError('通信に失敗しました');
+    } finally {
+      setCreatingAgentToken(false);
+    }
+  };
+
+  const copyCreatedAgentToken = async () => {
+    if (!createdAgentPlaintext) return;
+    await navigator.clipboard.writeText(createdAgentPlaintext);
+    setCopiedAgent(true);
+    setTimeout(() => setCopiedAgent(false), 2000);
+  };
+
+  const revokeAgentAccessToken = async (id: number) => {
+    if (!confirm('このエージェント用トークンを失効しますか？')) return;
+    setAgentBusyId(id);
+    setAgentError('');
+    try {
+      const res = await apiFetch(`/api/agent-tokens/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        setAgentError('失効できませんでした');
+        return;
+      }
+      await fetchAgentTokens();
+    } finally {
+      setAgentBusyId(null);
+    }
+  };
+
+  const undoAgentAdditions = async (id: number) => {
+    if (!confirm('このトークンが追加した品目をまとめてゴミ箱へ移しますか？')) return;
+    setAgentBusyId(id);
+    setAgentError('');
+    try {
+      const res = await apiFetch(`/api/agent-tokens/${id}/undo`, { method: 'POST' });
+      const data = await res.json().catch(() => ({})) as { moved?: number; error?: string };
+      if (!res.ok) {
+        setAgentError(data.error || '取り消しに失敗しました');
+        return;
+      }
+      alert(`${data.moved ?? 0} 件をゴミ箱へ移しました`);
+    } finally {
+      setAgentBusyId(null);
+    }
+  };
+
+  const loadAgentAudit = async (id: number) => {
+    if (agentAuditId === id) {
+      setAgentAuditId(null);
+      setAgentAuditEntries([]);
+      return;
+    }
+    setAgentBusyId(id);
+    try {
+      const res = await apiFetch(`/api/agent-tokens/${id}/audit`);
+      if (!res.ok) {
+        setAgentError('操作ログを取得できませんでした');
+        return;
+      }
+      const data = await res.json() as { entries: typeof agentAuditEntries };
+      setAgentAuditId(id);
+      setAgentAuditEntries(data.entries || []);
+    } finally {
+      setAgentBusyId(null);
+    }
+  };
+
+  const changePassword = async () => {
+    if (savingPassword) return;
+    setPasswordError('');
+    setPasswordMessage('');
+    setSavingPassword(true);
+    try {
+      const res = await apiFetch('/api/auth/password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      if (!res.ok) {
+        setPasswordError(data.error || 'パスワードを変更できませんでした');
+        return;
+      }
+      setCurrentPassword('');
+      setNewPassword('');
+      setPasswordMessage('パスワードを変更し、エージェント用トークンをすべて失効しました');
+      await fetchAgentTokens();
+    } catch {
+      setPasswordError('通信に失敗しました');
+    } finally {
+      setSavingPassword(false);
     }
   };
 
@@ -474,6 +638,188 @@ export default function SettingsPage() {
                 </div>
                 <button onClick={saveNotifySettings} disabled={savingNotify} className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-hover)] disabled:opacity-50 flex items-center gap-2">
                   {savingNotify ? <><Loader2 size={18} className="animate-spin" /> 保存中...</> : notifySaved ? <><Check size={18} /> 保存しました</> : '保存'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* エージェント用トークン */}
+          <div className="bg-[var(--color-card)] rounded-lg shadow">
+            <button onClick={() => toggleSection('agentTokens')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
+              <div className="flex items-center gap-2">
+                <Bot size={20} className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">エージェント用トークン</h3>
+                <span className="text-sm text-[var(--color-muted)]">({agentTokens.filter((t) => t.active).length})</span>
+              </div>
+              {openSections.agentTokens ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+            {openSections.agentTokens && (
+              <div className="px-4 pb-4 border-t pt-4 space-y-4">
+                <p className="text-sm text-[var(--color-muted)]">
+                  AI エージェントからリストを読む・品目を追加するためのトークンです。平文は作成時に一度だけ表示します。パスワードを変更するとすべて失効します（ログアウトでは失効しません）。
+                </p>
+                <div className="space-y-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-md">
+                  <input
+                    type="text"
+                    value={agentName}
+                    onChange={(e) => setAgentName(e.target.value)}
+                    placeholder="名前（例: Cursor）"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+                    maxLength={100}
+                  />
+                  <div className="flex flex-wrap gap-4 text-sm text-[var(--color-text)]">
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={agentScopeRead} onChange={(e) => setAgentScopeRead(e.target.checked)} />
+                      読み取り (read)
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={agentScopeWrite} onChange={(e) => setAgentScopeWrite(e.target.checked)} />
+                      書き込み (write)
+                    </label>
+                  </div>
+                  <label className="block text-sm text-[var(--color-text)]">
+                    有効期限（日）
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={agentDays}
+                      onChange={(e) => setAgentDays(Number(e.target.value) || 90)}
+                      className="mt-1 w-28 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+                    />
+                    <span className="ml-2 text-[var(--color-muted)]">既定 90 / 最長 365</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={createAgentAccessToken}
+                    disabled={creatingAgentToken || !agentName.trim()}
+                    className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-hover)] disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {creatingAgentToken ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                    トークンを作成
+                  </button>
+                </div>
+                {createdAgentPlaintext && (
+                  <div className="p-3 border border-amber-300 bg-amber-50 dark:bg-amber-950/40 rounded-md space-y-2">
+                    <p className="text-sm text-amber-900 dark:text-amber-100 font-medium">このトークンは今だけ表示されます。コピーして安全な場所に保存してください。</p>
+                    <div className="flex gap-2">
+                      <input type="text" value={createdAgentPlaintext} readOnly className="flex-1 px-3 py-2 border rounded-md bg-white dark:bg-slate-800 text-sm font-mono" />
+                      <button type="button" onClick={copyCreatedAgentToken} className="px-3 py-2 bg-blue-500 text-white rounded-md flex items-center gap-1">
+                        {copiedAgent ? <Check size={16} /> : <Copy size={16} />}
+                        {copiedAgent ? 'コピーした' : 'コピー'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {agentError && <p className="text-sm text-red-600">{agentError}</p>}
+                {agentTokens.length === 0 ? (
+                  <p className="text-sm text-[var(--color-muted)]">まだトークンがありません</p>
+                ) : (
+                  <div className="space-y-3">
+                    {agentTokens.map((t) => (
+                      <div key={t.id} className="p-3 border border-[var(--color-border)] rounded-md space-y-2">
+                        <div className="flex flex-wrap items-center gap-2 justify-between">
+                          <div>
+                            <div className="font-medium text-[var(--color-text)]">{t.name}</div>
+                            <div className="text-xs font-mono text-[var(--color-muted)]">{t.token_prefix}…</div>
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded ${t.active ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'}`}>
+                            {t.active ? '有効' : '失効または期限切れ'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-[var(--color-muted)] space-y-0.5">
+                          <div>権限: {t.scopes.join(', ')}</div>
+                          <div>期限: {t.expires_at}</div>
+                          {t.revoked_at && <div>失効: {t.revoked_at}</div>}
+                          {t.last_used_at && <div>最終利用: {t.last_used_at}</div>}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {t.active && (
+                            <button
+                              type="button"
+                              disabled={agentBusyId === t.id}
+                              onClick={() => revokeAgentAccessToken(t.id)}
+                              className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md disabled:opacity-50"
+                            >
+                              失効
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={agentBusyId === t.id}
+                            onClick={() => undoAgentAdditions(t.id)}
+                            className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded-md disabled:opacity-50"
+                          >
+                            追加分をゴミ箱へ
+                          </button>
+                          <button
+                            type="button"
+                            disabled={agentBusyId === t.id}
+                            onClick={() => loadAgentAudit(t.id)}
+                            className="px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-600 rounded-md disabled:opacity-50"
+                          >
+                            {agentAuditId === t.id ? 'ログを閉じる' : '操作ログ'}
+                          </button>
+                        </div>
+                        {agentAuditId === t.id && (
+                          <div className="text-xs bg-gray-50 dark:bg-slate-800 rounded p-2 max-h-48 overflow-auto space-y-1">
+                            {agentAuditEntries.length === 0 ? (
+                              <p className="text-[var(--color-muted)]">ログはありません（90日保持）</p>
+                            ) : agentAuditEntries.map((entry) => (
+                              <div key={entry.id} className="font-mono">
+                                <span className="text-[var(--color-muted)]">{entry.created_at}</span>{' '}
+                                {entry.action}
+                                {entry.meta ? ` ${entry.meta}` : ''}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* パスワード変更 */}
+          <div className="bg-[var(--color-card)] rounded-lg shadow">
+            <button onClick={() => toggleSection('password')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
+              <div className="flex items-center gap-2">
+                <Lock size={20} className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">パスワード変更</h3>
+              </div>
+              {openSections.password ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+            {openSections.password && (
+              <div className="px-4 pb-4 border-t pt-4 space-y-3">
+                <p className="text-sm text-[var(--color-muted)]">変更するとエージェント用トークンはすべて失効します。ログアウトでは失効しません。</p>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="現在のパスワード"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+                  autoComplete="current-password"
+                />
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="新しいパスワード（6文字以上）"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+                  autoComplete="new-password"
+                />
+                {passwordError && <p className="text-sm text-red-600">{passwordError}</p>}
+                {passwordMessage && <p className="text-sm text-green-700">{passwordMessage}</p>}
+                <button
+                  type="button"
+                  onClick={changePassword}
+                  disabled={savingPassword || !currentPassword || newPassword.length < 6}
+                  className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-md disabled:opacity-50 flex items-center gap-2"
+                >
+                  {savingPassword ? <Loader2 size={18} className="animate-spin" /> : null}
+                  変更する
                 </button>
               </div>
             )}

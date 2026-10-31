@@ -1,5 +1,7 @@
 export interface Item {
   is_demo_sample?: number;
+  /** エージェント用トークンが追加したときの印。失効後も残る。 */
+  added_by_agent_token_id?: number | null;
   id: number;
   name: string;
   url: string;

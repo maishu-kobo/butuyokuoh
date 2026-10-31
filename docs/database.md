@@ -226,6 +226,34 @@ CREATE TABLE user_notification_settings (
 
 写真判定の1分・1日の回数と、全体のニューロン。`user_key` は会員 ID の文字列、`day` は UTC の日付（`YYYY-MM-DD`）、`at_ms` は要求の時刻、`neurons` はその1回分。写真そのものは入れない。日付が変わった行は数えず、行自体は消さない。利用者を消しても、その日の全体のニューロンは残る。
 
+## エージェント用トークン（#268）
+
+列と表は足すだけ。平文トークンは保存しない。
+
+### agent_tokens
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| token_prefix | TEXT | 識別用（例: `byoagt_xxxxxxxx`） |
+| token_hash | TEXT | 平文の SHA-256（ユニーク） |
+| scopes | TEXT | JSON 配列（`read` / `write`） |
+| expires_at | TEXT | 有効期限 |
+| revoked_at | TEXT | 失効時刻。NULL なら未失効 |
+
+### agent_audit_log
+
+トークンごとの操作ログ。90 日で刈り取る。`meta` にトークン値は入れない。
+
+### agent_rate_limits
+
+トークン単位のレート制限バケット（`agent:<tokenId>:<kind>`）。
+
+### items に足す列
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| added_by_agent_token_id | INTEGER | エージェントが追加した印。トークン失効後も残る |
+
 ## スキーマ変更の前のバックアップ
 
 本番のスキーマを変えるコードを起動する前に、SQLite の `.backup` で一貫したコピーを取る。`data/butuyokuoh.db` を `cp` しただけでは、WAL の更新が別ファイルに残っていて、コピーが途中の状態になることがある。

@@ -266,6 +266,49 @@ function migrateDb(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_member_uploads_user ON member_uploads(user_id);
   `);
+
+  // エージェント用トークン（#268）。平文は保存せず、ハッシュと識別用プレフィックスだけ残す。
+  // 失効は revoked_at。品目の「エージェント追加」印はトークン失効後も辿れるよう列を残す。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      token_prefix TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      scopes TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      revoked_at TEXT,
+      last_used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_tokens_user ON agent_tokens(user_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_tokens_hash ON agent_tokens(token_hash);
+
+    CREATE TABLE IF NOT EXISTS agent_audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      action TEXT NOT NULL,
+      meta TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (token_id) REFERENCES agent_tokens(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_audit_token ON agent_audit_log(token_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_agent_audit_user ON agent_audit_log(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_agent_audit_created ON agent_audit_log(created_at);
+
+    CREATE TABLE IF NOT EXISTS agent_rate_limits (
+      bucket TEXT PRIMARY KEY,
+      count INTEGER NOT NULL,
+      resets_at INTEGER NOT NULL
+    );
+  `);
+  addColumnIfNotExists(db, 'items', 'added_by_agent_token_id', 'INTEGER');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_items_added_by_agent ON items(user_id, added_by_agent_token_id)');
+
   recordSchemaVersion(db);
 }
 

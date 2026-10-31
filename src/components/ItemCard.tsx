@@ -286,6 +286,9 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                 </div>
               </div>
               {Boolean(item.is_demo_sample) && <span className="text-xs text-amber-700 dark:text-amber-300">デモ商品・参考価格</span>}
+              {item.added_by_agent_token_id != null && (
+                <span className="text-xs text-sky-700 dark:text-sky-300">エージェントが追加</span>
+              )}
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">{heading || item.name}</h3>
             </div>
               {linkableHttpUrl(item.url) && <a
