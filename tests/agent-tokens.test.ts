@@ -541,3 +541,109 @@ test('agent token: me reports has_password for password members', () => serial(a
   assert.equal((noPw.json as { has_password: boolean }).has_password, false);
   installAuthTestHooks(null);
 }));
+
+test('agent token: wrong current password returns 400 WRONG_CURRENT_PASSWORD', () => serial(async () => {
+  const { hashPassword, installAuthTestHooks } = await import('../src/lib/auth');
+  const database = await db();
+  const email = `pw-wrong-${Date.now()}@example.test`;
+  const passwordHash = await hashPassword('secret1');
+  const userId = Number(database.prepare(
+    'INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)',
+  ).run(email, 'pw', passwordHash).lastInsertRowid);
+  const user = database.prepare(
+    'SELECT id, email, name, created_at, account_type FROM users WHERE id = ?',
+  ).get(userId) as Awaited<ReturnType<typeof createMember>>;
+  await setTestUser(user);
+  const jar: { value?: string; deleted?: boolean } = {};
+  const { MEMBER_TOKEN_COOKIE } = await import('../src/lib/cookie-policy');
+  installAuthTestHooks({
+    user,
+    cookies: {
+      set(_name, value) {
+        jar.value = value;
+        jar.deleted = false;
+      },
+      delete() {
+        jar.deleted = true;
+        jar.value = undefined;
+      },
+      get(name) {
+        if (name !== MEMBER_TOKEN_COOKIE || jar.deleted) return undefined;
+        return jar.value;
+      },
+    },
+  });
+
+  const wrong = await call(
+    passwordPath,
+    'PUT',
+    '/api/auth/password',
+    { currentPassword: 'not-the-password', newPassword: 'secret2' },
+    undefined,
+    sameOrigin,
+    `${sameOriginUrl}/api/auth/password`,
+  );
+  assert.equal(wrong.status, 400, wrong.text);
+  assert.equal((wrong.json as { code: string }).code, 'WRONG_CURRENT_PASSWORD');
+  assert.equal((wrong.json as { error: string }).error, '現在のパスワードが違います');
+
+  // 入力ミスではセッションを進めない（失効や cookie 差し替えを起こさない）。
+  const gen = database.prepare(
+    'SELECT session_generation FROM users WHERE id = ?',
+  ).get(userId) as { session_generation: number };
+  assert.equal(gen.session_generation, 0);
+  installAuthTestHooks(null);
+}));
+
+test('agent token: bulk trash skips purchased items and reports undoable_count', () => serial(async () => {
+  const user = await createMember('agent-undo-purchased');
+  const created = await createToken(['write'], 90, 'undo-skip');
+  const database = await db();
+  const { markItemAddedByAgent } = await import('../src/lib/agent-token');
+
+  const openId = Number(database.prepare(`
+    INSERT INTO items (user_id, name, url, source, is_purchased)
+    VALUES (?, ?, ?, 'other', 0)
+  `).run(user.id, 'open', `https://example.test/open-${created.record.id}`).lastInsertRowid);
+  const boughtId = Number(database.prepare(`
+    INSERT INTO items (user_id, name, url, source, is_purchased)
+    VALUES (?, ?, ?, 'other', 1)
+  `).run(user.id, 'bought', `https://example.test/bought-${created.record.id}`).lastInsertRowid);
+  assert.equal(markItemAddedByAgent(openId, created.record.id, user.id, database), 1);
+  assert.equal(markItemAddedByAgent(boughtId, created.record.id, user.id, database), 1);
+
+  const listed = await call(tokensPath, 'GET', '/api/agent-tokens');
+  assert.equal(listed.status, 200, listed.text);
+  const tokens = (listed.json as { tokens: { id: number; undoable_count: number }[] }).tokens;
+  const row = tokens.find((token) => token.id === created.record.id);
+  assert.ok(row);
+  assert.equal(row!.undoable_count, 1);
+
+  const undone = await call(
+    undoPath,
+    'POST',
+    `/api/agent-tokens/${created.record.id}/undo`,
+    undefined,
+    { id: String(created.record.id) },
+    sameOrigin,
+    `${sameOriginUrl}/api/agent-tokens/${created.record.id}/undo`,
+  );
+  assert.equal(undone.status, 200, undone.text);
+  assert.equal((undone.json as { moved: number }).moved, 1);
+
+  const open = database.prepare(
+    'SELECT deleted_at, is_purchased FROM items WHERE id = ?',
+  ).get(openId) as { deleted_at: string | null; is_purchased: number };
+  const bought = database.prepare(
+    'SELECT deleted_at, is_purchased FROM items WHERE id = ?',
+  ).get(boughtId) as { deleted_at: string | null; is_purchased: number };
+  assert.ok(open.deleted_at);
+  assert.equal(open.is_purchased, 0);
+  assert.equal(bought.deleted_at, null);
+  assert.equal(bought.is_purchased, 1);
+
+  const listedAfter = await call(tokensPath, 'GET', '/api/agent-tokens');
+  const after = (listedAfter.json as { tokens: { id: number; undoable_count: number }[] }).tokens
+    .find((token) => token.id === created.record.id);
+  assert.equal(after?.undoable_count, 0);
+}));

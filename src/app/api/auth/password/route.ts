@@ -55,7 +55,11 @@ async function handlePUT(request: NextRequest) {
 
   const matchedGeneration = await confirmVerifiedPassword(row.id, currentPassword, row.password_hash);
   if (matchedGeneration == null) {
-    return NextResponse.json({ error: '現在のパスワードが正しくありません' }, { status: 401 });
+    // 401 にすると apiFetch がセッション切れ扱いするため、入力ミスは 400 にする。
+    return NextResponse.json(
+      { error: '現在のパスワードが違います', code: 'WRONG_CURRENT_PASSWORD' },
+      { status: 400 },
+    );
   }
 
   // bcrypt はトランザクションの外で計算し、DB 更新だけを原子的にする。

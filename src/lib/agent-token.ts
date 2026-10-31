@@ -51,6 +51,8 @@ export interface AgentTokenPublic {
   last_used_at: string | null;
   created_at: string;
   active: boolean;
+  /** ゴミ箱へ一括移動できる件数（未削除・未購入のみ） */
+  undoable_count: number;
 }
 
 export interface AgentAuthContext {
@@ -109,7 +111,7 @@ function isExpired(expiresAt: string, now = Date.now()): boolean {
   return !Number.isFinite(ms) || ms <= now;
 }
 
-function publicToken(row: AgentTokenRow, now = Date.now()): AgentTokenPublic {
+function publicToken(row: AgentTokenRow, db: Database.Database, now = Date.now()): AgentTokenPublic {
   const scopes = scopesFromStored(row.scopes);
   const active = !row.revoked_at && !isExpired(row.expires_at, now);
   return {
@@ -122,6 +124,7 @@ function publicToken(row: AgentTokenRow, now = Date.now()): AgentTokenPublic {
     last_used_at: row.last_used_at,
     created_at: row.created_at,
     active,
+    undoable_count: countActiveItemsAddedByAgent(row.user_id, row.id, db),
   };
 }
 
@@ -199,14 +202,14 @@ export function createAgentToken(
   const id = Number(result.lastInsertRowid);
   const row = db.prepare('SELECT * FROM agent_tokens WHERE id = ?').get(id) as AgentTokenRow;
   recordAgentAudit(id, userId, 'token.create', { scopes, expires_in_days: days }, db);
-  return { token: plaintext, record: publicToken(row) };
+  return { token: plaintext, record: publicToken(row, db) };
 }
 
 export function listAgentTokens(userId: number, db: Database.Database = getDb()): AgentTokenPublic[] {
   const rows = db.prepare(
     'SELECT * FROM agent_tokens WHERE user_id = ? ORDER BY id DESC',
   ).all(userId) as AgentTokenRow[];
-  return rows.map((row) => publicToken(row));
+  return rows.map((row) => publicToken(row, db));
 }
 
 export function revokeAgentToken(userId: number, tokenId: number, db: Database.Database = getDb()): boolean {
@@ -405,12 +408,14 @@ export function trashItemsAddedByAgent(
     'SELECT id FROM agent_tokens WHERE id = ? AND user_id = ?',
   ).get(tokenId, userId);
   if (!owned) return 0;
+  // 購入済みは履歴として残す。未削除かつ未購入だけをゴミ箱へ。
   const result = db.prepare(`
     UPDATE items
     SET deleted_at = datetime('now'), updated_at = datetime('now')
     WHERE user_id = ?
       AND added_by_agent_token_id = ?
       AND deleted_at IS NULL
+      AND is_purchased = 0
   `).run(userId, tokenId);
   if (result.changes > 0) {
     recordAgentAudit(tokenId, userId, 'items.bulk_trash', { count: result.changes }, db);
@@ -425,7 +430,10 @@ export function countActiveItemsAddedByAgent(
 ): number {
   const row = db.prepare(`
     SELECT COUNT(*) AS count FROM items
-    WHERE user_id = ? AND added_by_agent_token_id = ? AND deleted_at IS NULL
+    WHERE user_id = ?
+      AND added_by_agent_token_id = ?
+      AND deleted_at IS NULL
+      AND is_purchased = 0
   `).get(userId, tokenId) as { count: number };
   return row.count;
 }

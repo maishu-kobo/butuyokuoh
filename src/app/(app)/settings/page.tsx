@@ -21,6 +21,7 @@ type AgentTokenRecord = {
   last_used_at: string | null;
   created_at: string;
   active: boolean;
+  undoable_count?: number;
 };
 
 export default function SettingsPage() {
@@ -122,20 +123,19 @@ export default function SettingsPage() {
     setHasPassword(!!data.has_password);
   };
 
-  useEffect(() => {
-    // トークンを取得
-    const fetchToken = async () => {
-      try {
-        const res = await apiFetch('/api/auth/token');
-        if (res.ok) {
-          const data = await res.json();
-          setDisplayToken(data.token);
-        }
-      } catch (e) {
-        console.error('Failed to fetch token');
+  const fetchExtensionToken = async () => {
+    try {
+      const res = await apiFetch('/api/auth/token');
+      if (res.ok) {
+        const data = await res.json() as { token?: string };
+        setDisplayToken(data.token ?? null);
       }
-    };
-    
+    } catch (e) {
+      console.error('Failed to fetch token');
+    }
+  };
+
+  useEffect(() => {
     // 通知設定を取得
     const fetchNotifySettings = async () => {
       try {
@@ -157,7 +157,7 @@ export default function SettingsPage() {
     if (user) {
       // 取得は今までどおり同時に始める。await で包むと、新しい react-hooks が中の setState を同期呼び出しと誤認しない。
       if (!isGuest) {
-        void (async () => { await fetchToken(); })();
+        void (async () => { await fetchExtensionToken(); })();
         void (async () => { await fetchNotifySettings(); })();
         void (async () => { await fetchAgentTokens(); })();
         void (async () => { await fetchHasPassword(); })();
@@ -337,7 +337,8 @@ export default function SettingsPage() {
   };
 
   const undoAgentAdditions = async (id: number) => {
-    if (!confirm('このトークンが追加した品目をまとめてゴミ箱へ移しますか？')) return;
+    const count = agentTokens.find((token) => token.id === id)?.undoable_count ?? 0;
+    if (!confirm(`このトークンが追加した未購入の品目 ${count} 件をゴミ箱へ移しますか？（購入済みは対象外です）`)) return;
     setAgentBusyId(id);
     setAgentError('');
     try {
@@ -348,6 +349,7 @@ export default function SettingsPage() {
         return;
       }
       alert(`${data.moved ?? 0} 件をゴミ箱へ移しました`);
+      await fetchAgentTokens();
     } catch {
       setAgentError('通信に失敗しました');
     } finally {
@@ -385,20 +387,27 @@ export default function SettingsPage() {
     setPasswordMessage('');
     setSavingPassword(true);
     try {
+      // 入力ミスの 400 をフォーム内に出す。notifyError を切ってバナーと二重にしない。
       const res = await apiFetch('/api/auth/password', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentPassword, newPassword }),
-      });
-      const data = await res.json().catch(() => ({})) as { error?: string };
+      }, { notifyError: false });
+      const data = await res.json().catch(() => ({})) as { error?: string; code?: string };
       if (!res.ok) {
-        setPasswordError(data.error || 'パスワードを変更できませんでした');
+        if (data.code === 'WRONG_CURRENT_PASSWORD') {
+          setPasswordError('現在のパスワードが違います');
+        } else {
+          setPasswordError(data.error || 'パスワードを変更できませんでした');
+        }
         return;
       }
       setCurrentPassword('');
       setNewPassword('');
       setPasswordMessage('パスワードを変更し、エージェント用トークンをすべて失効しました');
       await fetchAgentTokens();
+      // session_generation が進むので、拡張用 JWT も新しいものを読み直す。
+      await fetchExtensionToken();
     } catch {
       setPasswordError('通信に失敗しました');
     } finally {
