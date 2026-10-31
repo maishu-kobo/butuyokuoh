@@ -1,16 +1,27 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { NextRequest } from 'next/server';
 import type Database from 'better-sqlite3';
+import {
+  AGENT_AUDIT_RETENTION_DAYS,
+  AGENT_RATE_LIMITS,
+  AGENT_TOKEN_DEFAULT_DAYS,
+  AGENT_TOKEN_MAX_DAYS,
+  type AgentRateKind,
+} from './agent-access-limits';
 import { getDb } from './db';
 import { GuestError } from './guest';
 
+export {
+  AGENT_AUDIT_RETENTION_DAYS,
+  AGENT_RATE_LIMITS,
+  AGENT_TOKEN_DEFAULT_DAYS,
+  AGENT_TOKEN_MAX_DAYS,
+} from './agent-access-limits';
+export type { AgentRateKind } from './agent-access-limits';
+
 export const AGENT_TOKEN_PREFIX = 'byoagt_';
-export const AGENT_TOKEN_DEFAULT_DAYS = 90;
-export const AGENT_TOKEN_MAX_DAYS = 365;
-export const AGENT_AUDIT_RETENTION_DAYS = 90;
 
 export type AgentScope = 'read' | 'write';
-export type AgentRateKind = 'read' | 'add' | 'add_url' | 'add_day';
 
 // add / add_url / read は直近1分の窓。add_day は「最初の追加から24時間」の固定窓
 // （窓が切れるまで resets_at を動かさず、切れたら count を1に戻して新しい窓を始める）。
@@ -19,13 +30,6 @@ const RATE_WINDOW_MS: Record<AgentRateKind, number> = {
   add: 60_000,
   add_url: 60_000,
   add_day: 86_400_000,
-};
-
-const RATE_LIMITS: Record<AgentRateKind, number> = {
-  read: 60,
-  add: 20,
-  add_url: 10,
-  add_day: 200,
 };
 
 export interface AgentTokenRow {
@@ -293,7 +297,7 @@ export function consumeAgentRate(
   db: Database.Database = getDb(),
   now = Date.now(),
 ): void {
-  const limit = RATE_LIMITS[kind];
+  const limit = AGENT_RATE_LIMITS[kind];
   const windowMs = RATE_WINDOW_MS[kind];
   const bucket = `agent:${tokenId}:${kind}`;
   db.transaction(() => {
