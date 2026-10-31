@@ -277,8 +277,9 @@ test('agent mcp: initialize, tools/list, tools/call with scope filter', () => se
       method: 'initialize',
       params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 't', version: '1' } },
     }, undefined, { Accept: 'application/json, text/event-stream' });
-    assert.equal(missing.status, 200, missing.text);
+    assert.equal(missing.status, 401, missing.text);
     assert.equal((missing.json as { error?: { code: number } }).error?.code, -32001);
+    assert.match(missing.headers.get('www-authenticate') || '', /resource_metadata=/);
     void noAuth;
 
     const init = await mcpCall(write.token, {

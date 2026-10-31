@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSameOrigin, withAccess } from '@/lib/api-access';
-import { revokeAllAgentTokens } from '@/lib/agent-token';
+import { revokeAllAgentAccessIncludingOAuth } from '@/lib/agent-oauth';
 import {
   confirmVerifiedPassword,
   generateToken,
@@ -72,7 +72,7 @@ async function handlePUT(request: NextRequest) {
        WHERE id = ? AND account_type = 'member' AND password_hash = ?`,
     ).run(nextHash, row.id, previousHash);
     if (updated.changes !== 1) return false;
-    revokeAllAgentTokens(row.id, db);
+    revokeAllAgentAccessIncludingOAuth(row.id, db);
     if (!revokeMemberSessions(row.id)) return false;
     return true;
   }).immediate();

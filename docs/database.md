@@ -263,6 +263,29 @@ CREATE TABLE user_notification_settings (
 |--------|------|------|
 | added_by_agent_token_id | INTEGER | エージェントが追加した印。トークン失効後も残る |
 
+## エージェント向け OAuth（#272）
+
+アクセス・トークン本体は `agent_tokens`（`byoagt_`）を再利用する。列と表は足すだけ。
+
+### agent_tokens に足す列
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| oauth_client_id | TEXT | OAuth 発行時の client_id。PAT は NULL |
+| oauth_resource | TEXT | RFC 8707 の resource（MCP URL）。PAT は NULL |
+
+### agent_oauth_clients
+
+DCR または Client ID Metadata Document で得たクライアント。`redirect_uris` などは JSON。平文の client_secret は保存しない。
+
+### agent_oauth_pending / agent_oauth_auth_codes
+
+同意前のリクエストと、1回限りの認可コード（ハッシュのみ）。`state` はクライアントごとに1回限り。
+
+### agent_oauth_refresh_tokens
+
+リフレッシュ・トークン（ハッシュのみ）。使うたびにローテーションし、紐づく access（`agent_tokens`）も失効させる。パスワード変更時は access と合わせて失効。
+
 ## スキーマ変更の前のバックアップ
 
 本番のスキーマを変えるコードを起動する前に、SQLite の `.backup` で一貫したコピーを取る。`data/butuyokuoh.db` を `cp` しただけでは、WAL の更新が別ファイルに残っていて、コピーが途中の状態になることがある。

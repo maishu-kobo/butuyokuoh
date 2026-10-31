@@ -309,6 +309,82 @@ function migrateDb(db: Database.Database) {
   addColumnIfNotExists(db, 'items', 'added_by_agent_token_id', 'INTEGER');
   db.exec('CREATE INDEX IF NOT EXISTS idx_items_added_by_agent ON items(user_id, added_by_agent_token_id)');
 
+  // エージェント向け OAuth 2.1（#272）。アクセス・トークン本体は agent_tokens（byoagt_）を再利用する。
+  addColumnIfNotExists(db, 'agent_tokens', 'oauth_client_id', 'TEXT');
+  addColumnIfNotExists(db, 'agent_tokens', 'oauth_resource', 'TEXT');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_oauth_clients (
+      client_id TEXT PRIMARY KEY,
+      client_secret_hash TEXT,
+      client_name TEXT NOT NULL,
+      redirect_uris TEXT NOT NULL,
+      grant_types TEXT NOT NULL,
+      response_types TEXT NOT NULL,
+      token_endpoint_auth_method TEXT NOT NULL,
+      registration_type TEXT NOT NULL,
+      metadata_url TEXT,
+      metadata_json TEXT,
+      metadata_fetched_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      revoked_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_oauth_pending (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      redirect_uri TEXT NOT NULL,
+      scopes TEXT NOT NULL,
+      code_challenge TEXT NOT NULL,
+      code_challenge_method TEXT NOT NULL,
+      resource TEXT NOT NULL,
+      state TEXT,
+      state_hash TEXT,
+      csrf_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      consumed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_oauth_pending_state
+      ON agent_oauth_pending(client_id, state_hash);
+
+    CREATE TABLE IF NOT EXISTS agent_oauth_auth_codes (
+      code_hash TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      redirect_uri TEXT NOT NULL,
+      scopes TEXT NOT NULL,
+      code_challenge TEXT NOT NULL,
+      code_challenge_method TEXT NOT NULL,
+      resource TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      consumed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_oauth_codes_client
+      ON agent_oauth_auth_codes(client_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS agent_oauth_refresh_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT NOT NULL UNIQUE,
+      agent_token_id INTEGER NOT NULL,
+      client_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      resource TEXT NOT NULL,
+      scopes TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      revoked_at TEXT,
+      replaced_by_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (agent_token_id) REFERENCES agent_tokens(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_oauth_refresh_user
+      ON agent_oauth_refresh_tokens(user_id, revoked_at);
+    CREATE INDEX IF NOT EXISTS idx_agent_oauth_refresh_token
+      ON agent_oauth_refresh_tokens(agent_token_id);
+  `);
+
   recordSchemaVersion(db);
 }
 

@@ -19,6 +19,7 @@
 - 通知設定
 - エージェント用トークン（作成・失効・操作ログ・追加分の一括取り消し）
 - エージェント向け REST API（`/api/agent/v1`）とリモート MCP（`/api/mcp`）。使い方は `/llms.txt`、仕様は `/openapi/agent-v1.yaml`
+- エージェント向け OAuth 2.1（PKCE、CIMD / DCR、Protected Resource Metadata）。アクセス・トークンは `byoagt_` を再利用
 - パスワード変更（変更時にエージェント用トークンをすべて失効）
 - Chrome 拡張機能用トークン（`extension` スコープの byoagt_。ログイン用 JWT は出さない）
 - エクスポート

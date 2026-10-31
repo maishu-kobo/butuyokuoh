@@ -6,7 +6,13 @@ import { signIn } from 'next-auth/react';
 import { Crown, Mail, Lock, User, Loader2 } from 'lucide-react';
 import LegalLinks from './LegalLinks';
 
-export default function LoginForm() {
+export default function LoginForm({
+  callbackUrl = '/',
+  hideGuest = false,
+}: {
+  callbackUrl?: string;
+  hideGuest?: boolean;
+} = {}) {
   const { login, register, startGuest, guestEnabled, ttlHours, googleLogin } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -14,6 +20,7 @@ export default function LoginForm() {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const showGuest = guestEnabled && !hideGuest;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,6 +33,9 @@ export default function LoginForm() {
       } else {
         await register(email, password, name);
       }
+      if (callbackUrl && callbackUrl !== '/' && typeof window !== 'undefined') {
+        window.location.assign(callbackUrl);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'エラーが発生しました');
     } finally {
@@ -37,8 +47,8 @@ export default function LoginForm() {
     setError('');
     setLoading(true);
     try {
-      await signIn('google', { callbackUrl: '/' });
-    } catch (err) {
+      await signIn('google', { callbackUrl });
+    } catch {
       setError('Googleログインに失敗しました');
       setLoading(false);
     }
@@ -60,7 +70,7 @@ export default function LoginForm() {
 
         {/* フォーム */}
         <div className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
-          {guestEnabled && <div className="mb-6">
+          {showGuest && <div className="mb-6">
             <button disabled={loading} onClick={async () => {
               setLoading(true); setError('');
               try { await startGuest(); } catch (err) { setError(err instanceof Error ? err.message : '体験を開始できませんでした'); }
