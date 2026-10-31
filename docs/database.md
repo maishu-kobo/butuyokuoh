@@ -236,7 +236,7 @@ CREATE TABLE user_notification_settings (
 |--------|------|------|
 | token_prefix | TEXT | 識別用（例: `byoagt_xxxxxxxx`） |
 | token_hash | TEXT | 平文の SHA-256（ユニーク） |
-| scopes | TEXT | JSON 配列（`read` / `write`） |
+| scopes | TEXT | JSON 配列（`read` / `write` / `extension`）。`extension` は Chrome 拡張 API 専用（#271） |
 | expires_at | TEXT | 有効期限 |
 | revoked_at | TEXT | 失効時刻。NULL なら未失効 |
 

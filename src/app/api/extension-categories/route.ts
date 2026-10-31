@@ -1,6 +1,12 @@
+import { guestErrorResponse } from '@/lib/api-access';
+import { GuestError } from '@/lib/guest';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getUserIdFromToken } from '@/lib/auth';
+import {
+  applyExtensionAuthHeaders,
+  extensionCorsHeaders,
+  resolveExtensionAuth,
+} from '@/lib/extension-auth';
 
 interface Category {
   id: number;
@@ -8,32 +14,12 @@ interface Category {
   color: string;
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+const corsHeaders = extensionCorsHeaders('GET, OPTIONS');
 
 export async function GET(request: NextRequest) {
   try {
-    // Authorizationヘッダーからトークンを取得
-    const authHeader = request.headers.get('Authorization');
-    const token = authHeader?.replace('Bearer ', '');
-
-    if (!token) {
-      return NextResponse.json(
-        { error: '認証トークンが必要です' },
-        { status: 401, headers: corsHeaders }
-      );
-    }
-
-    const userId = getUserIdFromToken(token);
-    if (!userId) {
-      return NextResponse.json(
-        { error: '無効なトークンです' },
-        { status: 401, headers: corsHeaders }
-      );
-    }
+    const auth = resolveExtensionAuth(request, { rate: 'read' });
+    const userId = auth.userId;
 
     const db = getDb();
     const categories = db.prepare(`
@@ -43,8 +29,15 @@ export async function GET(request: NextRequest) {
       ORDER BY sort_order, name
     `).all(userId) as Category[];
 
-    return NextResponse.json(categories, { headers: corsHeaders });
+    const headers = { ...corsHeaders };
+    applyExtensionAuthHeaders(headers, auth);
+    return NextResponse.json(categories, { headers });
   } catch (error) {
+    if (error instanceof GuestError) {
+      const response = guestErrorResponse(error);
+      for (const [key, value] of Object.entries(corsHeaders)) response.headers.set(key, value);
+      return response;
+    }
     console.error('Extension categories error:', error);
     return NextResponse.json(
       { error: 'カテゴリの取得に失敗しました' },
