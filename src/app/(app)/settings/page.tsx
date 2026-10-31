@@ -45,7 +45,7 @@ export default function SettingsPage() {
   const [agentName, setAgentName] = useState('');
   const [agentScopeRead, setAgentScopeRead] = useState(true);
   const [agentScopeWrite, setAgentScopeWrite] = useState(true);
-  const [agentDays, setAgentDays] = useState(90);
+  const [agentDays, setAgentDays] = useState<number | ''>(90);
   const [creatingAgentToken, setCreatingAgentToken] = useState(false);
   const [createdAgentPlaintext, setCreatedAgentPlaintext] = useState<string | null>(null);
   const [copiedAgent, setCopiedAgent] = useState(false);
@@ -54,7 +54,8 @@ export default function SettingsPage() {
   const [agentAuditId, setAgentAuditId] = useState<number | null>(null);
   const [agentAuditEntries, setAgentAuditEntries] = useState<{ id: number; action: string; meta: string | null; created_at: string }[]>([]);
 
-  // パスワード変更
+  // パスワード変更（Google のみの会員は欄を出さない）
+  const [hasPassword, setHasPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [passwordMessage, setPasswordMessage] = useState('');
@@ -111,6 +112,16 @@ export default function SettingsPage() {
     setAgentTokens(data.tokens || []);
   };
 
+  const fetchHasPassword = async () => {
+    const res = await apiFetch('/api/auth/me');
+    if (!res.ok) {
+      setHasPassword(false);
+      return;
+    }
+    const data = await res.json() as { has_password?: boolean };
+    setHasPassword(!!data.has_password);
+  };
+
   useEffect(() => {
     // トークンを取得
     const fetchToken = async () => {
@@ -149,6 +160,7 @@ export default function SettingsPage() {
         void (async () => { await fetchToken(); })();
         void (async () => { await fetchNotifySettings(); })();
         void (async () => { await fetchAgentTokens(); })();
+        void (async () => { await fetchHasPassword(); })();
       }
       void (async () => { await fetchCategories(); })();
       void (async () => { await fetchGroups(); })();
@@ -271,12 +283,17 @@ export default function SettingsPage() {
       setAgentError('権限を1つ以上選んでください');
       return;
     }
+    const days = agentDays === '' ? 90 : agentDays;
+    if (!Number.isSafeInteger(days) || days < 1 || days > 365) {
+      setAgentError('有効期限は1〜365日です');
+      return;
+    }
     setCreatingAgentToken(true);
     try {
       const res = await apiFetch('/api/agent-tokens', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: agentName, scopes, expiresInDays: agentDays }),
+        body: JSON.stringify({ name: agentName, scopes, expiresInDays: days }),
       });
       const data = await res.json().catch(() => ({})) as { token?: string; error?: string };
       if (!res.ok || !data.token) {
@@ -306,11 +323,14 @@ export default function SettingsPage() {
     setAgentError('');
     try {
       const res = await apiFetch(`/api/agent-tokens/${id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({})) as { error?: string };
       if (!res.ok) {
-        setAgentError('失効できませんでした');
+        setAgentError(data.error || '失効できませんでした');
         return;
       }
       await fetchAgentTokens();
+    } catch {
+      setAgentError('通信に失敗しました');
     } finally {
       setAgentBusyId(null);
     }
@@ -328,6 +348,8 @@ export default function SettingsPage() {
         return;
       }
       alert(`${data.moved ?? 0} 件をゴミ箱へ移しました`);
+    } catch {
+      setAgentError('通信に失敗しました');
     } finally {
       setAgentBusyId(null);
     }
@@ -340,15 +362,18 @@ export default function SettingsPage() {
       return;
     }
     setAgentBusyId(id);
+    setAgentError('');
     try {
       const res = await apiFetch(`/api/agent-tokens/${id}/audit`);
+      const data = await res.json().catch(() => ({})) as { entries?: typeof agentAuditEntries; error?: string };
       if (!res.ok) {
-        setAgentError('操作ログを取得できませんでした');
+        setAgentError(data.error || '操作ログを取得できませんでした');
         return;
       }
-      const data = await res.json() as { entries: typeof agentAuditEntries };
       setAgentAuditId(id);
       setAgentAuditEntries(data.entries || []);
+    } catch {
+      setAgentError('通信に失敗しました');
     } finally {
       setAgentBusyId(null);
     }
@@ -684,10 +709,18 @@ export default function SettingsPage() {
                       min={1}
                       max={365}
                       value={agentDays}
-                      onChange={(e) => setAgentDays(Number(e.target.value) || 90)}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') {
+                          setAgentDays('');
+                          return;
+                        }
+                        const next = Number(raw);
+                        setAgentDays(Number.isFinite(next) ? next : '');
+                      }}
                       className="mt-1 w-28 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
                     />
-                    <span className="ml-2 text-[var(--color-muted)]">既定 90 / 最長 365</span>
+                    <span className="ml-2 text-[var(--color-muted)]">空欄なら 90 / 最長 365</span>
                   </label>
                   <button
                     type="button"
@@ -782,7 +815,8 @@ export default function SettingsPage() {
             )}
           </div>
 
-          {/* パスワード変更 */}
+          {/* パスワード変更（Google のみの会員は出さない） */}
+          {hasPassword && (
           <div className="bg-[var(--color-card)] rounded-lg shadow">
             <button onClick={() => toggleSection('password')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
@@ -794,6 +828,7 @@ export default function SettingsPage() {
             {openSections.password && (
               <div className="px-4 pb-4 border-t pt-4 space-y-3">
                 <p className="text-sm text-[var(--color-muted)]">変更するとエージェント用トークンはすべて失効します。ログアウトでは失効しません。</p>
+                <p className="text-sm text-[var(--color-muted)]">他の端末からログアウトされ、Chrome 拡張のトークンも再コピーが必要です。</p>
                 <input
                   type="password"
                   value={currentPassword}
@@ -824,6 +859,7 @@ export default function SettingsPage() {
               </div>
             )}
           </div>
+          )}
 
           {/* Chrome拡張機能用トークン */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">

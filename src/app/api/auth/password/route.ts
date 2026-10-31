@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withAccess } from '@/lib/api-access';
+import { requireSameOrigin, withAccess } from '@/lib/api-access';
 import { revokeAllAgentTokens } from '@/lib/agent-token';
 import {
   confirmVerifiedPassword,
@@ -13,6 +13,7 @@ import {
 import { getDb } from '@/lib/db';
 
 async function handlePUT(request: NextRequest) {
+  requireSameOrigin(request);
   const user = await getCurrentUser();
   if (!user || user.account_type !== 'member') {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -57,14 +58,25 @@ async function handlePUT(request: NextRequest) {
     return NextResponse.json({ error: '現在のパスワードが正しくありません' }, { status: 401 });
   }
 
+  // bcrypt はトランザクションの外で計算し、DB 更新だけを原子的にする。
   const nextHash = await hashPassword(newPassword);
-  // パスワード変更: エージェント用トークンはすべて失効。ログアウト用の世代も進める。
-  // いまの画面セッションは新しい JWT を発行して継続する。
-  db.prepare(
-    `UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ? AND account_type = 'member'`,
-  ).run(nextHash, row.id);
-  revokeAllAgentTokens(row.id, db);
-  revokeMemberSessions(row.id);
+  const previousHash = row.password_hash;
+  const committed = db.transaction(() => {
+    const updated = db.prepare(
+      `UPDATE users
+       SET password_hash = ?, updated_at = datetime('now')
+       WHERE id = ? AND account_type = 'member' AND password_hash = ?`,
+    ).run(nextHash, row.id, previousHash);
+    if (updated.changes !== 1) return false;
+    revokeAllAgentTokens(row.id, db);
+    if (!revokeMemberSessions(row.id)) return false;
+    return true;
+  }).immediate();
+
+  if (!committed) {
+    return NextResponse.json({ error: 'パスワードを変更できませんでした。もう一度お試しください。' }, { status: 409 });
+  }
+
   const member: User = {
     id: row.id,
     account_type: 'member',
@@ -73,7 +85,7 @@ async function handlePUT(request: NextRequest) {
     created_at: row.created_at,
   };
   const freshGeneration = (db.prepare(
-    "SELECT session_generation FROM users WHERE id = ?",
+    'SELECT session_generation FROM users WHERE id = ?',
   ).get(row.id) as { session_generation: number }).session_generation;
   const token = generateToken(member, freshGeneration);
   await setAuthCookie(token);

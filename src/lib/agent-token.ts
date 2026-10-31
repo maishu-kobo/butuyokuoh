@@ -12,6 +12,8 @@ export const AGENT_AUDIT_RETENTION_DAYS = 90;
 export type AgentScope = 'read' | 'write';
 export type AgentRateKind = 'read' | 'add' | 'add_url' | 'add_day';
 
+// add / add_url / read は直近1分の窓。add_day は「最初の追加から24時間」の固定窓
+// （窓が切れるまで resets_at を動かさず、切れたら count を1に戻して新しい窓を始める）。
 const RATE_WINDOW_MS: Record<AgentRateKind, number> = {
   read: 60_000,
   add: 60_000,
@@ -154,6 +156,10 @@ export function recordAgentAudit(
   pruneAgentAuditLog(db);
 }
 
+export function clearAgentRateBuckets(tokenId: number, db: Database.Database = getDb()): void {
+  db.prepare('DELETE FROM agent_rate_limits WHERE bucket LIKE ?').run(`agent:${tokenId}:%`);
+}
+
 export function createAgentToken(
   userId: number,
   input: { name: string; scopes: AgentScope[]; expiresInDays?: number },
@@ -208,10 +214,14 @@ export function revokeAgentToken(userId: number, tokenId: number, db: Database.D
     'SELECT * FROM agent_tokens WHERE id = ? AND user_id = ?',
   ).get(tokenId, userId) as AgentTokenRow | undefined;
   if (!row) return false;
-  if (row.revoked_at) return true;
+  if (row.revoked_at) {
+    clearAgentRateBuckets(tokenId, db);
+    return true;
+  }
   db.prepare(
     `UPDATE agent_tokens SET revoked_at = datetime('now') WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
   ).run(tokenId, userId);
+  clearAgentRateBuckets(tokenId, db);
   recordAgentAudit(tokenId, userId, 'token.revoke', null, db);
   return true;
 }
@@ -225,6 +235,7 @@ export function revokeAllAgentTokens(userId: number, db: Database.Database = get
     `UPDATE agent_tokens SET revoked_at = datetime('now') WHERE user_id = ? AND revoked_at IS NULL`,
   ).run(userId);
   for (const row of rows) {
+    clearAgentRateBuckets(row.id, db);
     recordAgentAudit(row.id, userId, 'token.revoke_all', { reason: 'password_change' }, db);
   }
   return rows.length;
@@ -294,6 +305,7 @@ export function consumeAgentRate(
       );
     }
     if (!row || row.resets_at <= now) {
+      // 新しい窓の開始。add_day もここで固定の24時間窓を切る。
       db.prepare(`INSERT INTO agent_rate_limits (bucket, count, resets_at) VALUES (?, 1, ?)
         ON CONFLICT(bucket) DO UPDATE SET count = 1, resets_at = excluded.resets_at`)
         .run(bucket, now + windowMs);
@@ -312,10 +324,23 @@ export function extractBearerToken(request: NextRequest): string | null {
   return token || null;
 }
 
+function normalizeRates(rate?: AgentRateKind | AgentRateKind[]): AgentRateKind[] {
+  if (!rate) return [];
+  return Array.isArray(rate) ? rate : [rate];
+}
+
+/**
+ * エージェント用 Bearer を検証する。
+ * 監査は拒否・レート制限・明示の auditAction（書き込みなど）だけ。成功した読み取りは記録しない。
+ */
 export async function requireAgentToken(
   request: NextRequest,
   scope: AgentScope,
-  options?: { rate?: AgentRateKind; auditAction?: string; auditMeta?: Record<string, unknown> },
+  options?: {
+    rate?: AgentRateKind | AgentRateKind[];
+    auditAction?: string;
+    auditMeta?: Record<string, unknown>;
+  },
 ): Promise<AgentAuthContext> {
   const plaintext = extractBearerToken(request);
   if (!plaintext) {
@@ -333,35 +358,42 @@ export async function requireAgentToken(
     recordAgentAudit(auth.token.id, auth.userId, 'auth.scope_denied', { required: scope }, db);
     throw new GuestError(403, 'AGENT_SCOPE_DENIED', 'この操作に必要な権限がありません');
   }
-  if (options?.rate) {
+  const rates = normalizeRates(options?.rate);
+  for (const kind of rates) {
     try {
-      consumeAgentRate(auth.token.id, options.rate, db);
+      consumeAgentRate(auth.token.id, kind, db);
     } catch (error) {
       if (error instanceof GuestError && error.code === 'AGENT_RATE_LIMITED') {
-        recordAgentAudit(auth.token.id, auth.userId, 'auth.rate_limited', { kind: options.rate }, db);
+        recordAgentAudit(auth.token.id, auth.userId, 'auth.rate_limited', { kind }, db);
       }
       throw error;
     }
   }
   touchAgentToken(auth.token.id, db);
-  recordAgentAudit(
-    auth.token.id,
-    auth.userId,
-    options?.auditAction ?? 'auth.ok',
-    { scope, ...(options?.auditMeta ?? {}) },
-    db,
-  );
+  // 成功した読み取りは記録しない。書き込みなどは呼び出し側が auditAction を渡す。
+  if (options?.auditAction) {
+    recordAgentAudit(
+      auth.token.id,
+      auth.userId,
+      options.auditAction,
+      { scope, ...(options.auditMeta ?? {}) },
+      db,
+    );
+  }
   return auth;
 }
 
 export function markItemAddedByAgent(
   itemId: number,
   tokenId: number,
+  userId: number,
   db: Database.Database = getDb(),
-): void {
-  db.prepare(
-    'UPDATE items SET added_by_agent_token_id = ?, updated_at = datetime(\'now\') WHERE id = ?',
-  ).run(tokenId, itemId);
+): number {
+  return db.prepare(
+    `UPDATE items
+     SET added_by_agent_token_id = ?, updated_at = datetime('now')
+     WHERE id = ? AND user_id = ?`,
+  ).run(tokenId, itemId, userId).changes;
 }
 
 export function trashItemsAddedByAgent(

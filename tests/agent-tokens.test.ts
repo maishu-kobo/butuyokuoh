@@ -15,6 +15,11 @@ const itemsPath = '../src/app/api/items/route.ts';
 const mePath = '../src/app/api/auth/me/route.ts';
 const accountPath = '../src/app/api/auth/account/route.ts';
 
+const sameOrigin = {
+  origin: 'http://localhost',
+} as const;
+const sameOriginUrl = 'http://localhost';
+
 let exclusive: Promise<void> = Promise.resolve();
 
 function serial(run: () => Promise<void>): Promise<void> {
@@ -28,11 +33,15 @@ async function createToken(
   expiresInDays = 90,
   name = 'test-agent',
 ) {
-  const created = await call(tokensPath, 'POST', '/api/agent-tokens', {
-    name,
-    scopes,
-    expiresInDays,
-  });
+  const created = await call(
+    tokensPath,
+    'POST',
+    '/api/agent-tokens',
+    { name, scopes, expiresInDays },
+    undefined,
+    sameOrigin,
+    `${sameOriginUrl}/api/agent-tokens`,
+  );
   assert.equal(created.status, 201, created.text);
   const body = created.json as {
     token: string;
@@ -64,9 +73,15 @@ test('agent token: hash-only storage, prefix, create/list/revoke', () => serial(
   assert.ok(tokens.some((t) => t.id === created.record.id && t.active));
   assert.ok(!JSON.stringify(listed.json).includes(created.token));
 
-  const revoked = await call(tokenIdPath, 'DELETE', `/api/agent-tokens/${created.record.id}`, undefined, {
-    id: String(created.record.id),
-  });
+  const revoked = await call(
+    tokenIdPath,
+    'DELETE',
+    `/api/agent-tokens/${created.record.id}`,
+    undefined,
+    { id: String(created.record.id) },
+    sameOrigin,
+    `${sameOriginUrl}/api/agent-tokens/${created.record.id}`,
+  );
   assert.equal(revoked.status, 200, revoked.text);
 
   const me = await call(agentMePath, 'GET', '/api/agent/v1/me', undefined, undefined, {
@@ -74,6 +89,57 @@ test('agent token: hash-only storage, prefix, create/list/revoke', () => serial(
   });
   assert.equal(me.status, 401, me.text);
   await setTestUser(user);
+}));
+
+test('agent token: mutating cookie APIs require same origin', () => serial(async () => {
+  await createMember('agent-origin');
+  const deniedCreate = await call(tokensPath, 'POST', '/api/agent-tokens', {
+    name: 'no-origin',
+    scopes: ['read'],
+  });
+  assert.equal(deniedCreate.status, 403, deniedCreate.text);
+  assert.equal((deniedCreate.json as { code: string }).code, 'INVALID_ORIGIN');
+
+  const created = await createToken(['read'], 90, 'with-origin');
+  const deniedDelete = await call(
+    tokenIdPath,
+    'DELETE',
+    `/api/agent-tokens/${created.record.id}`,
+    undefined,
+    { id: String(created.record.id) },
+  );
+  assert.equal(deniedDelete.status, 403, deniedDelete.text);
+
+  const deniedUndo = await call(
+    undoPath,
+    'POST',
+    `/api/agent-tokens/${created.record.id}/undo`,
+    undefined,
+    { id: String(created.record.id) },
+  );
+  assert.equal(deniedUndo.status, 403, deniedUndo.text);
+
+  const { hashPassword, installAuthTestHooks } = await import('../src/lib/auth');
+  const database = await db();
+  const email = `origin-pw-${Date.now()}@example.test`;
+  const passwordHash = await hashPassword('secret1');
+  const userId = Number(database.prepare(
+    'INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)',
+  ).run(email, 'pw', passwordHash).lastInsertRowid);
+  const user = database.prepare(
+    'SELECT id, email, name, created_at, account_type FROM users WHERE id = ?',
+  ).get(userId) as Awaited<ReturnType<typeof createMember>>;
+  await setTestUser(user);
+  installAuthTestHooks({
+    user,
+    cookies: { set() {}, delete() {}, get() { return undefined; } },
+  });
+  const deniedPassword = await call(passwordPath, 'PUT', '/api/auth/password', {
+    currentPassword: 'secret1',
+    newPassword: 'secret2',
+  });
+  assert.equal(deniedPassword.status, 403, deniedPassword.text);
+  installAuthTestHooks(null);
 }));
 
 test('agent token: scope enforcement on requireAgentToken', () => serial(async () => {
@@ -108,10 +174,10 @@ test('agent token: expiry rejects auth', () => serial(async () => {
   assert.equal(me.status, 401, me.text);
 }));
 
-test('agent token: rate limits for reads', () => serial(async () => {
+test('agent token: rate limits including multi-rate array', () => serial(async () => {
   await createMember('agent-rate');
-  const created = await createToken(['read'], 90, 'rate');
-  const { consumeAgentRate } = await import('../src/lib/agent-token');
+  const created = await createToken(['write'], 90, 'rate');
+  const { consumeAgentRate, requireAgentToken } = await import('../src/lib/agent-token');
   const database = await db();
   for (let i = 0; i < 60; i++) {
     consumeAgentRate(created.record.id, 'read', database, 1_000_000);
@@ -141,9 +207,27 @@ test('agent token: rate limits for reads', () => serial(async () => {
     () => consumeAgentRate(created.record.id, 'add_day', database, 4_000_000),
     (error: unknown) => error instanceof Error && 'code' in error && (error as { code: string }).code === 'AGENT_RATE_LIMITED',
   );
+
+  const multi = await createToken(['write'], 90, 'multi-rate');
+  const request = new NextRequest('http://127.0.0.1/api/agent/v1/items', {
+    headers: { Authorization: `Bearer ${multi.token}` },
+  });
+  await requireAgentToken(request, 'write', { rate: ['add', 'add_day'], auditAction: 'items.add' });
+  const addCount = database.prepare(
+    'SELECT count FROM agent_rate_limits WHERE bucket = ?',
+  ).get(`agent:${multi.record.id}:add`) as { count: number };
+  const dayCount = database.prepare(
+    'SELECT count FROM agent_rate_limits WHERE bucket = ?',
+  ).get(`agent:${multi.record.id}:add_day`) as { count: number };
+  assert.equal(addCount.count, 1);
+  assert.equal(dayCount.count, 1);
+  const audit = database.prepare(
+    `SELECT action FROM agent_audit_log WHERE token_id = ? AND action = 'items.add'`,
+  ).get(multi.record.id) as { action: string } | undefined;
+  assert.equal(audit?.action, 'items.add');
 }));
 
-test('agent token: password change revokes all; logout does not', () => serial(async () => {
+test('agent token: password change revokes all atomically; logout does not', () => serial(async () => {
   const { hashPassword, installAuthTestHooks } = await import('../src/lib/auth');
   const database = await db();
   const email = `pw-revoke-${Date.now()}@example.test`;
@@ -184,7 +268,6 @@ test('agent token: password change revokes all; logout does not', () => serial(a
   }, 'http://localhost/api/auth/logout');
   assert.equal(logout.status, 200, logout.text);
 
-  // ログアウト後もエージェント用トークンは有効（会員セッションは別）。
   await setTestUser(null);
   const stillOk = await call(agentMePath, 'GET', '/api/agent/v1/me', undefined, undefined, {
     Authorization: `Bearer ${a.token}`,
@@ -210,10 +293,15 @@ test('agent token: password change revokes all; logout does not', () => serial(a
     },
   });
 
-  const changed = await call(passwordPath, 'PUT', '/api/auth/password', {
-    currentPassword: 'secret1',
-    newPassword: 'secret2',
-  });
+  const changed = await call(
+    passwordPath,
+    'PUT',
+    '/api/auth/password',
+    { currentPassword: 'secret1', newPassword: 'secret2' },
+    undefined,
+    sameOrigin,
+    `${sameOriginUrl}/api/auth/password`,
+  );
   assert.equal(changed.status, 200, changed.text);
 
   const afterA = await call(agentMePath, 'GET', '/api/agent/v1/me', undefined, undefined, {
@@ -275,22 +363,32 @@ test('agent token: guests cannot create tokens', () => serial(async () => {
     created_at: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
   });
-  const created = await call(tokensPath, 'POST', '/api/agent-tokens', {
-    name: 'nope',
-    scopes: ['read'],
-  });
+  const created = await call(
+    tokensPath,
+    'POST',
+    '/api/agent-tokens',
+    { name: 'nope', scopes: ['read'] },
+    undefined,
+    sameOrigin,
+    `${sameOriginUrl}/api/agent-tokens`,
+  );
   assert.ok(created.status === 401 || created.status === 403, created.text);
 }));
 
-test('agent token: added-by marker and bulk trash undo', () => serial(async () => {
+test('agent token: added-by marker requires owner and bulk trash undo', () => serial(async () => {
   const user = await createMember('agent-marker');
   const created = await createToken(['write'], 90, 'adder');
+  const other = await createMember('agent-marker-other');
   const database = await db();
   const itemId = Number(database.prepare(`
-    INSERT INTO items (user_id, name, url, source, added_by_agent_token_id)
-    VALUES (?, ?, ?, 'other', ?)
-  `).run(user.id, 'agent item', `https://example.test/agent-${created.record.id}`, created.record.id).lastInsertRowid);
+    INSERT INTO items (user_id, name, url, source)
+    VALUES (?, ?, ?, 'other')
+  `).run(user.id, 'agent item', `https://example.test/agent-${created.record.id}`).lastInsertRowid);
+  const { markItemAddedByAgent } = await import('../src/lib/agent-token');
+  assert.equal(markItemAddedByAgent(itemId, created.record.id, other.id, database), 0);
+  assert.equal(markItemAddedByAgent(itemId, created.record.id, user.id, database), 1);
 
+  await setTestUser(user);
   const listed = await call(itemsPath, 'GET', '/api/items');
   assert.equal(listed.status, 200, listed.text);
   const items = listed.json as { id: number; added_by_agent_token_id: number | null }[];
@@ -298,20 +396,30 @@ test('agent token: added-by marker and bulk trash undo', () => serial(async () =
   assert.ok(found);
   assert.equal(found!.added_by_agent_token_id, created.record.id);
 
-  const undone = await call(undoPath, 'POST', `/api/agent-tokens/${created.record.id}/undo`, undefined, {
-    id: String(created.record.id),
-  });
+  const undone = await call(
+    undoPath,
+    'POST',
+    `/api/agent-tokens/${created.record.id}/undo`,
+    undefined,
+    { id: String(created.record.id) },
+    sameOrigin,
+    `${sameOriginUrl}/api/agent-tokens/${created.record.id}/undo`,
+  );
   assert.equal(undone.status, 200, undone.text);
   assert.equal((undone.json as { moved: number }).moved, 1);
   const row = database.prepare('SELECT deleted_at FROM items WHERE id = ?').get(itemId) as { deleted_at: string | null };
   assert.ok(row.deleted_at);
 }));
 
-test('agent token: audit log omits token values and keeps entries', () => serial(async () => {
+test('agent token: audit omits successful reads; keeps writes and denials', () => serial(async () => {
   await createMember('agent-audit');
   const created = await createToken(['read'], 90, 'audited');
   await call(agentMePath, 'GET', '/api/agent/v1/me', undefined, undefined, {
     Authorization: `Bearer ${created.token}`,
+  });
+  const writeOnly = await createToken(['write'], 90, 'write-audit');
+  await call(agentMePath, 'GET', '/api/agent/v1/me', undefined, undefined, {
+    Authorization: `Bearer ${writeOnly.token}`,
   });
   const audit = await call(auditPath, 'GET', `/api/agent-tokens/${created.record.id}/audit`, undefined, {
     id: String(created.record.id),
@@ -321,7 +429,13 @@ test('agent token: audit log omits token values and keeps entries', () => serial
   assert.ok(!text.includes(created.token));
   const entries = (audit.json as { entries: { action: string }[] }).entries;
   assert.ok(entries.some((entry) => entry.action === 'token.create'));
-  assert.ok(entries.some((entry) => entry.action === 'agent.me'));
+  assert.ok(!entries.some((entry) => entry.action === 'agent.me' || entry.action === 'auth.ok'));
+
+  const deniedAudit = await call(auditPath, 'GET', `/api/agent-tokens/${writeOnly.record.id}/audit`, undefined, {
+    id: String(writeOnly.record.id),
+  });
+  const deniedEntries = (deniedAudit.json as { entries: { action: string }[] }).entries;
+  assert.ok(deniedEntries.some((entry) => entry.action === 'auth.scope_denied'));
 }));
 
 test('agent token: account deletion removes agent tables', () => serial(async () => {
@@ -361,17 +475,25 @@ test('agent token: account deletion removes agent tables', () => serial(async ()
 
 test('agent token: max expiry is 365 days', () => serial(async () => {
   await createMember('agent-max-days');
-  const tooLong = await call(tokensPath, 'POST', '/api/agent-tokens', {
-    name: 'long',
-    scopes: ['read'],
-    expiresInDays: 366,
-  });
+  const tooLong = await call(
+    tokensPath,
+    'POST',
+    '/api/agent-tokens',
+    { name: 'long', scopes: ['read'], expiresInDays: 366 },
+    undefined,
+    sameOrigin,
+    `${sameOriginUrl}/api/agent-tokens`,
+  );
   assert.equal(tooLong.status, 400, tooLong.text);
-  const ok = await call(tokensPath, 'POST', '/api/agent-tokens', {
-    name: 'year',
-    scopes: ['read'],
-    expiresInDays: 365,
-  });
+  const ok = await call(
+    tokensPath,
+    'POST',
+    '/api/agent-tokens',
+    { name: 'year', scopes: ['read'], expiresInDays: 365 },
+    undefined,
+    sameOrigin,
+    `${sameOriginUrl}/api/agent-tokens`,
+  );
   assert.equal(ok.status, 201, ok.text);
 }));
 
@@ -383,4 +505,39 @@ test('agent token: requireAgentToken helper rejects missing bearer', () => seria
     () => requireAgentToken(request, 'read'),
     (error: unknown) => error instanceof GuestError && error.status === 401,
   );
+}));
+
+test('agent token: me reports has_password for password members', () => serial(async () => {
+  const { hashPassword, installAuthTestHooks } = await import('../src/lib/auth');
+  const database = await db();
+  const email = `has-pw-${Date.now()}@example.test`;
+  const passwordHash = await hashPassword('secret1');
+  const userId = Number(database.prepare(
+    'INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)',
+  ).run(email, 'pw', passwordHash).lastInsertRowid);
+  const user = database.prepare(
+    'SELECT id, email, name, created_at, account_type FROM users WHERE id = ?',
+  ).get(userId) as Awaited<ReturnType<typeof createMember>>;
+  installAuthTestHooks({
+    user,
+    cookies: { set() {}, delete() {}, get() { return undefined; } },
+  });
+  const withPw = await call(mePath, 'GET', '/api/auth/me');
+  assert.equal(withPw.status, 200, withPw.text);
+  assert.equal((withPw.json as { has_password: boolean }).has_password, true);
+
+  const googleOnlyId = Number(database.prepare(
+    'INSERT INTO users (email, name, password_hash, google_id) VALUES (?, ?, NULL, ?)',
+  ).run(`google-only-${Date.now()}@example.test`, 'g', `sub-${Date.now()}`).lastInsertRowid);
+  const googleUser = database.prepare(
+    'SELECT id, email, name, created_at, account_type FROM users WHERE id = ?',
+  ).get(googleOnlyId) as Awaited<ReturnType<typeof createMember>>;
+  installAuthTestHooks({
+    user: googleUser,
+    cookies: { set() {}, delete() {}, get() { return undefined; } },
+  });
+  const noPw = await call(mePath, 'GET', '/api/auth/me');
+  assert.equal(noPw.status, 200, noPw.text);
+  assert.equal((noPw.json as { has_password: boolean }).has_password, false);
+  installAuthTestHooks(null);
 }));

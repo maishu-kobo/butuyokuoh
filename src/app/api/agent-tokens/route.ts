@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { guestErrorResponse, withAccess } from '@/lib/api-access';
+import { guestErrorResponse, requireSameOrigin, withAccess } from '@/lib/api-access';
 import { createAgentToken, listAgentTokens, parseScopes } from '@/lib/agent-token';
 import { getCurrentUser } from '@/lib/auth';
 import { GuestError } from '@/lib/guest';
@@ -13,6 +13,7 @@ async function handleGET() {
 }
 
 async function handlePOST(request: NextRequest) {
+  requireSameOrigin(request);
   const user = await getCurrentUser();
   if (!user || user.account_type !== 'member') {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });

@@ -143,7 +143,6 @@
         "idx_agent_audit_created",
         "idx_agent_audit_token",
         "idx_agent_audit_user",
-        "idx_agent_tokens_hash",
         "idx_agent_tokens_user",
         "sqlite_autoindex_agent_rate_limits_1",
         "sqlite_autoindex_agent_tokens_1"

@@ -211,6 +211,14 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   return guestEnabled() ? findGuest(guestCookie, db) : null;
 }
 
+export async function readRequestCookie(name: string): Promise<string | undefined> {
+  if (process.env.NODE_ENV !== 'production' && testCookies?.get) {
+    return testCookies.get(name);
+  }
+  const cookieStore = await cookies();
+  return cookieStore.get(name)?.value;
+}
+
 export async function setAuthCookie(token: string): Promise<void> {
   const options = memberTokenCookieOptions();
   if (process.env.NODE_ENV !== 'production' && testCookies) {

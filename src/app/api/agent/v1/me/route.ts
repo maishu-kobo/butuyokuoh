@@ -7,12 +7,12 @@ import { GuestError } from '@/lib/guest';
 /**
  * #269 向けの共有認証ヘルパー動作確認用。
  * 画面向け API ではなく、エージェント用 Bearer のみを受け付ける。
+ * 成功した読み取りは監査に残さない。
  */
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireAgentToken(request, 'read', {
       rate: 'read',
-      auditAction: 'agent.me',
     });
     const user = getDb().prepare(
       "SELECT id, email, name, created_at FROM users WHERE id = ? AND account_type = 'member'",

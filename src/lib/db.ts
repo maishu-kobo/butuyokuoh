@@ -284,7 +284,7 @@ function migrateDb(db: Database.Database) {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_agent_tokens_user ON agent_tokens(user_id);
-    CREATE INDEX IF NOT EXISTS idx_agent_tokens_hash ON agent_tokens(token_hash);
+    -- token_hash は UNIQUE で自動索引が付くので、別インデックスは作らない。
 
     CREATE TABLE IF NOT EXISTS agent_audit_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
