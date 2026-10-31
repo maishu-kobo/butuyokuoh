@@ -3,6 +3,7 @@
 import { apiFetch } from '@/lib/api-fetch';
 import { photoGroupSaveWrites } from '@/lib/capture/photo-group-actions';
 import { sourceBadgeClass } from '@/lib/capture/photo-card-view';
+import { displayableItemImageUrl, safeImgSrc } from '@/lib/capture/image-hosts';
 import { linkableHttpUrl } from '@/lib/http-url';
 
 import { useId, useState, useRef, type ReactNode } from 'react';
@@ -73,6 +74,8 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   const [saveError, setSaveError] = useState('');
   const [showImageEdit, setShowImageEdit] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // 編集プレビューはアップロード API の戻りだけ（入力欄の文字列は img に載せない）。
+  const [uploadPreviewSrc, setUploadPreviewSrc] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const purchaseLocked = shopCount != null && shopCount >= 2;
   const purchaseHintId = useId();
@@ -112,6 +115,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
       if (res.ok) {
         const { url } = await res.json();
         setEditData({ ...editData, image_url: url });
+        setUploadPreviewSrc(safeImgSrc(typeof url === 'string' ? url : null));
       }
     } finally {
       setUploading(false);
@@ -124,9 +128,11 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     setSaving(true);
     setSaveError('');
     try {
+      const nextUrl = editData.url || item.url;
       const payload = {
         name: editData.name || item.name,
-        url: editData.url || item.url,
+        // 未変更の URL は送らない（サーバ側でも無視するが、誤整形を避ける）
+        ...(nextUrl !== item.url ? { url: nextUrl } : {}),
         priority: editData.priority,
         planned_purchase_date: editData.planned_purchase_date || null,
         notes: editData.notes || null,
@@ -224,7 +230,9 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     yahoo: 'Yahoo!ショッピング',
     other: 'その他',
   };
-  const shownImage = displayImageUrl !== undefined ? displayImageUrl : item.image_url;
+  const shownImage = displayableItemImageUrl(
+    displayImageUrl !== undefined ? displayImageUrl : item.image_url,
+  );
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
@@ -396,7 +404,17 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             価格推移
           </button>
           <button
-            onClick={() => { setSaveError(''); if (!editing) setEditData(initialEditData()); setEditing(!editing); }}
+            onClick={() => {
+              setSaveError('');
+              if (!editing) {
+                setEditData(initialEditData());
+                // 編集開始時は保存済み画像だけをプレビュー（入力欄の文字列は img に載せない）
+                setUploadPreviewSrc(safeImgSrc(item.image_url));
+              } else {
+                setUploadPreviewSrc(null);
+              }
+              setEditing(!editing);
+            }}
             className={`text-sm ${auxiliaryActionClass}`}
           >
             編集
@@ -614,7 +632,10 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                     type="text"
                     disabled={isGuest}
                     value={editData.image_url}
-                    onChange={(e) => setEditData({ ...editData, image_url: e.target.value })}
+                    onChange={(e) => {
+                      setEditData({ ...editData, image_url: e.target.value });
+                      setUploadPreviewSrc(null);
+                    }}
                     placeholder="画像URL"
                     className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:border-orange-500"
                   />
@@ -636,8 +657,8 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                     <Upload size={16} className="text-gray-400" />
                   </button>
                 </div>
-                {editData.image_url && (
-                  <img src={editData.image_url} alt="プレビュー" className="h-12 w-12 object-cover rounded" />
+                {uploadPreviewSrc && (
+                  <img src={uploadPreviewSrc} alt="プレビュー" className="h-12 w-12 object-cover rounded" />
                 )}
               </div>
             </details>
@@ -650,7 +671,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             {/* ボタン */}
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
-                onClick={() => { setSaveError(''); setEditing(false); }}
+                onClick={() => { setSaveError(''); setUploadPreviewSrc(null); setEditing(false); }}
                 className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 キャンセル

@@ -157,10 +157,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     addBtn.disabled = true;
     addBtnText.innerHTML = '<span class="spinner"></span> 追加中...';
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
     try {
       const response = await fetch(`${serverUrl}/api/extension-add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           token: authToken,
           item: {
@@ -186,9 +189,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     } catch (error) {
       console.error('Add error:', error);
-      showStatus(addStatus, 'エラー: ' + error.message, 'error');
+      const timedOut = error && (error.name === 'AbortError' || /aborted/i.test(String(error.message || '')));
+      showStatus(
+        addStatus,
+        timedOut
+          ? 'タイムアウトしました。一覧に追加済みか確認してください'
+          : 'エラー: ' + error.message,
+        'error',
+      );
       addBtn.disabled = false;
       addBtnText.textContent = '👑 物欲王に追加';
+    } finally {
+      clearTimeout(timeoutId);
     }
   });
 
