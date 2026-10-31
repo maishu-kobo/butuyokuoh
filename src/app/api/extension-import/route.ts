@@ -8,33 +8,20 @@ import {
   resolveExtensionAuth,
 } from '@/lib/extension-auth';
 import { markItemAddedByAgent, recordAgentAudit } from '@/lib/agent-token';
+import { requireExtensionImportItems } from '@/lib/extension-item-input';
 import { cleanedStoredItemUrlTaken, normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
 
 // 既知の課題: 一括 import はまだクライアントの価格・画像を保存する。
 // サーバ取得に揃えると件数・タイムアウトの影響が大きいため、別 Issue で扱う（PR #275）。
-
-interface ImportItem {
-  name: string;
-  url: string;
-  price: number | null;
-  imageUrl: string | null;
-}
 
 const corsHeaders = extensionCorsHeaders('POST, OPTIONS');
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { source, items, token } = body as { source: string; items: ImportItem[]; token?: string };
+    const { source, items, token } = body as { source: string; items: unknown; token?: string };
 
-    // 入力の形は認証より先に見る。認可は resolveExtensionAuth だけ。
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return NextResponse.json(
-        { error: 'インポートするアイテムがありません' },
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
+    // 認証を先に通す（偽造トークンは 401）。
     const auth = resolveExtensionAuth(request, {
       bodyToken: token,
       rate: ['add', 'add_day'],
@@ -46,6 +33,8 @@ export async function POST(request: NextRequest) {
         { status: 401, headers: corsHeaders }
       );
     }
+
+    const importItems = requireExtensionImportItems(items);
 
     const db = getDb();
     const insertStmt = db.prepare(`
@@ -59,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     const sourceName = source === 'amazon' ? 'Amazon' : source === 'rakuten' ? '楽天市場' : source;
 
-    for (const item of items) {
+    for (const item of importItems) {
       try {
         const url = typeof item.url === 'string' ? sanitizeStoredItemUrl(item.url) : null;
         const name = typeof item.name === 'string' ? normalizeItemName(item.name) : null;
@@ -113,7 +102,7 @@ export async function POST(request: NextRequest) {
     applyExtensionAuthHeaders(headers, auth);
     const payload: Record<string, unknown> = {
       success: true,
-      total: items.length,
+      total: importItems.length,
       imported,
       skipped,
     };

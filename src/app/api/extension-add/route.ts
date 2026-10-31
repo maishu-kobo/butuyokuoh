@@ -8,14 +8,12 @@ import {
   resolveExtensionAuth,
 } from '@/lib/extension-auth';
 import { markItemAddedByAgent, recordAgentAudit } from '@/lib/agent-token';
+import { requireExtensionAddItem } from '@/lib/extension-item-input';
 import {
   cleanedStoredItemUrlTaken,
   fetchServerItemMedia,
-  normalizeItemName,
-  sanitizeStoredItemUrl,
   SERVER_ITEM_MEDIA_TIMEOUT_MS,
 } from '@/lib/item-input';
-import { ITEM_URL_ERROR } from '@/lib/http-url';
 
 interface AddItemRequest {
   token?: string;
@@ -44,26 +42,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json() as AddItemRequest;
     const { token, item } = body;
 
-    // 入力の形は認証より先に見る（#275 と同じ）。認可は resolveExtensionAuth だけ。
-    if (!item || typeof item.name !== 'string' || typeof item.url !== 'string') {
-      return NextResponse.json(
-        { error: '商品名とURLは必須です' },
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
-    const name = normalizeItemName(item.name);
-    const url = sanitizeStoredItemUrl(item.url);
-    if (!name || !url) {
-      return NextResponse.json(
-        { error: !url ? ITEM_URL_ERROR : '商品名とURLは必須です' },
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
+    // 認証を先に通す（偽造トークンは 401。e2e / #275 と同じ順序）。
     const auth = resolveExtensionAuth(request, {
       bodyToken: token,
-      // URL の有無でレート種別を変えない（user-controlled bypass を避ける）
       rate: ['add', 'add_url', 'add_day'],
     });
     const userId = auth.userId;
@@ -74,8 +55,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const parsed = requireExtensionAddItem(item);
+    const { name, url, priority, categoryId } = parsed;
+
     const fields: Record<string, unknown> = { name, url };
-    if (item.priority !== undefined) fields.priority = item.priority;
+    if (item?.priority !== undefined) fields.priority = item.priority;
     validateMemberInput(fields, 'POST');
 
     const db = getDb();
@@ -103,7 +87,7 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
-    assertOwnedRelations(db, userId, { category_id: item.categoryId ? Number(item.categoryId) : null });
+    assertOwnedRelations(db, userId, { category_id: categoryId ? Number(categoryId) : null });
 
     // ゴミ箱の行も UNIQUE(user_id, url) に残る。汚い保存 URL もクリーン後で見る。
     if (cleanedStoredItemUrlTaken(db, userId, url)) {
@@ -118,7 +102,6 @@ export async function POST(request: NextRequest) {
       accountType: user.account_type,
       timeoutMs: SERVER_ITEM_MEDIA_TIMEOUT_MS,
     });
-    const priority = item.priority || 3;
 
     const result = db.prepare(`
       INSERT INTO items (
@@ -134,8 +117,8 @@ export async function POST(request: NextRequest) {
       media.price,
       media.source,
       media.sourceName,
-      priority,
-      item.categoryId || null
+      priority || 3,
+      categoryId || null
     );
 
     if (media.price && result.lastInsertRowid) {

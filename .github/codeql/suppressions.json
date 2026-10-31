@@ -25,24 +25,6 @@
       "reason": "空のメールかパスワードを 400 で拒否するだけ。トークンは後段の検証成功後に出す"
     },
     {
-      "rule": "js/user-controlled-bypass",
-      "path": "src/app/api/extension-add/route.ts",
-      "line": "    if (!item || typeof item.name !== 'string' || typeof item.url !== 'string') {",
-      "reason": "入力の形チェックは認証より前。認可は resolveExtensionAuth の結果だけ"
-    },
-    {
-      "rule": "js/user-controlled-bypass",
-      "path": "src/app/api/extension-add/route.ts",
-      "line": "    if (!name || !url) {",
-      "reason": "入力の形チェックは認証より前。認可は resolveExtensionAuth の結果だけ"
-    },
-    {
-      "rule": "js/user-controlled-bypass",
-      "path": "src/app/api/extension-import/route.ts",
-      "line": "    if (!items || !Array.isArray(items) || items.length === 0) {",
-      "reason": "入力の形チェックは認証より前。認可は resolveExtensionAuth の結果だけ"
-    },
-    {
       "rule": "js/incomplete-url-substring-sanitization",
       "path": "tests/capture-rakuten.test.ts",
       "line": "  assert.equal(yahooDown.value.amazonUrl.includes('amazon.com'), false);",
