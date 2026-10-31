@@ -201,11 +201,22 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     guestCookie = cookieStore.get(GUEST_COOKIE)?.value;
   }
   if (token) {
-    const payload = verifyToken(token);
-    const user = payload && accept(member(payload.userId), payload.sessionGeneration);
-    if (user) return user;
+    // エージェント用トークンは画面セッションに使えない（#268）。
+    if (!token.startsWith('byoagt_')) {
+      const payload = verifyToken(token);
+      const user = payload && accept(member(payload.userId), payload.sessionGeneration);
+      if (user) return user;
+    }
   }
   return guestEnabled() ? findGuest(guestCookie, db) : null;
+}
+
+export async function readRequestCookie(name: string): Promise<string | undefined> {
+  if (process.env.NODE_ENV !== 'production' && testCookies?.get) {
+    return testCookies.get(name);
+  }
+  const cookieStore = await cookies();
+  return cookieStore.get(name)?.value;
 }
 
 export async function setAuthCookie(token: string): Promise<void> {
@@ -230,6 +241,8 @@ export async function clearAuthCookie(): Promise<void> {
 }
 
 export function getUserIdFromToken(token: string): number | null {
+  // エージェント用トークンは拡張機能・画面向けの会員 JWT として扱わない（#268 / #271）。
+  if (typeof token === 'string' && token.startsWith('byoagt_')) return null;
   const payload = verifyToken(token);
   if (!payload) return null;
   const member = getDb().prepare(

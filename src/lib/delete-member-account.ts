@@ -182,6 +182,15 @@ export function deleteMemberAccount(userId: number, db: Database.Database = getD
     db.prepare('DELETE FROM user_notification_settings WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM guest_sessions WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM guest_rate_limits WHERE bucket IN (?, ?)').run(`write:${userId}`, `scrape:${userId}`);
+    // エージェント用トークンと操作ログ。品目を先に消しているので印列は触らない。
+    db.prepare('DELETE FROM agent_audit_log WHERE user_id = ?').run(userId);
+    const agentTokenIds = db.prepare(
+      'SELECT id FROM agent_tokens WHERE user_id = ?',
+    ).all(userId) as { id: number }[];
+    for (const { id } of agentTokenIds) {
+      db.prepare('DELETE FROM agent_rate_limits WHERE bucket LIKE ?').run(`agent:${id}:%`);
+    }
+    db.prepare('DELETE FROM agent_tokens WHERE user_id = ?').run(userId);
     // 全体の日次費用と処理中の予約は退会でも消さない。IDは後続精算用に保持し、
     // 会員との紐付けと実行時刻だけを除く。非数値キーは会員IDには使われない。
     db.prepare("UPDATE capture_ai_usage SET user_key = '@withdrawn', at_ms = 0 WHERE user_key = ?").run(String(userId));
