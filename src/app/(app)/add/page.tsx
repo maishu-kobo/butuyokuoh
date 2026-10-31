@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { safeImgSrc } from '@/lib/capture/image-hosts';
 
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -197,6 +198,8 @@ function AddPageContent() {
     );
   }
 
+  const productImage = safeImgSrc(productInfo?.image_url);
+
   return (
     <div className="min-h-screen bg-stone-100">
       {/* ヘッダー */}
@@ -265,9 +268,9 @@ function AddPageContent() {
             {/* 商品プレビュー */}
             <div className="p-4 border-b">
               <div className="flex gap-4">
-                {productInfo.image_url && (
+                {productImage && (
                   <img
-                    src={productInfo.image_url}
+                    src={productImage}
                     alt=""
                     className="w-20 h-20 object-contain rounded bg-gray-50"
                   />
