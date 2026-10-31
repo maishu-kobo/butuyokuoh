@@ -33,6 +33,8 @@ export async function POST(request: NextRequest) {
     });
     const userId = auth.userId;
 
+    // 認証は上で済み。空配列の 400 だけ（認可バイパスではない）。
+    // codeql[js/user-controlled-bypass]
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
         { error: 'インポートするアイテムがありません' },
