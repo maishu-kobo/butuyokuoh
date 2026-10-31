@@ -1,7 +1,6 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
-import { displayableItemImageUrl } from '@/lib/capture/image-hosts';
 
 import { useAuth } from './AuthProvider';
 import { useCallback, useEffect, useState, useRef } from 'react';
@@ -36,6 +35,8 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
   const [photoSuccess, setPhotoSuccess] = useState('');
   const [successNote, setSuccessNote] = useState(''); // 追加成功時の注意メッセージ
   const [uploading, setUploading] = useState(false);
+  // プレビューはアップロード API の戻りだけ。入力欄の文字列を img に載せない（DOM XSS 経路を作らない）。
+  const [uploadPreviewSrc, setUploadPreviewSrc] = useState<string | null>(null);
   const photoPick = useCapturePhotoPick(
     showPhotoPicker({ enabled: captureOpen && captureEnabled }, isGuest),
     (file) => {
@@ -99,6 +100,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
     setPickedFile(null);
     setServerPreview(null);
     setIsPhotoMode(false);
+    setUploadPreviewSrc(null);
   };
 
   const enterManual = (name: string) => {
@@ -133,6 +135,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
 
       const { url } = await res.json();
       setFormData({ ...formData, image_url: url });
+      setUploadPreviewSrc(typeof url === 'string' ? url : null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'アップロードエラー');
     } finally {
@@ -233,8 +236,6 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
       </>
     );
   }
-
-  const manualImagePreview = displayableItemImageUrl(formData.image_url);
 
   return (
     <div
@@ -339,7 +340,10 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
                 <input
                   type="text"
                   value={formData.image_url}
-                  onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, image_url: e.target.value });
+                    setUploadPreviewSrc(null);
+                  }}
                   placeholder="画像URLを入力またはアップロード"
                   className="flex-1 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 />
@@ -360,9 +364,9 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
                   {uploading ? '...' : 'アップロード'}
                 </button>
               </div>
-              {manualImagePreview && (
+              {uploadPreviewSrc && (
                 <div className="mt-2">
-                  <img src={manualImagePreview} alt="プレビュー" className="h-16 w-16 object-cover rounded" />
+                  <img src={uploadPreviewSrc} alt="プレビュー" className="h-16 w-16 object-cover rounded" />
                 </div>
               )}
             </div>}

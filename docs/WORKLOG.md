@@ -25,6 +25,11 @@
 - 追加・変更: `src/lib/item-input.ts`、`src/lib/capture/image-hosts.ts`、extension-add / items / extension-import、ItemCard ほか表示、テスト `tests/item-input-safety.test.ts`
 - 確認コマンドと結果は PR 本文に記載
 
+### CI 後の修正（同日）
+
+- CodeQL `js/xss-through-dom`: フォーム入力を `img src` に載せない。プレビューはアップロード API の戻り専用 state
+- e2e `url-regression`: pitakajapan.com 画像は保存されるが UI は No Image（許可ホスト外）を期待するよう更新
+
 ### 残っていること
 
 - #269 のエージェント API から同じヘルパーを呼ぶ配線
