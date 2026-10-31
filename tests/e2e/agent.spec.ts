@@ -76,7 +76,8 @@ test('settings token lifecycle, REST wishlist ops, undo, and audit log', async (
   // 発行直後だけ平文が input に入り、一覧側はプレフィックスのみ
   const plaintextField = page.locator('div').filter({ has: page.getByText('このトークンは今だけ表示されます') }).locator('input[readonly]');
   await expect(plaintextField).toHaveValue(token);
-  await expect(page.getByText(/byoagt_[a-zA-Z0-9]{8}…/)).toBeVisible();
+  // token_prefix は byoagt_ + base64url 8 文字。一覧はプレフィックス＋…のみ
+  await expect(page.getByText(/byoagt_[A-Za-z0-9_-]{8}…/)).toBeVisible();
   await page.reload();
   await openAgentTokenSection(page);
   await expect(page.getByText('このトークンは今だけ表示されます')).toHaveCount(0);
