@@ -188,6 +188,47 @@ test('renaming keeps stored affiliate URLs and source_item_code; sanitized URL c
   );
 });
 
+test('POST /api/items and extension-import treat dirty stored URLs as duplicates after sanitize', async () => {
+  const items = '../src/app/api/items/route.ts';
+  const extensionImport = '../src/app/api/extension-import/route.ts';
+  const member = await createMember('dirty-dupe');
+  const database = await db();
+  database.prepare(`
+    INSERT INTO items (user_id, name, url)
+    VALUES (?, '既存汚い', 'https://www.amazon.co.jp/dp/B0DIRTY001?tag=old-22&utm_source=x')
+  `).run(member.id);
+
+  const port = await import('../src/lib/product-fetch-port');
+  port.installProductFetchPort(regressionFetchPort());
+  try {
+    const again = await call(items, 'POST', '/api/items', {
+      url: 'https://www.amazon.co.jp/dp/B0DIRTY001?tag=new-22',
+      name: '再登録',
+    });
+    assert.equal(again.status, 400, again.text);
+    assert.match(String((again.json as { error?: string }).error || again.text), /既に登録/);
+  } finally {
+    port.installProductFetchPort(null);
+  }
+
+  const { generateToken } = await import('../src/lib/auth');
+  const token = generateToken(member as never);
+  const imported = await call(extensionImport, 'POST', '/api/extension-import', {
+    token,
+    source: 'amazon',
+    items: [
+      { name: 'インポート重複', url: 'https://www.amazon.co.jp/dp/B0DIRTY001?tag=import-22', price: 10, imageUrl: null },
+    ],
+  });
+  assert.equal(imported.status, 200, imported.text);
+  assert.equal((imported.json as { imported?: number; skipped?: number }).imported, 0);
+  assert.equal((imported.json as { skipped?: number }).skipped, 1);
+  assert.equal(
+    (database.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id = ?').get(member.id) as { n: number }).n,
+    1,
+  );
+});
+
 test('extension-add rate limit message differs for members; popup timeout and version are updated', async () => {
   const previous = process.env.EXTENSION_ADDS_PER_MINUTE;
   process.env.EXTENSION_ADDS_PER_MINUTE = '1';

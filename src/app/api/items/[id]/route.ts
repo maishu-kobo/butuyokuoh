@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
-import { normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
+import { cleanedStoredItemUrlTaken, normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
 import { localCalendarDate } from '@/lib/local-date';
 
 async function handleGET(
@@ -101,10 +101,8 @@ async function handlePATCH(
 
   // 商品URLを変えたら、以前の検索APIの商品コードと取得時刻を引き継がない。
   if (body.url !== undefined && body.url !== item.url) {
-    const conflict = db.prepare(
-      'SELECT id FROM items WHERE user_id = ? AND url = ? AND id != ?',
-    ).get(user.id, body.url, id);
-    if (conflict) {
+    const itemId = Number(id);
+    if (cleanedStoredItemUrlTaken(db, user.id, body.url, Number.isFinite(itemId) ? itemId : undefined)) {
       return NextResponse.json({ error: 'この商品はすでに登録されています' }, { status: 409 });
     }
     updates.push('source_item_code = NULL', 'price_fetched_at = NULL');

@@ -9,7 +9,7 @@ import { itemUrlTaken } from '@/lib/capture/register';
 import { isUnusableScrape, scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
-import { normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
+import { cleanedStoredItemUrlTaken, normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
 import { PRODUCT_FETCH_HELP } from '@/lib/public-page';
 import { annotateSpend, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
 
@@ -140,8 +140,8 @@ async function handlePOST(request: NextRequest) {
     return NextResponse.json({ error: 'URL is required' }, { status: 400 });
   }
 
-  // 重複チェック（同じユーザー内で）。楽天は包装を解いた商品ページが同じなら登録済み。
-  if (itemUrlTaken(db, user.id, storedUrl)) {
+  // 重複チェック（同じユーザー内で）。楽天 identity に加え、汚い保存 URL もクリーン後で見る。
+  if (itemUrlTaken(db, user.id, storedUrl) || cleanedStoredItemUrlTaken(db, user.id, storedUrl)) {
     return NextResponse.json({ error: 'このURLは既に登録されています' }, { status: 400 });
   }
 

@@ -1,6 +1,7 @@
 // 品目の新規書き込み向け。価格・画像はサーバ取得を優先し、URL と品名を整える。
 // エージェント API（#269）からも同じ関数を呼ぶ。
 
+import type Database from 'better-sqlite3';
 import { rakutenProductIdentity } from '@/lib/capture/rakuten-link';
 import { isStorableItemUrl } from '@/lib/http-url';
 import { scrapeGuestUrl } from '@/lib/guest-scraper';
@@ -208,6 +209,30 @@ export function normalizeItemName(raw: string): string | null {
   const cleaned = raw.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim();
   if (!cleaned) return null;
   return cleaned.slice(0, ITEM_NAME_MAX);
+}
+
+/**
+ * クリーン後の URL が、保存済みの生 URL（トラッキング付き含む）と一致するか。
+ * 厳密一致に加え、各行を sanitize して比較する。
+ */
+export function cleanedStoredItemUrlTaken(
+  db: Database.Database,
+  userId: number,
+  cleanedUrl: string,
+  excludeItemId?: number,
+): boolean {
+  if (excludeItemId != null) {
+    if (db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ? AND id != ?').get(userId, cleanedUrl, excludeItemId)) {
+      return true;
+    }
+    const rows = db.prepare('SELECT url FROM items WHERE user_id = ? AND id != ?').all(userId, excludeItemId) as { url: string }[];
+    return rows.some((row) => sanitizeStoredItemUrl(row.url) === cleanedUrl);
+  }
+  if (db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, cleanedUrl)) {
+    return true;
+  }
+  const rows = db.prepare('SELECT url FROM items WHERE user_id = ?').all(userId) as { url: string }[];
+  return rows.some((row) => sanitizeStoredItemUrl(row.url) === cleanedUrl);
 }
 
 export type ServerItemMedia = {

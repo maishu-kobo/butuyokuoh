@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getUserIdFromToken } from '@/lib/auth';
 import {
+  cleanedStoredItemUrlTaken,
   fetchServerItemMedia,
   normalizeItemName,
   sanitizeStoredItemUrl,
@@ -35,15 +36,6 @@ function extensionAddsPerMinute(): number {
   const parsed = Number(raw);
   if (!Number.isSafeInteger(parsed) || parsed < 1) return 20;
   return parsed;
-}
-
-function urlAlreadyStored(db: ReturnType<typeof getDb>, userId: number, cleanedUrl: string): boolean {
-  if (db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, cleanedUrl)) {
-    return true;
-  }
-  // 保存済みの汚い URL もクリーン後で同じなら重複とみなす。
-  const rows = db.prepare('SELECT url FROM items WHERE user_id = ?').all(userId) as { url: string }[];
-  return rows.some((row) => sanitizeStoredItemUrl(row.url) === cleanedUrl);
 }
 
 export async function POST(request: NextRequest) {
@@ -113,8 +105,8 @@ export async function POST(request: NextRequest) {
 
     assertOwnedRelations(db, userId, { category_id: item.categoryId ? Number(item.categoryId) : null });
 
-    // ゴミ箱の行も UNIQUE(user_id, url) に残る。ここを外すと INSERT が 500 になる。
-    if (urlAlreadyStored(db, userId, url)) {
+    // ゴミ箱の行も UNIQUE(user_id, url) に残る。汚い保存 URL もクリーン後で見る。
+    if (cleanedStoredItemUrlTaken(db, userId, url)) {
       return NextResponse.json(
         { error: 'この商品はすでに登録されています' },
         { status: 409, headers: corsHeaders }

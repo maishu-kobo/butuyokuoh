@@ -3,7 +3,7 @@ import { GuestError } from '@/lib/guest';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getUserIdFromToken } from '@/lib/auth';
-import { normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
+import { cleanedStoredItemUrlTaken, normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
 
 // 既知の課題: 一括 import はまだクライアントの価格・画像を保存する。
 // サーバ取得に揃えると件数・タイムアウトの影響が大きいため、別 Issue で扱う（PR #275）。
@@ -76,9 +76,8 @@ export async function POST(request: NextRequest) {
         if (item.imageUrl !== undefined) fields.image_url = item.imageUrl;
         validateMemberInput(fields, 'POST');
 
-        // 既存チェック
-        const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, url);
-        if (existing) {
+        // 既存チェック（トラッキング付きの保存 URL もクリーン後で同じならスキップ）
+        if (cleanedStoredItemUrlTaken(db, userId, url)) {
           skipped++;
           continue;
         }
