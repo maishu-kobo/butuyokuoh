@@ -30,9 +30,9 @@
 
 - 実装ブランチ: `cursor/agent-access-tokens-a1fa`
 - PR: https://github.com/maishu-kobo/butuyokuoh/pull/274（draft → CI 緑で ready）
-- head SHA: `21267908f384acf5f289eb2bdbaa1e7c490de822`
 - 追加テスト: `tests/agent-tokens.test.ts`（12件）
 - ローカル確認: `npm test` 622 pass、`tsc` / `lint` / `build` 成功
+- CI の `develop diff` は初回不合格 → `approved-changes.json` に agent 表・列・索引・応答フィールドを承認して合格を確認
 
 ### 残っていること
 
