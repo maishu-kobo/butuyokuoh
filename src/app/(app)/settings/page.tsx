@@ -267,8 +267,7 @@ export default function SettingsPage() {
           </div>
 
           <div className="bg-[var(--color-card)] rounded-lg shadow p-6">
-            <h3 className="font-semibold text-[var(--color-text)] mb-2">方針（下書き）</h3>
-            <p className="text-sm text-[var(--color-muted)] mb-3">Sota の確認待ちです。確定した文面ではありません。</p>
+            <h3 className="font-semibold text-[var(--color-text)] mb-2">プライバシーと利用規約</h3>
             <LegalLinks />
           </div>
 
