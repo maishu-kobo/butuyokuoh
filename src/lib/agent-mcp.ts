@@ -152,6 +152,11 @@ async function handleToolsCall(id: JsonRpcId, params: unknown, request: NextRequ
   }
 }
 
+const MCP_NOTIFICATION_METHODS = new Set([
+  'notifications/initialized',
+  'notifications/cancelled',
+]);
+
 export async function handleMcpJsonRpc(
   request: NextRequest,
   message: JsonRpcRequest,
@@ -171,12 +176,27 @@ export async function handleMcpJsonRpc(
     };
   }
 
-  // 通知
-  if (isNotification(message)) {
-    if (method === 'notifications/initialized' || method === 'notifications/cancelled') {
-      return { status: 202, body: null };
+  // id の有無で認証を迂回しない（CodeQL js/user-controlled-bypass）。
+  // 通知・要求のどちらも、先に Bearer を検証する。
+  try {
+    requireInitializedAuth(request);
+  } catch (error) {
+    if (error instanceof GuestError) {
+      if (isNotification(message)) {
+        return { status: error.status, body: null };
+      }
+      return { status: 200, body: guestToRpc(message.id ?? null, error) };
     }
+    throw error;
+  }
+
+  // 許可した通知メソッドだけ 202。未知の method を id 無しで通さない。
+  if (MCP_NOTIFICATION_METHODS.has(method)) {
     return { status: 202, body: null };
+  }
+
+  if (isNotification(message)) {
+    return { status: 400, body: null };
   }
 
   const id = message.id ?? null;
@@ -186,7 +206,6 @@ export async function handleMcpJsonRpc(
       case 'initialize':
         return { status: 200, body: await handleInitialize(id, message.params, request) };
       case 'ping':
-        requireInitializedAuth(request);
         return { status: 200, body: jsonRpcResult(id, {}) };
       case 'tools/list':
         return { status: 200, body: await handleToolsList(id, request) };

@@ -298,6 +298,18 @@ test('agent mcp: initialize, tools/list, tools/call with scope filter', () => se
     });
     assert.equal(notified.status, 202, notified.text);
 
+    const notifyNoAuth = await call(mcpPath, 'POST', '/api/mcp', {
+      jsonrpc: '2.0',
+      method: 'notifications/initialized',
+    }, undefined, { Accept: 'application/json, text/event-stream' });
+    assert.equal(notifyNoAuth.status, 401, notifyNoAuth.text);
+
+    const unknownNotify = await mcpCall(write.token, {
+      jsonrpc: '2.0',
+      method: 'tools/call',
+    });
+    assert.equal(unknownNotify.status, 400, unknownNotify.text);
+
     const readList = await mcpCall(read.token, { jsonrpc: '2.0', id: 3, method: 'tools/list' });
     assert.equal(readList.status, 200, readList.text);
     const readTools = (readList.json as { result: { tools: { name: string }[] } }).result.tools.map((t) => t.name);

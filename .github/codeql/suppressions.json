@@ -35,6 +35,24 @@
       "path": "tests/capture-yahoo.test.ts",
       "line": "  assert.equal(source.includes('https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch'), true);",
       "reason": "URL の許可判定ではない。yahoo.ts がエンドポイント文字列を含むことのソース契約テスト"
+    },
+    {
+      "rule": "js/request-forgery",
+      "path": "src/lib/member-fetch.ts",
+      "line": "    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, options, (response) => {",
+      "reason": "接続前に resolvedPublicAddress / isPublicAddress で非公開アドレスを拒否する。任意の公開 URL を受け付ける設計（#267）"
+    },
+    {
+      "rule": "js/request-forgery",
+      "path": "src/lib/public-page.ts",
+      "line": "    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, options, response => {",
+      "reason": "接続前に publicAddress / isPublicAddress で非公開アドレスを拒否する。任意の公開 URL を受け付ける設計（#267）"
+    },
+    {
+      "rule": "js/request-forgery",
+      "path": "src/lib/scraper.ts",
+      "line": "    await page.goto(sanitizedUrl, { waitUntil: 'networkidle2', timeout: 30000 });",
+      "reason": "ブラウザ起動前に URL 検証と resolvedPublicAddress で非公開アドレスを拒否する。Amazon フォールバック用"
     }
   ]
 }
