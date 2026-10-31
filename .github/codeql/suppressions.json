@@ -53,6 +53,36 @@
       "path": "src/lib/scraper.ts",
       "line": "    await page.goto(navigationUrl, { waitUntil: 'networkidle2', timeout: 30000 });",
       "reason": "ホストは AMAZON_DOMAINS 定数。遷移前に resolvedPublicAddress と request 拦截で非公開を拒否する（#267）"
+    },
+    {
+      "rule": "js/insufficient-password-hash",
+      "path": "src/lib/agent-oauth.ts",
+      "line": "  return createHash('sha256').update(value, 'utf8').digest('hex');",
+      "reason": "ユーザーパスワードではない。高エントロピーの OAuth コード・refresh・CSRF・client_secret の照合用ハッシュ。bcrypt は不適切"
+    },
+    {
+      "rule": "js/insufficient-password-hash",
+      "path": "src/lib/agent-token.ts",
+      "line": "  return createHash('sha256').update(plaintext, 'utf8').digest('hex');",
+      "reason": "ユーザーパスワードではない。高エントロピーの byoagt_ アクセストークンの照合用ハッシュ（#268）。bcrypt は不適切"
+    },
+    {
+      "rule": "js/user-controlled-bypass",
+      "path": "src/app/api/mcp/route.ts",
+      "line": "    if (!message || typeof message !== 'object' || Array.isArray(message)) {",
+      "reason": "JSON-RPC 本文の型チェックで 400 を返すだけ。認証は handleMcpJsonRpc 内の Bearer 検証が必須"
+    },
+    {
+      "rule": "js/user-controlled-bypass",
+      "path": "src/app/api/oauth/consent/route.ts",
+      "line": "    if (!pendingId || !decision) {",
+      "reason": "空の pending_id / decision を 400 で拒否するだけ。許可は CSRF 一致と会員セッションの後"
+    },
+    {
+      "rule": "js/user-controlled-bypass",
+      "path": "src/app/oauth/authorize/route.ts",
+      "line": "    if (!resource) {",
+      "reason": "resource 欠落を 400 で拒否するだけ。認可コード発行は同意と CSRF・PKCE の後"
     }
   ]
 }
