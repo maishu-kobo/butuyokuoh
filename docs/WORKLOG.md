@@ -29,8 +29,10 @@
 ### 結果
 
 - 実装ブランチ: `cursor/agent-access-tokens-a1fa`
-- 追加テスト: `tests/agent-tokens.test.ts`
-- 確認コマンドの結果は PR 本文に記載
+- PR: https://github.com/maishu-kobo/butuyokuoh/pull/274（draft → CI 緑で ready）
+- head SHA: `21267908f384acf5f289eb2bdbaa1e7c490de822`
+- 追加テスト: `tests/agent-tokens.test.ts`（12件）
+- ローカル確認: `npm test` 622 pass、`tsc` / `lint` / `build` 成功
 
 ### 残っていること
 
