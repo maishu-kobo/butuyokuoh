@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
     const decision = body.decision === 'deny' ? 'deny' : body.decision === 'approve' ? 'approve' : null;
     const csrfCookie = request.cookies.get(OAUTH_CSRF_COOKIE)?.value || '';
     const csrfBody = typeof body.csrf === 'string' ? body.csrf : '';
+    // codeql[js/user-controlled-bypass] — 空入力の 400。許可は CSRF と会員セッションの後。
     if (!pendingId || !decision) {
       throw new GuestError(400, 'INVALID_INPUT', 'pending_id と decision が必要です');
     }

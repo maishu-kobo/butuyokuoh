@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // codeql[js/user-controlled-bypass] — JSON-RPC の型チェックで 400。認証は handleMcpJsonRpc 内。
     if (!message || typeof message !== 'object' || Array.isArray(message)) {
       return mcpJsonResponse(
         400,
