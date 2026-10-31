@@ -273,7 +273,7 @@ test('extension-add rate limit message differs for members; popup timeout and ve
   const popup = readFileSync('extension/popup.js', 'utf8');
   assert.match(popup, /一覧に追加済みか確認してください/);
   const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8')) as { version: string };
-  assert.equal(manifest.version, '1.1.1');
+  assert.equal(manifest.version, '1.2.0');
 });
 
 test('fetchServerItemMedia prefers scraped price and image, and leaves both empty when unusable', async () => {
