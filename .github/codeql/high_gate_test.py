@@ -164,7 +164,7 @@ class HighGateTest(unittest.TestCase):
 
     def test_committed_allowlist_matches_source_lines(self) -> None:
         entries = high_gate.load_allowlist(ALLOWLIST)
-        self.assertEqual(len(entries), 12)
+        self.assertEqual(len(entries), 13)
         results = []
         for entry in entries:
             lines = (ROOT / entry["path"]).read_text(encoding="utf-8").splitlines()

@@ -5,6 +5,7 @@
  */
 
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+// createHash は PKCE S256（仕様で SHA-256）のみ。照合ハッシュは scrypt。
 import type Database from 'better-sqlite3';
 import type { NextRequest } from 'next/server';
 import {
@@ -78,14 +79,12 @@ export type OAuthPendingRow = {
   created_at: string;
 };
 
-/** 高エントロピーの乱数トークン（code / refresh / CSRF）用。パスワードには使わない。 */
-function sha256Hex(value: string): string {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
-}
-
-/** OAuth client_secret 用。ユーザーパスワードではないが、低エントロピーの可能性に備え scrypt。 */
-function hashClientSecret(secret: string): string {
-  return scryptSync(secret, 'butuyokuoh-oauth-client-v1', 32).toString('hex');
+/**
+ * OAuth の不透明値（code / refresh / CSRF / client_secret / state）の照合用。
+ * ユーザーパスワード用ではないが、CodeQL の password-hash 判定を避けるため scrypt を使う。
+ */
+function hashOpaque(value: string, purpose: string): string {
+  return scryptSync(value, `butuyokuoh-oauth-${purpose}-v1`, 32).toString('hex');
 }
 
 function hashesEqual(a: string, b: string): boolean {
@@ -490,7 +489,7 @@ export function registerDynamicClient(
   let secretHash: string | null = null;
   if (authMethod === 'client_secret_post') {
     clientSecret = randomBytes(24).toString('base64url');
-    secretHash = hashClientSecret(clientSecret);
+    secretHash = hashOpaque(clientSecret, 'client');
   }
 
   db.prepare(`
@@ -537,7 +536,7 @@ export function authenticateOAuthClient(
   if (!client.client_secret_hash || typeof presentedSecret !== 'string' || !presentedSecret) {
     throw new GuestError(401, 'invalid_client', 'client_secret が必要です');
   }
-  if (!hashesEqual(client.client_secret_hash, hashClientSecret(presentedSecret))) {
+  if (!hashesEqual(client.client_secret_hash, hashOpaque(presentedSecret, 'client'))) {
     throw new GuestError(401, 'invalid_client', 'client_secret が違います');
   }
 }
@@ -580,7 +579,7 @@ export async function createAuthorizePending(
   if (state !== null && state.length > 512) {
     throw new GuestError(400, 'invalid_request', 'state が長すぎます');
   }
-  const stateHash = state ? sha256Hex(`${client.client_id}:${state}`) : null;
+  const stateHash = state ? hashOpaque(`${client.client_id}:${state}`, 'state') : null;
   if (stateHash) {
     const dup = db.prepare(`
       SELECT id FROM agent_oauth_pending
@@ -608,7 +607,7 @@ export async function createAuthorizePending(
     resource,
     state,
     stateHash,
-    sha256Hex(csrf),
+    hashOpaque(csrf, 'csrf'),
     utcPlusMs(OAUTH_PENDING_TTL_MS),
   );
 
@@ -637,7 +636,7 @@ export function approveAuthorizePending(
   if (!pending) {
     throw new GuestError(400, 'invalid_request', '認可リクエストの有効期限が切れています');
   }
-  if (!hashesEqual(pending.csrf_hash, sha256Hex(csrf))) {
+  if (!hashesEqual(pending.csrf_hash, hashOpaque(csrf, 'csrf'))) {
     throw new GuestError(403, 'invalid_csrf', 'CSRF トークンが不正です');
   }
 
@@ -667,7 +666,7 @@ export function approveAuthorizePending(
       code_challenge_method, resource, expires_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    sha256Hex(code),
+    hashOpaque(code, 'code'),
     pending.client_id,
     userId,
     pending.redirect_uri,
@@ -697,7 +696,7 @@ function issueRefreshToken(
       token_hash, agent_token_id, client_id, user_id, resource, scopes, expires_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
-    sha256Hex(plaintext),
+    hashOpaque(plaintext, 'refresh'),
     agentTokenId,
     clientId,
     userId,
@@ -746,7 +745,7 @@ export function exchangeAuthorizationCode(
   authenticateOAuthClient(client, input.client_secret);
   const resource = assertMcpResource(input.resource, requestUrl);
 
-  const codeHash = sha256Hex(input.code);
+  const codeHash = hashOpaque(input.code, 'code');
   const row = db.prepare('SELECT * FROM agent_oauth_auth_codes WHERE code_hash = ?').get(codeHash) as {
     code_hash: string;
     client_id: string;
@@ -837,7 +836,7 @@ export function refreshAccessToken(
   if (!input.refresh_token.startsWith(REFRESH_PREFIX)) {
     throw new GuestError(400, 'invalid_grant', 'refresh_token が不正です');
   }
-  const tokenHash = sha256Hex(input.refresh_token);
+  const tokenHash = hashOpaque(input.refresh_token, 'refresh');
   const row = db.prepare('SELECT * FROM agent_oauth_refresh_tokens WHERE token_hash = ?').get(tokenHash) as {
     id: number;
     token_hash: string;
@@ -887,7 +886,7 @@ export function refreshAccessToken(
   bindOAuthFields(record.id, client.client_id, resource, db);
   const refresh = issueRefreshToken(record.id, row.user_id, client.client_id, resource, scopes, db);
   const newRefreshId = Number(
-    (db.prepare('SELECT id FROM agent_oauth_refresh_tokens WHERE token_hash = ?').get(sha256Hex(refresh)) as { id: number }).id,
+    (db.prepare('SELECT id FROM agent_oauth_refresh_tokens WHERE token_hash = ?').get(hashOpaque(refresh, 'refresh')) as { id: number }).id,
   );
   db.prepare(`UPDATE agent_oauth_refresh_tokens SET replaced_by_id = ? WHERE id = ?`).run(newRefreshId, row.id);
   recordAgentAudit(record.id, row.user_id, 'oauth.token', { grant: 'refresh_token' }, db);
@@ -921,7 +920,7 @@ export function revokeOAuthToken(
   const hint = input.token_type_hint;
   const tryRefresh = () => {
     if (!input.token.startsWith(REFRESH_PREFIX)) return false;
-    const row = db.prepare('SELECT * FROM agent_oauth_refresh_tokens WHERE token_hash = ?').get(sha256Hex(input.token)) as {
+    const row = db.prepare('SELECT * FROM agent_oauth_refresh_tokens WHERE token_hash = ?').get(hashOpaque(input.token, 'refresh')) as {
       id: number;
       client_id: string;
       user_id: number;

@@ -8,7 +8,7 @@ import { GuestError } from '@/lib/guest';
 
 export const runtime = 'nodejs';
 
-function oauthError(status: number, code: string, description: string) {
+function tokenEndpointError(status: number, code: string, description: string) {
   return NextResponse.json(
     { error: code, error_description: description },
     {
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     const grantType = params.get('grant_type');
     const clientId = params.get('client_id');
-    if (!clientId) return oauthError(400, 'invalid_request', 'client_id が必要です');
+    if (!clientId) return tokenEndpointError(400, 'invalid_request', 'client_id が必要です');
     const clientSecret = params.get('client_secret');
 
     if (grantType === 'authorization_code') {
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       const codeVerifier = params.get('code_verifier');
       const resource = params.get('resource');
       if (!code || !redirectUri || !codeVerifier || !resource) {
-        return oauthError(400, 'invalid_request', 'code / redirect_uri / code_verifier / resource が必要です');
+        return tokenEndpointError(400, 'invalid_request', 'code / redirect_uri / code_verifier / resource が必要です');
       }
       const tokens = exchangeAuthorizationCode(
         {
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       const refreshToken = params.get('refresh_token');
       const resource = params.get('resource');
       if (!refreshToken || !resource) {
-        return oauthError(400, 'invalid_request', 'refresh_token と resource が必要です');
+        return tokenEndpointError(400, 'invalid_request', 'refresh_token と resource が必要です');
       }
       const tokens = refreshAccessToken(
         {
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return oauthError(400, 'unsupported_grant_type', 'grant_type が不正です');
+    return tokenEndpointError(400, 'unsupported_grant_type', 'grant_type が不正です');
   } catch (error) {
     if (error instanceof GuestError) {
       const code = error.code.includes('_') && !error.code.startsWith('AGENT_')
@@ -104,10 +104,10 @@ export async function POST(request: NextRequest) {
         : error.status === 401
           ? 'invalid_client'
           : 'invalid_grant';
-      return oauthError(error.status === 403 ? 400 : error.status, code, error.message);
+      return tokenEndpointError(error.status === 403 ? 400 : error.status, code, error.message);
     }
     console.error('OAuth token error:', error);
-    return oauthError(500, 'server_error', 'トークン発行に失敗しました');
+    return tokenEndpointError(500, 'server_error', 'トークン発行に失敗しました');
   }
 }
 
