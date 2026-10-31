@@ -10,6 +10,12 @@ import TermsPage from '../src/app/terms/page';
 import { RootProviders } from '../src/components/RootProviders';
 import LoginForm from '../src/components/LoginForm';
 import { AuthContext, AuthProvider } from '../src/components/AuthProvider';
+import {
+  CONTACT_EMAIL,
+  FOREIGN_PRIVACY_SYSTEMS_URL,
+  LEGAL_EFFECTIVE_DATE,
+  OPERATOR_NAME,
+} from '../src/lib/legal';
 
 const router = {
   back() {},
@@ -27,76 +33,147 @@ function html(node: ReactNode): string {
   return renderToStaticMarkup(node);
 }
 
-const overclaim = [
-  '一切の責任',
-  '準拠法',
-  '損害賠償',
-  '同意したものとみな',
-  '個人情報保護法',
-  'GDPR',
-  '当社',
+const draftMarks = [
+  '下書き',
+  '確認待ち',
+  'Sota',
+  '確定したプライバシーポリシーではありません',
+  '確定した利用規約ではありません',
+  '確定した文面ではありません',
 ];
 
-test('プライバシーポリシーは下書きで、アプリの扱いだけを書く', () => {
-  const page = html(createElement(PrivacyPage));
-  assert.match(page, /プライバシーポリシー（下書き）/);
-  assert.match(page, /下書き。Sota の確認待ち。確定したプライバシーポリシーではありません。/);
-  assert.match(page, /法律上の同意文や、法令への適合の宣言ではありません。/);
-  assert.match(page, /パスワードは6文字以上です。保存するのは照合用のハッシュで、入力したパスワードそのものではありません。/);
-  assert.match(page, /確認メールは送りません。/);
-  assert.match(page, /Googleログインは、その設定があるときだけ画面に出ます。/);
-  assert.match(page, /確認済みのGoogleアカウントのメールアドレス、名前、Googleの識別子を会員に結びつけます。/);
-  assert.match(page, /同じメールの会員に結ぶと、その会員のパスワードは消します。/);
-  assert.match(page, /商品名、URL、店舗の画像URL、価格、メモ、優先度、個数、購入予定日、購入済み、カテゴリ、比較グループを、このアプリが動いている場所のSQLiteに保存します。/);
-  assert.match(page, /商品の価格を取りに行くときは、その商品URLのページを取得します。価格が変わったときは履歴に残します。/);
-  assert.match(page, /まとめて行う価格の確認は、会員の未購入で、ゴミ箱に無く、商品コードが無く、写真の比較グループに入っていない商品が対象です。/);
-  assert.match(page, /保存したSlackまたはDiscordのウェブフックがあり、通知がオンのときは、その宛先へ価格の通知を送ることがあります。/);
-  assert.match(page, /会員がアップロードした画像は、位置情報などの付随データを落としてから保存します。/);
-  assert.match(page, /写真から商品を判定するとき、写真はこのアプリへ届きます。/);
-  assert.match(page, /使えるCloudflareのアカウントIDとAPIトークンが両方あるときだけ、その写真をCloudflareのWorkers AI（api.cloudflare.com）へ送ります。/);
-  assert.match(page, /キーが無いとき、または使えないときは、写真をそこへは送りません。/);
-  assert.match(page, /写真そのものはこのアプリのデータベースに保存しません。/);
-  assert.match(page, /各回のニューロン数/);
-  assert.match(page, /検索で見つけた候補は30分で消します。/);
-  assert.match(page, /Yahoo!ショッピング（shopping.yahooapis.jp）と楽天市場（openapi.rakuten.co.jp）/);
-  assert.match(page, /キーが無い店は使いません。/);
-  assert.match(page, /ゲスト体験は、その設定があるときだけ使えます。メールアドレスは受け取りません。体験用の行には、利用者が入力していない仮の識別子を付けます。期限の標準は24時間で、設定で変わります。/);
-  assert.match(page, /期限が切れるか体験を終えると、ゲストのデータを消します。会員のログインには引き継ぎません。/);
-  assert.match(page, /butuyokuoh_token/);
-  assert.match(page, /httpOnly、SameSite=Lax、有効期限は7日です。本番ではSecureを付けます。/);
-  assert.match(page, /butuyokuoh_guest/);
-  assert.match(page, /httpOnly、SameSite=Laxで、体験の期限までです。本番ではSecureを付けます。/);
-  assert.match(page, /サーバに残すのはトークンのハッシュです。/);
-  assert.match(page, /Googleログインのあいだは、ログイン状態を保つ別のクッキーをブラウザに置きます。/);
-  assert.match(page, /表示テーマはブラウザのlocalStorageに保存することがあります。サーバには送りません。/);
-  assert.match(page, /会員は、ほしいもの、購入済み、または全部をCSVで書き出せます。/);
-  assert.match(page, /設定の退会は、会員のアカウント、商品、価格履歴、カテゴリ、比較グループ、通知設定、アップロード画像、写真検索の記録と回数を消します。元に戻す操作はありません。/);
-  assert.match(page, /画面に、広告配信やアクセス解析の外部タグは入れていません。/);
-  assert.match(page, /下書きの日付は2026-10-23です。/);
-  assert.match(page, /href="\/terms"/);
-  for (const phrase of overclaim) assert.equal(page.includes(phrase), false, phrase);
+const internalJargon = [
+  'キーが無いとき',
+  'アカウントIDとAPIトークン',
+  '設定がある店',
+  'その設定があるときだけ画面に出ます',
+  'パスワードは6文字以上',
+  '確認メールは送りません',
+  'JWT',
+  'httpOnly',
+  'SameSite',
+  'SQLite',
+  'exe.dev',
+  'api.cloudflare.com',
+  'shopping.yahooapis.jp',
+  'openapi.rakuten.co.jp',
+  'ニューロン',
+  'Auth.js',
+  'NextAuth',
+  'maishu-kobo/butuyokuoh',
+  'GitHub',
+];
+
+test('運営者名・連絡先メールの定数が入っている', () => {
+  assert.ok(OPERATOR_NAME.trim().length > 0, 'OPERATOR_NAME を src/lib/legal.ts に入れてください');
+  assert.ok(CONTACT_EMAIL.trim().length > 0, 'CONTACT_EMAIL を src/lib/legal.ts に入れてください');
+  assert.match(CONTACT_EMAIL, /@/, 'CONTACT_EMAIL はメールアドレス形式にしてください');
 });
 
-test('利用規約は下書きで、アプリがしていること以上の法的な主張を書かない', () => {
+test('プライバシーポリシーは正式版で、利用者向けの粒度で書く', () => {
+  const page = html(createElement(PrivacyPage));
+  assert.match(page, /プライバシーポリシー/);
+  assert.equal(page.includes('プライバシーポリシー（下書き）'), false);
+  for (const phrase of draftMarks) assert.equal(page.includes(phrase), false, phrase);
+  for (const phrase of internalJargon) assert.equal(page.includes(phrase), false, phrase);
+
+  assert.match(page, /メールアドレスとパスワード/);
+  assert.match(page, /照合用の値/);
+  assert.match(page, /Googleアカウントでログインするとき/);
+  assert.match(page, /ほしいものリストの内容/);
+  assert.match(page, /手動で追加・編集するときに選んだ画像/);
+  assert.match(page, /商品を手動で追加する画面、または登録済み商品を編集する画面/);
+  assert.match(page, /お店の商品画像/);
+  assert.match(page, /画像そのものは本サービスに保存せず、画像のURLだけを保存します/);
+  assert.match(page, /お使いのブラウザがお店のサーバから直接読み込みます/);
+  assert.match(page, /写真検索用の写真と、その結果/);
+  assert.match(page, /メモリ上で処理します/);
+  assert.match(page, /データベースやファイルとしては保管せず/);
+  assert.match(page, /写真検索用の写真は商品の画像にはなりません/);
+  assert.match(page, /位置情報を除いて縮小した画像/);
+  assert.match(page, /写真から商品を推定するとき/);
+  assert.match(page, /Cloudflare, Inc\./);
+  assert.match(page, /Yahoo!ショッピングや楽天市場/);
+  assert.match(page, /お店の商品画像を画面に出すとき/);
+  assert.match(page, /お使いのブラウザが、お店のサーバへ直接アクセスして画像を読み込みます/);
+  assert.match(page, /商品ページを取得します/);
+  assert.match(page, /写真検索から作った比較グループに入っていない会員の商品が対象です/);
+  assert.match(page, /ショップが2件以上ある商品は、個別のページ再取得もしません/);
+  assert.match(page, /SlackまたはDiscord/);
+  assert.match(page, /ホスティング事業者のサーバ/);
+  assert.match(page, /アメリカ合衆国/);
+  assert.match(page, /外国における個人情報の保護に関する制度等の調査/);
+  assert.equal(page.includes(FOREIGN_PRIVACY_SYSTEMS_URL), true);
+  assert.match(page, /プライバシーポリシーおよび/);
+  assert.match(page, /butuyokuoh_token/);
+  assert.match(page, /butuyokuoh_guest/);
+  assert.match(page, /標準では約24時間/);
+  assert.match(page, /広告配信やアクセス解析のための外部タグは入れていません/);
+  assert.match(page, /手動で追加・編集するときに選んだ画像および写真検索用の写真からの位置情報の除去/);
+  assert.match(page, new RegExp(`運営：${OPERATOR_NAME}`));
+  assert.match(page, /運営者の氏名及び住所は、上記窓口へのご請求に応じて遅滞なくお知らせします/);
+  assert.match(page, /開示等の請求、苦情の申出、お問い合わせ/);
+  assert.match(page, new RegExp(`href="mailto:${CONTACT_EMAIL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
+  assert.match(page, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
+  assert.match(page, /href="\/terms"/);
+  assert.equal(page.includes('ほしいもの用にアップロード'), false);
+  assert.equal(page.includes('店舗の画像'), false);
+  assert.equal(page.includes('写真そのものは保管しません'), false);
+  assert.equal(page.includes('一部の写真から登録した商品は対象外'), false);
+  assert.equal(page.includes('Gemini'), false);
+  assert.equal(page.includes('GitHub'), false);
+});
+
+test('利用規約は正式版で、免責・変更・準拠法を書く', () => {
   const page = html(createElement(TermsPage));
-  assert.match(page, /利用規約（下書き）/);
-  assert.match(page, /下書き。Sota の確認待ち。確定した利用規約ではありません。/);
-  assert.match(page, /画面に同意の確認は無く、この文面への同意を利用の条件にしていません。/);
-  assert.match(page, /ほしいものの一覧、価格、メモ、写真からの候補を、自分の画面に残すアプリです。/);
-  assert.match(page, /会員はメールアドレスと6文字以上のパスワードで作ります。名前は任意です。/);
-  assert.match(page, /ゲスト体験は、その設定があるときだけ使えます。期限が切れるか体験を終えるとデータを消し、会員のログインには引き継ぎません。/);
-  assert.match(page, /会員がログアウトすると、それまでのログインは使えなくなります。/);
-  assert.match(page, /設定の退会は、アカウントと登録したデータを消します。元に戻す操作はありません。/);
-  assert.match(page, /商品URLを登録したり価格を取り直したりすると、そのURLのページを取得します。/);
-  assert.match(page, /写真から探すと、写真はこのアプリへ届きます。/);
-  assert.match(page, /使えるCloudflareのアカウントIDとAPIトークンが両方あるときだけ、写真をCloudflareのWorkers AI（api.cloudflare.com）へ送ります。/);
-  assert.match(page, /キーが無いとき、または使えないときは、そこへは送りません。/);
-  assert.match(page, /写真自体は保存しません。/);
-  assert.match(page, /このアプリの中に、代金を払う機能はありません。/);
-  assert.match(page, /会員は自分のデータをCSVで書き出せます。/);
-  assert.match(page, /下書きの日付は2026-10-23です。/);
+  assert.match(page, /利用規約/);
+  assert.equal(page.includes('利用規約（下書き）'), false);
+  for (const phrase of draftMarks) assert.equal(page.includes(phrase), false, phrase);
+  for (const phrase of internalJargon) assert.equal(page.includes(phrase), false, phrase);
+
+  assert.match(page, /本サービスを利用した時点で、本規約に同意したものとみなします/);
+  assert.match(page, /ほしいものの一覧、価格、メモ、写真からの候補/);
+  assert.match(page, /未成年の方が本サービスを利用する場合/);
+  assert.match(page, /写真検索用の写真は本サービスのサーバに届き、メモリ上で処理します/);
+  assert.match(page, /データベースやファイルとしては保管せず/);
+  assert.match(page, /写真検索用の写真は商品の画像にはなりません/);
+  assert.match(page, /手動で追加・編集するときに選んでアップロードした画像/);
+  assert.match(page, /お店の商品画像はURLだけを保存し/);
+  assert.match(page, /お使いのブラウザがお店のサーバから直接読み込みます/);
+  assert.match(page, /Cloudflare, Inc\./);
+  assert.match(page, /各ストアの表示が正しいものとします/);
+  assert.match(page, /アフィリエイト用の識別子が付くことがあります/);
+  assert.match(page, /Amazonのアソシエイトとして/);
+  assert.match(page, /Supported by Rakuten Developers/);
+  assert.match(page, /代金を払う機能はありません/);
+  assert.match(page, /運営者の責めに帰すべき事由により利用者に損害が生じた場合、その損害を賠償します/);
+  assert.match(page, /故意または重大な過失がある場合を除き/);
+  assert.match(page, /現実に生じた通常かつ直接の損害に限られ/);
+  assert.match(page, /逸失利益その他の特別な事情による損害は含みません/);
+  assert.equal(page.includes('法令で許される範囲で責任を負いません'), false);
+  assert.match(page, /法令で許される範囲で保証しません/);
+  assert.match(page, /民法第548条の4/);
+  assert.match(page, /準拠法/);
+  assert.match(page, /本規約は日本法に準拠します/);
+  assert.equal(page.includes('専属的合意管轄'), false);
+  assert.equal(page.includes('東京地方裁判所'), false);
+  assert.match(page, new RegExp(`href="mailto:${CONTACT_EMAIL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
+  assert.match(page, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
   assert.match(page, /href="\/privacy"/);
-  for (const phrase of overclaim) assert.equal(page.includes(phrase), false, phrase);
+  assert.equal(page.includes('一切の責任を負いません'), false);
+  assert.equal(page.includes('Gemini'), false);
+  assert.equal(page.includes('GitHub'), false);
+});
+
+test('画面に運営者名と mailto の連絡先が出る', () => {
+  const privacy = html(createElement(PrivacyPage));
+  const terms = html(createElement(TermsPage));
+  assert.equal(privacy.includes(OPERATOR_NAME), true);
+  assert.equal(privacy.includes(CONTACT_EMAIL), true);
+  assert.equal(privacy.includes(`mailto:${CONTACT_EMAIL}`), true);
+  assert.equal(terms.includes(OPERATOR_NAME), true);
+  assert.equal(terms.includes(CONTACT_EMAIL), true);
+  assert.equal(terms.includes(`mailto:${CONTACT_EMAIL}`), true);
 });
 
 function authShell(pathname: string, child: ReactNode): string {
@@ -111,11 +188,13 @@ function authShell(pathname: string, child: ReactNode): string {
   ));
 }
 
-test('直接開いた最初の描画でも下書きの本文が出る', () => {
+test('直接開いた最初の描画でも正式な本文が出る', () => {
   const privacy = renderToStaticMarkup(createElement(RootProviders, null, createElement(PrivacyPage)));
   const terms = renderToStaticMarkup(createElement(RootProviders, null, createElement(TermsPage)));
-  assert.match(privacy, /下書き。Sota の確認待ち。確定したプライバシーポリシーではありません。/);
-  assert.match(terms, /下書き。Sota の確認待ち。確定した利用規約ではありません。/);
+  assert.match(privacy, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
+  assert.match(terms, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
+  assert.equal(privacy.includes('下書き'), false);
+  assert.equal(terms.includes('下書き'), false);
   assert.equal(privacy.includes('読み込み中...'), false);
   assert.equal(terms.includes('読み込み中...'), false);
 });
@@ -155,15 +234,16 @@ function loginMarkup(): string {
   return renderToStaticMarkup(createElement(AuthContext.Provider, { value }, createElement(LoginForm)));
 }
 
-test('ログイン画面から2つの下書きを開ける', () => {
+test('ログイン画面から2つの方針ページを開ける', () => {
   const page = loginMarkup();
   assert.match(page, /href="\/privacy"/);
   assert.match(page, /href="\/terms"/);
-  assert.match(page, /プライバシーポリシー（下書き）/);
-  assert.match(page, /利用規約（下書き）/);
+  assert.match(page, /プライバシーポリシー/);
+  assert.match(page, /利用規約/);
+  assert.equal(page.includes('下書き'), false);
 });
 
-test('設定画面から2つの下書きを開ける', async () => {
+test('設定画面から2つの方針ページを開ける', async () => {
   const { default: SettingsPage } = await import('../src/app/(app)/settings/page');
   const value = {
     user: { id: 1, account_type: 'member' as const, email: 'member@example.com', name: '会員' },
@@ -185,6 +265,9 @@ test('設定画面から2つの下書きを開ける', async () => {
   ));
   assert.match(page, /href="\/privacy"/);
   assert.match(page, /href="\/terms"/);
-  assert.match(page, /プライバシーポリシー（下書き）/);
-  assert.match(page, /利用規約（下書き）/);
+  assert.match(page, /プライバシーポリシー/);
+  assert.match(page, /利用規約/);
+  assert.match(page, /プライバシーと利用規約/);
+  assert.equal(page.includes('下書き'), false);
+  assert.equal(page.includes('Sota'), false);
 });
