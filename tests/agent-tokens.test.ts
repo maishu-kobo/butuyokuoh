@@ -151,7 +151,7 @@ test('agent token: scope enforcement on requireAgentToken', () => serial(async (
     Authorization: `Bearer ${readOnly.token}`,
   });
   assert.equal(ok.status, 200, ok.text);
-  assert.equal((ok.json as { scopes: string[] }).scopes.includes('read'), true);
+  assert.equal((ok.json as { data: { scopes: string[] } }).data.scopes.includes('read'), true);
 
   const denied = await call(agentMePath, 'GET', '/api/agent/v1/me', undefined, undefined, {
     Authorization: `Bearer ${writeOnly.token}`,

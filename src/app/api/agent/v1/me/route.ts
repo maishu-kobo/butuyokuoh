@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { guestErrorResponse } from '@/lib/api-access';
+import { withAgentNotice } from '@/lib/agent-response';
 import { requireAgentToken } from '@/lib/agent-token';
 import { getDb } from '@/lib/db';
 import { GuestError } from '@/lib/guest';
 
 /**
- * #269 向けの共有認証ヘルパー動作確認用。
- * 画面向け API ではなく、エージェント用 Bearer のみを受け付ける。
+ * エージェント用 Bearer の確認。画面向け API ではない。
  * 成功した読み取りは監査に残さない。
  */
 export async function GET(request: NextRequest) {
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     if (!user) {
       throw new GuestError(401, 'AGENT_TOKEN_INVALID', '無効または期限切れのエージェント用トークンです');
     }
-    return NextResponse.json({
+    return NextResponse.json(withAgentNotice({
       user: {
         id: user.id,
         email: user.email,
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
         token_prefix: auth.token.token_prefix,
         expires_at: auth.token.expires_at,
       },
-    }, { headers: { 'Cache-Control': 'no-store' } });
+    }), { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     if (error instanceof GuestError) return guestErrorResponse(error);
     throw error;
