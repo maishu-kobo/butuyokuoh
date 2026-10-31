@@ -133,6 +133,33 @@
       "indexesAdded": [
         "idx_price_history_item_recorded_id"
       ]
+    },
+    {
+      "id": "agent-token-tables",
+      "reason": "エージェント用トークン・操作ログ・レート制限（#268）。URL登録・一覧・価格再取得・ログインでは行を作らない。",
+      "tablesAdded": ["agent_tokens", "agent_audit_log", "agent_rate_limits"],
+      "requireEmpty": true,
+      "indexesAdded": [
+        "idx_agent_audit_created",
+        "idx_agent_audit_token",
+        "idx_agent_audit_user",
+        "idx_agent_tokens_user",
+        "sqlite_autoindex_agent_rate_limits_1",
+        "sqlite_autoindex_agent_tokens_1"
+      ]
+    },
+    {
+      "id": "agent-token-item-marker",
+      "reason": "エージェントが追加した品目の印。通常のURL登録ではNULLのまま。",
+      "columnsAdded": [
+        { "table": "items", "column": "added_by_agent_token_id", "value": null }
+      ],
+      "indexesAdded": [
+        "idx_items_added_by_agent"
+      ],
+      "responseFieldsAdded": [
+        { "field": "added_by_agent_token_id", "equals": null }
+      ]
     }
   ]
 }
