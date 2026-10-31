@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { displayableItemImageUrl } from '@/lib/capture/image-hosts';
 import { linkableHttpUrl } from '@/lib/http-url';
 
 import { useEffect, useState } from 'react';
@@ -112,23 +113,25 @@ export default function PurchasedHistory() {
           </div>
         ) : (
           <div className="space-y-3">
-            {data.items.map((item) => (
+            {data.items.map((item) => {
+              const image = displayableItemImageUrl(item.image_url);
+              return (
               <div key={item.id} className="bg-white dark:bg-slate-800 rounded-lg shadow p-4 flex items-center gap-4">
                 {/* 画像 */}
                 <div className="w-16 h-16 flex-shrink-0 bg-gray-100 rounded">
-                  {item.image_url ? (
-                    <img
-                      src={item.image_url}
-                      alt={item.name}
-                      loading="lazy"
-                      decoding="async"
-                      className="w-full h-full object-contain rounded"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">
-                      No Image
-                    </div>
-                  )}
+                  {image ? (
+                      <img
+                        src={image}
+                        alt={item.name}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-contain rounded"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">
+                        No Image
+                      </div>
+                    )}
                 </div>
 
                 {/* 情報 */}
@@ -180,7 +183,8 @@ export default function PurchasedHistory() {
                   </button>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </div>
