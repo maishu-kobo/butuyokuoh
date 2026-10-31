@@ -2,7 +2,12 @@ import { assertOwnedRelations, guestErrorResponse, validateMemberInput } from '@
 import { consumeGuestRate, GuestError } from '@/lib/guest';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getUserIdFromToken } from '@/lib/auth';
+import {
+  applyExtensionAuthHeaders,
+  extensionCorsHeaders,
+  resolveExtensionAuth,
+} from '@/lib/extension-auth';
+import { markItemAddedByAgent, recordAgentAudit } from '@/lib/agent-token';
 import {
   cleanedStoredItemUrlTaken,
   fetchServerItemMedia,
@@ -13,7 +18,7 @@ import {
 import { ITEM_URL_ERROR } from '@/lib/http-url';
 
 interface AddItemRequest {
-  token: string;
+  token?: string;
   item: {
     name: string;
     url: string;
@@ -24,11 +29,7 @@ interface AddItemRequest {
   };
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+const corsHeaders = extensionCorsHeaders('POST, OPTIONS');
 
 function extensionAddsPerMinute(): number {
   const raw = process.env.EXTENSION_ADDS_PER_MINUTE;
@@ -43,20 +44,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json() as AddItemRequest;
     const { token, item } = body;
 
-    if (!token) {
-      return NextResponse.json(
-        { error: '認証トークンが必要です' },
-        { status: 401, headers: corsHeaders }
-      );
-    }
-
-    const userId = getUserIdFromToken(token);
-    if (!userId) {
-      return NextResponse.json(
-        { error: '無効なトークンです' },
-        { status: 401, headers: corsHeaders }
-      );
-    }
+    const auth = resolveExtensionAuth(request, {
+      bodyToken: token,
+      rate: item?.url ? ['add', 'add_url', 'add_day'] : ['add', 'add_day'],
+    });
+    const userId = auth.userId;
 
     if (!item || typeof item.name !== 'string' || typeof item.url !== 'string') {
       return NextResponse.json(
@@ -145,14 +137,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(
-      {
-        success: true,
-        id: result.lastInsertRowid,
-        message: '追加しました',
-      },
-      { headers: corsHeaders }
-    );
+    if (auth.agent && result.lastInsertRowid) {
+      const itemId = Number(result.lastInsertRowid);
+      markItemAddedByAgent(itemId, auth.agent.token.id, userId, db);
+      recordAgentAudit(auth.agent.token.id, userId, 'extension.add', {
+        scope: 'extension',
+        item_id: itemId,
+      }, db);
+    }
+
+    const headers = { ...corsHeaders };
+    applyExtensionAuthHeaders(headers, auth);
+    const payload: Record<string, unknown> = {
+      success: true,
+      id: result.lastInsertRowid,
+      message: '追加しました',
+    };
+    if (auth.legacyDeprecated) {
+      payload.auth_warning = 'legacy_jwt_deprecated';
+    }
+
+    return NextResponse.json(payload, { headers });
   } catch (error) {
     if (error instanceof GuestError) {
       const response = guestErrorResponse(error);

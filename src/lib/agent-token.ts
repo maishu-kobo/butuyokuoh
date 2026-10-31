@@ -9,8 +9,11 @@ export const AGENT_TOKEN_DEFAULT_DAYS = 90;
 export const AGENT_TOKEN_MAX_DAYS = 365;
 export const AGENT_AUDIT_RETENTION_DAYS = 90;
 
-export type AgentScope = 'read' | 'write';
+/** read/write はエージェント API、extension は Chrome 拡張の最小権限（#271） */
+export type AgentScope = 'read' | 'write' | 'extension';
 export type AgentRateKind = 'read' | 'add' | 'add_url' | 'add_day';
+
+const ALLOWED_SCOPES: readonly AgentScope[] = ['read', 'write', 'extension'];
 
 // add / add_url / read は直近1分の窓。add_day は「最初の追加から24時間」の固定窓
 // （窓が切れるまで resets_at を動かさず、切れたら count を1に戻して新しい窓を始める）。
@@ -80,8 +83,11 @@ export function parseScopes(raw: unknown): AgentScope[] | null {
   if (!Array.isArray(raw) || raw.length === 0) return null;
   const scopes: AgentScope[] = [];
   for (const entry of raw) {
-    if (entry !== 'read' && entry !== 'write') return null;
-    if (!scopes.includes(entry)) scopes.push(entry);
+    if (typeof entry !== 'string' || !(ALLOWED_SCOPES as readonly string[]).includes(entry)) {
+      return null;
+    }
+    const scope = entry as AgentScope;
+    if (!scopes.includes(scope)) scopes.push(scope);
   }
   return scopes.length ? scopes : null;
 }
@@ -174,7 +180,7 @@ export function createAgentToken(
   }
   const scopes = parseScopes(input.scopes);
   if (!scopes) {
-    throw new GuestError(400, 'INVALID_INPUT', '権限は read / write から選んでください');
+    throw new GuestError(400, 'INVALID_INPUT', '権限は read / write / extension から選んでください');
   }
   const days = input.expiresInDays ?? AGENT_TOKEN_DEFAULT_DAYS;
   if (!Number.isSafeInteger(days) || days < 1 || days > AGENT_TOKEN_MAX_DAYS) {

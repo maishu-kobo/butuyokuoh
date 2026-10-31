@@ -244,6 +244,19 @@
     .hidden {
       display: none !important;
     }
+    .migration-banner {
+      display: none;
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: #fef3c7;
+      color: #92400e;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .migration-banner.show {
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -253,6 +266,9 @@
   </div>
 
   <div class="content">
+    <div id="migrationBanner" class="migration-banner" role="status">
+      古いログイン用トークンです。物欲王の設定画面で「拡張用トークン」を作り、ここに貼り替えてください。移行期間が終わると使えなくなります。
+    </div>
     <!-- 商品ページモード -->
     <div id="productMode" class="hidden">
       <div class="section">
@@ -328,12 +344,12 @@
         <input type="url" id="serverUrl" placeholder="https://butsuyokuoh.exe.xyz:8000">
       </div>
       <div class="input-group">
-        <label>認証トークン</label>
-        <input type="password" id="authToken" placeholder="ログイン後に取得">
+        <label>拡張用トークン</label>
+        <input type="password" id="authToken" placeholder="byoagt_ で始まるトークン">
       </div>
       <button class="btn btn-secondary" id="saveSettings">保存</button>
       <p class="help-text" style="margin-top: 8px;">
-        トークンは物欲王の設定ページから取得できます
+        設定ページの「Chrome拡張機能用トークン」から作成した byoagt_ トークンを貼り付けてください
       </p>
     </div>
   </div>
