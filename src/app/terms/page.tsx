@@ -3,7 +3,8 @@ import Link from 'next/link';
 import LegalLinks from '@/components/LegalLinks';
 import {
   CONTACT_EMAIL,
-  LEGAL_EFFECTIVE_DATE,
+  LEGAL_ENACTED_DATE,
+  LEGAL_REVISED_DATE,
   OPERATOR_NAME,
 } from '@/lib/legal';
 
@@ -37,7 +38,7 @@ export default function TermsPage() {
         <p>会員がログアウトすると、それまでのログインは使えなくなります。</p>
         <p>設定から退会すると、アカウントと登録したデータは消えます。元に戻すことはできません。詳細はプライバシーポリシーをご覧ください。</p>
         <p>
-          利用者は、自己の責任で認証情報（パスワードおよび拡張機能用のトークンを含みます）を管理してください。第三者に貸与・共有してはなりません。
+          パスワードとトークン（拡張機能用・エージェント用）は、会員ご自身で管理してください。ほかの人に貸したり、共有したりしないでください。エージェント用トークンを自分のAIエージェントに渡すことはできますが、その場合も管理は会員の責任です。漏れたかもしれないときは、すぐにトークンを無効にしてください。
         </p>
 
         <h2 className="text-lg font-semibold pt-2">3. 未成年の利用</h2>
@@ -51,6 +52,7 @@ export default function TermsPage() {
           <li>法令または公序良俗に反する行為</li>
           <li>本サービスまたは第三者の権利・利益を侵害する行為</li>
           <li>不正アクセス、過度な負荷、スクレイピングの悪用、システムの解析や妨害</li>
+          <li>エージェントやAPIを使って、大量のリクエストを送ること、または回数の上限を避けようとすること</li>
           <li>他の利用者のアカウントや認証情報を無断で利用する行為</li>
           <li>本サービスの運営を妨げる行為、またはそのおそれのある行為</li>
         </ul>
@@ -69,9 +71,44 @@ export default function TermsPage() {
         </p>
 
         <h2 className="text-lg font-semibold pt-2">7. データの書き出し</h2>
-        <p>会員は自分のデータをCSVで書き出せます。設定に出る拡張機能用のトークンは、その会員の画面に表示します。</p>
+        <p>
+          会員は自分のデータをCSVで書き出せます。拡張機能用のトークンは、その会員の画面にだけ表示します。エージェント用トークンは、発行したときに一度だけ表示します。
+        </p>
 
-        <h2 className="text-lg font-semibold pt-2">8. 免責および責任の制限</h2>
+        <h2 className="text-lg font-semibold pt-2">8. AIエージェントとの連携</h2>
+        <ul className="list-disc pl-6 space-y-2">
+          <li>
+            会員は、エージェント用トークンを発行して、自分のAIエージェントから本サービスを使えます（REST APIやMCPに対応したエージェントです）。
+          </li>
+          <li>
+            エージェントがトークンを使って行った操作は、会員自身の操作として扱います。
+          </li>
+          <li>
+            エージェントにできるのは、読む、追加する、更新する、購入済みにする、ゴミ箱に移す、の5つです。完全に削除することはできません。間違えた操作は、取り消し機能で戻せる場合があります。
+          </li>
+          <li>
+            トークンには有効期限があり、会員はいつでも無効にできます。パスワードを変えると、発行済みのトークンはすべて無効になります。有効期限などの詳細はヘルプページに載せています。
+          </li>
+          <li>
+            価格と画像は、本サービスのサーバが商品ページから取得できたものだけを使います。
+          </li>
+          <li>
+            使いすぎを防ぐため、読み取りや追加の回数に上限があります。上限の値はヘルプページに載せています。
+          </li>
+          <li>
+            大量のアクセス、不正な使い方、本サービスの妨げになる使い方があったときは、運営者はトークンを無効にしたり、機能を止めたりするなど、必要な対応をとることができます。
+          </li>
+          <li>
+            エージェントや外部のAIサービスでのデータの扱いは、そのサービスの規約によります。
+          </li>
+        </ul>
+        <p>
+          詳しくは
+          <Link href="/help/agents" className="underline underline-offset-2 mx-1">エージェント連携のヘルプ</Link>
+          をご覧ください。
+        </p>
+
+        <h2 className="text-lg font-semibold pt-2">9. 免責および責任の制限</h2>
         <p>
           本サービスは現状有姿で提供されます。運営者は、本サービスの正確性、完全性、有用性、特定目的適合性、稼働の中断の不存在について、法令で許される範囲で保証しません。
         </p>
@@ -82,22 +119,23 @@ export default function TermsPage() {
           消費者契約法その他の強行法規により本規約の条項が制限される場合、当該法規が定める範囲で本規約は適用され、無効となる部分があっても、残りの部分は効力を有します。
         </p>
 
-        <h2 className="text-lg font-semibold pt-2">9. 本規約の変更</h2>
+        <h2 className="text-lg font-semibold pt-2">10. 本規約の変更</h2>
         <p>
           運営者は、民法第548条の4に基づき、次の場合に本規約を変更できます。（1）変更が利用者の一般の利益に適合するとき。（2）変更が本規約の目的に反せず、かつ変更の必要性、変更後の内容の相当性その他の事情に照らして合理的なものであるとき。変更後の本規約は、本ページへの掲載その他の適切な方法で周知し、掲載において定める効力発生日から適用します。
         </p>
 
-        <h2 className="text-lg font-semibold pt-2">10. 準拠法</h2>
+        <h2 className="text-lg font-semibold pt-2">11. 準拠法</h2>
         <p>本規約は日本法に準拠します。</p>
 
-        <h2 className="text-lg font-semibold pt-2">11. お問い合わせ</h2>
+        <h2 className="text-lg font-semibold pt-2">12. お問い合わせ</h2>
         <p>
           本規約に関するお問い合わせは、
           <a href={`mailto:${CONTACT_EMAIL}`} className="underline underline-offset-2">{CONTACT_EMAIL}</a>
           までご連絡ください。
         </p>
 
-        <p>制定日・施行日：{LEGAL_EFFECTIVE_DATE}</p>
+        <p>制定日：{LEGAL_ENACTED_DATE}</p>
+        <p>改定日：{LEGAL_REVISED_DATE}</p>
         <LegalLinks />
       </article>
     </main>
