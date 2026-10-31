@@ -97,8 +97,11 @@ function fakeRequest(url, options, callback) {
     if (opts instanceof URL || typeof opts === 'string') href = hrefOf(opts);
     else if (opts.href) href = hrefOf(opts.href);
     else if (opts.hostname || opts.host) {
+      // IP ピン留め時は host が解決済みアドレスになる。Host / 明示 hostname から元 URL を復元する。
       const protocol = opts.protocol || 'https:';
-      const host = opts.host || opts.hostname;
+      const headers = opts.headers || {};
+      const hostHeader = headers.Host || headers.host;
+      const host = hostHeader || opts.servername || opts.host || opts.hostname;
       href = hrefOf(`${protocol}//${host}${opts.path || '/'}`);
     }
   }

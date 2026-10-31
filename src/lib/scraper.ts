@@ -333,6 +333,13 @@ const PUPPETEER_SKIPPED_RESOURCES = new Set(['image', 'font', 'media']);
  * @returns 取得したScrapedItem（ボット検知された場合はnull）
  */
 async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: ScrapeDeps): Promise<ScrapedItem | null> {
+  // 遷移先ホストは許可リストの定数だけを使う。pathname/search は商品ページのパス。
+  const parsed = new URL(sanitizedUrl);
+  const allowedHost = [...AMAZON_DOMAINS].find((domain) => domain === parsed.hostname.toLowerCase());
+  if (!allowedHost) return null;
+  const navigationUrl = `https://${allowedHost}${parsed.pathname}${parsed.search}`;
+  await resolvedPublicAddress(new URL(navigationUrl), deps?.resolve);
+
   const browser: AmazonBrowser = deps?.launchBrowser
     ? await deps.launchBrowser({ headless: true })
     : (await launchPageBrowser()) as AmazonBrowser;
@@ -368,8 +375,8 @@ async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: ScrapeDeps
       }
     });
 
-    // codeql[js/request-forgery] — 遷移前に request 拦截で resolvedPublicAddress により非公開へは abort する。
-    await page.goto(sanitizedUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    // codeql[js/request-forgery] — ホストは AMAZON_DOMAINS、遷移前に resolvedPublicAddress と request 拦截で非公開を拒否する。
+    await page.goto(navigationUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
     // レンダリング後のHTMLを取得し、fetch経路と同じ抽出ロジックを通す
     const html = await page.content();

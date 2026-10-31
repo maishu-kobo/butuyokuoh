@@ -51,8 +51,8 @@
     {
       "rule": "js/request-forgery",
       "path": "src/lib/scraper.ts",
-      "line": "    await page.goto(sanitizedUrl, { waitUntil: 'networkidle2', timeout: 30000 });",
-      "reason": "request 拦截で resolvedPublicAddress により非公開へは abort する。任意の公開 URL を受け付ける設計（#267）"
+      "line": "    await page.goto(navigationUrl, { waitUntil: 'networkidle2', timeout: 30000 });",
+      "reason": "ホストは AMAZON_DOMAINS 定数。遷移前に resolvedPublicAddress と request 拦截で非公開を拒否する（#267）"
     }
   ]
 }
