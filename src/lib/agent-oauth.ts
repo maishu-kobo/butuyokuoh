@@ -4,7 +4,7 @@
  * 権限・失効・操作ログ・レート制限は agent-token.ts 側の仕組みを使う。
  */
 
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import type { NextRequest } from 'next/server';
 import {
@@ -78,8 +78,14 @@ export type OAuthPendingRow = {
   created_at: string;
 };
 
+/** 高エントロピーの乱数トークン（code / refresh / CSRF）用。パスワードには使わない。 */
 function sha256Hex(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+/** OAuth client_secret 用。ユーザーパスワードではないが、低エントロピーの可能性に備え scrypt。 */
+function hashClientSecret(secret: string): string {
+  return scryptSync(secret, 'butuyokuoh-oauth-client-v1', 32).toString('hex');
 }
 
 function hashesEqual(a: string, b: string): boolean {
@@ -484,7 +490,7 @@ export function registerDynamicClient(
   let secretHash: string | null = null;
   if (authMethod === 'client_secret_post') {
     clientSecret = randomBytes(24).toString('base64url');
-    secretHash = sha256Hex(clientSecret);
+    secretHash = hashClientSecret(clientSecret);
   }
 
   db.prepare(`
@@ -531,7 +537,7 @@ export function authenticateOAuthClient(
   if (!client.client_secret_hash || typeof presentedSecret !== 'string' || !presentedSecret) {
     throw new GuestError(401, 'invalid_client', 'client_secret が必要です');
   }
-  if (!hashesEqual(client.client_secret_hash, sha256Hex(presentedSecret))) {
+  if (!hashesEqual(client.client_secret_hash, hashClientSecret(presentedSecret))) {
     throw new GuestError(401, 'invalid_client', 'client_secret が違います');
   }
 }

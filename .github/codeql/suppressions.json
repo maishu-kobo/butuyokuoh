@@ -55,18 +55,6 @@
       "reason": "ホストは AMAZON_DOMAINS 定数。遷移前に resolvedPublicAddress と request 拦截で非公開を拒否する（#267）"
     },
     {
-      "rule": "js/insufficient-password-hash",
-      "path": "src/lib/agent-oauth.ts",
-      "line": "  return createHash('sha256').update(value, 'utf8').digest('hex');",
-      "reason": "ユーザーパスワードではない。高エントロピーの OAuth コード・refresh・CSRF・client_secret の照合用ハッシュ。bcrypt は不適切"
-    },
-    {
-      "rule": "js/insufficient-password-hash",
-      "path": "src/lib/agent-token.ts",
-      "line": "  return createHash('sha256').update(plaintext, 'utf8').digest('hex');",
-      "reason": "ユーザーパスワードではない。高エントロピーの byoagt_ アクセストークンの照合用ハッシュ（#268）。bcrypt は不適切"
-    },
-    {
       "rule": "js/user-controlled-bypass",
       "path": "src/app/api/mcp/route.ts",
       "line": "    if (!message || typeof message !== 'object' || Array.isArray(message)) {",
