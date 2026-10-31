@@ -62,21 +62,9 @@
     },
     {
       "rule": "js/user-controlled-bypass",
-      "path": "src/app/api/mcp/route.ts",
-      "line": "    if (!message || typeof message !== 'object' || Array.isArray(message)) {",
-      "reason": "JSON-RPC 本文の型チェックで 400 を返すだけ。認証は handleMcpJsonRpc 内の Bearer 検証が必須"
-    },
-    {
-      "rule": "js/user-controlled-bypass",
       "path": "src/app/api/oauth/consent/route.ts",
-      "line": "    if (!pendingId || !decision) {",
-      "reason": "空の pending_id / decision を 400 で拒否するだけ。許可は CSRF 一致と会員セッションの後"
-    },
-    {
-      "rule": "js/user-controlled-bypass",
-      "path": "src/app/oauth/authorize/route.ts",
-      "line": "    if (!resource) {",
-      "reason": "resource 欠落を 400 で拒否するだけ。認可コード発行は同意と CSRF・PKCE の後"
+      "line": "  if (pendingId.length < 8 || decision === null || csrf.length < 8) {",
+      "reason": "同意入力の形式チェックで 400。許可は CSRF 一致と会員セッションの後"
     }
   ]
 }

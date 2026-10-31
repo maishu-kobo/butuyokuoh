@@ -6,6 +6,22 @@ import { GuestError } from '@/lib/guest';
 
 export const runtime = 'nodejs';
 
+function parseConsentBody(
+  body: { pending_id?: unknown; decision?: unknown; csrf?: unknown },
+  csrfCookie: string,
+): { pendingId: string; decision: 'approve' | 'deny'; csrf: string } {
+  const pendingId = typeof body.pending_id === 'string' ? body.pending_id.trim() : '';
+  const decision = body.decision === 'deny' ? 'deny' as const : body.decision === 'approve' ? 'approve' as const : null;
+  const csrf = typeof body.csrf === 'string' ? body.csrf : '';
+  if (pendingId.length < 8 || decision === null || csrf.length < 8) {
+    throw new GuestError(400, 'INVALID_INPUT', 'pending_id と decision が必要です');
+  }
+  if (csrfCookie.length < 8 || csrfCookie !== csrf) {
+    throw new GuestError(403, 'invalid_csrf', 'CSRF トークンが不正です');
+  }
+  return { pendingId, decision, csrf };
+}
+
 export async function POST(request: NextRequest) {
   try {
     requireSameOrigin(request);
@@ -21,19 +37,9 @@ export async function POST(request: NextRequest) {
       throw new GuestError(400, 'INVALID_INPUT', '入力内容を確認してください');
     }
 
-    const pendingId = typeof body.pending_id === 'string' ? body.pending_id : '';
-    const decision = body.decision === 'deny' ? 'deny' : body.decision === 'approve' ? 'approve' : null;
     const csrfCookie = request.cookies.get(OAUTH_CSRF_COOKIE)?.value || '';
-    const csrfBody = typeof body.csrf === 'string' ? body.csrf : '';
-    // codeql[js/user-controlled-bypass] — 空入力の 400。許可は CSRF と会員セッションの後。
-    if (!pendingId || !decision) {
-      throw new GuestError(400, 'INVALID_INPUT', 'pending_id と decision が必要です');
-    }
-    if (!csrfCookie || csrfCookie !== csrfBody) {
-      throw new GuestError(403, 'invalid_csrf', 'CSRF トークンが不正です');
-    }
-
-    const { redirectUrl } = approveAuthorizePending(pendingId, csrfBody, user.id, decision);
+    const input = parseConsentBody(body, csrfCookie);
+    const { redirectUrl } = approveAuthorizePending(input.pendingId, input.csrf, user.id, input.decision);
     const response = NextResponse.json({ redirect_url: redirectUrl }, {
       headers: { 'Cache-Control': 'no-store' },
     });

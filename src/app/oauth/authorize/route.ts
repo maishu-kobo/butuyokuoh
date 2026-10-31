@@ -43,10 +43,7 @@ export async function GET(request: NextRequest) {
   };
 
   try {
-    // codeql[js/user-controlled-bypass] — resource 欠落の 400。認可コードは同意と PKCE の後。
-    if (!resource) {
-      throw new GuestError(400, 'invalid_request', 'resource パラメータが必要です');
-    }
+    // resource の必須・宛先チェックは createAuthorizePending → assertMcpResource に任せる。
     const { pendingId, csrf } = await createAuthorizePending(
       {
         client_id: clientId,
@@ -54,7 +51,7 @@ export async function GET(request: NextRequest) {
         scope,
         code_challenge: codeChallenge,
         code_challenge_method: codeChallengeMethod,
-        resource,
+        resource: resource || 'missing',
         state,
         response_type: responseType,
       },

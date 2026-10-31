@@ -24,9 +24,9 @@ export async function POST(request: NextRequest) {
     // 簡易クライアント向けに欠落も許容し、常に JSON で返す。
     void accept;
 
-    let message: unknown;
+    let raw: unknown;
     try {
-      message = await request.json();
+      raw = await request.json();
     } catch {
       return mcpJsonResponse(
         400,
@@ -36,22 +36,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // codeql[js/user-controlled-bypass] — JSON-RPC の型チェックで 400。認証は handleMcpJsonRpc 内。
-    if (!message || typeof message !== 'object' || Array.isArray(message)) {
-      return mcpJsonResponse(
-        400,
-        { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } },
-        cors,
-        request.url,
-      );
-    }
+    // 形が不正でも常に handler へ渡し、そこで -32600 にする（空チェックで認証を迂回しない）。
+    const message =
+      raw && typeof raw === 'object' && !Array.isArray(raw)
+        ? raw as {
+          jsonrpc?: string;
+          id?: string | number | null;
+          method?: string;
+          params?: unknown;
+        }
+        : { jsonrpc: '1.0' };
 
-    const result = await handleMcpJsonRpc(request, message as {
-      jsonrpc?: string;
-      id?: string | number | null;
-      method?: string;
-      params?: unknown;
-    });
+    const result = await handleMcpJsonRpc(request, message);
     // 認証失敗は HTTP 401 + resource_metadata（MCP OAuth 発見）
     if (
       result.status === 401
