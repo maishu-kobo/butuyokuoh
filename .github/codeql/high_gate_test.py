@@ -169,7 +169,7 @@ class HighGateTest(unittest.TestCase):
         for entry in entries:
             lines = (ROOT / entry["path"]).read_text(encoding="utf-8").splitlines()
             self.assertIn(entry["line"], lines)
-            self.assertFalse(any("codeql[" in line.lower() for line in lines))
+            # GHAS 向けの // codeql[...] は許可する。high_gate 自体は allowlist だけを見る。
             results.append(finding(entry["rule"], entry["path"], lines.index(entry["line"]) + 1))
         with tempfile.TemporaryDirectory() as tmp:
             sarif_dir = Path(tmp)

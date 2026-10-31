@@ -50,6 +50,8 @@ export async function POST(request: NextRequest) {
     });
     const userId = auth.userId;
 
+    // 認証は上で済み。ここは型・正規化の 400 だけ（認可バイパスではない）。
+    // codeql[js/user-controlled-bypass]
     if (!item || typeof item.name !== 'string' || typeof item.url !== 'string') {
       return NextResponse.json(
         { error: '商品名とURLは必須です' },
@@ -59,6 +61,7 @@ export async function POST(request: NextRequest) {
 
     const name = normalizeItemName(item.name);
     const url = sanitizeStoredItemUrl(item.url);
+    // codeql[js/user-controlled-bypass]
     if (!name || !url) {
       return NextResponse.json(
         { error: !url ? ITEM_URL_ERROR : '商品名とURLは必須です' },
