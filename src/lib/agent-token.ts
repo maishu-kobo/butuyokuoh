@@ -71,6 +71,7 @@ export interface AgentAuthContext {
   scopes: AgentScope[];
 }
 
+// codeql[js/insufficient-password-hash] — byoagt_ は高エントロピー乱数。ユーザーパスワードではない。
 function hashToken(plaintext: string): string {
   return createHash('sha256').update(plaintext, 'utf8').digest('hex');
 }
