@@ -1,17 +1,28 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { NextRequest } from 'next/server';
 import type Database from 'better-sqlite3';
+import {
+  AGENT_AUDIT_RETENTION_DAYS,
+  AGENT_RATE_LIMITS,
+  AGENT_TOKEN_DEFAULT_DAYS,
+  AGENT_TOKEN_MAX_DAYS,
+  type AgentRateKind,
+} from './agent-access-limits';
 import { getDb } from './db';
 import { GuestError } from './guest';
 
+export {
+  AGENT_AUDIT_RETENTION_DAYS,
+  AGENT_RATE_LIMITS,
+  AGENT_TOKEN_DEFAULT_DAYS,
+  AGENT_TOKEN_MAX_DAYS,
+} from './agent-access-limits';
+export type { AgentRateKind } from './agent-access-limits';
+
 export const AGENT_TOKEN_PREFIX = 'byoagt_';
-export const AGENT_TOKEN_DEFAULT_DAYS = 90;
-export const AGENT_TOKEN_MAX_DAYS = 365;
-export const AGENT_AUDIT_RETENTION_DAYS = 90;
 
 /** read/write はエージェント API、extension は Chrome 拡張の最小権限（#271） */
 export type AgentScope = 'read' | 'write' | 'extension';
-export type AgentRateKind = 'read' | 'add' | 'add_url' | 'add_day';
 
 const ALLOWED_SCOPES: readonly AgentScope[] = ['read', 'write', 'extension'];
 
@@ -22,13 +33,6 @@ const RATE_WINDOW_MS: Record<AgentRateKind, number> = {
   add: 60_000,
   add_url: 60_000,
   add_day: 86_400_000,
-};
-
-const RATE_LIMITS: Record<AgentRateKind, number> = {
-  read: 60,
-  add: 20,
-  add_url: 10,
-  add_day: 200,
 };
 
 export interface AgentTokenRow {
@@ -299,7 +303,7 @@ export function consumeAgentRate(
   db: Database.Database = getDb(),
   now = Date.now(),
 ): void {
-  const limit = RATE_LIMITS[kind];
+  const limit = AGENT_RATE_LIMITS[kind];
   const windowMs = RATE_WINDOW_MS[kind];
   const bucket = `agent:${tokenId}:${kind}`;
   db.transaction(() => {
