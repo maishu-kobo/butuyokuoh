@@ -13,7 +13,9 @@ import { AuthContext, AuthProvider } from '../src/components/AuthProvider';
 import {
   CONTACT_EMAIL,
   FOREIGN_PRIVACY_SYSTEMS_URL,
+  LEGAL_ENACTED_DATE,
   LEGAL_EFFECTIVE_DATE,
+  LEGAL_REVISED_DATE,
   OPERATOR_NAME,
 } from '../src/lib/legal';
 
@@ -114,8 +116,17 @@ test('プライバシーポリシーは正式版で、利用者向けの粒度�
   assert.match(page, /運営者の氏名及び住所は、上記窓口へのご請求に応じて遅滞なくお知らせします/);
   assert.match(page, /開示等の請求、苦情の申出、お問い合わせ/);
   assert.match(page, new RegExp(`href="mailto:${CONTACT_EMAIL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
-  assert.match(page, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
+  assert.match(page, /エージェント連携の情報/);
+  assert.match(page, /エージェント用トークン、REST API、MCP/);
+  assert.match(page, /操作の記録は90日間保存します/);
+  assert.match(page, /会員はいつでもトークンを失効できます/);
+  assert.match(page, /サービス提供者の規約およびプライバシーポリシーに従います/);
+  assert.match(page, /エージェントが追加した商品のURLは、本サービスのサーバが取得することがあります/);
+  assert.match(page, new RegExp(`制定日：${LEGAL_ENACTED_DATE}`));
+  assert.match(page, new RegExp(`改定日：${LEGAL_REVISED_DATE}`));
+  assert.equal(LEGAL_EFFECTIVE_DATE, LEGAL_REVISED_DATE);
   assert.match(page, /href="\/terms"/);
+  assert.equal(page.includes('制定日・施行日'), false);
   assert.equal(page.includes('ほしいもの用にアップロード'), false);
   assert.equal(page.includes('店舗の画像'), false);
   assert.equal(page.includes('写真そのものは保管しません'), false);
@@ -157,9 +168,20 @@ test('利用規約は正式版で、免責・変更・準拠法を書く', () =>
   assert.match(page, /本規約は日本法に準拠します/);
   assert.equal(page.includes('専属的合意管轄'), false);
   assert.equal(page.includes('東京地方裁判所'), false);
+  assert.match(page, /エージェント用のトークンを含みます/);
+  assert.match(page, /エージェント連携やAPIを用いた、過度なリクエストや不正な自動化/);
+  assert.match(page, /エージェント用トークンの有効期限は、既定で90日、最大で365日です/);
+  assert.match(page, /パスワードを変更すると、発行済みのエージェント用トークンはすべて無効になります/);
+  assert.match(page, /エージェントがトークンを使って行った操作は、会員自身の操作として扱います/);
+  assert.match(page, /誤った操作は、本サービス上の取り消し機能で取り消せる場合があります/);
+  assert.match(page, /運営者が定める上限（レート制限）/);
+  assert.match(page, /1日あたりの追加上限は200件/);
+  assert.match(page, /トークンの失効、機能の停止/);
   assert.match(page, new RegExp(`href="mailto:${CONTACT_EMAIL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
-  assert.match(page, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
+  assert.match(page, new RegExp(`制定日：${LEGAL_ENACTED_DATE}`));
+  assert.match(page, new RegExp(`改定日：${LEGAL_REVISED_DATE}`));
   assert.match(page, /href="\/privacy"/);
+  assert.equal(page.includes('制定日・施行日'), false);
   assert.equal(page.includes('一切の責任を負いません'), false);
   assert.equal(page.includes('Gemini'), false);
   assert.equal(page.includes('GitHub'), false);
@@ -191,8 +213,10 @@ function authShell(pathname: string, child: ReactNode): string {
 test('直接開いた最初の描画でも正式な本文が出る', () => {
   const privacy = renderToStaticMarkup(createElement(RootProviders, null, createElement(PrivacyPage)));
   const terms = renderToStaticMarkup(createElement(RootProviders, null, createElement(TermsPage)));
-  assert.match(privacy, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
-  assert.match(terms, new RegExp(`制定日・施行日：${LEGAL_EFFECTIVE_DATE}`));
+  assert.match(privacy, new RegExp(`制定日：${LEGAL_ENACTED_DATE}`));
+  assert.match(privacy, new RegExp(`改定日：${LEGAL_REVISED_DATE}`));
+  assert.match(terms, new RegExp(`制定日：${LEGAL_ENACTED_DATE}`));
+  assert.match(terms, new RegExp(`改定日：${LEGAL_REVISED_DATE}`));
   assert.equal(privacy.includes('下書き'), false);
   assert.equal(terms.includes('下書き'), false);
   assert.equal(privacy.includes('読み込み中...'), false);
