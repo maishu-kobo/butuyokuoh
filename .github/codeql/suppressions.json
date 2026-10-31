@@ -28,19 +28,19 @@
       "rule": "js/user-controlled-bypass",
       "path": "src/app/api/extension-add/route.ts",
       "line": "    if (!item || typeof item.name !== 'string' || typeof item.url !== 'string') {",
-      "reason": "認証後の入力型チェック。不正なら 400。認可は resolveExtensionAuth の結果だけ"
+      "reason": "入力の形チェックは認証より前。認可は resolveExtensionAuth の結果だけ"
     },
     {
       "rule": "js/user-controlled-bypass",
       "path": "src/app/api/extension-add/route.ts",
       "line": "    if (!name || !url) {",
-      "reason": "認証後の正規化結果チェック。空なら 400。認可は resolveExtensionAuth の結果だけ"
+      "reason": "入力の形チェックは認証より前。認可は resolveExtensionAuth の結果だけ"
     },
     {
       "rule": "js/user-controlled-bypass",
       "path": "src/app/api/extension-import/route.ts",
       "line": "    if (!items || !Array.isArray(items) || items.length === 0) {",
-      "reason": "認証後の配列チェック。空なら 400。認可は resolveExtensionAuth の結果だけ"
+      "reason": "入力の形チェックは認証より前。認可は resolveExtensionAuth の結果だけ"
     },
     {
       "rule": "js/incomplete-url-substring-sanitization",

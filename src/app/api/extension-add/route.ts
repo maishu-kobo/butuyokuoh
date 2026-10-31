@@ -44,14 +44,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json() as AddItemRequest;
     const { token, item } = body;
 
-    const auth = resolveExtensionAuth(request, {
-      bodyToken: token,
-      rate: item?.url ? ['add', 'add_url', 'add_day'] : ['add', 'add_day'],
-    });
-    const userId = auth.userId;
-
-    // 認証は上で済み。ここは型・正規化の 400 だけ（認可バイパスではない）。
-    // codeql[js/user-controlled-bypass]
+    // 入力の形は認証より先に見る（#275 と同じ）。認可は resolveExtensionAuth だけ。
     if (!item || typeof item.name !== 'string' || typeof item.url !== 'string') {
       return NextResponse.json(
         { error: '商品名とURLは必須です' },
@@ -61,11 +54,23 @@ export async function POST(request: NextRequest) {
 
     const name = normalizeItemName(item.name);
     const url = sanitizeStoredItemUrl(item.url);
-    // codeql[js/user-controlled-bypass]
     if (!name || !url) {
       return NextResponse.json(
         { error: !url ? ITEM_URL_ERROR : '商品名とURLは必須です' },
         { status: 400, headers: corsHeaders }
+      );
+    }
+
+    const auth = resolveExtensionAuth(request, {
+      bodyToken: token,
+      // URL の有無でレート種別を変えない（user-controlled bypass を避ける）
+      rate: ['add', 'add_url', 'add_day'],
+    });
+    const userId = auth.userId;
+    if (!userId) {
+      return NextResponse.json(
+        { error: '無効なトークンです' },
+        { status: 401, headers: corsHeaders }
       );
     }
 

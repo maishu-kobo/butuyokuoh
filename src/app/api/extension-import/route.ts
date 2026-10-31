@@ -27,18 +27,23 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { source, items, token } = body as { source: string; items: ImportItem[]; token?: string };
 
+    // 入力の形は認証より先に見る。認可は resolveExtensionAuth だけ。
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json(
+        { error: 'インポートするアイテムがありません' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
     const auth = resolveExtensionAuth(request, {
       bodyToken: token,
       rate: ['add', 'add_day'],
     });
     const userId = auth.userId;
-
-    // 認証は上で済み。空配列の 400 だけ（認可バイパスではない）。
-    // codeql[js/user-controlled-bypass]
-    if (!items || !Array.isArray(items) || items.length === 0) {
+    if (!userId) {
       return NextResponse.json(
-        { error: 'インポートするアイテムがありません' },
-        { status: 400, headers: corsHeaders }
+        { error: '無効なトークンです' },
+        { status: 401, headers: corsHeaders }
       );
     }
 
