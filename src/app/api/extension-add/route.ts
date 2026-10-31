@@ -97,7 +97,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    consumeGuestRate(`extension-add:${userId}`, extensionAddsPerMinute(), db);
+    try {
+      consumeGuestRate(`extension-add:${userId}`, extensionAddsPerMinute(), db);
+    } catch (error) {
+      if (error instanceof GuestError && error.code === 'GUEST_RATE_LIMITED' && user.account_type === 'member') {
+        throw new GuestError(
+          429,
+          'RATE_LIMITED',
+          '追加が集中しています。少し待ってからお試しください。',
+          error.retryAfter,
+        );
+      }
+      throw error;
+    }
 
     assertOwnedRelations(db, userId, { category_id: item.categoryId ? Number(item.categoryId) : null });
 

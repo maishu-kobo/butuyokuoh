@@ -46,12 +46,20 @@ async function handlePATCH(
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
 
+  // 保存済み URL と同じなら更新対象にしない（整形で hb.afl / tag 等が消えて identity が飛ぶのを防ぐ）。
   if (typeof body.url === 'string' && body.url) {
-    const cleaned = sanitizeStoredItemUrl(body.url);
-    if (!cleaned || !isStorableItemUrl(cleaned)) {
-      return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
+    if (body.url === item.url) {
+      delete body.url;
+    } else {
+      const cleaned = sanitizeStoredItemUrl(body.url);
+      if (!cleaned || !isStorableItemUrl(cleaned)) {
+        return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
+      }
+      body.url = cleaned;
     }
-    body.url = cleaned;
+  } else if (body.url !== undefined) {
+    // 空文字などは URL 更新として扱わない
+    delete body.url;
   }
 
   if (typeof body.name === 'string') {
@@ -93,6 +101,12 @@ async function handlePATCH(
 
   // 商品URLを変えたら、以前の検索APIの商品コードと取得時刻を引き継がない。
   if (body.url !== undefined && body.url !== item.url) {
+    const conflict = db.prepare(
+      'SELECT id FROM items WHERE user_id = ? AND url = ? AND id != ?',
+    ).get(user.id, body.url, id);
+    if (conflict) {
+      return NextResponse.json({ error: 'この商品はすでに登録されています' }, { status: 409 });
+    }
     updates.push('source_item_code = NULL', 'price_fetched_at = NULL');
   }
 

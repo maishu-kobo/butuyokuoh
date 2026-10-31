@@ -112,6 +112,127 @@ test('ItemCard and list views gate images through displayableItemImageUrl', () =
   assert.match(itemCard, /uploadPreviewSrc/);
   assert.match(addForm, /safeImgSrc\(/);
   assert.match(itemCard, /safeImgSrc\(/);
+  // 編集開始時は保存済み画像をプレビュー。入力欄の文字列は img に載せない（CodeQL）。
+  assert.match(itemCard, /safeImgSrc\(item\.image_url\)/);
+  assert.match(itemCard, /nextUrl !== item\.url/);
+});
+
+test('renaming keeps stored affiliate URLs and source_item_code; sanitized URL clash is 409', async () => {
+  const itemRoute = '../src/app/api/items/[id]/route.ts';
+  const member = await createMember('rename-keep-url');
+  const database = await db();
+
+  const hbUrl = 'https://hb.afl.rakuten.co.jp/hgc/link/?pc=https%3A%2F%2Fevil.example%2Fx';
+  const hbId = Number(
+    database.prepare(`
+      INSERT INTO items (user_id, name, url, source_item_code, price_fetched_at)
+      VALUES (?, '楽天包装', ?, 'rakuten:shop:hb-item', '2026-01-01T00:00:00Z')
+    `).run(member.id, hbUrl).lastInsertRowid,
+  );
+  const taggedUrl = 'https://www.amazon.co.jp/dp/B0KEEPURL/?tag=shop-22&th=1';
+  const taggedId = Number(
+    database.prepare(`
+      INSERT INTO items (user_id, name, url, source_item_code, price_fetched_at)
+      VALUES (?, 'タグ付き', ?, 'amazon:B0KEEPURL', '2026-01-02T00:00:00Z')
+    `).run(member.id, taggedUrl).lastInsertRowid,
+  );
+
+  const renamedHb = await call(itemRoute, 'PATCH', `/api/items/${hbId}`, {
+    name: '楽天包装 改',
+    url: hbUrl,
+  }, { id: String(hbId) });
+  assert.equal(renamedHb.status, 200, renamedHb.text);
+  assert.deepEqual(
+    database.prepare('SELECT name, url, source_item_code, price_fetched_at FROM items WHERE id = ?').get(hbId),
+    {
+      name: '楽天包装 改',
+      url: hbUrl,
+      source_item_code: 'rakuten:shop:hb-item',
+      price_fetched_at: '2026-01-01T00:00:00Z',
+    },
+  );
+
+  const renamedTag = await call(itemRoute, 'PATCH', `/api/items/${taggedId}`, {
+    name: 'タグ付き 改',
+    url: taggedUrl,
+  }, { id: String(taggedId) });
+  assert.equal(renamedTag.status, 200, renamedTag.text);
+  assert.deepEqual(
+    database.prepare('SELECT name, url, source_item_code, price_fetched_at FROM items WHERE id = ?').get(taggedId),
+    {
+      name: 'タグ付き 改',
+      url: taggedUrl,
+      source_item_code: 'amazon:B0KEEPURL',
+      price_fetched_at: '2026-01-02T00:00:00Z',
+    },
+  );
+
+  database.prepare(`
+    INSERT INTO items (user_id, name, url)
+    VALUES (?, '既存クリーン', 'https://www.amazon.co.jp/dp/B0CLASH001')
+  `).run(member.id);
+  const clashId = Number(
+    database.prepare(`
+      INSERT INTO items (user_id, name, url)
+      VALUES (?, '衝突元', 'https://www.amazon.co.jp/dp/B0CLASH001?tag=other-22')
+    `).run(member.id).lastInsertRowid,
+  );
+  const clash = await call(itemRoute, 'PATCH', `/api/items/${clashId}`, {
+    url: 'https://www.amazon.co.jp/dp/B0CLASH001?tag=moved-22',
+  }, { id: String(clashId) });
+  assert.equal(clash.status, 409, clash.text);
+  assert.match(String((clash.json as { error?: string }).error || clash.text), /すでに登録/);
+  assert.equal(
+    (database.prepare('SELECT url FROM items WHERE id = ?').get(clashId) as { url: string }).url,
+    'https://www.amazon.co.jp/dp/B0CLASH001?tag=other-22',
+  );
+});
+
+test('extension-add rate limit message differs for members; popup timeout and version are updated', async () => {
+  const previous = process.env.EXTENSION_ADDS_PER_MINUTE;
+  process.env.EXTENSION_ADDS_PER_MINUTE = '1';
+  const port = await import('../src/lib/product-fetch-port');
+  port.installProductFetchPort(regressionFetchPort());
+  try {
+    const member = await createMember('ext-rate');
+    const { generateToken } = await import('../src/lib/auth');
+    const token = generateToken(member as never);
+    const first = await call(extensionAdd, 'POST', '/api/extension-add', {
+      token,
+      item: {
+        name: '一件目',
+        url: 'https://example.test/rate-1',
+        price: null,
+        imageUrl: null,
+        priority: 3,
+        categoryId: null,
+      },
+    });
+    assert.equal(first.status, 200, first.text);
+    const limited = await call(extensionAdd, 'POST', '/api/extension-add', {
+      token,
+      item: {
+        name: '二件目',
+        url: 'https://example.test/rate-2',
+        price: null,
+        imageUrl: null,
+        priority: 3,
+        categoryId: null,
+      },
+    });
+    assert.equal(limited.status, 429, limited.text);
+    assert.match(String((limited.json as { error?: string }).error || ''), /追加が集中/);
+    assert.equal(String((limited.json as { error?: string }).error || '').includes('ゲスト'), false);
+  } finally {
+    if (previous === undefined) delete process.env.EXTENSION_ADDS_PER_MINUTE;
+    else process.env.EXTENSION_ADDS_PER_MINUTE = previous;
+    port.installProductFetchPort(null);
+  }
+
+  const popup = readFileSync('extension/popup.js', 'utf8');
+  assert.match(popup, /一覧に追加済みか確認してください/);
+  const manifest = JSON.parse(readFileSync('extension/manifest.json', 'utf8')) as { version: string };
+  assert.equal(manifest.version, '1.1.1');
 });
 
 test('fetchServerItemMedia prefers scraped price and image, and leaves both empty when unusable', async () => {

@@ -190,7 +190,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (error) {
       console.error('Add error:', error);
       const timedOut = error && (error.name === 'AbortError' || /aborted/i.test(String(error.message || '')));
-      showStatus(addStatus, timedOut ? 'タイムアウトしました。もう一度お試しください' : 'エラー: ' + error.message, 'error');
+      showStatus(
+        addStatus,
+        timedOut
+          ? 'タイムアウトしました。一覧に追加済みか確認してください'
+          : 'エラー: ' + error.message,
+        'error',
+      );
       addBtn.disabled = false;
       addBtnText.textContent = '👑 物欲王に追加';
     } finally {

@@ -128,9 +128,11 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     setSaving(true);
     setSaveError('');
     try {
+      const nextUrl = editData.url || item.url;
       const payload = {
         name: editData.name || item.name,
-        url: editData.url || item.url,
+        // 未変更の URL は送らない（サーバ側でも無視するが、誤整形を避ける）
+        ...(nextUrl !== item.url ? { url: nextUrl } : {}),
         priority: editData.priority,
         planned_purchase_date: editData.planned_purchase_date || null,
         notes: editData.notes || null,
@@ -402,7 +404,17 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             価格推移
           </button>
           <button
-            onClick={() => { setSaveError(''); setUploadPreviewSrc(null); if (!editing) setEditData(initialEditData()); setEditing(!editing); }}
+            onClick={() => {
+              setSaveError('');
+              if (!editing) {
+                setEditData(initialEditData());
+                // 編集開始時は保存済み画像だけをプレビュー（入力欄の文字列は img に載せない）
+                setUploadPreviewSrc(safeImgSrc(item.image_url));
+              } else {
+                setUploadPreviewSrc(null);
+              }
+              setEditing(!editing);
+            }}
             className={`text-sm ${auxiliaryActionClass}`}
           >
             編集
