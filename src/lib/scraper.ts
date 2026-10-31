@@ -368,6 +368,7 @@ async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: ScrapeDeps
       }
     });
 
+    // codeql[js/request-forgery] — 遷移前に request 拦截で resolvedPublicAddress により非公開へは abort する。
     await page.goto(sanitizedUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
     // レンダリング後のHTMLを取得し、fetch経路と同じ抽出ロジックを通す

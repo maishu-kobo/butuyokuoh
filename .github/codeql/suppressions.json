@@ -39,20 +39,20 @@
     {
       "rule": "js/request-forgery",
       "path": "src/lib/member-fetch.ts",
-      "line": "    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, options, (response) => {",
+      "line": "    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(options, (response) => {",
       "reason": "接続前に resolvedPublicAddress / isPublicAddress で非公開アドレスを拒否する。任意の公開 URL を受け付ける設計（#267）"
     },
     {
       "rule": "js/request-forgery",
       "path": "src/lib/public-page.ts",
-      "line": "    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, options, response => {",
+      "line": "    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(options, response => {",
       "reason": "接続前に publicAddress / isPublicAddress で非公開アドレスを拒否する。任意の公開 URL を受け付ける設計（#267）"
     },
     {
       "rule": "js/request-forgery",
       "path": "src/lib/scraper.ts",
       "line": "    await page.goto(sanitizedUrl, { waitUntil: 'networkidle2', timeout: 30000 });",
-      "reason": "ブラウザ起動前に URL 検証と resolvedPublicAddress で非公開アドレスを拒否する。Amazon フォールバック用"
+      "reason": "request 拦截で resolvedPublicAddress により非公開へは abort する。任意の公開 URL を受け付ける設計（#267）"
     }
   ]
 }
