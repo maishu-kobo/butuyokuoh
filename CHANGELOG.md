@@ -6,6 +6,7 @@
 
 ### Added
 
+- エージェント向け OAuth 2.1（PKCE 必須、CIMD / DCR、Protected Resource Metadata、同意画面）。発行するアクセス・トークンは既存の `byoagt_` を再利用し、権限・操作ログ・レート制限も同じ（#272）。
 - エージェント向け REST API（`/api/agent/v1/...`）とリモート MCP（`/api/mcp`、Streamable HTTP / 2025-11-25）。OpenAPI（`/openapi/agent-v1.yaml`）と `/llms.txt` を追加。価格・画像はサーバ取得のみ（#269）。
 - エージェント用アクセス・トークン（作成・一覧・失効・操作ログ・レート制限の土台）と、品目の「エージェントが追加」印およびトークン単位の一括ゴミ箱移動。設定画面から操作できる（#268）。
 

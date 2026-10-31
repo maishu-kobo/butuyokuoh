@@ -22,8 +22,21 @@ export default function AgentHelpPage() {
         <h1 className="text-2xl font-bold">エージェント連携</h1>
         <p>
           AIエージェントから、自分のほしいものリストを読んだり更新したりできます。
-          ここでは、トークンの扱いと回数の上限を説明します。
+          ここでは、トークンと OAuth、回数の上限を説明します。
         </p>
+
+        <h2 className="text-lg font-semibold pt-2">つなぎ方</h2>
+        <ul className="list-disc pl-6 space-y-2">
+          <li>
+            設定画面でエージェント用トークンを発行し、対応する AI エージェントや MCP クライアントに渡します。
+          </li>
+          <li>
+            OAuth 対応の MCP クライアントは、同意画面で許可すると、同じ種類のアクセス・トークンが発行されます。
+          </li>
+          <li>
+            使い方の技術メモはサイト上のエージェント向け案内（llms.txt）にもあります。
+          </li>
+        </ul>
 
         <h2 className="text-lg font-semibold pt-2">トークンの発行と無効化</h2>
         <ul className="list-disc pl-6 space-y-2">
