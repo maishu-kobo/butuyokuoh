@@ -9,10 +9,13 @@ MCP endpoint (Streamable HTTP, protocol 2025-11-25): /api/mcp
 
 ## Authentication
 
-- Use an agent access token created in Settings (prefix `byoagt_`).
+- Use an agent access token (prefix `byoagt_`) from Settings, or obtain one via OAuth 2.1 (PKCE) for MCP clients.
 - Send `Authorization: Bearer byoagt_…` on every REST and MCP request.
 - Scopes: `read` (list/search/history/budget) and `write` (add/update/purchase/trash).
-- OAuth is not available yet. Do not use the browser session cookie or the Chrome extension JWT here.
+- OAuth discovery: `/.well-known/oauth-protected-resource` (and `.../api/mcp`), `/.well-known/oauth-authorization-server`.
+- OAuth endpoints: authorize `/oauth/authorize`, token `/api/oauth/token`, register `/api/oauth/register`, revoke `/api/oauth/revoke`.
+- Unauthenticated MCP calls return `401` with `WWW-Authenticate` including `resource_metadata`.
+- Do not use the browser session cookie or the Chrome extension JWT as the agent Bearer.
 
 ## Safety rules (must follow)
 

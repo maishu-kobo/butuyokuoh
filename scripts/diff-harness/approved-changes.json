@@ -160,6 +160,31 @@
       "responseFieldsAdded": [
         { "field": "added_by_agent_token_id", "equals": null }
       ]
+    },
+    {
+      "id": "agent-oauth-tables",
+      "reason": "エージェント向け OAuth 2.1（#272）。アクセス・トークンは agent_tokens を再利用。URL登録・一覧・価格再取得・ログインでは行を作らない。",
+      "tablesAdded": [
+        "agent_oauth_clients",
+        "agent_oauth_pending",
+        "agent_oauth_auth_codes",
+        "agent_oauth_refresh_tokens"
+      ],
+      "requireEmpty": true,
+      "columnsAdded": [
+        { "table": "agent_tokens", "column": "oauth_client_id", "value": null },
+        { "table": "agent_tokens", "column": "oauth_resource", "value": null }
+      ],
+      "indexesAdded": [
+        "idx_agent_oauth_pending_state",
+        "idx_agent_oauth_codes_client",
+        "idx_agent_oauth_refresh_user",
+        "idx_agent_oauth_refresh_token",
+        "sqlite_autoindex_agent_oauth_clients_1",
+        "sqlite_autoindex_agent_oauth_pending_1",
+        "sqlite_autoindex_agent_oauth_auth_codes_1",
+        "sqlite_autoindex_agent_oauth_refresh_tokens_1"
+      ]
     }
   ]
 }

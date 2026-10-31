@@ -13,6 +13,8 @@ import {
 test('エージェント連携ヘルプは定数の数字を出し、秘密や内部構成を出さない', () => {
   const page = renderToStaticMarkup(createElement(AgentHelpPage));
   assert.match(page, /エージェント連携/);
+  assert.match(page, /つなぎ方/);
+  assert.match(page, /OAuth 対応の MCP クライアント/);
   assert.match(page, /設定画面の「エージェント用トークン」/);
   assert.match(page, /発行したときに一度だけ表示します/);
   assert.match(page, new RegExp(`既定の有効期限は${AGENT_TOKEN_DEFAULT_DAYS}日`));

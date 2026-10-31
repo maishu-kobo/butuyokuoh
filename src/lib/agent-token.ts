@@ -46,6 +46,9 @@ export interface AgentTokenRow {
   revoked_at: string | null;
   last_used_at: string | null;
   created_at: string;
+  /** OAuth 発行時のみ。PAT は null */
+  oauth_client_id?: string | null;
+  oauth_resource?: string | null;
 }
 
 export interface AgentTokenPublic {
@@ -229,12 +232,31 @@ export function revokeAgentToken(userId: number, tokenId: number, db: Database.D
   if (!row) return false;
   if (row.revoked_at) {
     clearAgentRateBuckets(tokenId, db);
+    // OAuth refresh が残っていれば落とす（表が無い古い DB でも落ちない）
+    try {
+      db.prepare(`
+        UPDATE agent_oauth_refresh_tokens
+        SET revoked_at = datetime('now')
+        WHERE agent_token_id = ? AND user_id = ? AND revoked_at IS NULL
+      `).run(tokenId, userId);
+    } catch {
+      /* migrate 前 */
+    }
     return true;
   }
   db.prepare(
     `UPDATE agent_tokens SET revoked_at = datetime('now') WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
   ).run(tokenId, userId);
   clearAgentRateBuckets(tokenId, db);
+  try {
+    db.prepare(`
+      UPDATE agent_oauth_refresh_tokens
+      SET revoked_at = datetime('now')
+      WHERE agent_token_id = ? AND user_id = ? AND revoked_at IS NULL
+    `).run(tokenId, userId);
+  } catch {
+    /* migrate 前 */
+  }
   recordAgentAudit(tokenId, userId, 'token.revoke', null, db);
   return true;
 }
