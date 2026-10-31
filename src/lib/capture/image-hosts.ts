@@ -29,7 +29,8 @@ export function canonicalCandidateImageUrl(site: keyof typeof IMAGE_HOSTS, raw: 
 
 /**
  * 画面に出す画像 URL。ホスト許可リストは使わない（本番の既存画像を消さない）。
- * 危険なスキームと相対パスだけ拒否する。http(s) は認証情報・ポートが無ければ可。
+ * スキーム判定は new URL の protocol だけ（文字列の startsWith は使わない）。
+ * http(s) は認証情報・ポートが無ければ可。data:image/ も可。
  */
 export function displayableItemImageUrl(raw: string | null | undefined): string | null {
   if (raw == null) return null;
@@ -40,17 +41,14 @@ export function displayableItemImageUrl(raw: string | null | undefined): string 
   if (value === DEMO_IMAGE) return value;
   if (LOCAL_UPLOAD.test(value)) return value;
 
-  const lower = value.toLowerCase();
-  if (lower.startsWith('javascript:')) return null;
-  if (lower.startsWith('data:')) {
-    return lower.startsWith('data:image/') ? value : null;
-  }
-
   let parsed: URL;
   try {
     parsed = new URL(value);
   } catch {
     return null;
+  }
+  if (parsed.protocol === 'data:') {
+    return /^data:image\//i.test(parsed.href) ? value : null;
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
   if (parsed.username || parsed.password || parsed.port) return null;
@@ -58,16 +56,18 @@ export function displayableItemImageUrl(raw: string | null | undefined): string 
 }
 
 /**
- * img の src 用。new URL で再解析できた http(s) / 許可した相対パスだけを返す。
- * フォーム入力をそのまま属性に載せないための境目。
+ * img の src 用。new URL で再解析できたものだけを返す。
+ * フォーム入力をそのまま属性に載せないときの境目にも使う。
  */
 export function safeImgSrc(raw: string | null | undefined): string | null {
   const candidate = displayableItemImageUrl(raw);
   if (!candidate) return null;
   if (candidate === DEMO_IMAGE || LOCAL_UPLOAD.test(candidate)) return candidate;
-  if (candidate.toLowerCase().startsWith('data:image/')) return candidate;
   try {
     const parsed = new URL(candidate);
+    if (parsed.protocol === 'data:') {
+      return /^data:image\//i.test(parsed.href) ? candidate : null;
+    }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
     if (parsed.username || parsed.password || parsed.port) return null;
     return candidate;

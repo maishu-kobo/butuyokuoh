@@ -108,6 +108,8 @@ test('ItemCard and list views gate images through displayableItemImageUrl', () =
   }
   const addForm = readFileSync('src/components/AddItemForm.tsx', 'utf8');
   const itemCard = readFileSync('src/components/ItemCard.tsx', 'utf8');
+  assert.match(addForm, /uploadPreviewSrc/);
+  assert.match(itemCard, /uploadPreviewSrc/);
   assert.match(addForm, /safeImgSrc\(/);
   assert.match(itemCard, /safeImgSrc\(/);
 });
