@@ -3,10 +3,12 @@
 name: gitleaks
 
 on:
+  workflow_call:
   pull_request:
     branches:
       - feature/photo-capture
       - feature/capture-existing-bugfixes
+      - feature/auto-deploy
       - develop
       - main
 

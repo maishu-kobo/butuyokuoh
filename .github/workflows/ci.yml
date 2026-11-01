@@ -16,10 +16,17 @@
 name: CI
 
 on:
+  workflow_call:
+    inputs:
+      github_hosted_only:
+        description: Keep reusable deployment checks on GitHub-hosted runners
+        type: boolean
+        default: true
   pull_request:
     branches:
       - feature/photo-capture
       - feature/capture-existing-bugfixes
+      - feature/auto-deploy
       - develop
       - main
   push:
@@ -41,7 +48,7 @@ jobs:
     name: Select CI runner
     # The environment allows only main. PR jobs cannot access its organization token.
     if: >-
-      ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      ${{ !inputs.github_hosted_only && github.event_name == 'push' && github.ref == 'refs/heads/main' &&
           github.run_attempt == 1 && vars.BLACKSMITH_NO_CHARGE_CONFIRMED != '' &&
           vars.BLACKSMITH_BUDGET != '' }}
     permissions:
@@ -75,7 +82,7 @@ jobs:
     if: ${{ !cancelled() }}
     # Re-runs can reuse an old selector output: re-check the attempt here as well.
     runs-on: >-
-      ${{ github.run_attempt == 1 && github.event_name == 'push' &&
+      ${{ !inputs.github_hosted_only && github.run_attempt == 1 && github.event_name == 'push' &&
           github.ref == 'refs/heads/main' && needs.select-runner.result == 'success' &&
           needs.select-runner.outputs.runner == 'blacksmith-4vcpu-ubuntu-2404' &&
           'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-latest' }}
