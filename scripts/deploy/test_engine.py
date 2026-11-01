@@ -244,6 +244,46 @@ class EntryPointTests(unittest.TestCase):
     def load(self, name):
         spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(name + '.py'))
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module); return module
+    def test_initial_and_switch_require_shared_database_and_uploads(self):
+        install = self.load('install')
+        cases = ('valid', 'missing_env', 'regular_env', 'wrong_env', 'wrong_database',
+                 'missing_uploads', 'regular_uploads', 'wrong_uploads')
+        for entry in ('install', 'switch'):
+            for case in cases:
+                with self.subTest(entry=entry, case=case), tempfile.TemporaryDirectory() as folder:
+                    root = Path(folder).resolve()
+                    release = root/SHA; (release/'.next').mkdir(parents=True)
+                    (release/'.next/BUILD_ID').write_text('built')
+                    (release/'RELEASE_SHA').write_text(SHA)
+                    (release/'public').mkdir()
+                    uploads = root/'shared-uploads'; uploads.mkdir()
+                    db = root/'shared.sqlite'; db.touch()
+                    env = root/'app.env'; env.write_text('BUTUYOKUOH_DB_PATH='+str(db)+'\n')
+                    env_link=release/'.env.local'; env_link.symlink_to(env)
+                    upload_link=release/'public/uploads'; upload_link.symlink_to(uploads)
+                    if case in ('missing_env', 'regular_env', 'wrong_env'):
+                        env_link.unlink()
+                        if case=='regular_env': env_link.write_text(env.read_text())
+                        if case=='wrong_env':
+                            other=root/'wrong.env'; other.write_text(env.read_text()); env_link.symlink_to(other)
+                    if case=='wrong_database': env.write_text('BUTUYOKUOH_DB_PATH='+str(root/'other.sqlite')+'\n')
+                    if case in ('missing_uploads', 'regular_uploads', 'wrong_uploads'):
+                        upload_link.unlink()
+                        if case=='regular_uploads': upload_link.mkdir()
+                        if case=='wrong_uploads':
+                            other=root/'wrong-uploads'; other.mkdir(); upload_link.symlink_to(other)
+                    current=root/'current'; current.symlink_to(release if entry=='install' else root/OLD)
+                    original=current.readlink()
+                    config={'state':str(root), 'releases':str(root), 'current':str(current),
+                            'node':'/unused', 'database':str(db), 'env_file':str(env),
+                            'uploads':str(uploads), 'initial_release':str(release)}
+                    def check():
+                        if entry=='install': install.validate_initial(config)
+                        else: engine.LinuxHost(config).switch(SHA)
+                    if case=='valid': check()
+                    else:
+                        with self.assertRaises((ValueError, RuntimeError, OSError)): check()
+                        self.assertEqual(current.readlink(), original)
     def test_installer_rejects_existing_wrong_current_before_changes(self):
         install = self.load('install')
         with tempfile.TemporaryDirectory() as folder:
