@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { statusAfterIdentify } from '../src/lib/capture/capture-flow';
 import { CaptureMessages, type IdentifyResponse, type ProductIdentifier } from '../src/lib/capture/contract';
 import {
   AI_LIMIT_MESSAGE,
@@ -305,6 +306,95 @@ test('the global neuron stop is 8000 per UTC day and a missing usage count is re
   if (!follow.ok) assert.equal(follow.error.error, AI_LIMIT_MESSAGE);
   assert.equal(capped.calls.length, 1);
   assert.equal(upstream.usedNeurons(upstreamClock.t) >= AI_NEURON_DAILY_CAP, true);
+});
+
+function cloudflare429(error: Record<string, unknown>): WorkersAiHttpResponse {
+  return {
+    status: 429,
+    body: JSON.stringify({ success: false, errors: [error], messages: [] }),
+  };
+}
+
+test('Workers AI daily cap covers 3036, 4006, and the allocation message', async () => {
+  const cases = [
+    {
+      name: '3036',
+      error: { code: 3036, message: 'You have used up your daily free allocation of 10,000 neurons. Please upgrade' },
+    },
+    {
+      name: '4006',
+      error: { code: 4006, message: 'you have used up your daily free allocation of 10,000 neurons' },
+    },
+    {
+      name: 'message only',
+      error: { message: 'DAILY FREE ALLOCATION of neurons is exhausted' },
+    },
+  ];
+  for (const [index, item] of cases.entries()) {
+    const budget = createAiBudget();
+    const clock = { t: Date.UTC(2026, 9, 24, 9, index, 0) };
+    const capped = harness({ budget, clock, responses: [cloudflare429(item.error)] });
+    const hit = await capped.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+    assert.equal(hit.ok, false, item.name);
+    if (!hit.ok) {
+      assert.equal(hit.status, 429, item.name);
+      assert.equal(hit.error.code, 'AI_LIMIT', item.name);
+      assert.equal(hit.error.error, AI_LIMIT_MESSAGE, item.name);
+      assert.equal(hit.error.retryable, undefined, item.name);
+      const leaked = JSON.stringify(hit);
+      assert.equal(leaked.includes('10,000'), false, item.name);
+      assert.equal(leaked.includes('upgrade'), false, item.name);
+      assert.equal(leaked.includes('neurons'), false, item.name);
+      assert.equal(leaked.includes('allocation'), false, item.name);
+    }
+    const http = identifyHttpBody(hit);
+    const ui = statusAfterIdentify(http.body, http.status === 200);
+    assert.equal(http.status, 429, item.name);
+    assert.equal(http.body.code, 'AI_LIMIT', item.name);
+    assert.equal(http.body.error, AI_LIMIT_MESSAGE, item.name);
+    assert.equal(http.body.fallback, 'manual-entry', item.name);
+    assert.equal(http.body.retryable, undefined, item.name);
+    assert.equal(ui?.message, AI_LIMIT_MESSAGE, item.name);
+    assert.equal(ui?.retryable, false, item.name);
+    assert.equal(capped.calls.length, 1, item.name);
+    const follow = await capped.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+    assert.equal(follow.ok, false, item.name);
+    if (!follow.ok) assert.equal(follow.error.error, AI_LIMIT_MESSAGE, item.name);
+    assert.equal(capped.calls.length, 1, item.name);
+    assert.equal(budget.usedNeurons(clock.t) >= AI_NEURON_DAILY_CAP, true, item.name);
+  }
+});
+
+test('a non-cap Workers AI 429 stays retryable and does not trip the daily breaker', async () => {
+  const budget = createAiBudget();
+  const clock = { t: Date.UTC(2026, 9, 24, 10, 0, 0) };
+  const rateLimited = cloudflare429({ code: 971, message: 'Rate limited. Please try again later.' });
+  const limited = harness({
+    budget,
+    clock,
+    responses: [rateLimited, rateLimited, rateLimited, rateLimited],
+  });
+  const hit = await limited.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(hit.ok, false);
+  if (!hit.ok) {
+    assert.equal(hit.status, 503);
+    assert.equal(hit.error.code, 'AI_UNAVAILABLE');
+    assert.equal(hit.error.error, CaptureMessages.aiRetryable);
+    assert.equal(hit.error.retryable, true);
+  }
+  const http = identifyHttpBody(hit);
+  const ui = statusAfterIdentify(http.body, http.status === 200);
+  assert.equal(http.body.error, CaptureMessages.aiRetryable);
+  assert.equal(http.body.retryable, true);
+  assert.equal(ui?.message, CaptureMessages.aiRetryable);
+  assert.equal(ui?.retryable, true);
+  assert.equal(limited.calls.length, 2);
+  assert.equal(budget.usedNeurons(clock.t) >= AI_NEURON_DAILY_CAP, false);
+  const follow = await limited.identifier.identify({ mediaType: 'image/jpeg', bytes: jpeg });
+  assert.equal(follow.ok, false);
+  if (!follow.ok) assert.equal(follow.error.error, CaptureMessages.aiRetryable);
+  assert.equal(limited.calls.length, 4);
+  assert.equal(budget.usedNeurons(clock.t) >= AI_NEURON_DAILY_CAP, false);
 });
 
 test('a 5016 response is one user attempt, returns AI_UNAVAILABLE, and does not agree', async () => {

@@ -2,6 +2,7 @@
 
 import { CaptureMessages } from '@/lib/capture/contract';
 import { capturePhotoActions, photoForUpload } from '@/lib/capture/photo-pick';
+import { serverPhotoPreview } from '@/lib/capture/photo-preview';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 export type CapturePhotoPick = {
@@ -104,7 +105,7 @@ function useCoarsePointer(): boolean | null {
   return coarse;
 }
 
-export function CapturePhotoControls({ pick, file }: { pick: CapturePhotoPick; file?: File | null }) {
+export function CapturePhotoControls({ pick, file, previewSrc }: { pick: CapturePhotoPick; file?: File | null; previewSrc?: string | null }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -218,7 +219,7 @@ export function CapturePhotoControls({ pick, file }: { pick: CapturePhotoPick; f
           </button>
         </div>
       )}
-      {file && <SelectedPhotoPreview file={file} />}
+      {file && <SelectedPhotoPreview file={file} previewSrc={previewSrc} />}
       <div aria-live="polite">
         {pick.message && (
           <p role="alert" className="mt-2 rounded-md bg-red-50 dark:bg-red-950/40 p-3 text-red-700 dark:text-red-300 text-sm">
@@ -252,11 +253,10 @@ function onMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
 }
 
 
-function SelectedPhotoPreview({ file }: { file: File }) {
+function SelectedPhotoPreview({ file, previewSrc }: { file: File; previewSrc?: string | null }) {
   const imageRef = useRef<HTMLImageElement>(null);
-  // Preview only the prepared upload. HEIC may be sent for server-side conversion;
-  // in that case show its name rather than a broken browser image.
   const browserImage = ['image/jpeg', 'image/png', 'image/webp'].includes(file.type);
+  const serverPreview = serverPhotoPreview(file.type, previewSrc);
   useEffect(() => {
     if (!browserImage) return;
     const image = imageRef.current;
@@ -267,14 +267,24 @@ function SelectedPhotoPreview({ file }: { file: File }) {
       URL.revokeObjectURL(url);
     };
   }, [file, browserImage]);
+  const showImage = browserImage || Boolean(serverPreview);
   return (
     <figure className="mt-3 flex items-center gap-3 text-sm text-gray-700 dark:text-gray-200">
-      {/* eslint-disable-next-line @next/next/no-img-element -- Local prepared blob URL; no remote image optimization or upload. */}
-      {browserImage && <img ref={imageRef} alt="選択した写真" width={96} height={96} className="h-24 w-24 shrink-0 rounded object-contain" />}
+      {showImage && (
+        // eslint-disable-next-line @next/next/no-img-element -- Local blob or data URL of the prepared JPEG. Not stored.
+        <img
+          ref={browserImage ? imageRef : undefined}
+          src={serverPreview ?? undefined}
+          alt="選択した写真"
+          width={96}
+          height={96}
+          className="h-24 w-24 shrink-0 rounded object-contain"
+        />
+      )}
       <figcaption className="min-w-0 break-words">
         <p>選択した写真</p>
         <p>{file.name}</p>
-        {!browserImage && <p>この形式はプレビューできませんが、商品を判定します。</p>}
+        {!showImage && <p>この形式はプレビューできませんが、商品を判定します。</p>}
       </figcaption>
     </figure>
   );

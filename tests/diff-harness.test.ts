@@ -133,7 +133,7 @@ test('a linked generation other than 1, or a token generation other than 0, stay
   const step = candidate.steps['auth.login.success'];
   assert.ok(step);
   step.json = { token };
-  step.cookies = [{ op: 'set', name: 'auth', value: token, options: null }];
+  step.cookies = [{ op: 'set', name: 'butuyokuoh_token', value: token, options: null }];
   const wrongToken = compareSnapshots(baseline, candidate, rules);
   assert.equal(wrongToken.ok, false);
   assert.ok(wrongToken.unexpected.some((entry) => entry.path.includes('sessionGeneration')));
@@ -175,7 +175,7 @@ function baselineSnapshot(): Snapshot {
       'auth.login.success': {
         status: 200,
         json: { token },
-        cookies: [{ op: 'set', name: 'auth', value: token, options: null }],
+        cookies: [{ op: 'set', name: 'butuyokuoh_token', value: token, options: null }],
       },
       'auth.credentials.success': {
         available: true,
@@ -231,7 +231,7 @@ function candidateSnapshot(): Snapshot {
   snapshot.steps['auth.login.success'] = {
     status: 200,
     json: { token },
-    cookies: [{ op: 'set', name: 'auth', value: token, options: null }],
+    cookies: [{ op: 'set', name: 'butuyokuoh_token', value: token, options: null }],
   };
   snapshot.steps['auth.google.unverified'] = {
     allowed: false,
@@ -245,3 +245,35 @@ function candidateSnapshot(): Snapshot {
   };
   return snapshot;
 }
+
+
+test('required security behavior remains mandatory after develop already contains it', () => {
+  const rules = loadApprovals(approvalsPath.pathname);
+  const report = compareSnapshots(candidateSnapshot(), candidateSnapshot(), rules);
+  assert.equal(report.ok, true, formatReport(report));
+  assert.match(formatReport(report), /維持/);
+});
+
+test('identical insecure snapshots still fail each required invariant', () => {
+  const mutations: Array<[string, (snapshot: Snapshot) => void]> = [
+    ['verified-link-retires-password', (snapshot) => { snapshot.db.rows.users.find((row) => row.email === 'linked@example.test')!.password_hash = HASH; }],
+    ['verified-link-retires-password', (snapshot) => { snapshot.db.rows.users.find((row) => row.email === 'linked@example.test')!.session_generation = 0; }],
+    ['unverified-existing-rejected', (snapshot) => { snapshot.steps['auth.google.unverified-existing'].allowed = true; }],
+    ['unverified-existing-rejected', (snapshot) => { snapshot.db.rows.users.find((row) => row.email === 'taken@example.test')!.google_id = 'sub-taken'; }],
+    ['session-generation-column', (snapshot) => { snapshot.db.columns.users = snapshot.db.columns.users.filter((column) => column !== 'session_generation'); }],
+    ['session-generation-column', (snapshot) => { delete snapshot.db.rows.users[0].session_generation; }],
+    ['credentials-session-generation', (snapshot) => { delete snapshot.steps['auth.credentials.success'].user!.sessionGeneration; }],
+    ['session-generation-token', (snapshot) => { snapshot.steps['auth.login.success'].json = { token: unsignedJwt({ userId: 1, email: 'owner@example.test' }) }; }],
+    ['session-generation-token', (snapshot) => { snapshot.steps['auth.login.success'].cookies = []; }],
+    ['unverified-google-rejected', (snapshot) => { snapshot.steps['auth.google.unverified'].allowed = true; }],
+    ['unverified-google-rejected', (snapshot) => { snapshot.db.rows.users.push(user({ id: 9, email: 'unverified@example.test', google_id: 'sub-unverified', session_generation: 0 })); }],
+  ];
+  const rules = loadApprovals(approvalsPath.pathname);
+  for (const [id, mutate] of mutations) {
+    const snapshot = candidateSnapshot();
+    mutate(snapshot);
+    const report = compareSnapshots(snapshot, snapshot, rules);
+    assert.equal(report.ok, false, id);
+    assert.ok(report.unexpected.some((entry) => entry.path === `approvals.${id}.required`), id);
+  }
+});

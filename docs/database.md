@@ -226,6 +226,66 @@ CREATE TABLE user_notification_settings (
 
 写真判定の1分・1日の回数と、全体のニューロン。`user_key` は会員 ID の文字列、`day` は UTC の日付（`YYYY-MM-DD`）、`at_ms` は要求の時刻、`neurons` はその1回分。写真そのものは入れない。日付が変わった行は数えず、行自体は消さない。利用者を消しても、その日の全体のニューロンは残る。
 
+## エージェント用トークン（#268）
+
+列と表は足すだけ。平文トークンは保存しない。
+
+### agent_tokens
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| token_prefix | TEXT | 識別用（例: `byoagt_xxxxxxxx`） |
+| token_hash | TEXT | 平文の SHA-256（ユニーク） |
+| scopes | TEXT | JSON 配列（`read` / `write` / `extension`）。`extension` は Chrome 拡張 API 専用（#271） |
+| expires_at | TEXT | 有効期限 |
+| revoked_at | TEXT | 失効時刻。NULL なら未失効 |
+
+### agent_audit_log
+
+トークンごとの操作ログ。90 日で刈り取る。`meta` にトークン値は入れない。記録するのは書き込み・権限拒否・レート制限に当たったときだけで、成功した読み取りは残さない。
+
+### agent_rate_limits
+
+トークン単位のレート制限バケット（`agent:<tokenId>:<kind>`）。
+
+| kind | 上限 | 窓 |
+|------|------|----|
+| read | 60/分 | 直近1分の窓 |
+| add | 20/分 | 直近1分の窓 |
+| add_url | 10/分 | 直近1分の窓 |
+| add_day | 200/日 | **最初の追加から24時間の固定窓**（窓が切れるまで `resets_at` は動かない） |
+
+失効したトークンのバケットは掃除する。`token_hash` は UNIQUE なので追加のハッシュ索引は作らない。
+
+### items に足す列
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| added_by_agent_token_id | INTEGER | エージェントが追加した印。トークン失効後も残る |
+
+## エージェント向け OAuth（#272）
+
+アクセス・トークン本体は `agent_tokens`（`byoagt_`）を再利用する。列と表は足すだけ。
+
+### agent_tokens に足す列
+
+| カラム | 型 | 説明 |
+|--------|------|------|
+| oauth_client_id | TEXT | OAuth 発行時の client_id。PAT は NULL |
+| oauth_resource | TEXT | RFC 8707 の resource（MCP URL）。PAT は NULL |
+
+### agent_oauth_clients
+
+DCR または Client ID Metadata Document で得たクライアント。`redirect_uris` などは JSON。平文の client_secret は保存しない。
+
+### agent_oauth_pending / agent_oauth_auth_codes
+
+同意前のリクエストと、1回限りの認可コード（ハッシュのみ）。`state` はクライアントごとに1回限り。
+
+### agent_oauth_refresh_tokens
+
+リフレッシュ・トークン（ハッシュのみ）。使うたびにローテーションし、紐づく access（`agent_tokens`）も失効させる。パスワード変更時は access と合わせて失効。
+
 ## スキーマ変更の前のバックアップ
 
 本番のスキーマを変えるコードを起動する前に、SQLite の `.backup` で一貫したコピーを取る。`data/butuyokuoh.db` を `cp` しただけでは、WAL の更新が別ファイルに残っていて、コピーが途中の状態になることがある。
@@ -256,15 +316,27 @@ sudo systemctl start butuyokuoh
 
 ## バックアップ
 
-スキーマ変更の前は、上の `.backup` を使う。停止中のファイルをコピーする場合だけ、次でも戻せる。
+日常の写しも、スキーマを変える前も、SQLite の `.backup` を使う。`data/butuyokuoh.db` のファイルコピーは使わない。WAL の更新が `-wal` に残っていると、本体ファイルだけのコピーは途中の状態になる。
+
+アプリを動かしたまま取れる。`.backup` はバックアップ API で、一貫した1つのファイルを作る。本番の更新で、動いているディレクトリの外に新しいコードを準備する手順は `docs/deployment.md` の「安全な更新」。
 
 ```bash
-# バックアップ
-cp data/butuyokuoh.db data/butuyokuoh.db.backup
-
-# リストア
-cp data/butuyokuoh.db.backup data/butuyokuoh.db
+sqlite3 data/butuyokuoh.db ".backup 'data/butuyokuoh.db.backup'"
+sqlite3 data/butuyokuoh.db.backup "PRAGMA integrity_check;"
 ```
+
+`integrity_check` が `ok` でないファイルは、戻しに使わない。
+
+戻すときはアプリを止める。`-wal` と `-shm` が残っていると、戻したファイルよりそちらが優先される。
+
+```bash
+sudo systemctl stop butuyokuoh
+rm -f data/butuyokuoh.db-wal data/butuyokuoh.db-shm
+sqlite3 data/butuyokuoh.db.backup ".backup 'data/butuyokuoh.db'"
+sudo systemctl start butuyokuoh
+```
+
+`BUTUYOKUOH_DB_PATH` を変えている場合は、そのファイルを対象にする。
 
 ## マイグレーション
 

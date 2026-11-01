@@ -18,10 +18,29 @@ const page = [
   '<meta property="og:image" content="https://item-shopping.c.yimg.jp/i/g/milk">',
 ].join('');
 
+function requestHref(urlOrOptions: URL | string | Record<string, unknown>): string {
+  if (typeof urlOrOptions === 'string' || urlOrOptions instanceof URL) return new URL(urlOrOptions).href;
+  const opts = urlOrOptions;
+  if (typeof opts.href === 'string') return new URL(opts.href).href;
+  const headers = (opts.headers || {}) as Record<string, string>;
+  const host = headers.Host || headers.host || opts.servername || opts.host || opts.hostname;
+  const protocol = typeof opts.protocol === 'string' ? opts.protocol : 'https:';
+  const path = typeof opts.path === 'string' ? opts.path : '/';
+  return new URL(`${protocol}//${host}${path}`).href;
+}
+
 function installShopPage(): () => void {
   dns.lookup = (async () => [{ address: '1.1.1.1', family: 4 }]) as unknown as typeof dns.lookup;
-  https.request = ((url: URL, _options: unknown, callback: (response: IncomingMessage) => void) => {
-    requested.push(url.href);
+  // requestPinned は options 単体、旧経路は URL + options。どちらでも Host から元 URL を復元する。
+  https.request = ((
+    urlOrOptions: URL | string | Record<string, unknown>,
+    optionsOrCallback?: unknown,
+    maybeCallback?: (response: IncomingMessage) => void,
+  ) => {
+    const callback = (typeof optionsOrCallback === 'function'
+      ? optionsOrCallback
+      : maybeCallback) as (response: IncomingMessage) => void;
+    requested.push(requestHref(urlOrOptions));
     const response = new EventEmitter() as IncomingMessage;
     response.statusCode = 200;
     response.headers = { 'content-type': 'text/html; charset=utf-8' };

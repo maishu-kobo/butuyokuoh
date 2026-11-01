@@ -1,0 +1,2767 @@
+{
+  "label": "pr",
+  "have": {
+    "cf": true,
+    "yahoo": true,
+    "rakuten": true
+  },
+  "refererSet": true,
+  "estNeurons": 601,
+  "rows": [
+    {
+      "id": "balenciaga-shoes",
+      "identifyMs": 1922,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"バレンシアガ シューズ\",\"brand\":\"バレンシアガ\",\"model\":null,\"productType\":\"シューズ\",\"color\":\"白\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6836,
+            "completion_tokens": 44,
+            "total_tokens": 6880,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 32.8556406845
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "バレンシアガ シューズ 白",
+          "brand": "バレンシアガ",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "バレンシアガ シューズ 白",
+        "brand": "バレンシアガ",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 900,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "バレンシアガ シューズ 白 バレンシアガ",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "バレンシアガ シューズ 白 バレンシアガ",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン",
+          "price": 5200
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン /FF ■GY53 レディース 【ベクトル 古着】 260703",
+          "price": 6300
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン /FF ■GY53 レディース 【ベクトル 古着】 260703",
+          "price": 6300
+        },
+        {
+          "site": "yahoo",
+          "title": "バレンシアガ BALENCIAGA マッチ ロウ キャンバス スニーカー シューズ ダメージ加工 ローカット 35 ホワイト ■IB0106",
+          "price": 9800
+        },
+        {
+          "site": "rakuten",
+          "title": "BALENCIAGA バレンシアガエスパドリーユ レディース EU35(21.5cm位) 青x白(ボーダー)【中古】【古着】",
+          "price": 15400
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン",
+          "price": 5200
+        },
+        {
+          "title": "バレンシアガ BALENCIAGA マッチ ロウ キャンバス スニーカー シューズ ダメージ加工 ローカット 35 ホワイト ■IB0106",
+          "price": 9800
+        },
+        {
+          "title": "バレンシアガ BALENCIAGA ADIDAS ORIGINALS STAN SMITH スニーカー ローカット レザー 37 23cm 白 緑色 IG9944",
+          "price": 20200
+        },
+        {
+          "title": "バレンシアガ × アディダス STAN SMITH スタンスミス スニーカー 23cm 白 ホワイト 緑 パンチングデザイン ヴィンテージ加工",
+          "price": 21300
+        },
+        {
+          "title": "バレンシアガ BALENCIAGA BBパンプス ポインテッドトゥ ピンヒール 型押し 37 24.0-24.5cm 白 734238 /MI ■OS ■SH レディース",
+          "price": 26300
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【中古】バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン /FF ■GY53 レディース 【ベクトル 古着】 260703",
+          "price": 6300
+        },
+        {
+          "title": "【中古】バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン /FF ■GY53 レディース 【ベクトル 古着】 260703",
+          "price": 6300
+        },
+        {
+          "title": "BALENCIAGA バレンシアガエスパドリーユ レディース EU35(21.5cm位) 青x白(ボーダー)【中古】【古着】",
+          "price": 15400
+        },
+        {
+          "title": "BALENCIAGA バレンシアガスニーカー レディース 23cm 白x黒x緑【中古】【古着】",
+          "price": 23100
+        },
+        {
+          "title": "BALENCIAGA バレンシアガスニーカー メンズ EU42(27cm位) 白xクリア【中古】【古着】",
+          "price": 23400
+        }
+      ]
+    },
+    {
+      "id": "balenciaga-type-in-model",
+      "identifyMs": 2094,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"adidas\",\"brand\":\"adidas\",\"model\":null,\"productType\":\"シューズ\",\"color\":\"白\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3634,
+            "completion_tokens": 37,
+            "total_tokens": 3671,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 18.3028783795
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "adidas 白 シューズ",
+          "brand": "adidas",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "adidas 白 シューズ",
+        "brand": "adidas",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 992,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "adidas 白 シューズ adidas",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "adidas 白 シューズ adidas",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 28
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "2026秋冬新作 アディダス レディース スニーカー adidas VL MOVE K ローカット カジュアル シューズ 靴 HQ2936 HQ2937 HQ2938 LB1601 LC3549 LC3550 LC3551",
+          "price": 3990
+        },
+        {
+          "site": "rakuten",
+          "title": "アディダス ジュニア キッズ TENSAUR RUN 3.0 J テンソーラン 男の子 女の子 レディース 靴 シューズ ランニングシューズ スニーカー ヒモ ホワイト 白 ブラック 黒 ブルー 青 送料無料 adidas IE3542 IE3543 IE3549",
+          "price": 4410
+        },
+        {
+          "site": "rakuten",
+          "title": "【動画あり】2026春夏新色 当店adidas売れ筋 NO,1 送料無料 アディダス レディース スニーカー adidas ADVANCOURT BASE 2.0 J アドバンコート ローカット カジュアル シューズ 靴 ID3886 ID3889 IE8688 IH8123 ID3888 JS2531",
+          "price": 4490
+        },
+        {
+          "site": "yahoo",
+          "title": "爆買 【動画あり】2026秋冬新色 アディダス レディース スニーカー adidas ADVANCOURT BASE 2.0 J アドバンコート シューズ 靴 KJ4247 ID3889",
+          "price": 4490
+        },
+        {
+          "site": "rakuten",
+          "title": "アディダス グランドコート ベース2.0 ADIDAS スニーカー メンズ ホワイト 白 ブラック 黒 GRANDCOURT BASE 2.0 LIT50 シューズ スニーカー テニス ブランド ローカット シンプル スポーティ カジュアル 靴 スリーストライプス 国内正規品|slz|",
+          "price": 4549
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "2026秋冬新作 アディダス レディース スニーカー adidas VL MOVE K ローカット カジュアル シューズ 靴 HQ2936 HQ2937 HQ2938 LB1601 LC3549 LC3550 LC3551",
+          "price": 3990
+        },
+        {
+          "title": "爆買 【動画あり】2026秋冬新色 アディダス レディース スニーカー adidas ADVANCOURT BASE 2.0 J アドバンコート シューズ 靴 KJ4247 ID3889",
+          "price": 4490
+        },
+        {
+          "title": "2026秋冬新色 アディダス ランニングシューズ adidas メンズ レディース スニーカー RESPONSE RUNNER 2 レスポンス ランナー シューズ 靴 KJ1735 KJ1736 KJ1737",
+          "price": 4990
+        },
+        {
+          "title": "アディダス スニーカー レディース キッズ ジュニア 子供 スタンスミス Ｊ ADIDAS JP9712 ホワイト 白 靴 シューズ 紐靴 ロゴ 爆買",
+          "price": 8907
+        },
+        {
+          "title": "アディダス スニーカー レディース キッズ スーパースター II J ADIDAS JH9976 ホワイト 白 シューズ 靴 シンプル ブランド 通勤 爆買",
+          "price": 10345
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "アディダス ジュニア キッズ TENSAUR RUN 3.0 J テンソーラン 男の子 女の子 レディース 靴 シューズ ランニングシューズ スニーカー ヒモ ホワイト 白 ブラック 黒 ブルー 青 送料無料 adidas IE3542 IE3543 IE3549",
+          "price": 4410
+        },
+        {
+          "title": "【動画あり】2026春夏新色 当店adidas売れ筋 NO,1 送料無料 アディダス レディース スニーカー adidas ADVANCOURT BASE 2.0 J アドバンコート ローカット カジュアル シューズ 靴 ID3886 ID3889 IE8688 IH8123 ID3888 JS2531",
+          "price": 4490
+        },
+        {
+          "title": "アディダス グランドコート ベース2.0 ADIDAS スニーカー メンズ ホワイト 白 ブラック 黒 GRANDCOURT BASE 2.0 LIT50 シューズ スニーカー テニス ブランド ローカット シンプル スポーティ カジュアル 靴 スリーストライプス 国内正規品|slz|",
+          "price": 4549
+        },
+        {
+          "title": "アディダス レディース ADVANCOURT BASE 2.0 J スニーカー 靴 シューズ コートシューズ ホワイト 白 送料無料 adidas IE8688",
+          "price": 4820
+        },
+        {
+          "title": "30%off 送料無料 アディダス メンズ レディース スニーカー adidas ADVANCOURT BASE U アドバンコート ローカット カジュアル シューズ 靴 ホワイト 白 緑GW2063",
+          "price": 4990
+        }
+      ]
+    },
+    {
+      "id": "birkenstock-sandals",
+      "identifyMs": 1611,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Birkenstock sandals\",\"brand\":\"Birkenstock\",\"model\":null,\"productType\":\"sandals\",\"color\":\"black\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6836,
+            "completion_tokens": 40,
+            "total_tokens": 6876,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 32.609668013500006
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "Birkenstock sandals ブラック",
+          "brand": "Birkenstock",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Birkenstock sandals ブラック",
+        "brand": "Birkenstock",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 753,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "Birkenstock sandals ブラック Birkenstock",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "Birkenstock sandals ブラック Birkenstock",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 8,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "ビルケンシュトック バルバドス Barbados EVA 1015398 BLACK メンズ レディース シャワーサンダル ： ブラック BIRKENSTOCK 2303_ms",
+          "price": 3960
+        },
+        {
+          "site": "yahoo",
+          "title": "ビルケンシュトック BIRKENSTOCK サンダル Honolulu EVA 1015487/1015488/1015489/1015491 メンズ レディース 耐水性 ウォッシャブル 超軽量 シンプル",
+          "price": 4400
+        },
+        {
+          "site": "yahoo",
+          "title": "ビルケンシュトック BIRKENSTOCK サンダル Barbados EVA 1015398/1015399/1015480/1015482 メンズ レディース 耐水性 ウォッシャブル 超軽量 シンプル",
+          "price": 5000
+        },
+        {
+          "site": "yahoo",
+          "title": "ビルケンシュトック GIZEH EVA GE128201 BK メンズ レディース スポーツサンダル : ブラック BIRKENSTOCK",
+          "price": 5980
+        },
+        {
+          "site": "rakuten",
+          "title": "ビルケンシュトック アリゾナ ARIZONA EVA GE129423 GE129421 BK メンズ レディース スポーツサンダル ： ブラック BIRKENSTOCK 2020sandals",
+          "price": 6150
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "ビルケンシュトック バルバドス Barbados EVA 1015398 BLACK メンズ レディース シャワーサンダル ： ブラック BIRKENSTOCK 2303_ms",
+          "price": 3960
+        },
+        {
+          "title": "ビルケンシュトック BIRKENSTOCK サンダル Honolulu EVA 1015487/1015488/1015489/1015491 メンズ レディース 耐水性 ウォッシャブル 超軽量 シンプル",
+          "price": 4400
+        },
+        {
+          "title": "ビルケンシュトック BIRKENSTOCK サンダル Barbados EVA 1015398/1015399/1015480/1015482 メンズ レディース 耐水性 ウォッシャブル 超軽量 シンプル",
+          "price": 5000
+        },
+        {
+          "title": "ビルケンシュトック GIZEH EVA GE128201 BK メンズ レディース スポーツサンダル : ブラック BIRKENSTOCK",
+          "price": 5980
+        },
+        {
+          "title": "ビルケンシュトック アリゾナ ARIZONA EVA GE129423 GE129421 BK メンズ レディース スポーツサンダル : ブラック サンダルメンズ レディース BIRKENSTOCK",
+          "price": 6150
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "ビルケンシュトック アリゾナ ARIZONA EVA GE129423 GE129421 BK メンズ レディース スポーツサンダル ： ブラック BIRKENSTOCK 2020sandals",
+          "price": 6150
+        },
+        {
+          "title": "ビルケンシュトック アリゾナ ARIZONA GC051793 GC051791 BK メンズ レディース サンダル ： ブラック BIRKENSTOCK 2020sandals",
+          "price": 10440
+        },
+        {
+          "title": "ビルケンシュトック メンズ シューズ サンダル Birkenstock Men's Barbados Slide Sandals from Finish Line Black ブラック",
+          "price": 16480
+        },
+        {
+          "title": "ビルケンシュトック メンズ シューズ サンダル Birkenstock Men's Arizona EVA Sandals Black ブラック",
+          "price": 18980
+        },
+        {
+          "title": "ビルケンシュトック メンズ シューズ サンダル Birkenstock Men's Arizona EVA Essential Slide Sandals Black ブラック",
+          "price": 19980
+        }
+      ]
+    },
+    {
+      "id": "canon-camera",
+      "identifyMs": 1848,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"OLYMPUS OM-D\",\"brand\":\"OLYMPUS\",\"model\":\"OM-D\",\"productType\":\"カメラ\",\"color\":\"黒\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6836,
+            "completion_tokens": 44,
+            "total_tokens": 6880,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 32.8556406845
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "OLYMPUS OM-D 黒 カメラ",
+          "brand": "OLYMPUS",
+          "model": "OM-D",
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "OLYMPUS OM-D 黒 カメラ",
+        "brand": "OLYMPUS",
+        "model": "OM-D",
+        "jan": null
+      },
+      "searchMs": 292,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "OLYMPUS OM-D 黒 カメラ OLYMPUS OM-D",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "OLYMPUS OM-D 黒 カメラ OLYMPUS OM-D",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 11
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "オリンパス OLYMPUS OM-D E-M10 シルバーボディ 40-150ｍｍ 黒 望遠 レンズセット ミラーレス一眼 中古 カメラ",
+          "price": 43800
+        },
+        {
+          "site": "yahoo",
+          "title": "オリンパス OLYMPUS OM-D E-M10 ブラックボディ 40-150ｍｍ 黒 望遠レンズセット ミラーレス一眼 中古 カメラ",
+          "price": 47800
+        },
+        {
+          "site": "yahoo",
+          "title": "オリンパス OLYMPUS OM-D E-M10 Mark2 シルバーボディ 40-150ｍｍ 黒 望遠レンズセット ミラーレス一眼 中古 カメラ",
+          "price": 55800
+        },
+        {
+          "site": "yahoo",
+          "title": "オリンパス OLYMPUS OM-D E-M5 シルバーボディ 14-42ｍｍ 黒 レンズセット ミラーレス一眼 中古 カメラ",
+          "price": 58800
+        },
+        {
+          "site": "yahoo",
+          "title": "オリンパス OLYMPUS OM-D M1 ブラックボディ 14-42ｍｍ 黒 レンズセット ミラーレス一眼 カメラ 中古",
+          "price": 60800
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "オリンパス OLYMPUS OM-D E-M10 シルバーボディ 40-150ｍｍ 黒 望遠 レンズセット ミラーレス一眼 中古 カメラ",
+          "price": 43800
+        },
+        {
+          "title": "オリンパス OLYMPUS OM-D E-M10 ブラックボディ 40-150ｍｍ 黒 望遠レンズセット ミラーレス一眼 中古 カメラ",
+          "price": 47800
+        },
+        {
+          "title": "オリンパス OLYMPUS OM-D E-M10 Mark2 シルバーボディ 40-150ｍｍ 黒 望遠レンズセット ミラーレス一眼 中古 カメラ",
+          "price": 55800
+        },
+        {
+          "title": "オリンパス OLYMPUS OM-D E-M5 シルバーボディ 14-42ｍｍ 黒 レンズセット ミラーレス一眼 中古 カメラ",
+          "price": 58800
+        },
+        {
+          "title": "オリンパス OLYMPUS OM-D M1 ブラックボディ 14-42ｍｍ 黒 レンズセット ミラーレス一眼 カメラ 中古",
+          "price": 60800
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "DBZZ 本革製ハーフケース, 黒色 for OLYMPUS OM-D E-M5 Mark III用",
+          "price": 6504
+        },
+        {
+          "title": "DBZZ 本革製ハーフケース, 黒色 for OLYMPUS OM-D E-M5 Mark III用",
+          "price": 6504
+        },
+        {
+          "title": "DBZZ 本革製ハーフケース, 黒色 for OLYMPUS OM-D E-M5 Mark III用",
+          "price": 6504
+        },
+        {
+          "title": "DBZZ 本革製ハーフケース, 黒色 for OLYMPUS OM-D E-M5 Mark III用",
+          "price": 6522
+        },
+        {
+          "title": "DBZZ 本革製ハーフケース, 黒色 for OLYMPUS OM-D E-M5 Mark III用",
+          "price": 6650
+        }
+      ]
+    },
+    {
+      "id": "chanel-perfume",
+      "identifyMs": 1975,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"パール山水の香り\",\"brand\":\"パール山水\",\"model\":null,\"productType\":\"香水\",\"color\":\"赤\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6836,
+            "completion_tokens": 44,
+            "total_tokens": 6880,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 32.8556406845
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "パール山水の香り 赤 香水",
+          "brand": "パール山水",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "パール山水の香り 赤 香水",
+        "brand": "パール山水",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 1228,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "パール山水の香り 赤 香水 パール山水",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "パール山水の香り 赤 香水 パール山水",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "パール山水の香り 赤 香水",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "パール山水の香り 赤 香水",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 0,
+        "rakuten": 0
+      },
+      "top5": [],
+      "top5yahoo": [],
+      "top5rakuten": []
+    },
+    {
+      "id": "converse-complete",
+      "identifyMs": 1540,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"CONVERSE ALL STAR\",\"brand\":\"CONVERSE\",\"model\":null,\"productType\":\"シューズ\",\"color\":\"黒\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3634,
+            "completion_tokens": 39,
+            "total_tokens": 3673,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 18.425864715000003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "CONVERSE ALL STAR 黒 シューズ",
+          "brand": "CONVERSE",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "CONVERSE ALL STAR 黒 シューズ",
+        "brand": "CONVERSE",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 443,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "CONVERSE ALL STAR 黒 シューズ CONVERSE",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "CONVERSE ALL STAR 黒 シューズ CONVERSE",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "38%OFF 【送料無料】 コンバース スニーカー レディース CONVERSE キャンバス オールスター ハイカット HI CANVAS ALL STAR HI 靴【日本正規代理店品】 定番シューズ （ブラック ホワイト ネイビー レッド）",
+          "price": 3900
+        },
+        {
+          "site": "rakuten",
+          "title": "あす楽 送料無料 コンバース ベビー オールスター CONVERSE BABY ALL STAR N RZ ベビー靴 男の子 女の子 ベビー靴 ホワイト 白 レッド 赤 ブラック 黒 出産祝い 男の子 女の子 ギフト",
+          "price": 3980
+        },
+        {
+          "site": "rakuten",
+          "title": "コンバース スニーカー レディース メンズ 靴 キャンバス オールスター ローカット CONVERSE CANVAS ALLSTAR OX 定番 シューズ 国内正規品",
+          "price": 4389
+        },
+        {
+          "site": "rakuten",
+          "title": "コンバース メンズ レディース キャンバス オールスターOX 靴 シューズ ALL STAR OX ローカット定番 国内正規品 ホワイト 白 ブラック 黒 送料無料 CONVERSE 163522 166751 5039 7652 9165 9166 9696 9697",
+          "price": 4650
+        },
+        {
+          "site": "rakuten",
+          "title": "コンバース オールスター OX ローカット スニーカー レディース メンズ キャンバス CANVAS ALL STAR OX バスケットシューズ チャックテイラー 定番シューズ ブラック ホワイト ネイビー レッド 白 黒 赤 紺 送料無料 最強翌日配送 【s9】",
+          "price": 4722
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "コンバース CONVERSE スニーカー オールスターアール 31310690 ALL STAR (R) OX メンズ レディース ユニセックス 靴 シューズ キャンバス 黒 BLACK 正規取扱店",
+          "price": 5362
+        },
+        {
+          "title": "コンバース CONVERSE スニーカー メンズ レディース オールスター （Ｒ） OX ブラック ALL STAR ローカット シューズ 靴 黒 [30%OFFセール]10月8日値下 百選",
+          "price": 5775
+        },
+        {
+          "title": "コンバース オールスター スニーカー レディース メンズ CONVERSE ALL STAR R アール OX ローカット キャンバス 定番 シューズ 靴 ブラック ホワイト",
+          "price": 6490
+        },
+        {
+          "title": "コンバース スリッポン スニーカー レディース メンズ CONVERSE ALL STAR オールスター スリップ SLIP N OX 紐なし キャンバス シューズ 靴 定番 黒 白",
+          "price": 6930
+        },
+        {
+          "title": "2026秋冬新作 コンバース スニーカー レディース CONVERSE ALL STAR オールスター ポインテッドトウ OX キャンバス シューズ 靴 ブラック ホワイト 黒 白",
+          "price": 6980
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "38%OFF 【送料無料】 コンバース スニーカー レディース CONVERSE キャンバス オールスター ハイカット HI CANVAS ALL STAR HI 靴【日本正規代理店品】 定番シューズ （ブラック ホワイト ネイビー レッド）",
+          "price": 3900
+        },
+        {
+          "title": "あす楽 送料無料 コンバース ベビー オールスター CONVERSE BABY ALL STAR N RZ ベビー靴 男の子 女の子 ベビー靴 ホワイト 白 レッド 赤 ブラック 黒 出産祝い 男の子 女の子 ギフト",
+          "price": 3980
+        },
+        {
+          "title": "コンバース スニーカー レディース メンズ 靴 キャンバス オールスター ローカット CONVERSE CANVAS ALLSTAR OX 定番 シューズ 国内正規品",
+          "price": 4389
+        },
+        {
+          "title": "コンバース メンズ レディース キャンバス オールスターOX 靴 シューズ ALL STAR OX ローカット定番 国内正規品 ホワイト 白 ブラック 黒 送料無料 CONVERSE 163522 166751 5039 7652 9165 9166 9696 9697",
+          "price": 4650
+        },
+        {
+          "title": "コンバース オールスター OX ローカット スニーカー レディース メンズ キャンバス CANVAS ALL STAR OX バスケットシューズ チャックテイラー 定番シューズ ブラック ホワイト ネイビー レッド 白 黒 赤 紺 送料無料 最強翌日配送 【s9】",
+          "price": 4722
+        }
+      ]
+    },
+    {
+      "id": "dior-lipstick",
+      "identifyMs": 2366,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"MAC Lipstick\",\"brand\":\"MAC\",\"model\":null,\"productType\":\"Lipstick\",\"color\":\"Nude\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3634,
+            "completion_tokens": 39,
+            "total_tokens": 3673,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 18.425864715000003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "MAC Lipstick",
+          "brand": "MAC",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "MAC Lipstick",
+        "brand": "MAC",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 746,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "MAC Lipstick MAC",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "MAC Lipstick MAC",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "マック / MAC マキシマル シルキー マット リップスティック 669 ウォーム テディ 3.5g (口紅)",
+          "price": 2837
+        },
+        {
+          "site": "yahoo",
+          "title": "マック / MAC リップスティック（フロスト） 308 ファビー 3g (口紅)",
+          "price": 2969
+        },
+        {
+          "site": "yahoo",
+          "title": "マック / MAC リップスティック（フロスト） 313 プラムダンディ 3g (口紅)",
+          "price": 2969
+        },
+        {
+          "site": "yahoo",
+          "title": "マック / MAC マキシマル スリーク サテン リップスティック 836 フレッシュポット 3.5g (口紅)",
+          "price": 3079
+        },
+        {
+          "site": "yahoo",
+          "title": "並行輸入品 MAC マック リップスティック #DANGEROUS 3g【送料無料】",
+          "price": 3450
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "マック / MAC マキシマル シルキー マット リップスティック 669 ウォーム テディ 3.5g (口紅)",
+          "price": 2837
+        },
+        {
+          "title": "マック / MAC リップスティック（フロスト） 308 ファビー 3g (口紅)",
+          "price": 2969
+        },
+        {
+          "title": "マック / MAC リップスティック（フロスト） 313 プラムダンディ 3g (口紅)",
+          "price": 2969
+        },
+        {
+          "title": "マック / MAC マキシマル スリーク サテン リップスティック 836 フレッシュポット 3.5g (口紅)",
+          "price": 3079
+        },
+        {
+          "title": "並行輸入品 MAC マック リップスティック #DANGEROUS 3g【送料無料】",
+          "price": 3450
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "マック Macximal Silky Matte Lipstick - # Marrakesh 3.5g MAC Macximal Silky Matte Lipstick - # Marrakesh 3.5g 送料無料 【楽天海外通販】",
+          "price": 3660
+        },
+        {
+          "title": "マック Macximal Silky Matte Lipstick - # Diva 3.5g MAC Macximal Silky Matte Lipstick - # Diva 3.5g 送料無料 【楽天海外通販】",
+          "price": 3890
+        },
+        {
+          "title": "マック Macximal Silky Matte Lipstick - # Kinda Sexy 3.5g MAC Macximal Silky Matte Lipstick - # Kinda Sexy 3.5g 送料無料 【楽天海外通販】",
+          "price": 3890
+        },
+        {
+          "title": "マック Macximal Silky Matte Lipstick - # Antique Velvet 3.5g MAC Macximal Silky Matte Lipstick - # Antique Velvet 3.5g 送料無料 【楽天海外通販】",
+          "price": 3960
+        },
+        {
+          "title": "マック Macximal Silky Matte Lipstick - # Honeylove 3.5g MAC Macximal Silky Matte Lipstick - # Honeylove 3.5g 送料無料 【楽天海外通販】",
+          "price": 4040
+        }
+      ]
+    },
+    {
+      "id": "dyson-vacuum",
+      "identifyMs": 1605,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Dyson V11 Absolute Pro\",\"brand\":\"Dyson\",\"model\":null,\"productType\":\"Vaccum\",\"color\":\"Purple\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3634,
+            "completion_tokens": 43,
+            "total_tokens": 3677,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 18.671837386000004
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "Dyson V11 Absolute Pro",
+          "brand": "Dyson",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Dyson V11 Absolute Pro",
+        "brand": "Dyson",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 509,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "Dyson V11 Absolute Pro Dyson",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "Dyson V11 Absolute Pro Dyson",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "ダイソン 掃除機 v7 バッテリー 【PSE適合】【PL保険(1億円補償)】【1年保証】互換 充電池 dyson sv11 hh11",
+          "price": 3980
+        },
+        {
+          "site": "yahoo",
+          "title": "ダイソン 掃除機 v7 バッテリー 【PSE適合】【PL保険(1億円補償)】【1年保証】【選べる特典あり】互換 充電池 dyson sv11 hh11",
+          "price": 4580
+        },
+        {
+          "site": "yahoo",
+          "title": "ダイソン互換バッテリー V7/SV11シリーズ互換バッテリー 【3000mAh 排気フィルターなし】",
+          "price": 6280
+        },
+        {
+          "site": "rakuten",
+          "title": "ダイソン 掃除機 V11 SV14 SV15 SV22 V15 シリーズ 用 フィルター 交換フィルター コードレス掃除機フィルター 互換品 洗濯可能 2個セット Absolute Extra Fluffy Animal Pro+ Complete Mo",
+          "price": 2334
+        },
+        {
+          "site": "rakuten",
+          "title": "ダイソン 掃除機 V11 SV14 SV15 SV22 V15 シリーズ 用 フィルター 交換フィルター コードレス掃除機フィルター 互換品 洗濯可能 2個セット Absolute Extra Fluffy Animal Pro+ Complete Motorhead Cleaner (V11フィルタ",
+          "price": 2830
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "ダイソン 掃除機 v7 バッテリー 【PSE適合】【PL保険(1億円補償)】【1年保証】互換 充電池 dyson sv11 hh11",
+          "price": 3980
+        },
+        {
+          "title": "ダイソン 掃除機 v7 バッテリー 【PSE適合】【PL保険(1億円補償)】【1年保証】【選べる特典あり】互換 充電池 dyson sv11 hh11",
+          "price": 4580
+        },
+        {
+          "title": "ダイソン互換バッテリー V7/SV11シリーズ互換バッテリー 【3000mAh 排気フィルターなし】",
+          "price": 6280
+        },
+        {
+          "title": "Dyson ダイソン対応 交換用 掃除機フィルター 互換品 コードレス掃除機フィルター V11 SV14 SV15 SV22 V15 用 970013-02 洗濯可能 送料無料 2個セット 互換品",
+          "price": 1880
+        },
+        {
+          "title": "ダイソン 互換 V11 バッテリー SV15 大容量 4000ｍAh ボタン固定式 掃除機 交換用 壁掛け ブラケット 対応 Fluffy Absolute Extra 1年保証（V11/SV15-1）",
+          "price": 8950
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "ダイソン 掃除機 V11 SV14 SV15 SV22 V15 シリーズ 用 フィルター 交換フィルター コードレス掃除機フィルター 互換品 洗濯可能 2個セット Absolute Extra Fluffy Animal Pro+ Complete Mo",
+          "price": 2334
+        },
+        {
+          "title": "ダイソン 掃除機 V11 SV14 SV15 SV22 V15 シリーズ 用 フィルター 交換フィルター コードレス掃除機フィルター 互換品 洗濯可能 2個セット Absolute Extra Fluffy Animal Pro+ Complete Motorhead Cleaner (V11フィルタ",
+          "price": 2830
+        },
+        {
+          "title": "FLYLINKTECH ダイソン V7 SV11バッテリー 5000mAh 掃除機交換用バッテリー V7 Fluff/Fluffy+/Absolute/Absolute Extra/Animalpro/Motorhead PSEマーク付き",
+          "price": 3726
+        },
+        {
+          "title": "【P5倍&200円OFF】ダイソン V7 バッテリー 6000mAh 【18ヶ月保証】 大容量 掃除機 SV11バッテリー D-yson 交換用バッテリー v7 ダイソン v7 Fluff/Fluffy+/Absolute/Absolute Extra/Animalpro/Motorhead PSE認証",
+          "price": 4180
+        },
+        {
+          "title": "【P5倍&200円OFF】ダイソン V7 バッテリー 6000mAh 【18ヶ月保証】 大容量 掃除機 SV11バッテリー D-yson 交換用バッテリー v7 ダイソン v7 Fluff/Fluffy+/Absolute/Absolute Extra/Animalpro/Motorhead PSE認証HBI",
+          "price": 4180
+        }
+      ]
+    },
+    {
+      "id": "gshock",
+      "identifyMs": 1970,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"G-SHOCK\",\"brand\":\"G-SHOCK\",\"model\":null,\"productType\":\"腕時計\",\"color\":\"黒\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3634,
+            "completion_tokens": 42,
+            "total_tokens": 3676,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 18.610344218250003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "G-SHOCK 黒",
+          "brand": "G-SHOCK",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "G-SHOCK 黒",
+        "brand": "G-SHOCK",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 771,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "G-SHOCK 黒 G-SHOCK",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "G-SHOCK 黒 G-SHOCK",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 7,
+        "rakuten": 29
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "ジーショック Gショック G-SHOCK 黒 ブラック オールブラック 時計 メンズ アナログ CASIO カシオ GA-100-1A1 防水 カジュアル スポーツ ビックフェイス 中学生 高校生 誕生日プレゼント 父の日 ギフト /腕時計/",
+          "price": 13800
+        },
+        {
+          "site": "rakuten",
+          "title": "【10年保証】CASIO G-SHOCK カシオ Gショック DW-5600UE-1 腕時計 時計 ブランド メンズ キッズ 子供 男の子 デジタル 日付 カレンダー 防水 ブラック 黒 スピード モデル ギフト プレゼント",
+          "price": 11000
+        },
+        {
+          "site": "rakuten",
+          "title": "G-SHOCK Gショック DW-6900RL-1JF 初代G-SHOCKカラーモチーフ Iconic Styles カシオ オリジン ラウンド デジタル ブラック 黒 メンズ 腕時計 （DW6900RL1JF） [在庫あり]",
+          "price": 11440
+        },
+        {
+          "site": "rakuten",
+          "title": "BOX訳あり G-SHOCK Gショック ジーショック メンズ レディース 防水 アナログ スポーツ 黒 ブラック 青 ブルー オールブラック AW-590-1A AW-591-2A AW-591BB-1A 息子 子供 男子 中学生 高校生 誕生日プレゼント 男性 ギフト 入学祝い G-しょckCASIO カシオ /腕時計/",
+          "price": 11780
+        },
+        {
+          "site": "yahoo",
+          "title": "G-SHOCK Gショック ジーショック BASIC ナイロンベルト ミリタリー ブラック 黒 DW-9052V-1 デジタル メンズ 逆輸入/腕時計/",
+          "price": 11800
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "G-SHOCK Gショック ジーショック BASIC ナイロンベルト ミリタリー ブラック 黒 DW-9052V-1 デジタル メンズ 逆輸入/腕時計/",
+          "price": 11800
+        },
+        {
+          "title": "GA-700-1BJF CASIO カシオ G-SHOCK ジーショック Gショック G−SHOCK ブラック 黒 フロントボタン メンズ 腕時計 国内正規品 爆買",
+          "price": 13090
+        },
+        {
+          "title": "G-SHOCK GA-2100 メンズ 腕時計 GA-2100-1A1DR カシオ Gショック オールブラック 黒 時計",
+          "price": 13280
+        },
+        {
+          "title": "G-SHOCK 電波ソーラー Gショック ジーショック デジタル メンズ ブラック 黒 GW-M5610U-1 GW-M5610U-1B GW-M500A-1 GW-M530A-1 逆輸入/腕時計/",
+          "price": 16800
+        },
+        {
+          "title": "G-SHOCK Gショック ジースクワッド メンズ 腕時計 GBD-200-1DR CASIO カシオ オールブラック 黒",
+          "price": 18480
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "ジーショック Gショック G-SHOCK 黒 ブラック オールブラック 時計 メンズ アナログ CASIO カシオ GA-100-1A1 防水 カジュアル スポーツ ビックフェイス 中学生 高校生 誕生日プレゼント 父の日 ギフト /腕時計/",
+          "price": 13800
+        },
+        {
+          "title": "【10年保証】CASIO G-SHOCK カシオ Gショック DW-5600UE-1 腕時計 時計 ブランド メンズ キッズ 子供 男の子 デジタル 日付 カレンダー 防水 ブラック 黒 スピード モデル ギフト プレゼント",
+          "price": 11000
+        },
+        {
+          "title": "G-SHOCK Gショック DW-6900RL-1JF 初代G-SHOCKカラーモチーフ Iconic Styles カシオ オリジン ラウンド デジタル ブラック 黒 メンズ 腕時計 （DW6900RL1JF） [在庫あり]",
+          "price": 11440
+        },
+        {
+          "title": "BOX訳あり G-SHOCK Gショック ジーショック メンズ レディース 防水 アナログ スポーツ 黒 ブラック 青 ブルー オールブラック AW-590-1A AW-591-2A AW-591BB-1A 息子 子供 男子 中学生 高校生 誕生日プレゼント 男性 ギフト 入学祝い G-しょckCASIO カシオ /腕時計/",
+          "price": 11780
+        },
+        {
+          "title": "Gショック ジーショック G-SHOCK メンズ 腕時計 GA100 防水 ブラック 黒 ホワイト 白 赤 レッド 青 ブルー アナログ 子供 中学生 高校生 CASIO カシオ 旦那 彼氏 かっこいい g shock 男性 20代 30代 中学 高校 男の子 プレゼント ギフト 逆輸入 /腕時計/",
+          "price": 12180
+        }
+      ]
+    },
+    {
+      "id": "gucci-brand-only",
+      "identifyMs": 1632,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"バッグ\",\"brand\":null,\"model\":null,\"productType\":\"バッグ\",\"color\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6836,
+            "completion_tokens": 36,
+            "total_tokens": 6872,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 32.3636953425
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "バッグ",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "バッグ",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 691,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "バッグ",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "バッグ",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 28
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "ミニトートバッグ おしゃれ 選べるイニシャル バッグチャーム 仕切り 洗える ミニバッグハンドバッグ キャンバス ショルダー バッグ",
+          "price": 1099
+        },
+        {
+          "site": "yahoo",
+          "title": "ショルダーバッグ レディース 2way エコバッグ 鞄 斜め掛け トート おしゃれ ポケット 収納 軽量 コンパクト 大容量 肩掛け シンプル 通勤 通学",
+          "price": 1480
+        },
+        {
+          "site": "rakuten",
+          "title": "ランドセルの上から背負える 2層式 プールバッグ ナップサック 子供服 キッズ 男の子 女の子 海 海水浴 プール アウトドア スイミング プールバッグ ビーチバッグ プールグッズ 水泳",
+          "price": 1998
+        },
+        {
+          "site": "rakuten",
+          "title": "＼楽天1位★累計10万個突破／ トートバッグ レディース 小さめ ミニトートバッグ 底板付き バッグ 自立 ファスナー付き カバン 軽量 スクエア きれいめ 高見え おしゃれ かわいい シンプル 通勤 お出かけ 普段使い サブバッグ 旅行 ギフト プレゼント 母の日 MURA",
+          "price": 2380
+        },
+        {
+          "site": "yahoo",
+          "title": "ショルダーバッグ バッグ 「雨の日も安心♪」シアーリップビッグショルダー レディース",
+          "price": 2750
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "ミニトートバッグ おしゃれ 選べるイニシャル バッグチャーム 仕切り 洗える ミニバッグハンドバッグ キャンバス ショルダー バッグ",
+          "price": 1099
+        },
+        {
+          "title": "ショルダーバッグ レディース 2way エコバッグ 鞄 斜め掛け トート おしゃれ ポケット 収納 軽量 コンパクト 大容量 肩掛け シンプル 通勤 通学",
+          "price": 1480
+        },
+        {
+          "title": "ショルダーバッグ バッグ 「雨の日も安心♪」シアーリップビッグショルダー レディース",
+          "price": 2750
+        },
+        {
+          "title": "ショルダーバッグ Square hobo bag / スクエアホーボーバッグ メンズ レディース",
+          "price": 5940
+        },
+        {
+          "title": "野球 バッグ 大容量 大型 ミズノ エナメル ショルダーバッグ セカンドバッグ 42L 1FJDB022 野球バック バッグ刺繍有料可(B)",
+          "price": 7073
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "ランドセルの上から背負える 2層式 プールバッグ ナップサック 子供服 キッズ 男の子 女の子 海 海水浴 プール アウトドア スイミング プールバッグ ビーチバッグ プールグッズ 水泳",
+          "price": 1998
+        },
+        {
+          "title": "＼楽天1位★累計10万個突破／ トートバッグ レディース 小さめ ミニトートバッグ 底板付き バッグ 自立 ファスナー付き カバン 軽量 スクエア きれいめ 高見え おしゃれ かわいい シンプル 通勤 お出かけ 普段使い サブバッグ 旅行 ギフト プレゼント 母の日 MURA",
+          "price": 2380
+        },
+        {
+          "title": "＼累計10万個突破／ トートバッグ レディース 小さめ 2way ショルダー 斜めがけ 肩掛け ミニトート 軽量 ファスナー付 自立 仕切り 高見え ハンドバッグ きれいめ カジュアル 大人 おしゃれ ポケット付 シンプル 通勤 旅行 お出かけ ギフト プレゼント 母の日 MURA",
+          "price": 3160
+        },
+        {
+          "title": "ケスクルデザイン トートバッグ レディース SH6-006 Quest ce Que Le”design”? 2WAY ハンドバッグ ショルダーバッグ 大容量 ビジカジ オフィス 通勤バッグ ワンマイルバッグ[PO10]",
+          "price": 4730
+        },
+        {
+          "title": "【クーポンで30％OFF】キルティングナイロンバッグ キルティング バッグ レディース 2way トートバッグ B5サイズ BAG 撥水 ボトルポケットハンドバッグ ショルダーバッグ 軽量 上品 おしゃれ 通勤 ギフト プレゼント シュトレンテ",
+          "price": 4980
+        }
+      ]
+    },
+    {
+      "id": "iittala-mug",
+      "identifyMs": 1597,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"enamel mug\",\"brand\":\"null\",\"model\":\"null\",\"productType\":\"mug\",\"color\":\"green\",\"jan\":\"null\"}]}",
+          "usage": {
+            "prompt_tokens": 3634,
+            "completion_tokens": 37,
+            "total_tokens": 3671,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 18.3028783795
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "enamel mug",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "enamel mug",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 553,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "enamel mug",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "enamel mug",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 29
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "マーキュリー エナメルナマグ mercury 琺瑯 マグカップ ENAMEL MUG CUP ホーロー マグ マグカップ かっこいい 琺瑯 エナメル おしゃれ 大人 ホーロー コップ カップ キッチン カフェ 食器 ティー マグカップ",
+          "price": 1320
+        },
+        {
+          "site": "rakuten",
+          "title": "マーキュリー エナメルナマグ mercury 琺瑯 マグカップ ENAMEL MUG CUP ホーロー マグ かっこいい エナメル おしゃれ 大人 コップ カップ キッチン カフェ 食器 ティー",
+          "price": 1320
+        },
+        {
+          "site": "yahoo",
+          "title": "マーキュリー エナメルナマグ mercury 琺瑯 マグカップ ENAMEL MUG CUP [ ホーロー マグ マグカップ かっこいい 琺瑯 エナメル おしゃれ 大人 ](ポイント10倍)",
+          "price": 1320
+        },
+        {
+          "site": "rakuten",
+          "title": "ROARK REVIVAL ロアーク ロアークリバイバル コップ マグカップ ”SAFE CAMP” ENAMEL MUG ネイビー",
+          "price": 1650
+        },
+        {
+          "site": "rakuten",
+          "title": "ROARK REVIVAL ロアーク リバイバル グッズ マグカップ \"FEAR THE SEA\"ENAMEL MUG キャンプ コーヒー サーフィン ホーロー RAJ400 1220",
+          "price": 1650
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "マーキュリー エナメルナマグ mercury 琺瑯 マグカップ ENAMEL MUG CUP [ ホーロー マグ マグカップ かっこいい 琺瑯 エナメル おしゃれ 大人 ](ポイント10倍)",
+          "price": 1320
+        },
+        {
+          "title": "muurla ムールラ BASIC ENAMEL MUG ベーシックエナメルマグ L 370ml フィンランド コップ カップ マグカップ ホーロー アウトドア 北欧 食洗機可 琺瑯",
+          "price": 2200
+        },
+        {
+          "title": "CHUMS チャムス エナメルマグ Enamel Mug 琺瑯 ほうろう ホウロウ ホーロー マグカップ コップ 食器 保温性 プレゼント 化粧箱あり CH62-2177",
+          "price": 2750
+        },
+        {
+          "title": "CHUMS チャムス エナメルマグ Enamel Mug 琺瑯 ほうろう ホウロウ ホーロー マグカップ コップ 食器 保温性 プレゼント 化粧箱あり CH62-2177",
+          "price": 2750
+        },
+        {
+          "title": "チャムス CHUMS Enamel Mug F CH62-2177-Z051",
+          "price": 2750
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "マーキュリー エナメルナマグ mercury 琺瑯 マグカップ ENAMEL MUG CUP ホーロー マグ マグカップ かっこいい 琺瑯 エナメル おしゃれ 大人 ホーロー コップ カップ キッチン カフェ 食器 ティー マグカップ",
+          "price": 1320
+        },
+        {
+          "title": "マーキュリー エナメルナマグ mercury 琺瑯 マグカップ ENAMEL MUG CUP ホーロー マグ かっこいい エナメル おしゃれ 大人 コップ カップ キッチン カフェ 食器 ティー",
+          "price": 1320
+        },
+        {
+          "title": "ROARK REVIVAL ロアーク ロアークリバイバル コップ マグカップ ”SAFE CAMP” ENAMEL MUG ネイビー",
+          "price": 1650
+        },
+        {
+          "title": "ROARK REVIVAL ロアーク リバイバル グッズ マグカップ \"FEAR THE SEA\"ENAMEL MUG キャンプ コーヒー サーフィン ホーロー RAJ400 1220",
+          "price": 1650
+        },
+        {
+          "title": "ROARK REVIVAL ロアーク リバイバル グッズ マグカップ \"SAFE CAMP\"ENAMEL MUG キャンプ コーヒー サーフィン ホーロー RAJ401 1220",
+          "price": 1650
+        }
+      ]
+    },
+    {
+      "id": "iphone",
+      "identifyMs": 1869,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"iPhone\",\"brand\":\"Apple\",\"model\":null,\"productType\":\"スマートフォン\",\"color\":\"黒\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3634,
+            "completion_tokens": 37,
+            "total_tokens": 3671,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 18.3028783795
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "iPhone 黒",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "iPhone 黒",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 891,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "iPhone 黒",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "iPhone 黒",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 2,
+        "rakuten": 2
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "スマホ 受話器 黒電話 pc iPhone Type-C かわいい おしゃれ ヘッドセット マイク付き イヤホン ハンドセット 有線 Android タブレット パソコン スマートフォン",
+          "price": 1890
+        },
+        {
+          "site": "rakuten",
+          "title": "イヤホン 有線イヤホン iphone lightning ライトニングイヤホン Apple MFi認証品 インナーイヤー型 ブラック 黒 ME579",
+          "price": 2160
+        },
+        {
+          "site": "yahoo",
+          "title": "[新品未開封] Apple iPhone 17 256GB ブラック 黒 MG674J/A SIMロック解除済 SIMフリー4549995649154m",
+          "price": 157888
+        },
+        {
+          "site": "rakuten",
+          "title": "Smart Watch スマートウォッチ iphone android LINE 対応 メンズ レディース 健康 ランニング 仕事 アウトドア シリコン ラバー 多機能 クオーツ デジタル 心拍 カロリー 黒 ブラック 青 ブルー パープル ommix オムミックス 正規品 /腕時計/",
+          "price": 3300
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "スマホ 受話器 黒電話 pc iPhone Type-C かわいい おしゃれ ヘッドセット マイク付き イヤホン ハンドセット 有線 Android タブレット パソコン スマートフォン",
+          "price": 1890
+        },
+        {
+          "title": "[新品未開封] Apple iPhone 17 256GB ブラック 黒 MG674J/A SIMロック解除済 SIMフリー4549995649154m",
+          "price": 157888
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "イヤホン 有線イヤホン iphone lightning ライトニングイヤホン Apple MFi認証品 インナーイヤー型 ブラック 黒 ME579",
+          "price": 2160
+        },
+        {
+          "title": "Smart Watch スマートウォッチ iphone android LINE 対応 メンズ レディース 健康 ランニング 仕事 アウトドア シリコン ラバー 多機能 クオーツ デジタル 心拍 カロリー 黒 ブラック 青 ブルー パープル ommix オムミックス 正規品 /腕時計/",
+          "price": 3300
+        }
+      ]
+    },
+    {
+      "id": "levis-jacket",
+      "identifyMs": 2007,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Levi's Denim Jacket\",\"brand\":\"Levi's\",\"model\":null,\"productType\":\"Jacket\",\"color\":\"Blue\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3634,
+            "completion_tokens": 42,
+            "total_tokens": 3676,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 18.610344218250003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "Levi's Denim Jacket ブルー",
+          "brand": "Levi's",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Levi's Denim Jacket ブルー",
+        "brand": "Levi's",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 1196,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "Levi's Denim Jacket ブルー Levi's",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "Levi's Denim Jacket ブルー Levi's",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 28
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "【中古】【古着】 Levi's デニムジャケット レディース S ブルー リーバイス ボタン 胸ポケット カジュアル アメカジ 古着卸 アメリカ仕入 a702-6687",
+          "price": 1320
+        },
+        {
+          "site": "rakuten",
+          "title": "古着 Levi's リーバイス 80s 70506-0216 USA製 ヴィンテージ デニムジャケット 40R ブルー ジージャン トラッカー メンズ 【中古】",
+          "price": 9680
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】90s USA製 ヴィンテージ リーバイス Levi's 裏地チェック 70699 デニムジャケット 古着 メンズ 表記Lサイズ ブルー",
+          "price": 12800
+        },
+        {
+          "site": "rakuten",
+          "title": "リーバイス シルバータブ ルーズフィット トラッカー ジャケット A35050001／A35050000 レディース ウィメンズ デニム ジャケット",
+          "price": 14300
+        },
+        {
+          "site": "rakuten",
+          "title": "Levis トラッカージャケット リーバイス タイプ1 ジャケット リーバイス Gジャン リーバイス メンズ デニムジャケット エイジング加工 Levis MENS TYPE 1 TRUCKER A3174-0000 A3174-0004 A3174-0027 中色加工ブルー 淡色ブルー 新カラー追加",
+          "price": 14850
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "リーバイス タイプ1 トラッカージャケット Gジャン デニムジャケット メンズ 復刻 牛革パッチ アウター 赤タブ トップス 長袖 ジージャン シンチバック 羽織り",
+          "price": 14850
+        },
+        {
+          "title": "デニムジャケット gジャン 「74」「Levi’s/リーバイス」TYPE-1 TRUCKER DENIM JACKET/ デニムジャケット/Gジャン/アメカジ/ヴィンテージ/ユニセックス",
+          "price": 16500
+        },
+        {
+          "title": "リーバイス デニムジャケット メンズ A31740030 TYPE I トラッカージャケット セルビッジ Gジャン ジージャン 赤タブ トップス ウェア 長袖 上着",
+          "price": 18810
+        },
+        {
+          "title": "リーバイス デニムジャケット メンズ タイプ2トラッカージャケット Gジャン ヴィンテージ風 身幅広め ゆったりめ リラックスフィット ジージャン レッドタブ",
+          "price": 20900
+        },
+        {
+          "title": "リーバイス デニムジャケット メンズ 723340774 TYPE III トラッカージャケット Gジャン ジージャン 赤タブ トップス ウェア 長袖 羽織り 上着 日本製",
+          "price": 20900
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【中古】【古着】 Levi's デニムジャケット レディース S ブルー リーバイス ボタン 胸ポケット カジュアル アメカジ 古着卸 アメリカ仕入 a702-6687",
+          "price": 1320
+        },
+        {
+          "title": "古着 Levi's リーバイス 80s 70506-0216 USA製 ヴィンテージ デニムジャケット 40R ブルー ジージャン トラッカー メンズ 【中古】",
+          "price": 9680
+        },
+        {
+          "title": "【中古】90s USA製 ヴィンテージ リーバイス Levi's 裏地チェック 70699 デニムジャケット 古着 メンズ 表記Lサイズ ブルー",
+          "price": 12800
+        },
+        {
+          "title": "リーバイス シルバータブ ルーズフィット トラッカー ジャケット A35050001／A35050000 レディース ウィメンズ デニム ジャケット",
+          "price": 14300
+        },
+        {
+          "title": "Levis トラッカージャケット リーバイス タイプ1 ジャケット リーバイス Gジャン リーバイス メンズ デニムジャケット エイジング加工 Levis MENS TYPE 1 TRUCKER A3174-0000 A3174-0004 A3174-0027 中色加工ブルー 淡色ブルー 新カラー追加",
+          "price": 14850
+        }
+      ]
+    },
+    {
+      "id": "levis-jeans",
+      "identifyMs": 1708,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"バレンシアガ シューズ\",\"brand\":\"バレンシアガ\",\"model\":null,\"productType\":\"シューズ\",\"color\":\"白\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3634,
+            "completion_tokens": 44,
+            "total_tokens": 3678,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 18.73333055375
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "バレンシアガ シューズ 白",
+          "brand": "バレンシアガ",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "バレンシアガ シューズ 白",
+        "brand": "バレンシアガ",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 429,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "バレンシアガ シューズ 白 バレンシアガ",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "バレンシアガ シューズ 白 バレンシアガ",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン",
+          "price": 5200
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン /FF ■GY53 レディース 【ベクトル 古着】 260703",
+          "price": 6300
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン /FF ■GY53 レディース 【ベクトル 古着】 260703",
+          "price": 6300
+        },
+        {
+          "site": "yahoo",
+          "title": "バレンシアガ BALENCIAGA マッチ ロウ キャンバス スニーカー シューズ ダメージ加工 ローカット 35 ホワイト ■IB0106",
+          "price": 9800
+        },
+        {
+          "site": "rakuten",
+          "title": "BALENCIAGA バレンシアガエスパドリーユ レディース EU35(21.5cm位) 青x白(ボーダー)【中古】【古着】",
+          "price": 15400
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン",
+          "price": 5200
+        },
+        {
+          "title": "バレンシアガ BALENCIAGA マッチ ロウ キャンバス スニーカー シューズ ダメージ加工 ローカット 35 ホワイト ■IB0106",
+          "price": 9800
+        },
+        {
+          "title": "バレンシアガ BALENCIAGA ADIDAS ORIGINALS STAN SMITH スニーカー ローカット レザー 37 23cm 白 緑色 IG9944",
+          "price": 20200
+        },
+        {
+          "title": "バレンシアガ × アディダス STAN SMITH スタンスミス スニーカー 23cm 白 ホワイト 緑 パンチングデザイン ヴィンテージ加工",
+          "price": 21300
+        },
+        {
+          "title": "バレンシアガ BALENCIAGA BBパンプス ポインテッドトゥ ピンヒール 型押し 37 24.0-24.5cm 白 734238 /MI ■OS ■SH レディース",
+          "price": 26300
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【中古】バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン /FF ■GY53 レディース 【ベクトル 古着】 260703",
+          "price": 6300
+        },
+        {
+          "title": "【中古】バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン /FF ■GY53 レディース 【ベクトル 古着】 260703",
+          "price": 6300
+        },
+        {
+          "title": "BALENCIAGA バレンシアガエスパドリーユ レディース EU35(21.5cm位) 青x白(ボーダー)【中古】【古着】",
+          "price": 15400
+        },
+        {
+          "title": "BALENCIAGA バレンシアガスニーカー レディース 23cm 白x黒x緑【中古】【古着】",
+          "price": 23100
+        },
+        {
+          "title": "BALENCIAGA バレンシアガスニーカー メンズ EU42(27cm位) 白xクリア【中古】【古着】",
+          "price": 23400
+        }
+      ]
+    },
+    {
+      "id": "lv-handbag",
+      "identifyMs": 2286,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"バレンシアガ シューズ\",\"brand\":\"バレンシアガ\",\"model\":null,\"productType\":\"シューズ\",\"color\":\"ブラウン\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6836,
+            "completion_tokens": 45,
+            "total_tokens": 6881,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 32.917133852250004
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "バレンシアガ シューズ ブラウン",
+          "brand": "バレンシアガ",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "バレンシアガ シューズ ブラウン",
+        "brand": "バレンシアガ",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 400,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "バレンシアガ シューズ ブラウン バレンシアガ",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "バレンシアガ シューズ ブラウン バレンシアガ",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "BALENCIAGA バレンシアガ スエード×レザー パンプス 表記サイズ 35 1/2 (約23.5cm) 靴 シューズ レディース ブラウン系 カジュアル 通勤 中古 DG0448",
+          "price": 2280
+        },
+        {
+          "site": "yahoo",
+          "title": "バレンシアガ BALENCIAGA ローファー イントレチャート レザー 6 23-23.5cm 茶 ブラウン /MI ■OS ■MA レディース",
+          "price": 3200
+        },
+        {
+          "site": "yahoo",
+          "title": "バレンシアガ サイドベルトショートブーツ ブーツ 36.5 23.5cm 茶色 ブラウン サイドベルト チャンキーヒール 245433 /RI ■OS ■SH",
+          "price": 3400
+        },
+        {
+          "site": "rakuten",
+          "title": "BALENCIAGA バレンシアガ レザー ゼブラ柄 オープントゥ ヒール パンプス 35 1/2(約22.5cm) 靴 シューズ レディース ブラウン系 カジュアル 通勤 中古 DN5585",
+          "price": 4880
+        },
+        {
+          "site": "yahoo",
+          "title": "バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン",
+          "price": 5200
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "バレンシアガ BALENCIAGA ローファー イントレチャート レザー 6 23-23.5cm 茶 ブラウン /MI ■OS ■MA レディース",
+          "price": 3200
+        },
+        {
+          "title": "バレンシアガ サイドベルトショートブーツ ブーツ 36.5 23.5cm 茶色 ブラウン サイドベルト チャンキーヒール 245433 /RI ■OS ■SH",
+          "price": 3400
+        },
+        {
+          "title": "バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン",
+          "price": 5200
+        },
+        {
+          "title": "バレンシアガ サイズ:40 444729 スクエアトゥサイドジップブーツ 中古 BS99",
+          "price": 15400
+        },
+        {
+          "title": "バレンシアガ グッチ サイズ:36 676603 BB総柄ヒールパンプス 中古 BS99",
+          "price": 44220
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "BALENCIAGA バレンシアガ スエード×レザー パンプス 表記サイズ 35 1/2 (約23.5cm) 靴 シューズ レディース ブラウン系 カジュアル 通勤 中古 DG0448",
+          "price": 2280
+        },
+        {
+          "title": "BALENCIAGA バレンシアガ レザー ゼブラ柄 オープントゥ ヒール パンプス 35 1/2(約22.5cm) 靴 シューズ レディース ブラウン系 カジュアル 通勤 中古 DN5585",
+          "price": 4880
+        },
+        {
+          "title": "【中古】バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン /FF ■GY53 レディース 【ベクトル 古着】 260703",
+          "price": 6300
+        },
+        {
+          "title": "【中古】バレンシアガ BALENCIAGA レースアップシューズ ウイングチップ レザー バイカラー 24 白 ホワイト 茶 ブラウン /FF ■GY53 レディース 【ベクトル 古着】 260703",
+          "price": 6300
+        },
+        {
+          "title": "極美品□BALENCIAGA バレンシアガ 23AW 717805 STEROID DERBY レースアップ ステロイドダービーシューズ ブラウン 42 イタリア製 メンズ 箱付き 【中古】",
+          "price": 77000
+        }
+      ]
+    },
+    {
+      "id": "macbook",
+      "identifyMs": 1699,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"HP Special Edition 1000\",\"brand\":\"HP\",\"model\":null,\"productType\":\"Laptop\",\"color\":null,\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6836,
+            "completion_tokens": 40,
+            "total_tokens": 6876,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 32.609668013500006
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "HP Special Edition 1000",
+          "brand": "HP",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "HP Special Edition 1000",
+        "brand": "HP",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 229,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "HP Special Edition 1000 HP",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "HP Special Edition 1000 HP",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 5
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "【USA在庫あり】 0712-0288 Parts Unlimited オイルフィルター 09年-14年 ホンダ TRX420FA/ FPA 2A FourTraxRancher AT Camo HD店",
+          "price": 1226
+        },
+        {
+          "site": "rakuten",
+          "title": "【おまけCL付】新品 ワイアット・アープ スペシャルエディション (DVD) 1000415906",
+          "price": 1317
+        },
+        {
+          "site": "rakuten",
+          "title": "【おまけCL付】新品 80日間世界一周 スペシャル・エディション (DVD) 1000588581",
+          "price": 1317
+        },
+        {
+          "site": "yahoo",
+          "title": "【USA在庫あり】 2212-0616 K&amp;S ケーアンドエス ニュートラル スイッチ ホンダ 35600-422 JP店",
+          "price": 2893
+        },
+        {
+          "site": "yahoo",
+          "title": "【USA在庫あり】 2212-0616 K&amp;S ケーアンドエス ニュートラル スイッチ ホンダ 35600-422 HD店",
+          "price": 2893
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "【USA在庫あり】 0712-0288 Parts Unlimited オイルフィルター 09年-14年 ホンダ TRX420FA/ FPA 2A FourTraxRancher AT Camo HD店",
+          "price": 1226
+        },
+        {
+          "title": "【USA在庫あり】 2212-0616 K&amp;S ケーアンドエス ニュートラル スイッチ ホンダ 35600-422 JP店",
+          "price": 2893
+        },
+        {
+          "title": "【USA在庫あり】 2212-0616 K&amp;S ケーアンドエス ニュートラル スイッチ ホンダ 35600-422 HD店",
+          "price": 2893
+        },
+        {
+          "title": "【USA在庫あり】 1721-0009 EBC イービーシー ブレーキパッド リア 93年-11年 BMW (オーガニック) JP店",
+          "price": 7019
+        },
+        {
+          "title": "【USA在庫あり】 0430-1361 MOOSE OFFROAD BALL JOINTS HI PERF UPPR/LWR KAW MSE JP店",
+          "price": 11220
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【おまけCL付】新品 ワイアット・アープ スペシャルエディション (DVD) 1000415906",
+          "price": 1317
+        },
+        {
+          "title": "【おまけCL付】新品 80日間世界一周 スペシャル・エディション (DVD) 1000588581",
+          "price": 1317
+        },
+        {
+          "title": "EUROPE IMPORT GOODS ヨーロッパ輸入商品 Home Track ’’V’’ アダプター HP4 S 1000 R RR 749 CBR FIREBLADE SP SP1 SP2 400 600 VTR KLV NINJA 650 KRT EDITION SPECIAL ZX-10 REPLICA SE VERSYS Z 800 E VERSION 900 A2 RS",
+          "price": 4860
+        },
+        {
+          "title": "V PARTS ブイパーツ 純正仕様 アルミ ブレーキレバー ブラック BMW HP4 1000 YZF-R1 GSX 1300 B-KING GSX-R 600 750 GSX-S ABS SPECIAL EDITION EVO F S RR DAYTONA 675 SPEED TRIPLE 1050 STREET YAMAHA ヤマハ SUZUKI スズキ TRIUMPH トライアンフ ハンド",
+          "price": 7474
+        },
+        {
+          "title": "ADVANTAGE アドバンテージ Special Clutch Pessure Plate GSX1100SY Final Edition GSX1100SR GSX1100S anniversary GSX1100SAE GSX1100SBE GSX1100SM GSX1100SL GSX1100SSL GSX1100SD GSX1100SZ GSX1100SE GSX1000S GSX100",
+          "price": 40853
+        }
+      ]
+    },
+    {
+      "id": "muji-tote",
+      "identifyMs": 2632,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Yの文字が入った黒いToteバッグ\",\"brand\":null,\"model\":null,\"productType\":\"Toteバッグ\",\"color\":\"黒\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3634,
+            "completion_tokens": 48,
+            "total_tokens": 3682,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 18.97930322475
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "Yの文字が入った黒いToteバッグ",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Yの文字が入った黒いToteバッグ",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 575,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "Yの文字が入った黒いToteバッグ",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "Yの文字が入った黒いToteバッグ",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 0,
+        "rakuten": 0
+      },
+      "top5": [],
+      "top5yahoo": [],
+      "top5rakuten": []
+    },
+    {
+      "id": "nike-sneakers",
+      "identifyMs": 1840,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"Nike Cortez\",\"brand\":\"Nike\",\"model\":null,\"productType\":\"シューズ\",\"color\":\"赤/白\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3634,
+            "completion_tokens": 39,
+            "total_tokens": 3673,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 18.425864715000003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "Nike Cortez シューズ",
+          "brand": "Nike",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "Nike Cortez シューズ",
+        "brand": "Nike",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 571,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "Nike Cortez シューズ Nike",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "Nike Cortez シューズ Nike",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "NIKE ナイキ W CORTEZ ウィメンズ コルテッツ WDN1791 109WHT/WHT",
+          "price": 7689
+        },
+        {
+          "site": "rakuten",
+          "title": "★配送無料★ [NIKE] IM2209 CORTEZ Baby Toddler Shoes ベビー トドラー キッズ スニーカー ベルクロ 面ファスナー 脱ぎ履き簡単 履きやすい 軽量 クッション グリップ 滑りにくい 安定感 丈夫 通園 保育園 公園 お出かけ デイリー 旅行 新学期 ギフト",
+          "price": 8490
+        },
+        {
+          "site": "rakuten",
+          "title": "NIKE GS CORTEZ ナイキ コルテッツ レーザーフューシャ スニーカー DM0950-104 キッズ レディース ローテクスニーカー ホワイト ピンク 白 シューズ ランニング おしゃれ かわいい レトロ 白ピンク レザースニーカー ナイキスニーカー",
+          "price": 9500
+        },
+        {
+          "site": "rakuten",
+          "title": "NIKE (ナイキ) W NIKE CORTEZ (ウィメンズ ナイキ コルテッツ) レディース ローカット スニーカー レトロ シューズ バッシュ カジュアル タウンユース 普段使い ストリート アウトドア WHITE/BLACK-LT PHOTO BLUE-SAIL ホワイト/ブラック/ブルー DN1791-100 DN1791 100 n-pd",
+          "price": 9680
+        },
+        {
+          "site": "rakuten",
+          "title": "NIKE ナイキ メンズ レディース コルテッツ ホワイト レッド NIKE CORTEZ \"Sail/Gum Yellow/University Red\" 白 赤 DM0950-113 コルテッツ ローカット ナイキスニーカーコルテッツ スニーカー シューズ NIKEコルテッツ 定番 シンプル 2026 流行",
+          "price": 9700
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "NIKE ナイキ W CORTEZ ウィメンズ コルテッツ WDN1791 109WHT/WHT",
+          "price": 7689
+        },
+        {
+          "title": "W NIKE CORTEZ ウィメンズ ナイキ コルテッツ レディース スニーカー ライトブラウン hq1841-200",
+          "price": 12000
+        },
+        {
+          "title": "ナイキ nike スニーカー NIKE ナイキ CORTEZ PRM コルテッツ PRM MHV4456 001BLK/SAIL メンズ",
+          "price": 12155
+        },
+        {
+          "title": "ナイキ NIKE コルテッツ スニーカー メンズ レディース CORTEZ ブラック 黒 DM4044-001",
+          "price": 12430
+        },
+        {
+          "title": "ナイキ nike スニーカー NIKE CORTEZ ナイキ コルテッツ メンズ",
+          "price": 12430
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "★配送無料★ [NIKE] IM2209 CORTEZ Baby Toddler Shoes ベビー トドラー キッズ スニーカー ベルクロ 面ファスナー 脱ぎ履き簡単 履きやすい 軽量 クッション グリップ 滑りにくい 安定感 丈夫 通園 保育園 公園 お出かけ デイリー 旅行 新学期 ギフト",
+          "price": 8490
+        },
+        {
+          "title": "NIKE GS CORTEZ ナイキ コルテッツ レーザーフューシャ スニーカー DM0950-104 キッズ レディース ローテクスニーカー ホワイト ピンク 白 シューズ ランニング おしゃれ かわいい レトロ 白ピンク レザースニーカー ナイキスニーカー",
+          "price": 9500
+        },
+        {
+          "title": "NIKE (ナイキ) W NIKE CORTEZ (ウィメンズ ナイキ コルテッツ) レディース ローカット スニーカー レトロ シューズ バッシュ カジュアル タウンユース 普段使い ストリート アウトドア WHITE/BLACK-LT PHOTO BLUE-SAIL ホワイト/ブラック/ブルー DN1791-100 DN1791 100 n-pd",
+          "price": 9680
+        },
+        {
+          "title": "NIKE ナイキ メンズ レディース コルテッツ ホワイト レッド NIKE CORTEZ \"Sail/Gum Yellow/University Red\" 白 赤 DM0950-113 コルテッツ ローカット ナイキスニーカーコルテッツ スニーカー シューズ NIKEコルテッツ 定番 シンプル 2026 流行",
+          "price": 9700
+        },
+        {
+          "title": "[SALE] NIKE ナイキ CORTEZ コルテッツ ハートロゴ スニーカー FZ5167-133 シューズ レディース",
+          "price": 9990
+        }
+      ]
+    },
+    {
+      "id": "northface-backpack",
+      "identifyMs": 2920,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"The North Face - 28L Swift 2.0 Backpack\",\"brand\":\"The North Face\",\"model\":null,\"productType\":\"バックパック\",\"color\":\"黒/青\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6836,
+            "completion_tokens": 53,
+            "total_tokens": 6889,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 33.409079194250005
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "The North Face - 28L Swift 2.0 Backpack バックパック",
+          "brand": "The North Face",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "The North Face - 28L Swift 2.0 Backpack バックパック",
+        "brand": "The North Face",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 1239,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "The North Face - 28L Swift 2.0 Backpack バックパック The North Face",
+          "status": 400
+        },
+        {
+          "site": "yahoo",
+          "keyword": "The North Face - 28L Swift 2.0 Backpack バックパック The North Face",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "The North Face - 28L Swift 2.0 Backpack バックパック",
+          "status": 200
+        }
+      ],
+      "failures": [
+        {
+          "site": "rakuten",
+          "code": "SEARCH_FAILED"
+        }
+      ],
+      "counts": {
+        "yahoo": 0,
+        "rakuten": 0
+      },
+      "top5": [],
+      "top5yahoo": [],
+      "top5rakuten": []
+    },
+    {
+      "id": "pilot-pen",
+      "identifyMs": 1463,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"example\",\"brand\":null,\"model\":null,\"productType\":\"pen\",\"color\":\"blue\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6836,
+            "completion_tokens": 34,
+            "total_tokens": 6870,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 32.24070900700001
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "example ブルー",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "example ブルー",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 462,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "example ブルー",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "example ブルー",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 14
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "【中古】仏CD Anthony Gussie Anthony Gussie And The New Examples 0752BSD195 Blue Silver Distribution /00110",
+          "price": 1185
+        },
+        {
+          "site": "rakuten",
+          "title": "The Blue Book of Grammar and Punctuation, Updated & Expanded An Easy-to-Use Guide with Clear Rules, Real-World Examples, and Reproducible Quizzes【電子書籍】[ Lester Kaufman ]",
+          "price": 1881
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】The Blue Book of Grammar and Punctuation: An Easy-to-Use Guide with Clear Rules, Real-World Examples",
+          "price": 2853
+        },
+        {
+          "site": "yahoo",
+          "title": "「EXAMPLE」 長袖Tシャツ XX-LARGE ブルー メンズ",
+          "price": 4100
+        },
+        {
+          "site": "yahoo",
+          "title": "tシャツ EXAMPLE CURSIVE LOGO TEE メンズ レディース",
+          "price": 7700
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "「EXAMPLE」 長袖Tシャツ XX-LARGE ブルー メンズ",
+          "price": 4100
+        },
+        {
+          "title": "tシャツ EXAMPLE CURSIVE LOGO TEE メンズ レディース",
+          "price": 7700
+        },
+        {
+          "title": "tシャツ EXAMPLE OLD ENGLISH TEE メンズ レディース",
+          "price": 7700
+        },
+        {
+          "title": "tシャツ EXAMPLE BEAST CLAW TEE メンズ レディース",
+          "price": 8800
+        },
+        {
+          "title": "tシャツ EXAMPLE CROSS SOUVENIR L/S TEE メンズ レディース",
+          "price": 9900
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【中古】仏CD Anthony Gussie Anthony Gussie And The New Examples 0752BSD195 Blue Silver Distribution /00110",
+          "price": 1185
+        },
+        {
+          "title": "The Blue Book of Grammar and Punctuation, Updated & Expanded An Easy-to-Use Guide with Clear Rules, Real-World Examples, and Reproducible Quizzes【電子書籍】[ Lester Kaufman ]",
+          "price": 1881
+        },
+        {
+          "title": "【中古】The Blue Book of Grammar and Punctuation: An Easy-to-Use Guide with Clear Rules, Real-World Examples",
+          "price": 2853
+        },
+        {
+          "title": "【中古】EXAMPLE | イグザンプル DENIM BAKER PANTS デニムパンツ ブルー サイズ：L【姫路東店】",
+          "price": 8800
+        },
+        {
+          "title": "【中古】EXAMPLE | イグザンプル ×STARTER CHEMICAL WASH ANORAK JACKET パーカー アノラックパーカー ブルー サイズ：M【瀬戸大橋店】",
+          "price": 9800
+        }
+      ]
+    },
+    {
+      "id": "regal-dress-shoes",
+      "identifyMs": 1969,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"バレンシアガ シューズ\",\"brand\":\"バレンシアガ\",\"model\":null,\"productType\":\"シューズ\",\"color\":\"赤\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6836,
+            "completion_tokens": 44,
+            "total_tokens": 6880,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 32.8556406845
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "バレンシアガ シューズ 赤",
+          "brand": "バレンシアガ",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "バレンシアガ シューズ 赤",
+        "brand": "バレンシアガ",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 353,
+      "sent": [
+        {
+          "site": "rakuten",
+          "keyword": "バレンシアガ シューズ 赤 バレンシアガ",
+          "status": 200
+        },
+        {
+          "site": "yahoo",
+          "keyword": "バレンシアガ シューズ 赤 バレンシアガ",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 23
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "バレンシアガ BALENCIAGA パンプス ヒール ポインテッドトゥ レザー BBロゴ 35.5 赤 レッド /GV ■GY09 レディース",
+          "price": 6400
+        },
+        {
+          "site": "rakuten",
+          "title": "BALENCIAGA バレンシアガサンダル レディース EU37(23.5cm位) 赤【中古】【古着】",
+          "price": 7200
+        },
+        {
+          "site": "yahoo",
+          "title": "バレンシアガ BALENCIAGA ブーティ ブーツ レースアップ ピンヒール 35 赤 ワインレッド ボルドー /JS ■GY57 レディース",
+          "price": 13800
+        },
+        {
+          "site": "yahoo",
+          "title": "バレンシアガ BALENCIAGA TRIPLE S トリプルエス スニーカー 靴 39 レッド 赤 516440 メンズ",
+          "price": 18000
+        },
+        {
+          "site": "rakuten",
+          "title": "【中古】 BALENCIAGA バレンシアガ TRIPLE S SNEAKERS トリプルS スニーカー シューズ ローカット 42/27.5cm ブラック ホワイト レッド メンズ Re：MODE ブランド古着のリモード",
+          "price": 27250
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "バレンシアガ BALENCIAGA パンプス ヒール ポインテッドトゥ レザー BBロゴ 35.5 赤 レッド /GV ■GY09 レディース",
+          "price": 6400
+        },
+        {
+          "title": "バレンシアガ BALENCIAGA ブーティ ブーツ レースアップ ピンヒール 35 赤 ワインレッド ボルドー /JS ■GY57 レディース",
+          "price": 13800
+        },
+        {
+          "title": "バレンシアガ BALENCIAGA TRIPLE S トリプルエス スニーカー 靴 39 レッド 赤 516440 メンズ",
+          "price": 18000
+        },
+        {
+          "title": "BALENCIAGA × adidas Triple S ローカットスニーカー ダッドシューズ ロゴデザイン 42 27.5cm 赤 レッド 灰色 グレー 712821 メンズ",
+          "price": 50800
+        },
+        {
+          "title": "中古 バレンシアガ BALENCIAGA スニーカー スピードトレーナー 黒 白 赤 40 シューズ 27cm ニット SPEED TRAINER レディース 【ベクトル",
+          "price": 53130
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "BALENCIAGA バレンシアガサンダル レディース EU37(23.5cm位) 赤【中古】【古着】",
+          "price": 7200
+        },
+        {
+          "title": "【中古】 BALENCIAGA バレンシアガ TRIPLE S SNEAKERS トリプルS スニーカー シューズ ローカット 42/27.5cm ブラック ホワイト レッド メンズ Re：MODE ブランド古着のリモード",
+          "price": 27250
+        },
+        {
+          "title": "BALENCIAGA バレンシアガサンダル レディース EU35(21.5cm位) 赤【中古】【古着】",
+          "price": 27500
+        },
+        {
+          "title": "【中古】BALENCIAGA◆サンダル/43/レッド/617542/track sandal//【シューズ】",
+          "price": 28160
+        },
+        {
+          "title": "BALENCIAGA バレンシアガスニーカー メンズ 27cm グレーx白x赤等【中古】【古着】",
+          "price": 32800
+        }
+      ]
+    },
+    {
+      "id": "rolex-brand-only",
+      "identifyMs": 1370,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"MLB\",\"brand\":null,\"model\":null,\"productType\":\"時計\",\"color\":\"黒\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3634,
+            "completion_tokens": 36,
+            "total_tokens": 3670,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 18.241385211750003
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "MLB 黒",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "MLB 黒",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 347,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "MLB 黒",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "MLB 黒",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 10,
+        "rakuten": 30
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "ニューエラ NEWERA キャップ 帽子 9FIFTY ヤンキー LA ドジャース パドレス 950 ワンサイズ MLB 黒 スナップバック メジャーリーグ 男女 NEWERA 9FIFTY CAP",
+          "price": 4780
+        },
+        {
+          "site": "yahoo",
+          "title": "NEWERA ニューエラ 正規品 ニューヨーク ヤンキース NY キャップ CAP 帽子 59FIFTY モノグラム ジャカード 総柄 ロゴ MLB 黒 ブラック 14745152",
+          "price": 7420
+        },
+        {
+          "site": "yahoo",
+          "title": "NEW ERA キャップ 2024 ワールドシリーズ チャンピオン ニューエラ 9FIFTY ドジャース 優勝記念 MLB 黒 深め サイズ調節 爆買",
+          "price": 8800
+        },
+        {
+          "site": "rakuten",
+          "title": "パイロット 油性ボールペン アクロボール Tシリーズ 極細 0.5mm メタルライトブルー 黒インキ BAB-15EFT-MLB",
+          "price": 151
+        },
+        {
+          "site": "rakuten",
+          "title": "MLBロゴ風 アメフトTシャツ(綿100％T-shirt：黒)",
+          "price": 2200
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "ニューエラ NEWERA キャップ 帽子 9FIFTY ヤンキー LA ドジャース パドレス 950 ワンサイズ MLB 黒 スナップバック メジャーリーグ 男女 NEWERA 9FIFTY CAP",
+          "price": 4780
+        },
+        {
+          "title": "NEWERA ニューエラ 正規品 ニューヨーク ヤンキース NY キャップ CAP 帽子 59FIFTY モノグラム ジャカード 総柄 ロゴ MLB 黒 ブラック 14745152",
+          "price": 7420
+        },
+        {
+          "title": "NEW ERA キャップ 2024 ワールドシリーズ チャンピオン ニューエラ 9FIFTY ドジャース 優勝記念 MLB 黒 深め サイズ調節 爆買",
+          "price": 8800
+        },
+        {
+          "title": "ニューエラキャップ 9THIRTY ミニロゴMLB ONSPOTZ別注",
+          "price": 4730
+        },
+        {
+          "title": "ニューエラキャップ 9FORTY ラインストーンMLB ONSPOTZ別注",
+          "price": 5940
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "パイロット 油性ボールペン アクロボール Tシリーズ 極細 0.5mm メタルライトブルー 黒インキ BAB-15EFT-MLB",
+          "price": 151
+        },
+        {
+          "title": "MLBロゴ風 アメフトTシャツ(綿100％T-shirt：黒)",
+          "price": 2200
+        },
+        {
+          "title": "ニューエラ キャップ 9FORTY メンズ レディース メジャーリーグ MLB 野球 ベースボール 帽子 ブラック レッド 黒 ロゴ ストリート カジュアル スポーツ UVカット 紫外線対策 パドレス NEW ERA MLB COOPERSTOWN TRUCKER 9FORTY COLLECTION|slz|",
+          "price": 2432
+        },
+        {
+          "title": "ニューエラ キャップ NEW ERA 9FORTY CAP TRUCK 帽子 メンズ レディース MLB メジャーリーグ ドジャース ヤンキース ブラック 黒 ネイビー 紺 機能性 サイズ調整可 深め 野球 春 夏 秋 冬|slz|",
+          "price": 2637
+        },
+        {
+          "title": "ニューエラ MLB BASIC SNAP 9FIFTY 帽子 メンズ レディース ブラック 黒 NEW ERA 11591047 11591045 11591026 キャップ ベースボールキャップ BBキャップ 野球帽 野球 無地 刺繍 ロサンゼルス・ドジャース ニューヨーク・ヤンキース|slz|",
+          "price": 3442
+        }
+      ]
+    },
+    {
+      "id": "sony-headphones",
+      "identifyMs": 1614,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"BOSE QuietComfort 35 II\",\"brand\":\"BOSE\",\"model\":null,\"productType\":\"ヘッドホン\",\"color\":\"黒\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 6836,
+            "completion_tokens": 42,
+            "total_tokens": 6878,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 32.732654349
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "sure",
+      "products": [
+        {
+          "name": "BOSE QuietComfort 35 II 黒 ヘッドホン",
+          "brand": "BOSE",
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "BOSE QuietComfort 35 II 黒 ヘッドホン",
+        "brand": "BOSE",
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 359,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "BOSE QuietComfort 35 II 黒 ヘッドホン BOSE",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "BOSE QuietComfort 35 II 黒 ヘッドホン BOSE",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 3,
+        "rakuten": 21
+      },
+      "top5": [
+        {
+          "site": "yahoo",
+          "title": "用イヤーパッド イヤークッション：Bose QuietComfort-15 (QC-15) QuietComfort-25 (QC-25",
+          "price": 2218
+        },
+        {
+          "site": "yahoo",
+          "title": "用イヤーパッド イヤークッション：Bose QuietComfort-15 (QC-15) QuietComfort-25 (QC-25",
+          "price": 2218
+        },
+        {
+          "site": "yahoo",
+          "title": "用イヤーパッド イヤークッション：Bose QuietComfort-15 (QC-15) QuietComfort-25 (QC-25",
+          "price": 2218
+        },
+        {
+          "site": "rakuten",
+          "title": "【送料無料】交換用イヤーパッド イヤークッション：Bose QuietComfort-35 (QC-35)、QuietComfort-35 ii (QC-35 ii) 一代目と二代目の ヘッドホンに (黒)",
+          "price": 2899
+        },
+        {
+          "site": "rakuten",
+          "title": "交換用イヤーパッド イヤークッション：Bose QuietComfort-35 (QC-35)、QuietComfort-35 ii (QC-35 ii) 一代目と二代目の ヘッドホンに (黒)",
+          "price": 3472
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "用イヤーパッド イヤークッション：Bose QuietComfort-15 (QC-15) QuietComfort-25 (QC-25",
+          "price": 2218
+        },
+        {
+          "title": "用イヤーパッド イヤークッション：Bose QuietComfort-15 (QC-15) QuietComfort-25 (QC-25",
+          "price": 2218
+        },
+        {
+          "title": "用イヤーパッド イヤークッション：Bose QuietComfort-15 (QC-15) QuietComfort-25 (QC-25",
+          "price": 2218
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "【送料無料】交換用イヤーパッド イヤークッション：Bose QuietComfort-35 (QC-35)、QuietComfort-35 ii (QC-35 ii) 一代目と二代目の ヘッドホンに (黒)",
+          "price": 2899
+        },
+        {
+          "title": "交換用イヤーパッド イヤークッション：Bose QuietComfort-35 (QC-35)、QuietComfort-35 ii (QC-35 ii) 一代目と二代目の ヘッドホンに (黒)",
+          "price": 3472
+        },
+        {
+          "title": "Bose QuietComfort 15 QC15 QC25 QC35 QC2 Ae2 Ae2i Ae2w SoundTrue & SoundLink Around Ear イヤーパッド イヤークッション 交換用 ヘッドフォンに適用 ヘッドホンパッド 遮音 互換品 代替品 ソフトレザー 高密度フォーム (青黒) 送料無料",
+          "price": 3600
+        },
+        {
+          "title": "Geekria ヘッドバンド 互換性 ヘッドホンヘッドバンド ラミーベルベット パッド ボーズ Bose QuietComfort 35II Gaming, QC35II, QC35, QC45, QC SE 対応 交換用 (黒)",
+          "price": 2282
+        },
+        {
+          "title": "Geekria ヘッドバンド 互換性 ヘッドホンヘッドバンド ラミーベルベット パッド ボーズ Bose QuietComfort 35II Gaming, QC35II, QC35, QC45, QC SE 対応 交換用 (黒)",
+          "price": 2300
+        }
+      ]
+    },
+    {
+      "id": "uniqlo-shirt",
+      "identifyMs": 1842,
+      "modelCalls": [
+        {
+          "status": 200,
+          "response": "{\"confidence\":\"sure\",\"products\":[{\"name\":\"白いTシャツ\",\"brand\":null,\"model\":null,\"productType\":\"Tシャツ\",\"color\":\"白\",\"jan\":null}]}",
+          "usage": {
+            "prompt_tokens": 3634,
+            "completion_tokens": 40,
+            "total_tokens": 3674,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "neurons": 18.487357882750004
+          },
+          "errors": []
+        }
+      ],
+      "confidence": "unsure",
+      "products": [
+        {
+          "name": "白いTシャツ",
+          "brand": null,
+          "model": null,
+          "jan": null
+        }
+      ],
+      "query": {
+        "name": "白いTシャツ",
+        "brand": null,
+        "model": null,
+        "jan": null
+      },
+      "searchMs": 424,
+      "sent": [
+        {
+          "site": "yahoo",
+          "keyword": "白いTシャツ",
+          "status": 200
+        },
+        {
+          "site": "rakuten",
+          "keyword": "白いTシャツ",
+          "status": 200
+        }
+      ],
+      "failures": [],
+      "counts": {
+        "yahoo": 8,
+        "rakuten": 29
+      },
+      "top5": [
+        {
+          "site": "rakuten",
+          "title": "キッズ ロンT 無地 長袖Tシャツ 綿100% 子供 黄色 白 【透けにくい5.6oz×袖リブなし】 白いTシャツ ロングTシャツ 子供服 男の子 インナー 通園 通学 運動会 女の子 ジュニア 厚手 丈夫 コットン クルーネック カットソー 保育園 小学生 110 130 150 体育祭 赤 黒 紺 00102",
+          "price": 1320
+        },
+        {
+          "site": "rakuten",
+          "title": "韓国子供服 女の子 白いTシャツ 無地 長袖 Tシャツ 丸首 キッズ トップス Tシャツ ホワイト レジャー デイリー コーデ 学生 通学着 運動着 ジュニア服 普段着 綿 Tシャツ 長袖 春着 秋着 白い Tシャツ 綿 コーデ シンプル 120cm 130cm 140cm 150cm 160cm 170cm",
+          "price": 1557
+        },
+        {
+          "site": "rakuten",
+          "title": "韓国子供服 女の子 白いTシャツ 無地 長袖 Tシャツ 丸首 キッズ トップス Tシャツ ホワイト レジャー デイリー コーデ 学生 通学着 運動着 ジュニア服 普段着 綿 Tシャツ 長袖 春着 秋着 白い Tシャツ 綿 コーデ シンプル 120cm 130cm 140cm 150cm 160cm 170cm",
+          "price": 1600
+        },
+        {
+          "site": "rakuten",
+          "title": "韓国子供服 可愛い Tシャツ キッズ 長袖 Tシャツ 女の子 白いTシャツ プリント 運動着 通学着 ガールズ カジュアル Tシャツ 丸首 普段着 通園 トップス Tシャツ ファッション 大人気 Tシャツ ゆったり お出かけ 遠足 120cm 130cm 140cm 150cm 160cm 170cm Tシャツ キッズ",
+          "price": 1880
+        },
+        {
+          "site": "rakuten",
+          "title": "コットン200gのTシャツ。白いTシャツにイカの絵柄が描かれ、その上に日本語の文字があしらわれた、カジュアルな和風スタイル。日本のユーモアや海の生き物が好きな人、リラックスしたマインドを表す普段着に最適。",
+          "price": 1980
+        }
+      ],
+      "top5yahoo": [
+        {
+          "title": "メンズ 黒猫グラフィックTシャツ Xの目 肉球鼻 白い猫顔 半袖 ラウンドネック コットン カジュアル レギュラーフィット 洗濯機可 S-3XL",
+          "price": 1156
+        },
+        {
+          "title": "グンゼ Tシャツ メンズ レディース 綿100 白T 半袖 ユニセックス 本体 コットン 黄ばみにくい 皮脂汚れ防止 消臭 吸湿 吸汗 定番 着回し",
+          "price": 2750
+        },
+        {
+          "title": "特別価格20％OFF/ポスト投函/【お1人様2点まで】ナベシャツ ナチュラル(肌色)スリーブレスタイプ ミドル丈[サイズ交換不可・タイプ交換不可]",
+          "price": 7744
+        },
+        {
+          "title": "sale セール 60%off THE SHINZONE｜ザ シンゾーン スリットスカート/21MMSSK06 SLIT SKIRT",
+          "price": 9240
+        },
+        {
+          "title": "ナベシャツ ナチュラル(肌色)スリーブレスタイプ ロング丈",
+          "price": 11000
+        }
+      ],
+      "top5rakuten": [
+        {
+          "title": "キッズ ロンT 無地 長袖Tシャツ 綿100% 子供 黄色 白 【透けにくい5.6oz×袖リブなし】 白いTシャツ ロングTシャツ 子供服 男の子 インナー 通園 通学 運動会 女の子 ジュニア 厚手 丈夫 コットン クルーネック カットソー 保育園 小学生 110 130 150 体育祭 赤 黒 紺 00102",
+          "price": 1320
+        },
+        {
+          "title": "韓国子供服 女の子 白いTシャツ 無地 長袖 Tシャツ 丸首 キッズ トップス Tシャツ ホワイト レジャー デイリー コーデ 学生 通学着 運動着 ジュニア服 普段着 綿 Tシャツ 長袖 春着 秋着 白い Tシャツ 綿 コーデ シンプル 120cm 130cm 140cm 150cm 160cm 170cm",
+          "price": 1557
+        },
+        {
+          "title": "韓国子供服 女の子 白いTシャツ 無地 長袖 Tシャツ 丸首 キッズ トップス Tシャツ ホワイト レジャー デイリー コーデ 学生 通学着 運動着 ジュニア服 普段着 綿 Tシャツ 長袖 春着 秋着 白い Tシャツ 綿 コーデ シンプル 120cm 130cm 140cm 150cm 160cm 170cm",
+          "price": 1600
+        },
+        {
+          "title": "韓国子供服 可愛い Tシャツ キッズ 長袖 Tシャツ 女の子 白いTシャツ プリント 運動着 通学着 ガールズ カジュアル Tシャツ 丸首 普段着 通園 トップス Tシャツ ファッション 大人気 Tシャツ ゆったり お出かけ 遠足 120cm 130cm 140cm 150cm 160cm 170cm Tシャツ キッズ",
+          "price": 1880
+        },
+        {
+          "title": "コットン200gのTシャツ。白いTシャツにイカの絵柄が描かれ、その上に日本語の文字があしらわれた、カジュアルな和風スタイル。日本のユーモアや海の生き物が好きな人、リラックスしたマインドを表す普段着に最適。",
+          "price": 1980
+        }
+      ]
+    }
+  ]
+}

@@ -6,9 +6,11 @@ import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { itemUrlTaken } from '@/lib/capture/register';
-import { scrapeUrl } from '@/lib/scraper';
+import { isUnusableScrape, scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
+import { cleanedStoredItemUrlTaken, normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
+import { PRODUCT_FETCH_HELP } from '@/lib/public-page';
 import { annotateSpend, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
 
 async function handleGET() {
@@ -18,10 +20,22 @@ async function handleGET() {
   }
 
   const db = getDb();
-  // previous_price は行ごとの相関サブクエリではなく、ウィンドウ関数で
-  // 各アイテムの「2番目に新しい価格履歴」を一括導出して LEFT JOIN する。
-  // ORDER BY の id DESC は recorded_at 同値時の結果を決定的にするため。
+  // previous_price は表示中の商品に絞ってから、その履歴だけを順位付けする。
+  // 全履歴を先に MATERIALIZE しない。recorded_at が同じときは id DESC で決める。
   const items = db.prepare(`
+    WITH visible AS (
+      SELECT i.*
+      FROM items i
+      WHERE i.is_purchased = 0 AND i.user_id = ? AND i.deleted_at IS NULL
+    ),
+    ranked AS (
+      SELECT
+        h.item_id,
+        h.price,
+        ROW_NUMBER() OVER (PARTITION BY h.item_id ORDER BY h.recorded_at DESC, h.id DESC) AS rn
+      FROM price_history h
+      WHERE h.item_id IN (SELECT id FROM visible)
+    )
     SELECT
       i.*,
       cg.name as comparison_group_name,
@@ -31,17 +45,10 @@ async function handleGET() {
       cat.name as category_name,
       cat.color as category_color,
       prev.price as previous_price
-    FROM items i
+    FROM visible i
     LEFT JOIN comparison_groups cg ON i.comparison_group_id = cg.id
     LEFT JOIN categories cat ON i.category_id = cat.id
-    LEFT JOIN (
-      SELECT item_id, price FROM (
-        SELECT item_id, price,
-               ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY recorded_at DESC, id DESC) AS rn
-        FROM price_history
-      ) WHERE rn = 2
-    ) prev ON prev.item_id = i.id
-    WHERE i.is_purchased = 0 AND i.user_id = ? AND i.deleted_at IS NULL
+    LEFT JOIN ranked prev ON prev.item_id = i.id AND prev.rn = 2
     ORDER BY
       COALESCE(cg.priority, i.priority) ASC,
       i.sort_order ASC,
@@ -76,15 +83,21 @@ async function handlePOST(request: NextRequest) {
 
   const db = getDb();
 
-  if (typeof url === 'string' && url && !isStorableItemUrl(url)) {
-    return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
+  // 新規書き込みの URL からトラッキング等を落とす。空や未指定は手動モードのダミー用に残す。
+  let storedUrl: string | null = null;
+  if (typeof url === 'string' && url) {
+    storedUrl = sanitizeStoredItemUrl(url);
+    if (!storedUrl || !isStorableItemUrl(storedUrl)) {
+      return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
+    }
   }
 
   assertOwnedRelations(db, user.id, body);
 
   // 手動追加モード
   if (manual) {
-    if (!manualName) {
+    const name = typeof manualName === 'string' ? normalizeItemName(manualName) : null;
+    if (!name) {
       return NextResponse.json({ error: '商品名は必須です' }, { status: 400 });
     }
 
@@ -96,10 +109,10 @@ async function handlePOST(request: NextRequest) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      const manualUrl = url || `manual://${randomUUID()}`; // URLなしの場合はダミーURL
+      const manualUrl = storedUrl || `manual://${randomUUID()}`; // URLなしの場合はダミーURL
       const result = stmt.run(
         user.id,
-        manualName,
+        name,
         manualUrl,
         manualImageUrl || null,
         manualPrice || null,
@@ -123,18 +136,25 @@ async function handlePOST(request: NextRequest) {
   }
 
   // URLベースの追加（通常モード）
-  if (!url) {
+  if (!storedUrl) {
     return NextResponse.json({ error: 'URL is required' }, { status: 400 });
   }
 
-  // 重複チェック（同じユーザー内で）。楽天は包装を解いた商品ページが同じなら登録済み。
-  if (itemUrlTaken(db, user.id, url)) {
+  // 重複チェック（同じユーザー内で）。楽天 identity に加え、汚い保存 URL もクリーン後で見る。
+  if (itemUrlTaken(db, user.id, storedUrl) || cleanedStoredItemUrlTaken(db, user.id, storedUrl)) {
     return NextResponse.json({ error: 'このURLは既に登録されています' }, { status: 400 });
   }
 
   // スクレイピング
   assertGuestCapacity(user, 'items', db);
-  const scraped = user.account_type === 'guest' ? await scrapeGuestUrl(url, user.id) : await scrapeUrl(url);
+  const scraped = user.account_type === 'guest' ? await scrapeGuestUrl(storedUrl, user.id) : await scrapeUrl(storedUrl);
+  if (isUnusableScrape(scraped)) {
+    return NextResponse.json({ error: PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' }, { status: 422 });
+  }
+  const scrapedName = normalizeItemName(scraped.name);
+  if (!scrapedName) {
+    return NextResponse.json({ error: PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' }, { status: 422 });
+  }
 
   return db.transaction(() => {
     assertGuestSessionActive(user, db);
@@ -149,8 +169,8 @@ async function handlePOST(request: NextRequest) {
 
     const result = stmt.run(
       user.id,
-      scraped.name,
-      url,
+      scrapedName,
+      storedUrl,
       scraped.imageUrl,
       scraped.price,
       scraped.price,

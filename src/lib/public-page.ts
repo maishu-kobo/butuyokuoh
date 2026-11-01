@@ -48,17 +48,27 @@ export const requestPage = (url: URL, address: { address: string; family: number
   new Promise<{ status: number; location?: string; html: string; truncated?: boolean }>((resolve, reject) => {
     const amazon = isAmazonProductPage(url);
     const maxBytes = amazon ? MAX_AMAZON_PAGE_BYTES : MAX_PAGE_BYTES;
-    const options: RequestOptions = {
-      agent: false, family: address.family, signal, maxHeaderSize: 16_384,
-      lookup: (_host, _options, callback) => callback(null, address.address, address.family),
+    const options: RequestOptions & { servername?: string } = {
+      agent: false,
+      protocol: url.protocol,
+      host: address.address,
+      family: address.family,
+      servername: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: `${url.pathname}${url.search}`,
+      method: 'GET',
+      signal,
+      maxHeaderSize: 16_384,
       headers: {
+        Host: url.host,
         'User-Agent': 'Mozilla/5.0 (compatible; Butuyokuoh/1.0)',
         'Accept': 'text/html,application/xhtml+xml', 'Accept-Encoding': 'identity',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
         'Cookie': amazon ? 'i18n-prefs=JPY; lc-acbjp=ja_JP' : 'localization=JP; cart_currency=JPY',
       },
     };
-    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, options, response => {
+    // codeql[js/request-forgery] — 接続先は publicAddress 済みの公開 IP のみ。Host/SNI に元ホストを使う。
+    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(options, response => {
       const status = response.statusCode || 502;
       response.on('error', reject);
       if ([301, 302, 303, 307, 308].includes(status)) {

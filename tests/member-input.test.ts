@@ -157,21 +157,40 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
 
   const { generateToken } = await import('../src/lib/auth');
   const token = generateToken(owner as never);
-  for (const extensionItem of [
-    { name: '悪い', url: 'https://example.test/neg', price: -1, imageUrl: null, priority: 3, categoryId: null },
-    { name: 'y'.repeat(201), url: 'https://example.test/long', price: 10, imageUrl: null, priority: 3, categoryId: null },
-    { name: '範囲', url: 'https://example.test/priority', price: 10, imageUrl: null, priority: 9, categoryId: null },
-    { name: '文字価格', url: 'https://example.test/string-price', price: '10', imageUrl: null, priority: 3, categoryId: null },
-  ]) {
-    const response = await call(extensionAdd, 'POST', '/api/extension-add', { token, item: extensionItem });
-    assert.equal(response.status, 400, JSON.stringify(extensionItem));
+  const port = await import('../src/lib/product-fetch-port');
+  // 店への実接続を避け、取得失敗を即返す。
+  port.installProductFetchPort({ lookup: () => undefined });
+  try {
+    // 価格・画像はサーバ取得のみなのでクライアント価格の不正は無視する。優先度の範囲外は従来どおり拒否。
+    const extensionBadPriority = await call(extensionAdd, 'POST', '/api/extension-add', {
+      token,
+      item: { name: '範囲', url: 'https://example.test/priority', price: 10, imageUrl: null, priority: 9, categoryId: null },
+    });
+    assert.equal(extensionBadPriority.status, 400);
+    assert.equal(itemCount(), 1);
+    const longName = await call(extensionAdd, 'POST', '/api/extension-add', {
+      token,
+      item: { name: 'y'.repeat(201), url: 'https://example.test/long', price: 10, imageUrl: null, priority: 3, categoryId: null },
+    });
+    assert.equal(longName.status, 200, longName.text);
+    assert.equal(
+      (database.prepare('SELECT name FROM items WHERE url = ?').get('https://example.test/long') as { name: string }).name.length,
+      200,
+    );
+    const extensionOk = await call(extensionAdd, 'POST', '/api/extension-add', {
+      token,
+      item: { name: '拡張', url: 'https://example.test/extension', price: 100, imageUrl: 'https://example.test/ext.png', priority: 3, categoryId: null },
+    });
+    assert.equal(extensionOk.status, 200, extensionOk.text);
+    const extensionRow = database.prepare('SELECT current_price, image_url FROM items WHERE url = ?').get('https://example.test/extension') as {
+      current_price: number | null;
+      image_url: string | null;
+    };
+    assert.equal(extensionRow.current_price, null);
+    assert.equal(extensionRow.image_url, null);
+  } finally {
+    port.installProductFetchPort(null);
   }
-  assert.equal(itemCount(), 1);
-  const extensionOk = await call(extensionAdd, 'POST', '/api/extension-add', {
-    token,
-    item: { name: '拡張', url: 'https://example.test/extension', price: 100, imageUrl: 'https://example.test/ext.png', priority: 3, categoryId: null },
-  });
-  assert.equal(extensionOk.status, 200, extensionOk.text);
 
   const imported = await call(extensionImport, 'POST', '/api/extension-import', {
     token,
@@ -183,13 +202,20 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
     ],
   });
   assert.equal(imported.status, 200, imported.text);
-  assert.equal((imported.json as { imported: number }).imported, 1);
+  // 不正価格はスキップ。長い品名は 200 文字に切り詰めて取り込む。
+  assert.equal((imported.json as { imported: number }).imported, 2);
   const urls = (database.prepare('SELECT url FROM items WHERE user_id = ? ORDER BY url').all(owner.id) as { url: string }[]).map((row) => row.url);
   assert.deepEqual(urls, [
     'https://example.test/extension',
     'https://example.test/keep',
+    'https://example.test/long',
+    'https://example.test/long-name',
     saved.url,
   ]);
+  assert.equal(
+    (database.prepare('SELECT name FROM items WHERE url = ?').get('https://example.test/long-name') as { name: string }).name.length,
+    200,
+  );
 
   const longHook = `https://hooks.slack.com/services/${'a'.repeat(2100)}`;
   const rejectedHook = await call(notify, 'PUT', '/api/notification-settings', { slack_webhook: longHook, notify_on_price_drop: false });

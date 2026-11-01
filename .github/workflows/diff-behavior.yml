@@ -9,6 +9,7 @@ on:
     branches:
       - feature/photo-capture
       - develop
+      - main
     paths:
       - src/lib/db.ts
       - src/auth.ts

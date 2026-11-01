@@ -12,6 +12,7 @@ import {
   type SiteSearch,
 } from './contract';
 import { canonicalCandidateImageUrl } from './image-hosts';
+import { storeSearchKeyword } from './product-query';
 import { textQueryVariants } from './search-attempt';
 import { reportStoreAttempt, type StoreAttempt } from './search-log';
 
@@ -138,14 +139,10 @@ function requestUrl(appId: string, query: SearchQuery): string | null {
   if (query.jan && isValidJan(query.jan)) {
     url.searchParams.set('jan_code', query.jan);
   } else {
-    const keyword = [query.name, query.brand, query.model]
-      .filter((part): part is string => typeof part === 'string')
-      .map(part => part.trim())
-      .filter(part => part.length > 0)
-      .join(' ');
+    const keyword = storeSearchKeyword(query, { maxChars: 400, maxBytes: 1200 });
     if (!keyword) return null;
     // 付属品の除外は付けない。`-ケース` は「充電ケース付き」の本体まで消す。
-    url.searchParams.set('query', keyword.slice(0, 400));
+    url.searchParams.set('query', keyword);
   }
   if (url.protocol !== 'https:' || url.hostname !== 'shopping.yahooapis.jp') return null;
   return url.toString();
@@ -415,6 +412,7 @@ export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
       let chargedUser = false;
       let waitedMs = 0;
       const seen = new Set<string>();
+      const lookup = query.lookup === true;
 
       async function acquireYahooSlot(later: boolean): Promise<{ ok: true; at: number } | { ok: false; result: CaptureResult<CaptureCandidate[]> }> {
         if (!later) {
@@ -444,8 +442,8 @@ export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
         const at = now();
         const limit = gate.take(userId, at, false);
         if (!limit) return { ok: true, at };
-        if (limit === 'minute' || limit === 'second') {
-          return { ok: false, result: lastEmpty ?? { ok: true, value: [] } };
+        if ((limit === 'minute' || limit === 'second') && lastEmpty) {
+          return { ok: false, result: lastEmpty };
         }
         return {
           ok: false,
@@ -460,7 +458,7 @@ export function createYahooSearch(deps: YahooSearchDeps): SiteSearch {
         const key = yahooAttemptKey(appId, variant);
         if (!key || seen.has(key)) continue;
         seen.add(key);
-        const acquired = await acquireYahooSlot(chargedUser);
+        const acquired = await acquireYahooSlot(chargedUser || lookup);
         if (!acquired.ok) return acquired.result;
         chargedUser = true;
         const result = reportStoreAttempt('yahoo', await requestOnce(appId, variant, acquired.at));
