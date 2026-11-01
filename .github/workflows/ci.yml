@@ -16,6 +16,7 @@
 name: CI
 
 on:
+  workflow_call:
   pull_request:
     branches:
       - feature/photo-capture

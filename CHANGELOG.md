@@ -13,6 +13,8 @@
 
 - Chrome 拡張向けの最小権限スコープ `extension`（byoagt_）。設定画面から拡張用トークンを作成でき、ログイン用 JWT は表示しない（#271）。
 
+- mainの品質検査が成功した版をGitHub Actionsからexe.devへ配備し、結果を確認できる実行経路（#286、初回設定後に有効化）。
+
 ### Changed
 
 - Chrome 拡張の認証を拡張用トークンへ移す。移行期間中は古いログイン用 JWT も受け付け、拡張に案内を出す。終了日は `EXTENSION_LEGACY_JWT_UNTIL`（既定 2026-11-30 UTC）。拡張 manifest を 1.2.0 にする（#271）。

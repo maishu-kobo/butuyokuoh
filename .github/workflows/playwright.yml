@@ -9,6 +9,7 @@
 name: playwright
 
 on:
+  workflow_call:
   pull_request:
     branches:
       - feature/photo-capture
@@ -25,7 +26,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: playwright-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
