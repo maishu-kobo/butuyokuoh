@@ -346,16 +346,19 @@ class EntryPointTests(unittest.TestCase):
                         'service':'web', 'env_file':str(env), 'port':8000,
                         'writer_scripts':{'worker':'check-prices.ts'}}
                 commands=engine.startup_commands(config)
+                (root/'.env.local').symlink_to(env)
                 for service, command in commands.items():
                     prefix=shlex.split(command)[:3]  # env, explicit DB, node
                     self.assertEqual(Path(prefix[0]).name, 'env')
-                    args=[*prefix, '--env-file='+str(env)]
-                    # Exercise Node's parser and the actual Next.js env loader used by web.
+                    args=[*prefix]
                     code="console.log(process.env.BUTUYOKUOH_DB_PATH)"
                     if service=='web':
-                        code="require('@next/env').loadEnvConfig(process.cwd());"+code
-                    output=subprocess.check_output([*args, '-e', code], env={**os.environ,
-                        'BUTUYOKUOH_DB_PATH':'/inherited-wrong'}, text=True)
+                        loader=str(Path(__file__).resolve().parents[2]/'node_modules/@next/env')
+                        code="require("+json.dumps(loader)+").loadEnvConfig(process.cwd());"+code
+                    else:
+                        args.append('--env-file='+str(env))
+                    output=subprocess.check_output([*args, '-e', code], cwd=root,
+                        env={**os.environ, 'BUTUYOKUOH_DB_PATH':'/inherited-wrong'}, text=True)
                     self.assertEqual(output.strip().splitlines()[-1], config['database'])
 
     def test_missing_unit_or_sudo_permission_fails_before_any_stop(self):
@@ -402,6 +405,49 @@ class EntryPointTests(unittest.TestCase):
             config = Path(folder)/'config.json'; config.write_text(json.dumps({'user': 'root'}))
             with patch('sys.argv', ['engine.py', 'run', SHA, '--config', str(config)]), patch.object(engine.os, 'geteuid', return_value=0):
                 with self.assertRaises(RuntimeError): engine.main()
+    def test_stop_post_keeps_original_failure_and_records_recovery_failure(self):
+        import json, os, pwd
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder); config=root/'config'
+            config.write_text(json.dumps({'state':folder,'user':pwd.getpwuid(os.getuid()).pw_name}))
+            class FailDuringRecovery(Host):
+                stopped = False
+                def stop(self):
+                    if self.stopped: raise RuntimeError('SECRET=not-for-logs')
+                    self.stopped = True
+                def migrate(self, sha): raise RuntimeError('migration failed with private data')
+            host=FailDuringRecovery(); runner=engine.Deployer(root,host)
+            result=runner.run(SHA)
+            self.assertEqual(result['failure']['phase'],'migrate')
+            with patch.object(engine,'LinuxHost',return_value=host), patch('sys.argv',
+                    ['engine.py','recover-online','--config',str(config)]):
+                with self.assertRaises(RuntimeError): engine.main()
+            result=json.loads((root/'results'/f'{SHA}.json').read_text())
+            self.assertEqual(result['failure']['phase'],'migrate')
+            self.assertEqual(result['recovery_failure']['phase'],'recovery-stop')
+            self.assertNotIn('SECRET',json.dumps(result))
+            # Retrying the same deployment also keeps the original cause.
+            result=runner.run(SHA)
+            self.assertEqual(result['failure']['phase'],'migrate')
+            self.assertEqual(result['recovery_failure']['phase'],'recovery-stop')
+
+    def test_offline_recovery_preflight_failure_is_recorded(self):
+        import json, os, pwd
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder); config=root/'config'
+            config.write_text(json.dumps({'state':folder,'user':pwd.getpwuid(os.getuid()).pw_name}))
+            host=Host(); runner=engine.Deployer(root,host)
+            runner.save({'sha':SHA,'old':OLD,'phase':'migrating','timers':[]})
+            with patch.object(engine,'LinuxHost',return_value=host), patch('sys.argv',
+                    ['engine.py','recover','--config',str(config)]), patch.object(host,
+                    'ensure_stopped',side_effect=RuntimeError('writer alive'),create=True):
+                with self.assertRaises(RuntimeError):engine.main()
+            result=json.loads((root/'results'/f'{SHA}.json').read_text())
+            self.assertEqual(result['failure']['phase'],'recovery-preflight')
+            self.assertNotIn('restore_db',host.events)
+
     def test_gateway_uses_app_user_and_post_stop_recovery(self):
         import json
         from unittest.mock import patch
