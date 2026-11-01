@@ -95,7 +95,82 @@ class DeployTests(unittest.TestCase):
             with self.assertRaises(RuntimeError): runner.recover()
             self.assertTrue(runner.transaction.exists())
 
+    def test_retry_after_recovery_restart_preserves_new_writes(self):
+        for failure in ('health', 'resume'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as folder:
+                host = Host(failure)
+                def restore(_):
+                    host.act('restore_db')
+                    host.rows = ['saved item']
+                def start():
+                    host.act('start')
+                    host.rows.append('write accepted by recovered app')
+                host.restore_db, host.start = restore, start
+                runner = engine.Deployer(Path(folder), host)
+                runner.save({'sha': SHA, 'old': OLD, 'phase': 'migrating', 'timers': ['prices']})
+                with self.assertRaises(RuntimeError): runner.recover()
+                host.fail = None
+                runner.recover()
+                self.assertEqual(host.events.count('restore_db'), 1)
+                self.assertEqual(host.rows.count('write accepted by recovered app'), 2)
+
 class SqliteTests(unittest.TestCase):
+    def test_recovery_retry_keeps_c_and_next_deployment_backs_it_up(self):
+        import sqlite3
+        for failure in ('health', 'resume'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                class HostWithSqlite(engine.LinuxHost):
+                    current = OLD
+                    failing = True
+                    accepted_c = False
+                    backups = []
+                    def latest(self): return SHA
+                    def active(self): return self.current
+                    def prepare(self, sha): pass
+                    def timers(self): return ['test.timer']
+                    def stop(self): pass
+                    def switch(self, sha): self.current = sha
+                    def start(self):
+                        # A real write accepted after the old app is restarted.
+                        if not self.accepted_c:
+                            with sqlite3.connect(self.db) as db:
+                                db.execute("INSERT INTO items VALUES ('C')")
+                            self.accepted_c = True
+                    def health(self, sha):
+                        if self.failing and failure == 'health': raise RuntimeError('health interrupted')
+                    def resume(self, timers):
+                        if self.failing and failure == 'resume': raise RuntimeError('timer restart interrupted')
+                    def backup(self, tx):
+                        super().backup(tx)
+                        self.backups.append(self.backup_path(tx))
+                    def migrate(self, sha):
+                        with sqlite3.connect(self.db) as db:
+                            db.execute('CREATE TABLE IF NOT EXISTS new_table(value TEXT)')
+                host = HostWithSqlite({'state': str(root), 'releases': str(root),
+                    'current': str(root/'current'), 'node': '/unused', 'database': str(root/'app.db')})
+                with sqlite3.connect(host.db) as db:
+                    db.execute('PRAGMA journal_mode=WAL')
+                    db.execute('CREATE TABLE items(name TEXT PRIMARY KEY)')
+                    db.executemany('INSERT INTO items VALUES (?)', [('A',), ('B',)])
+                tx = {'id': 'first-deployment', 'sha': SHA, 'old': OLD, 'phase': 'migrating', 'timers': ['test.timer']}
+                host.backup(tx)
+                runner = engine.Deployer(root, host); runner.save(tx)
+                with self.assertRaises(RuntimeError): runner.recover()
+                host.failing = False
+                runner.recover()
+                def contents(path):
+                    with sqlite3.connect(path) as db:
+                        self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
+                        return db.execute('SELECT name FROM items ORDER BY name').fetchall()
+                self.assertEqual(contents(host.db), [('A',), ('B',), ('C',)])
+                self.assertEqual(runner.run(SHA)['status'], 'success')
+                self.assertEqual(len(host.backups), 2)
+                self.assertNotEqual(host.backups[0], host.backups[1])
+                self.assertEqual(contents(host.backups[0]), [('A',), ('B',)])
+                self.assertEqual(contents(host.backups[1]), [('A',), ('B',), ('C',)])
+                self.assertEqual(contents(host.db), [('A',), ('B',), ('C',)])
+
     def test_additive_schema_passes_and_changed_column_is_rejected(self):
         import sqlite3
         with sqlite3.connect(':memory:') as db:
