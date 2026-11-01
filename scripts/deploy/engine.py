@@ -91,6 +91,15 @@ class Deployer:
             if error.errno is not None: failure['errno'] = error.errno
         return failure
 
+    def recovery_failure_result(self, error):
+        tx = json.loads(self.transaction.read_text())
+        path = self.state / 'results' / f"{tx['sha']}.json"
+        previous = json.loads(path.read_text()) if path.exists() else {}
+        failure = self.failure(error)
+        if previous.get('failure'):
+            return self.result(tx['sha'], 'recovery-required', previous['failure'], failure)
+        return self.result(tx['sha'], 'recovery-required', failure)
+
     def recover(self, offline=False):
         if not self.transaction.exists(): return
         tx = json.loads(self.transaction.read_text())
@@ -161,8 +170,11 @@ class Deployer:
             except Exception as error:
                 failure = self.failure(error)
                 if tx is None:
-                    status = 'recovery-required' if self.transaction.exists() else 'failed'
-                    return self.result(sha, status, failure)
+                    if self.transaction.exists():
+                        recovered = self.recovery_failure_result(error)
+                        if recovered['sha'] == sha: return recovered
+                        return self.result(sha, 'recovery-required', failure)
+                    return self.result(sha, 'failed', failure)
                 try:
                     self.recover()
                     return self.result(sha, 'rolled-back', failure)
@@ -440,15 +452,14 @@ def main():
     runner.state.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (runner.state / 'lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        if args.mode == 'recover' and runner.transaction.exists():
-            runner.host.ensure_stopped()
         runner.phase = 'recovery'
         try:
+            if args.mode == 'recover' and runner.transaction.exists():
+                runner.step('recovery-preflight', runner.host.ensure_stopped)
             runner.recover(offline=args.mode == 'recover')
         except Exception as error:
             if runner.transaction.exists():
-                tx = json.loads(runner.transaction.read_text())
-                runner.result(tx['sha'], 'recovery-required', runner.failure(error))
+                runner.recovery_failure_result(error)
             raise
     return 0
 

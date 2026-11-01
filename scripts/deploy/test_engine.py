@@ -379,6 +379,32 @@ class EntryPointTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError): host.check_units(check_startup=False)
                 self.assertFalse(any('stop' in call and '-l' not in call for call in host.calls))
 
+    def test_startup_binding_drift_and_live_writers_are_rejected(self):
+        from unittest.mock import patch
+        config={'state':'/state','releases':'/releases','current':'/current',
+                'node':'/node','database':'/shared.sqlite','service':'web','user':'app',
+                'timers':['worker.timer'],'writers':['worker'], 'port':8000,
+                'env_file':'/app.env','writer_scripts':{'worker':'check-prices.ts'}}
+        for drift in ('none', 'ExecStart', 'User', 'KillMode'):
+            with self.subTest(drift=drift):
+                host=engine.LinuxHost(config)
+                def prop(name, key):
+                    if key=='LoadState':return 'loaded'
+                    if key.startswith('RefuseManual'):return 'no'
+                    if key==drift:return 'unexpected'
+                    if key=='ExecStart':return '{ argv[]='+engine.startup_commands(config)[name]+' ; }'
+                    return {'User':'app','KillMode':'control-group'}[key]
+                with patch.object(host,'property',side_effect=prop), patch.object(host,'command',return_value=''):
+                    if drift=='none':host.check_units()
+                    else:
+                        with self.assertRaises(RuntimeError):host.check_units()
+        host=engine.LinuxHost(config)
+        for state in ('inactive','failed','active','activating','deactivating','reloading'):
+            with self.subTest(state=state), patch.object(host,'property',return_value=state):
+                if state in ('inactive','failed'):host.ensure_stopped()
+                else:
+                    with self.assertRaises(RuntimeError):host.ensure_stopped()
+
     def test_installer_rejects_existing_wrong_current_before_changes(self):
         install = self.load('install')
         with tempfile.TemporaryDirectory() as folder:
