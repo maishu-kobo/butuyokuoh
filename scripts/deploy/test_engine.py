@@ -341,7 +341,7 @@ class EntryPointTests(unittest.TestCase):
                         'EXAMPLE="\nBUTUYOKUOH_DB_PATH=/phantom\n"\n',
                         'BUTUYOKUOH_DB_PATH=/wrong\nexport BUTUYOKUOH_DB_PATH=/other\n'):
             with tempfile.TemporaryDirectory() as folder:
-                root=Path(folder).resolve(); env=root/'app.env'; env.write_text(content)
+                root=Path(folder).resolve(); env=root/'app.env'; env.write_text(content+'\nDEPLOY_TEST_CANARY=from-file\n')
                 config={'database':str(root/'shared.sqlite'), 'node':node, 'current':str(root),
                         'service':'web', 'env_file':str(env), 'port':8000,
                         'writer_scripts':{'worker':'check-prices.ts'}}
@@ -351,7 +351,7 @@ class EntryPointTests(unittest.TestCase):
                     prefix=shlex.split(command)[:3]  # env, explicit DB, node
                     self.assertEqual(Path(prefix[0]).name, 'env')
                     args=[*prefix]
-                    code="console.log(process.env.BUTUYOKUOH_DB_PATH)"
+                    code="console.log(JSON.stringify({db:process.env.BUTUYOKUOH_DB_PATH,canary:process.env.DEPLOY_TEST_CANARY}))"
                     if service=='web':
                         loader=str(Path(__file__).resolve().parents[2]/'node_modules/@next/env')
                         code="require("+json.dumps(loader)+").loadEnvConfig(process.cwd());"+code
@@ -359,7 +359,8 @@ class EntryPointTests(unittest.TestCase):
                         args.append('--env-file='+str(env))
                     output=subprocess.check_output([*args, '-e', code], cwd=root,
                         env={**os.environ, 'BUTUYOKUOH_DB_PATH':'/inherited-wrong'}, text=True)
-                    self.assertEqual(output.strip().splitlines()[-1], config['database'])
+                    self.assertEqual(json.loads(output.strip().splitlines()[-1]),
+                                     {'db':config['database'],'canary':'from-file'})
 
     def test_missing_unit_or_sudo_permission_fails_before_any_stop(self):
         for failure in ('not-found', 'permission'):
@@ -453,7 +454,12 @@ class EntryPointTests(unittest.TestCase):
             self.assertEqual(result['failure']['phase'],'migrate')
             self.assertEqual(result['recovery_failure']['phase'],'recovery-stop')
             self.assertNotIn('SECRET',json.dumps(result))
-            # Retrying the same deployment also keeps the original cause.
+            # Production retry goes through the gateway, which resets the old result.
+            from types import SimpleNamespace
+            request=self.load('request')
+            with patch.object(request.subprocess,'run',return_value=SimpleNamespace(returncode=1)):
+                request.main(['start',SHA],str(config))
+            self.assertFalse((root/'results'/f'{SHA}.json').exists())
             result=runner.run(SHA)
             self.assertEqual(result['failure']['phase'],'migrate')
             self.assertEqual(result['recovery_failure']['phase'],'recovery-stop')
