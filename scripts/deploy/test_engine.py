@@ -246,7 +246,8 @@ class EntryPointTests(unittest.TestCase):
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module); return module
     def test_initial_and_switch_require_shared_database_and_uploads(self):
         install = self.load('install')
-        cases = ('valid', 'missing_env', 'regular_env', 'wrong_env', 'wrong_database',
+        cases = ('valid', 'valid_quoted', 'missing_env', 'regular_env', 'wrong_env', 'wrong_database',
+                 'shadow_database', 'export_database', 'multiline_database',
                  'missing_uploads', 'regular_uploads', 'wrong_uploads')
         for entry in ('install', 'switch'):
             for case in cases:
@@ -267,6 +268,10 @@ class EntryPointTests(unittest.TestCase):
                         if case=='wrong_env':
                             other=root/'wrong.env'; other.write_text(env.read_text()); env_link.symlink_to(other)
                     if case=='wrong_database': env.write_text('BUTUYOKUOH_DB_PATH='+str(root/'other.sqlite')+'\n')
+                    if case=='valid_quoted': env.write_text('BUTUYOKUOH_DB_PATH="'+str(db)+'"\nEXAMPLE=\'a value\'\n')
+                    if case=='shadow_database': env.write_text(env.read_text()+' BUTUYOKUOH_DB_PATH='+str(root/'other.sqlite')+'\n')
+                    if case=='export_database': env.write_text(env.read_text()+'export BUTUYOKUOH_DB_PATH='+str(root/'other.sqlite')+'\n')
+                    if case=='multiline_database': env.write_text('EXAMPLE="\nBUTUYOKUOH_DB_PATH='+str(db)+'\n"\n')
                     if case in ('missing_uploads', 'regular_uploads', 'wrong_uploads'):
                         upload_link.unlink()
                         if case=='regular_uploads': upload_link.mkdir()
@@ -280,7 +285,7 @@ class EntryPointTests(unittest.TestCase):
                     def check():
                         if entry=='install': install.validate_initial(config)
                         else: engine.LinuxHost(config).switch(SHA)
-                    if case=='valid': check()
+                    if case.startswith('valid'): check()
                     else:
                         with self.assertRaises((ValueError, RuntimeError, OSError)): check()
                         self.assertEqual(current.readlink(), original)

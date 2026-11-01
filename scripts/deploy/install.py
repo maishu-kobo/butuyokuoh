@@ -61,10 +61,7 @@ def install(config_path):
         if name not in c['writers'] or script not in ('check-prices.ts', 'cleanup-guests.ts', 'check-prices.ts --mode=stock-watch'):
             raise ValueError('invalid writer command')
     if set(c['writer_scripts']) != set(c['writers']): raise ValueError('writer definitions must match')
-    # An absolute DB path is essential: each release must open the same file.
-    lines = Path(c['env_file']).read_text().splitlines()
-    configured = [line.split('=', 1)[1].strip().strip('\"\'') for line in lines if line.startswith('BUTUYOKUOH_DB_PATH=')]
-    if configured != [c['database']]: raise ValueError('env DB path does not match configuration')
+    # validate_initial already checked the shared environment and absolute DB path.
     owner = pwd.getpwnam(c['user'])
     owned_directory('/opt/butuyokuoh-deploy', 0, 0)
     for directory in (Path(c['state']), Path(c['state']) / 'results'):

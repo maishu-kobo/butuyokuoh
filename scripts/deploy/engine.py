@@ -21,6 +21,29 @@ import urllib.request
 SHA_RE = re.compile(r'[0-9a-f]{40}')
 
 
+def shared_environment(path):
+    # Use one deliberately small format shared by systemd, Node and Next.js.
+    # Reject multiline/escaped/interpolated values, exports and duplicate keys
+    # rather than guessing which parser would win an ambiguous assignment.
+    values = {}
+    for line in path.read_text().splitlines():
+        if not line.strip() or line.lstrip().startswith('#'): continue
+        match = re.fullmatch(r'([A-Za-z_][A-Za-z0-9_]*)=(.*)', line)
+        if not match or match[1] in values:
+            raise RuntimeError('unsupported shared environment format')
+        key, value = match.groups()
+        if value.startswith(('"', "'")):
+            if len(value) < 2 or value[-1] != value[0] or value[0] in value[1:-1]:
+                raise RuntimeError('unsupported shared environment format')
+            value = value[1:-1]
+        elif re.search(r'''[\s"'#]''', value):
+            raise RuntimeError('unsupported shared environment format')
+        if '\\' in value or '$' in value or '\x00' in value:
+            raise RuntimeError('unsupported shared environment format')
+        values[key] = value
+    return values
+
+
 def validate_release(release, config, sha):
     if not SHA_RE.fullmatch(sha) or (release / 'RELEASE_SHA').read_text().strip() != sha:
         raise RuntimeError('invalid release identity')
@@ -31,10 +54,8 @@ def validate_release(release, config, sha):
         if not link.is_symlink() or link.resolve(strict=True) != Path(config[key]).resolve(strict=True):
             raise RuntimeError('release does not reference shared storage')
     # An absolute, explicit DB path also makes a legacy data/ directory irrelevant.
-    lines = Path(config['env_file']).read_text().splitlines()
-    values = [line.split('=', 1)[1].strip().strip('\"\'')
-              for line in lines if line.startswith('BUTUYOKUOH_DB_PATH=')]
-    if values != [config['database']] or not Path(config['database']).is_absolute():
+    values = shared_environment(Path(config['env_file']))
+    if values.get('BUTUYOKUOH_DB_PATH') != config['database'] or not Path(config['database']).is_absolute():
         raise RuntimeError('shared DB configuration mismatch')
 
 
