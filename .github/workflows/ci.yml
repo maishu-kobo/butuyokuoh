@@ -10,7 +10,7 @@
 # フレークの隔離は quarantine.yml。失敗すると赤になる。チェック名は必須の名前ではない。
 # 保護したテストは .github/test-quarantine.txt に書けない。このレーンが拒否する。
 # 実店舗の e2e（E2E_LIVE_SCRAPE / E2E_LIVE_AMAZON / E2E_LIVE_RAKUTEN）は環境変数を付けない。
-# develop への push でも実行する。
+# develop と main への push でも実行する。
 # マージ条件（必須ステータスチェック）はリポジトリ設定なので、このファイルではしない。
 # path フィルタは付けない。必須ジョブが skip になると、その SHA のチェックが pending のままマージを止める。
 name: CI
@@ -33,7 +33,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Hold the main lock from selection until checks finish; PRs keep latest-run behavior.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   select-runner:
@@ -43,6 +44,9 @@ jobs:
       ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' &&
           github.run_attempt == 1 && vars.BLACKSMITH_NO_CHARGE_CONFIRMED != '' &&
           vars.BLACKSMITH_BUDGET != '' }}
+    permissions:
+      contents: read
+      actions: read
     environment: blacksmith-budget
     runs-on: ubuntu-latest
     timeout-minutes: 3
@@ -61,6 +65,7 @@ jobs:
           BLACKSMITH_NO_CHARGE_CONFIRMED: ${{ vars.BLACKSMITH_NO_CHARGE_CONFIRMED }}
           BLACKSMITH_BUDGET: ${{ vars.BLACKSMITH_BUDGET }}
           BLACKSMITH_ORG_TOKEN: ${{ secrets.BLACKSMITH_ORG_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: bash scripts/blacksmith-cli.sh
 
   check:

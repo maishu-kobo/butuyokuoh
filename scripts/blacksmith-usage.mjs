@@ -2,17 +2,21 @@ import { appendFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { chooseRunner } from './blacksmith-budget.mjs';
+import { readHistory } from './blacksmith-history.mjs';
 
 function cli(binary, args, input) {
+  const childEnv = { ...process.env, BLACKSMITH_DISABLE_AUTO_UPDATE: '1' };
+  // GitHub credentials stay with GitHub; the provider token is supplied only on stdin.
+  for (const name of ['GITHUB_TOKEN', 'GH_TOKEN', 'BLACKSMITH_ORG_TOKEN', 'BLACKSMITH_API_URL', 'BLACKSMITH_DASHBOARD_URL']) delete childEnv[name];
   const result = spawnSync(binary, args, {
     encoding: 'utf8', input, timeout: 20_000, maxBuffer: 1024 * 1024,
-    env: { ...process.env, BLACKSMITH_DISABLE_AUTO_UPDATE: '1' },
+    env: childEnv,
   });
   if (result.error || result.status !== 0) throw new Error('blacksmith-unavailable');
   return result.stdout;
 }
 
-export async function runGuard(env = process.env, now = new Date()) {
+export async function runGuard(env = process.env, now = new Date(), fetchImpl = globalThis.fetch) {
   if (!env.GITHUB_OUTPUT) throw new Error('GITHUB_OUTPUT is required');
   appendFileSync(env.GITHUB_OUTPUT, 'runner=ubuntu-latest\n');
   let authenticated = false;
@@ -29,7 +33,8 @@ export async function runGuard(env = process.env, now = new Date()) {
       '--start-time', window.start, '--end-time', window.end,
     ]));
   };
-  const result = await chooseRunner({ env, now, readUsage: read([]), readStorage: read(['storage']) });
+  const result = await chooseRunner({ env, now, readUsage: read([]), readStorage: read(['storage']),
+    readHistory: (window, anchor) => readHistory(env, window, anchor, fetchImpl) });
   appendFileSync(env.GITHUB_OUTPUT, `runner=${result.runner}\nreason=${result.reason}\n`);
   if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY,
     `CI runner: \`${result.runner}\` (${result.reason}).\n`);

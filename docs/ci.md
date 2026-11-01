@@ -1,6 +1,6 @@
 # CI
 
-`feature/capture-existing-bugfixes`、`develop`、`main` 向けの pull request で走る。`ci.yml`、`playwright.yml`、`quarantine.yml` は `develop` への push でも走る。`ci.yml` は `main` への push も対象にする。path フィルタは付けない。必須のジョブが skip になると、その SHA のチェックが pending のままになる。権限は `contents: read` だけ。失敗した Playwright の結果は `actions/upload-artifact` v4 が上げる。`actions: write` は付けない。アクションはコミット SHA でピンする。
+`feature/capture-existing-bugfixes`、`develop`、`main` 向けの pull request で走る。`ci.yml`、`playwright.yml`、`quarantine.yml` は `develop` への push でも走る。`ci.yml` は `main` への push も対象にする。path フィルタは付けない。必須のジョブが skip になると、その SHA のチェックが pending のままになる。通常ジョブの権限は `contents: read` だけ。mainのBlacksmith判定ジョブに限って `actions: read` を加える。失敗した Playwright の結果は `actions/upload-artifact` v4 が上げる。`actions: write` は付けない。アクションはコミット SHA でピンする。
 
 マージを赤で止める必須ステータスチェックは、GitHub のブランチ保護と ruleset で設定する。このリポジトリのファイルだけでは有効にならない。
 
@@ -21,50 +21,57 @@
 
 判定ジョブ自身は `ubuntu-latest` で動く。スキップ、失敗、タイムアウト、認証欠落、取得不能、不正な応答、対象組織・対象期間の不一致、ストレージ請求データの欠落、予算不足の場合も、後続の検査を省略せず `ubuntu-latest` に戻す。開始済みのジョブを別のランナーへ移すものではない。
 
-#### 内部上限
+#### 80%の内部上限と実使用量
 
-単位は公式CLI 0.5.3の `billing_minutes`（プラットフォームの料金倍率を含むvCPU分）。Linux x64・4 vCPUの1実行分は4単位となる。公開料金ページの「2 vCPU換算分」とは異なる。
+単位は公式CLI 0.5.3の `billing_minutes`（プラットフォームの料金倍率を含むvCPU分）。Linux x64・4 vCPUで1分動くと4単位となる。公開仕様の月3,000分は2 vCPU換算なので6,000 vCPU分。その条件が当該組織に適用されると確認できた場合は、80%の **4,800 vCPU分**（4 vCPUで1,200分相当）を内部上限にする。管理画面の3,000 vCPU分という説明が適用されるなら、80%は2,400となる。適用条件を推測して切り替えない。
 
-- 内部上限は **月1,200 vCPU分**。4 vCPU換算で300分、公開説明の無料枠6,000 vCPU分の20%。管理画面FAQの厳しい解釈である3,000 vCPU分に対しても40%に留める。
-- 1回に **120 vCPU分**を予約する。20分のジョブ上限に、停止・端数処理の余裕として10分を加え、4を掛ける。この余裕は提供元の停止時間保証ではない。
-- 月内に認めるのは **最大10個のCI実行番号**。`firstRunNumber` 以上、`firstRunNumber + 10` 未満だけを対象にする。PRやGitHub実行、キャンセルも番号を消費し、枠を返却しない。
-- `max(取得した月間利用量, 先行する実行番号の数 × 120) + 120 <= 1200` の場合だけBlacksmithを選ぶ。実行中・未集計分は先行番号の予約量で保守的に扱う。
-- 判定と実行先の式の両方で `run_attempt == 1` を確認する。失敗したジョブだけの再実行で古い判定結果が再利用されてもGitHubへ戻す。
-- 月末24時間と確認月が変わった後はGitHubを使う。月替わりで自動的に予算を再発行しない。
+固定10回の制限は設けない。終了したジョブは実時間で計上し、次の式で選ぶ。
 
-利用量が遅れても、実行番号で枠を分けるため、並列ジョブが同じ残量を見て予約を重ねることはない。GitHubのキャッシュやartifactを可変の残高台帳として使わず、GitHubへの書き込み権限も追加しない。初期導入は速度改善の試行なので枠を小さく取り、無料枠を使い切る最適化は行わない。
+```text
+max(Blacksmith組織全体の当月利用量, GitHub履歴で積算した完了分)
+  + 実行中・割当済み待機中の予約分
+  + 今回の予約120 vCPU分
+  <= 確認済み無料枠 × 80%
+```
+
+- 完了分は対象BlacksmithジョブのGitHub開始〜終了時間をジョブごとに分単位で切り上げ、4を掛ける。失敗・キャンセル・過去のattemptも計上する。提供元の集計が遅れても、この積算を下回らない。
+- 実行中・割当済みの待機中は1件120 vCPU分を確保する。20分のジョブ上限と10分の余裕を含む。30分超の実行・時刻不明・未知のランナーは継続せずGitHubへ戻る。完了後は実時間に置き換え、最大120を使い切った扱いにはしない。
+- GitHub標準ランナーで動いたジョブやPRにはBlacksmithの予約分を割り当てない。
+- mainのCIはワークフロー全体で同じconcurrency groupを使い、`cancel-in-progress: false` にする。判定後から検査ジョブの登録までの隙間を含め、同時に複数の選択が行われないようにする。PRのキャンセル設定は従来どおり。GitHub標準のpending枠では新しい実行が古い待機実行を置き換えることがある。
+- 別のmain実行が進行中なら判定を拒否する。手動キャンセル等で過去のジョブが残っていれば、履歴の予約分にも含める。判定だけの直列化や、利用量APIだけでの残量判定には依存しない。
+- 再実行は判定・実行先の両方で拒否し、GitHubを使う。月末24時間もGitHubを使う。月替わりに無料枠を自動再発行しない。
+
+GitHub履歴は当月のCI実行を全ページ取得し、対象main pushのジョブを `filter=all` で全attempt取得する。`historyStartRunNumber` から現在までの実行番号の連続性を確認する。この番号は履歴欠落を検知する開始位置であり、利用可能な回数の上限ではない。番号の欠落、ページの重複・件数変動、履歴削除、APIの検索上限（1,000件）に達する応答、タイムアウトは部分的な履歴として使わずGitHubへ戻る。API上限に達した際は、確認なしで開始位置を前進させない。
 
 #### 認証と設定
 
-GitHub Environment `blacksmith-budget` の利用可能ブランチを **branchのmainだけ**にし、そのEnvironment Secretに `BLACKSMITH_ORG_TOKEN` を登録する。リポジトリ共通のSecretには置かない。Environmentの制限をGitHub側で確認してからトークンを保存する。PRのコードやテスト、本番ビルドのジョブへトークンを渡さない。
+GitHub Environment `blacksmith-budget` の利用可能ブランチはbranchのmainだけとし、Environment Secret `BLACKSMITH_ORG_TOKEN` に組織トークンを保存する。PRやテスト・ビルドには渡さない。
 
-公式の組織トークンは閲覧専用ではなく、キャッシュ管理やTestboxの起動等の権限も持つ。CIでは認証、`usage`、`usage storage` の読み取りだけを使う。トークンはstdinからCLIへ渡し、CLIのstdout/stderrや生の応答をログへ出さない。利用量はrepoフィルターなしの組織全体を取得する。
+組織トークンには閲覧以外にキャッシュ管理やTestbox起動等の権限もあるが、CIでは認証、`usage`、`usage storage` の読み取りだけを行う。組織全体をrepoフィルターなしで取得する。公式CLI 0.5.3は配布物のSHA-256を固定し、自動更新を無効化する。配布物や応答形式が変わればGitHubへ戻る。
 
-CLIバイナリは公式配布のLinux amd64版をSHA-256で固定し、自動更新を無効にする。配布物が変わる、ダウンロードに失敗する、CLIの応答形式が変わる場合もGitHubへ戻る。更新時はバージョン・ハッシュ・実応答を確認してPRで変更する。
+判定ジョブに限って `actions: read` を追加し、自動発行の `github.token` でGitHubの実行履歴を読む。他のジョブの権限は変えず、書き込み権限や追加のPATは使わない。GitHubのトークンはGitHub公式API以外へ送信せず、リダイレクトも拒否する。Blacksmith CLIの子プロセスにはGitHubトークンを継承させず、組織トークンも認証時のstdinだけで渡す。生のCLI応答・エラー・トークンをログへ出さない。
 
-Repository variablesは次の2つ。Secretだけ登録しても有効にはならない。
-
-| 変数 | 内容 |
+| Repository variable | 内容 |
 | --- | --- |
-| `BLACKSMITH_NO_CHARGE_CONFIRMED` | 無課金条件を確認したUTC月。例: `2026-11`。`true` は受け付けない |
-| `BLACKSMITH_BUDGET` | `{"month":"2026-11","firstRunNumber":123}` の形式。開始前に最新CI実行番号を確認し、次の番号を指定する |
+| `BLACKSMITH_NO_CHARGE_CONFIRMED` | 無課金条件を確認したUTC月。例: `2026-11` |
+| `BLACKSMITH_BUDGET` | 例: `{"month":"2026-11","freeVcpuMinutes":6000,"historyStartRunNumber":483}`。無料枠は確認済みのvCPU分、履歴開始位置は有効化前に確認した次のCI番号 |
 
-**同じ月の `firstRunNumber` を変更して枠を増やさない。** 期限切れの予算や失敗・キャンセル分を再利用しない。CIワークフローの削除・再作成で実行番号をリセットした場合も有効化を解除する。
+旧形式・未設定・対象月不一致は無効。`freeVcpuMinutes` は確認済みの3,000または6,000のみ受け付ける。**同月に履歴の開始位置を前進させない。** 履歴を削除したりワークフローを再作成した場合は無効化して調査する。月途中の初回有効化は、その時点まで組織全体の当月利用量が0である場合に限る。
 
 #### 有効化の前提と限界
 
-次をすべて確認してから、現在の月に限って変数を設定する。未確認なら設定せず、GitHubで継続する。
+次をすべて確認してから、現在の月に限って変数を設定する。未確認ならGitHubで継続する。
 
-1. 開始時点の組織全体の当月利用量が0で、CI以外に無料枠を消費する経路がない。Blacksmith Appとrunner groupの実行範囲を物欲王に限定し、このゲートを通らないランナー利用を認めない。
-2. 無料枠の算定・期間・端数処理、ジョブ停止と実際の課金終了の関係、最大停止遅延を確認し、上記の予約量内に収まる。
-3. Docker layer cache、Sticky Disks、固定IP、Testboxes、[code]smith等の追加課金経路を使わない。ストレージの請求情報が取得可能で、現在使用量と推定費用がともに0である。
-4. 公式CLIの実応答と管理画面の利用量が一致し、認証・権限・取得失敗・タイムアウト・月替わり・並列・再実行の検証が通る。
+1. 当該組織の無料枠・単位・期間と、開始時点の当月利用量0を確認する。Blacksmith App、runner group等で対象repo・mainのCI以外の消費経路を制限する。この履歴モデルは他のワークフローの未集計使用量を保証しない。
+2. **GitHubのジョブ開始〜終了を切り上げた値が、完了したジョブの課金時間を過小評価しない**ことを確認する。VM準備・終了後の課金等が別途あるなら、このモデルのまま有効化しない。実行中の停止遅延も予約の30分以内に収まる必要がある。
+3. Docker layer cache、Sticky Disks、固定IP、Testboxes、[code]smith等の追加課金機能を使わず、ストレージ請求情報が取得可能で現在使用量・推定費用が0であることを確認する。
+4. 公式APIの実応答、GitHub上のmain直列化、失敗・タイムアウト・再実行時の継続、月替わりを検証する。
 
-2026-11-01の管理画面FAQでは、Blacksmith自体には実行を止める課金上限がない。CI側の予約は追加の防御であり、サービス側の請求上限にはならない。取得した期間が正しくても、集計の即時性が保証されたわけではない。未承認の別ワークフローや別リポジトリでの利用、設定の手動変更、想定を超える停止遅延まで請求ゼロを保証しない。ストレージAPIの `billing_data_available: false` も0円の証明として扱わない。
+2026-11-01確認の管理画面FAQでは、Blacksmith自体に実行を止める課金上限はない。80%はCI側の判定であり、サービス側の請求上限ではない。集計の即時性、未知の消費経路、想定外の停止遅延まで請求ゼロを保証しない。`billing_data_available: false` も0円の証明にしない。
 
-緊急停止は `BLACKSMITH_NO_CHARGE_CONFIRMED` を空にする。新規判定からGitHubへ戻るが、既に実行先が決まったジョブには遡及しない。必要ならGitHubで該当実行をキャンセルする。キャンセルの反映にも時間がかかるため、上限間際まで実行しない。
+緊急停止は `BLACKSMITH_NO_CHARGE_CONFIRMED` を空にする。新規判定からGitHubへ戻るが、既に実行先が決まったジョブには遡及しない。必要なら該当実行をキャンセルする。
 
-公式資料: [無料枠](https://docs.blacksmith.sh/blacksmith-runners/overview#faq)、[利用量CLI](https://docs.blacksmith.sh/blacksmith-cli/usage)、[CLI認証](https://docs.blacksmith.sh/blacksmith-cli/overview)、[管理画面FAQ](https://app.blacksmith.sh/maishu-kobo/support)。
+公式資料: [無料枠](https://docs.blacksmith.sh/blacksmith-runners/overview#faq)、[利用量CLI](https://docs.blacksmith.sh/blacksmith-cli/usage)、[CLI認証](https://docs.blacksmith.sh/blacksmith-cli/overview)、[GitHub実行履歴API](https://docs.github.com/en/rest/actions/workflow-runs)、[concurrency](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)、[管理画面FAQ](https://app.blacksmith.sh/maishu-kobo/support)。
 
 ## 重いレーン
 
