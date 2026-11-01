@@ -23,7 +23,7 @@
 
 #### 80%の内部上限と実使用量
 
-単位は公式CLI 0.5.3の `billing_minutes`（プラットフォームの料金倍率を含むvCPU分）。Linux x64・4 vCPUで1分動くと4単位となる。公開仕様の月3,000分は2 vCPU換算なので6,000 vCPU分。その条件が当該組織に適用されると確認できた場合は、80%の **4,800 vCPU分**（4 vCPUで1,200分相当）を内部上限にする。管理画面の3,000 vCPU分という説明が適用されるなら、80%は2,400となる。適用条件を推測して切り替えない。
+判定の単位はvCPU分で、公式CLI 0.5.3の `billing_minutes` をこの単位として扱う設計。Linux x64・4 vCPUで1分動くと4単位となる。利用量APIと無料枠が同じ単位・期間であることを確認してから使う。料金ページは月3,000分、管理画面FAQは3,000 vCPU分と案内している。**3,000 vCPU分が当該組織に適用されるなら、80%は2,400 vCPU分**（4 vCPUで600分相当）。6,000 vCPU分を設定できるのは、その枠が適用されると提供元に確認できた場合だけで、上限は4,800 vCPU分となる。「3,000分」を自動的に2 vCPU換算して枠を倍増させない。
 
 固定10回の制限は設けない。終了したジョブは実時間で計上し、次の式で選ぶ。
 
@@ -69,9 +69,33 @@ GitHub Environment `blacksmith-budget` の利用可能ブランチはbranchのma
 
 2026-11-01確認の管理画面FAQでは、Blacksmith自体に実行を止める課金上限はない。80%はCI側の判定であり、サービス側の請求上限ではない。集計の即時性、未知の消費経路、想定外の停止遅延まで請求ゼロを保証しない。`billing_data_available: false` も0円の証明にしない。
 
-緊急停止は `BLACKSMITH_NO_CHARGE_CONFIRMED` を空にする。新規判定からGitHubへ戻るが、既に実行先が決まったジョブには遡及しない。必要なら該当実行をキャンセルする。
+#### GitHubへ戻る理由の確認
 
-公式資料: [無料枠](https://docs.blacksmith.sh/blacksmith-runners/overview#faq)、[利用量CLI](https://docs.blacksmith.sh/blacksmith-cli/usage)、[CLI認証](https://docs.blacksmith.sh/blacksmith-cli/overview)、[GitHub実行履歴API](https://docs.github.com/en/rest/actions/workflow-runs)、[concurrency](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)、[管理画面FAQ](https://app.blacksmith.sh/maishu-kobo/support)。
+`Select CI runner` のStep Summaryと `reason` 出力に、失敗した段階を固定コードで表示する。外部サービスのエラー文、応答本文、トークンは表示しない。
+
+| reason | 確認するもの |
+| --- | --- |
+| `disabled-or-ineligible` | 月・対象ブランチ・再実行・月末・予算設定。有効化条件を確認するまで設定しない |
+| `authentication-unavailable` / `usage-unavailable` | 認証設定、固定CLI、利用量の取得・JSON読取。秘密をログへ出して調べない |
+| `unrecognized-usage-report` | 利用量の対象組織・期間・数値形式 |
+| `storage-unavailable` / `storage-unverified` | ストレージの取得、請求データの有無・対象期間・現在使用量 |
+| `history-unavailable` / `history-unverified` | GitHubの履歴取得・完全性、実行番号・attempt・ジョブの状態やラベル・時刻 |
+| `paid-storage-detected` / `budget-reserved` | 追加費用または予約分を含む80%超過。上限を引き上げずGitHubで継続する |
+
+履歴の削除・未知の状態などが月内に残れば、次回以降もGitHubを使い続けることがある。該当する実行をActions画面で調べ、実応答に基づく修正とテストを行う。復帰させる目的で履歴を削除したり、`historyStartRunNumber` を前進させたり、未知の使用量を0にしない。完全な履歴を確認できなければ、その月はGitHubで継続する。
+
+#### 緊急停止と起動待ちからの復旧
+
+緊急停止は `BLACKSMITH_NO_CHARGE_CONFIRMED` を空にする。新規判定からGitHubへ戻るが、既に実行先が決まったジョブには遡及しない。
+
+Blacksmith選択後にランナーが供給されないと、`test, types, build` が `Queued`（起動待ち）のままになり、mainの後続CIも待機する。ジョブの20分タイムアウトは開始後に効くため、この待機を解消しない。開始前の自動切り替えも行わない。Actions画面で対象ジョブのランナーラベルと状態を確認し、起動待ちが10分以上続く場合は復旧を開始する。この10分は運用上の目安であり、課金時間や予算の計算には使わない。
+
+1. `BLACKSMITH_NO_CHARGE_CONFIRMED` を空にして、新たなBlacksmith選択を止める。
+2. 起動待ちのmain実行を `Cancel workflow` でキャンセルし、ジョブと実行が `Cancelled` になったことを確認する。キャンセル要求だけでは完了とみなさない。
+3. 該当実行の `Re-run all jobs` で再実行する。attempt 2以降は設定や古い判定結果にかかわらずGitHub標準ランナーになる。ジョブのラベルが `ubuntu-latest` で、既存の検査が開始・完了することを確認する。後続mainのCIも確認する。
+4. Blacksmithの状態と履歴・請求情報を調査する。復旧のために予算の開始位置を変えず、無課金条件を再確認するまで無効を保つ。
+
+公式資料: [料金・無料枠](https://www.blacksmith.sh/pricing)、[利用量CLI](https://docs.blacksmith.sh/blacksmith-cli/usage)、[CLI認証](https://docs.blacksmith.sh/blacksmith-cli/overview)、[GitHub実行履歴API](https://docs.github.com/en/rest/actions/workflow-runs)、[concurrency](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)、[管理画面FAQ](https://app.blacksmith.sh/maishu-kobo/support)。
 
 ## 重いレーン
 

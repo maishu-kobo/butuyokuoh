@@ -63,6 +63,35 @@ describe('80%の利用量判定', () => {
       assert.equal((await decide({ [key]: async () => { throw new Error('synthetic-sensitive-error'); } })).runner, 'ubuntu-latest');
     }
   });
+  it('取得失敗の理由は段階ごとの固定値だけを返し、外部のエラー文を公開しないべき', async () => {
+    const stages = [
+      ['readUsage', 'usage-unavailable'],
+      ['readStorage', 'storage-unavailable'],
+      ['readHistory', 'history-unavailable'],
+    ] as const;
+    await fc.assert(fc.asyncProperty(fc.string(), fc.constantFrom(...stages), async (message, [stage, reason]) => {
+      assert.deepEqual(await decide({ [stage]: async () => { throw new Error(message); } }),
+        { runner: 'ubuntu-latest', reason });
+    }), { seed: 28782, numRuns: 100 });
+  });
+  it('取得成功後の不正な応答は検証段階を区別してGitHubへ戻るべき', async () => {
+    assert.deepEqual(await decide({ readUsage: async () => ({}) }),
+      { runner: 'ubuntu-latest', reason: 'unrecognized-usage-report' });
+    assert.deepEqual(await decide({ readStorage: async () => ({}) }),
+      { runner: 'ubuntu-latest', reason: 'storage-unverified' });
+    assert.deepEqual(await decide({ history: { runs: [], jobRuns: [] } }),
+      { runner: 'ubuntu-latest', reason: 'history-unverified' });
+  });
+  it('秒精度のAPI応答と一致する期間を要求し、現在より未来の利用量を要求しないべき', async () => {
+    await fc.assert(fc.asyncProperty(fc.integer({ min: 1, max: 999 }), async (milliseconds) => {
+      const read = async (window: object) => {
+        assert.equal((window as { end: string }).end, now.toISOString());
+        return report({ ...window, end: '2026-11-10T12:00:00Z' }, { billing_minutes: 0 });
+      };
+      const result = await decide({ now: new Date(now.getTime() + milliseconds), readUsage: read });
+      assert.equal(result.runner, limits.blacksmithRunner);
+    }), { seed: 28783, numRuns: 100 });
+  });
   it('履歴の欠落・重複・対象不一致を0として扱わないべき', async () => {
     const variants = [
       { ...history(), runs: [run(102), run(100)] },

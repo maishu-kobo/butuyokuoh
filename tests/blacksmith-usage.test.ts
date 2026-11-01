@@ -79,11 +79,18 @@ it('公式CLIとの境界ではトークンを引数や出力に含めず組織�
 });
 
 it('認証失敗・JSON破損・請求データ欠落ではGitHub出力を保ち秘密を表示しないべき', async () => {
-  for (const mode of ['error', 'invalid-json', 'unavailable-ledger', 'github-error', 'github-timeout']) {
+  for (const [mode, reason] of [
+    ['error', 'usage-unavailable'], ['invalid-json', 'usage-unavailable'],
+    ['unavailable-ledger', 'storage-unverified'],
+    ['github-error', 'history-unavailable'], ['github-timeout', 'history-unavailable'],
+  ]) {
     const result = await scenario(mode);
     assert.equal(result.result.runner, 'ubuntu-latest');
+    assert.equal(result.result.reason, reason);
+    assert.match(result.output, new RegExp(`^reason=${reason}$`, 'm'));
+    assert.match(result.summary, new RegExp(`\\(${reason}\\)`));
     assert.doesNotMatch(result.output, /runner=blacksmith/);
-    assert.doesNotMatch(JSON.stringify(result), /synthetic-unit-test-secret/);
+    assert.doesNotMatch(JSON.stringify(result), /synthetic-unit-test-secret|synthetic-sensitive-error/);
   }
 });
 

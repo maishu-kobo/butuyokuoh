@@ -61,7 +61,9 @@ function eligibility(env, now) {
       !/^[1-9]\d*$/.test(env.GITHUB_RUN_NUMBER || '') || !positiveInteger(Number(env.GITHUB_RUN_NUMBER)) ||
       !/^[1-9]\d*$/.test(env.GITHUB_RUN_ID || '') || !positiveInteger(Number(env.GITHUB_RUN_ID)) ||
       Number(env.GITHUB_RUN_NUMBER) < budget.historyStartRunNumber) return null;
-  return { budget, window: { start: `${month}-01T00:00:00.000Z`, end: now.toISOString() } };
+  // CLI 0.5.3 returns whole-second windows; request the same precision, never a future second.
+  const endTime = new Date(Math.floor(now.getTime() / 1000) * 1000).toISOString();
+  return { budget, window: { start: `${month}-01T00:00:00.000Z`, end: endTime } };
 }
 
 /** Reconstruct an upper bound independently of delayed provider aggregates.
@@ -129,19 +131,28 @@ export function measureHistory(history, env, now, anchor) {
 }
 
 export async function chooseRunner({ env, now, readUsage, readStorage, readHistory }) {
+  let failureReason = 'disabled-or-ineligible';
   try {
     const eligible = eligibility(env, now);
     if (!eligible) return github('disabled-or-ineligible');
-    const used = parseUsage(await readUsage(eligible.window), eligible.window);
-    const storageCost = parseStorage(await readStorage(eligible.window), eligible.window);
+    failureReason = 'usage-unavailable';
+    const usage = await readUsage(eligible.window);
+    failureReason = 'unrecognized-usage-report';
+    const used = parseUsage(usage, eligible.window);
+    failureReason = 'storage-unavailable';
+    const storage = await readStorage(eligible.window);
+    failureReason = 'storage-unverified';
+    const storageCost = parseStorage(storage, eligible.window);
     if (storageCost !== 0) return github('paid-storage-detected');
+    failureReason = 'history-unavailable';
     const history = await readHistory(eligible.window, eligible.budget.historyStartRunNumber);
+    failureReason = 'history-unverified';
     const { completed, inFlight } = measureHistory(history, env, now, eligible.budget.historyStartRunNumber);
     const limit = eligible.budget.freeVcpuMinutes * limits.allowanceRatio;
     if (Math.max(used, completed) + inFlight + limits.reservation > limit) return github('budget-reserved');
     return { runner: limits.blacksmithRunner, reason: 'within-budget' };
   } catch {
-    // Backend error messages can contain credentials or account details.
-    return github('usage-unavailable');
+    // Report only our fixed stage, never backend messages/fields (which may contain secrets).
+    return github(failureReason);
   }
 }
