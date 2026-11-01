@@ -78,6 +78,8 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 
 ## セキュリティ
 
+- SSHホスト鍵は種類を決め打ちせず、取得した鍵の指紋を公式情報と照合する。接続用のクライアント鍵とは別に確認し、ホスト検証を省略しない。
+
 - このリポは public。コミットの author/committer メールは GitHub の noreply（`<id>+<login>@users.noreply.github.com`）を使う。会社や個人のメール、サーバーの IP、シークレット、実データのスクリーンショットをコミットしない。
 - 秘密をコミットしない。ログ、PR、チャットに出さない。キーはサーバの環境変数だけ。`NEXT_PUBLIC_` に置かない。
 - ローカルは `.env.local`。本番で必須なのは `JWT_SECRET`。認証は `AUTH_SECRET` または `NEXTAUTH_SECRET`。Google は `GOOGLE_CLIENT_ID` と `GOOGLE_CLIENT_SECRET`。
