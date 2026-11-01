@@ -10,7 +10,7 @@ import shutil
 import pwd
 import subprocess
 import sys
-from engine import validate_release
+from engine import validate_release, startup_commands, LinuxHost
 
 
 def owned_directory(path, uid, gid):
@@ -45,7 +45,7 @@ def install(config_path):
     if os.geteuid() != 0: raise ValueError('root required')
     c = json.loads(Path(config_path).read_text())
     for key in ('state', 'releases', 'current', 'database', 'uploads', 'env_file', 'node', 'home', 'initial_release'):
-        if not Path(c[key]).is_absolute() or '\n' in c[key] or ' ' in c[key]: raise ValueError('invalid path')
+        if not re.fullmatch(r'/[A-Za-z0-9_./-]+', c[key]): raise ValueError('invalid path')
     for key in ('user', 'service'):
         if not re.fullmatch('[a-z][a-z0-9-]*', c[key]): raise ValueError('invalid service/user')
     if c.get('ref', 'refs/heads/main') != 'refs/heads/main': raise ValueError('production must track main')
@@ -61,8 +61,10 @@ def install(config_path):
         if name not in c['writers'] or script not in ('check-prices.ts', 'cleanup-guests.ts', 'check-prices.ts --mode=stock-watch'):
             raise ValueError('invalid writer command')
     if set(c['writer_scripts']) != set(c['writers']): raise ValueError('writer definitions must match')
-    # validate_initial already checked the shared environment and absolute DB path.
+    if not isinstance(c['port'], int) or not 1 <= c['port'] <= 65535: raise ValueError('invalid port')
     owner = pwd.getpwnam(c['user'])
+    if owner.pw_uid == 0: raise ValueError('non-root app user required')
+    LinuxHost(c).check_units(check_startup=False, permission_user=c['user'])
     owned_directory('/opt/butuyokuoh-deploy', 0, 0)
     for directory in (Path(c['state']), Path(c['state']) / 'results'):
         owned_directory(directory, owner.pw_uid, owner.pw_gid)
@@ -89,17 +91,15 @@ ExecStart=/usr/bin/python3 /opt/butuyokuoh-deploy/engine.py recover
 WantedBy=multi-user.target
 '''.format(user=c['user'], units=' '.join(name if name.endswith('.timer') else name + '.service' for name in units))
     Path('/etc/systemd/system/butuyokuoh-deploy-recover.service').write_text(recovery)
-    service_commands = {c['service']: f"{c['node']} {c['current']}/node_modules/next/dist/bin/next start --port {c['port']}"}
-    for name, script in c['writer_scripts'].items():
-        if not re.fullmatch('[a-z][a-z0-9-]*', name) or script not in ('check-prices.ts', 'cleanup-guests.ts', 'check-prices.ts --mode=stock-watch'):
-            raise ValueError('invalid writer command')
-        service_commands[name] = f"{c['node']} --env-file={c['env_file']} --import=tsx scripts/{script}"
+    service_commands = startup_commands(c)
     for name, command in service_commands.items():
         folder = Path(f'/etc/systemd/system/{name}.service.d'); folder.mkdir(exist_ok=True)
         (folder / 'zz-auto-deploy.conf').write_text(f'''[Unit]
 Requires=butuyokuoh-deploy-recover.service
 After=butuyokuoh-deploy-recover.service
 [Service]
+User={c['user']}
+KillMode=control-group
 WorkingDirectory={c['current']}
 EnvironmentFile=
 EnvironmentFile={c['env_file']}

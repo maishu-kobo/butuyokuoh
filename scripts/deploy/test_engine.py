@@ -430,7 +430,7 @@ class EntryPointTests(unittest.TestCase):
                 self.assertEqual(engine.main(), 0)
             self.assertIn('start',host.events); self.assertIn('health',host.events)
             runner.save(tx)
-            with patch.object(engine, 'LinuxHost', return_value=host), patch('sys.argv', ['engine.py','recover','--config',str(config)]), patch.object(engine.subprocess,'run', return_value=SimpleNamespace(returncode=0)):
+            with patch.object(engine, 'LinuxHost', return_value=host), patch('sys.argv', ['engine.py','recover','--config',str(config)]), patch.object(host, 'ensure_stopped', side_effect=RuntimeError('writers still active'), create=True):
                 with self.assertRaises(RuntimeError): engine.main()
             self.assertTrue(runner.transaction.exists())
 
