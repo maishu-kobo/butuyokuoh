@@ -11,7 +11,8 @@ const selector = workflow.match(/  select-runner:[\s\S]*?    if: >-\n([\s\S]*?)\
 const runner = workflow.match(/  check:[\s\S]*?    runs-on: >-\n([\s\S]*?)\n    timeout-minutes:/)?.[1];
 function evaluate(expression: string | undefined, hostedOnly: boolean, event = 'push', attempt = 1) {
   assert.ok(expression);
-  return runInNewContext(expression.trim().replace(/^\$\{\{/, '').replace(/\}\}$/, ''), {
+  return runInNewContext(expression.trim().replace(/^\$\{\{/, '').replace(/\}\}$/, '')
+    .replaceAll('needs.select-runner', "needs['select-runner']"), {
     inputs: { github_hosted_only: hostedOnly },
     github: { event_name: event, ref: 'refs/heads/main', run_attempt: attempt },
     vars: { BLACKSMITH_NO_CHARGE_CONFIRMED: 'configured', BLACKSMITH_BUDGET: 'configured' },
