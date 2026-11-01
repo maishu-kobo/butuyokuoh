@@ -22,6 +22,7 @@ class Host:
     def act(self, event):
         self.events.append(event)
         if self.fail == event: raise RuntimeError(event)
+    def preflight(self): self.act('preflight')
     def prepare(self, sha): self.act('prepare')
     def timers(self): return ['prices']
     def stop(self): self.act('stop')
@@ -43,6 +44,47 @@ class DeployTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             runner = engine.Deployer(Path(folder), host)
             return runner.run(SHA), host
+    def test_preflight_failure_never_stops_app_or_leaves_transaction(self):
+        with tempfile.TemporaryDirectory() as folder:
+            host = Host('preflight'); runner = engine.Deployer(Path(folder), host)
+            result = runner.run(SHA)
+            self.assertEqual(result['status'], 'failed')
+            self.assertEqual(result['failure']['phase'], 'preflight')
+            self.assertNotIn('stop', host.events)
+            self.assertFalse(runner.transaction.exists())
+
+    def test_partial_stop_failure_resumes_old_app_without_repeating_stop(self):
+        result, host = self.execute(Host('stop'))
+        self.assertEqual(result['status'], 'rolled-back')
+        self.assertEqual(host.events.count('stop'), 1)
+        self.assertIn('start', host.events); self.assertIn('resume', host.events)
+        self.assertNotIn('restore_db', host.events); self.assertNotIn('switch', host.events)
+        self.assertEqual(result['failure']['phase'], 'stop')
+
+    def test_recovery_stop_failure_never_restores_database_and_records_safe_reason(self):
+        import json
+        with tempfile.TemporaryDirectory() as folder:
+            host = Host('stop'); runner = engine.Deployer(Path(folder), host)
+            runner.save({'sha': SHA, 'old': OLD, 'phase': 'migrating', 'timers': []})
+            result = runner.run(SHA)
+            self.assertEqual(result['status'], 'recovery-required')
+            self.assertEqual(result['failure']['phase'], 'recovery-stop')
+            self.assertNotIn('restore_db', host.events)
+            self.assertTrue(runner.transaction.exists())
+            host.fail = None
+            self.assertEqual(runner.run(SHA)['status'], 'success')
+
+    def test_failure_diagnostics_never_contain_exception_or_command_output(self):
+        import json
+        for operation in ('prepare', 'migrate', 'health'):
+            host = Host()
+            def fail(*args): raise RuntimeError('SECRET=private-user-value')
+            setattr(host, operation, fail)
+            result, _ = self.execute(host)
+            self.assertIn('failure', result)
+            self.assertNotIn('SECRET', json.dumps(result))
+            self.assertNotIn('private-user-value', json.dumps(result))
+
     def test_success_preserves_data(self):
         result, host = self.execute(Host())
         self.assertEqual(result['status'], 'success')
@@ -140,6 +182,7 @@ class SqliteTests(unittest.TestCase):
                     backups = []
                     def latest(self): return SHA
                     def active(self): return self.current
+                    def preflight(self): pass
                     def prepare(self, sha): pass
                     def timers(self): return ['test.timer']
                     def stop(self): pass
@@ -285,10 +328,54 @@ class EntryPointTests(unittest.TestCase):
                     def check():
                         if entry=='install': install.validate_initial(config)
                         else: engine.LinuxHost(config).switch(SHA)
-                    if case.startswith('valid'): check()
+                    if case in ('valid', 'valid_quoted', 'wrong_database', 'shadow_database', 'export_database', 'multiline_database'): check()
                     else:
                         with self.assertRaises((ValueError, RuntimeError, OSError)): check()
                         self.assertEqual(current.readlink(), original)
+    def test_startup_pins_db_for_web_and_workers_despite_environment_contents(self):
+        import json, os, shutil, subprocess, shlex
+        node = shutil.which('node')
+        self.assertIsNotNone(node)
+        for content in ('BUTUYOKUOH_DB_PATH=/wrong\n',
+                        'EXAMPLE=x\x0bBUTUYOKUOH_DB_PATH=/phantom\n',
+                        'EXAMPLE="\nBUTUYOKUOH_DB_PATH=/phantom\n"\n',
+                        'BUTUYOKUOH_DB_PATH=/wrong\nexport BUTUYOKUOH_DB_PATH=/other\n'):
+            with tempfile.TemporaryDirectory() as folder:
+                root=Path(folder).resolve(); env=root/'app.env'; env.write_text(content)
+                config={'database':str(root/'shared.sqlite'), 'node':node, 'current':str(root),
+                        'service':'web', 'env_file':str(env), 'port':8000,
+                        'writer_scripts':{'worker':'check-prices.ts'}}
+                commands=engine.startup_commands(config)
+                for service, command in commands.items():
+                    prefix=shlex.split(command)[:3]  # env, explicit DB, node
+                    self.assertEqual(Path(prefix[0]).name, 'env')
+                    args=[*prefix, '--env-file='+str(env)]
+                    # Exercise Node's parser and the actual Next.js env loader used by web.
+                    code="console.log(process.env.BUTUYOKUOH_DB_PATH)"
+                    if service=='web':
+                        code="require('@next/env').loadEnvConfig(process.cwd());"+code
+                    output=subprocess.check_output([*args, '-e', code], env={**os.environ,
+                        'BUTUYOKUOH_DB_PATH':'/inherited-wrong'}, text=True)
+                    self.assertEqual(output.strip().splitlines()[-1], config['database'])
+
+    def test_missing_unit_or_sudo_permission_fails_before_any_stop(self):
+        for failure in ('not-found', 'permission'):
+            with self.subTest(failure=failure):
+                class Probe(engine.LinuxHost):
+                    calls=[]
+                    def command(self, args, **options):
+                        self.calls.append(args)
+                        if '--property=LoadState' in args:
+                            return 'not-found' if failure=='not-found' else 'loaded'
+                        if '-l' in args: raise RuntimeError('permission denied')
+                        if any(x.startswith('--property=RefuseManual') for x in args): return 'no'
+                        return ''
+                host=Probe({'state':'/unused','releases':'/unused','current':'/unused',
+                            'node':'/unused','database':'/unused','service':'web',
+                            'timers':['worker.timer'],'writers':['worker']})
+                with self.assertRaises(RuntimeError): host.check_units(check_startup=False)
+                self.assertFalse(any('stop' in call and '-l' not in call for call in host.calls))
+
     def test_installer_rejects_existing_wrong_current_before_changes(self):
         install = self.load('install')
         with tempfile.TemporaryDirectory() as folder:
