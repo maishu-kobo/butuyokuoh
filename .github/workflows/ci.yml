@@ -26,6 +26,7 @@ on:
     branches:
       - feature/photo-capture
       - develop
+      - main
 
 permissions:
   contents: read
@@ -35,9 +36,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  select-runner:
+    name: Select CI runner
+    # The environment allows only main. PR jobs cannot access its organization token.
+    if: >-
+      ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          github.run_attempt == 1 && vars.BLACKSMITH_NO_CHARGE_CONFIRMED != '' &&
+          vars.BLACKSMITH_BUDGET != '' }}
+    environment: blacksmith-budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      runner: ${{ steps.budget.outcome == 'success' && steps.budget.outputs.runner || 'ubuntu-latest' }}
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Reserve free CI budget
+        id: budget
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          BLACKSMITH_NO_CHARGE_CONFIRMED: ${{ vars.BLACKSMITH_NO_CHARGE_CONFIRMED }}
+          BLACKSMITH_BUDGET: ${{ vars.BLACKSMITH_BUDGET }}
+          BLACKSMITH_ORG_TOKEN: ${{ secrets.BLACKSMITH_ORG_TOKEN }}
+        run: bash scripts/blacksmith-cli.sh
+
   check:
     name: test, types, build
-    runs-on: ubuntu-latest
+    needs: select-runner
+    # A skipped/failed/timed-out selector must not skip the actual checks.
+    if: ${{ !cancelled() }}
+    # Re-runs can reuse an old selector output: re-check the attempt here as well.
+    runs-on: >-
+      ${{ github.run_attempt == 1 && github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' && needs.select-runner.result == 'success' &&
+          needs.select-runner.outputs.runner == 'blacksmith-4vcpu-ubuntu-2404' &&
+          'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
       NEXT_TELEMETRY_DISABLED: "1"
