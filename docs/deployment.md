@@ -377,6 +377,36 @@ cd /home/exedev/butuyokuoh
 npm run check-prices
 ```
 
+## GitHubからの自動配備の操作（#286）
+
+導入後は、mainへの更新に対して単体テスト・型検査・Lint・ビルド・依存監査・ブラウザテスト・秘密検査・CodeQLを実行し、すべて成功した同じSHAだけを配備する。
+Sotaを含むリポジトリへの書き込み権限を持つ担当者は、Actionsの **main validation and deployment** から状態を確認できる。
+失敗を直した後の再試行は **Run workflow → main** を使う。古いSHAの再実行では最新mainと一致しなければ配備しない。
+ジョブの緑色だけでなく、deployジョブのSummaryのSHAとResult、サイト表示を確認する。
+初回有効化後は毎回の手動承認を要求しない。PRやfeatureブランチの実行には本番接続情報を渡さない。
+
+### 一度だけ必要な設定
+
+1. VM側の配備エンジン（#285）を独立レビュー後に設置し、隔離したテストDBで切替・復旧を確認する。
+2. GitHub Environment `production` を作り、配備可能なブランチを **mainだけ** に制限する。日常の配備に承認者待ちを設けない。
+3. exe.devで**本番VM専用の新しいSSH鍵**を登録する。個人用・全VM共通の鍵は使い回さない。この鍵は対象VMへのログイン権限を持ち、コマンド限定の鍵ではない。
+4. `production` のSecretsに `EXE_DEPLOY_SSH_KEY`（専用秘密鍵）と `EXE_DEPLOY_KNOWN_HOSTS`（公式情報と照合したSSHホスト鍵）、Variablesに `EXE_DEPLOY_HOST`（本番VMのホスト名）を保存する。
+5. コードと設定の人間による承認後、**リポジトリのVariable** `AUTO_DEPLOY_ENABLED=true` を設定する。この変数はジョブ開始前の判定に使うのでEnvironment側には置かない。
+6. mainで最初のworkflowを実行し、実際の反映とSummaryのSHAを確認する。
+
+アプリのAPIキー・JWT秘密・DBはVM内に残す。GitHubへコピーしない。実APIを呼ぶテストは有効化しない。
+SSHのホスト鍵照合を省略しない。鍵はログ・Issue・PRに貼らず、不要になった専用鍵はexe.dev側でも失効する。
+VM所有者の初期設定は必要だが、以後の実行に担当者のMacや個人用SSH鍵は不要。
+
+### 停止と失敗時
+
+- 新規配備を止める: リポジトリVariable `AUTO_DEPLOY_ENABLED=false`。WorkflowのCancelはVM内の処理を取り消さない。
+- `superseded`: より新しいmainがあるため省略。最新の実行結果を見る。
+- `failed` / `rolled-back` / `recovery-required` / 監視タイムアウト: 成功と扱わず、VM内の安全な状態ファイルを確認する。秘密を含みうる生ログをGitHubへ貼らない。
+- 復旧処理や空き容量の確認が必要なら、VM管理者が対応する。GitHubでの再実行だけでDB復元やデータ削除はしない。
+
+参考: [exe.dev VM専用SSH鍵](https://exe.dev/docs/vm-scoped-ssh-keys)、[GitHub reusable workflows](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows)。
+
 ## ゲスト体験
 
 ゲストモードの有効化、保存期限・件数上限、毎時の清掃タイマー、停止手順は [guest-mode.md](guest-mode.md) を参照する。
