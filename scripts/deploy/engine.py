@@ -91,14 +91,19 @@ class Deployer:
             if error.errno is not None: failure['errno'] = error.errno
         return failure
 
-    def recovery_failure_result(self, error):
+    def remember_failure(self, failure):
         tx = json.loads(self.transaction.read_text())
-        path = self.state / 'results' / f"{tx['sha']}.json"
-        previous = json.loads(path.read_text()) if path.exists() else {}
+        if 'failure' not in tx:
+            # The gateway resets the per-SHA result on retry, so keep the first
+            # cause with the durable transaction until recovery is complete.
+            tx['failure'] = failure
+            self.save(tx)
+        return tx
+
+    def recovery_failure_result(self, error):
         failure = self.failure(error)
-        if previous.get('failure'):
-            return self.result(tx['sha'], 'recovery-required', previous['failure'], failure)
-        return self.result(tx['sha'], 'recovery-required', failure)
+        tx = self.remember_failure(failure)
+        return self.result(tx['sha'], 'recovery-required', tx['failure'], failure)
 
     def recover(self, offline=False):
         if not self.transaction.exists(): return
@@ -176,6 +181,7 @@ class Deployer:
                         return self.result(sha, 'recovery-required', failure)
                     return self.result(sha, 'failed', failure)
                 try:
+                    if self.transaction.exists(): self.remember_failure(failure)
                     self.recover()
                     return self.result(sha, 'rolled-back', failure)
                 except Exception as recovery_error:
