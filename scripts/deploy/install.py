@@ -10,6 +10,7 @@ import shutil
 import pwd
 import subprocess
 import sys
+from engine import validate_release
 
 
 def owned_directory(path, uid, gid):
@@ -37,6 +38,7 @@ def validate_initial(c):
     current = Path(c['current'])
     if os.path.lexists(current) and (not current.is_symlink() or current.resolve() != release.resolve()):
         raise ValueError('existing current differs from initial release')
+    validate_release(release, c, sha)
 
 
 def install(config_path):
@@ -102,6 +104,8 @@ Requires=butuyokuoh-deploy-recover.service
 After=butuyokuoh-deploy-recover.service
 [Service]
 WorkingDirectory={c['current']}
+EnvironmentFile=
+EnvironmentFile={c['env_file']}
 ExecStart=
 ExecStart={command}
 ''')

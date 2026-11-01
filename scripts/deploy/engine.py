@@ -21,6 +21,23 @@ import urllib.request
 SHA_RE = re.compile(r'[0-9a-f]{40}')
 
 
+def validate_release(release, config, sha):
+    if not SHA_RE.fullmatch(sha) or (release / 'RELEASE_SHA').read_text().strip() != sha:
+        raise RuntimeError('invalid release identity')
+    if not (release / '.next' / 'BUILD_ID').is_file():
+        raise RuntimeError('release not built')
+    for relative, key in (('.env.local', 'env_file'), ('public/uploads', 'uploads')):
+        link = release / relative
+        if not link.is_symlink() or link.resolve(strict=True) != Path(config[key]).resolve(strict=True):
+            raise RuntimeError('release does not reference shared storage')
+    # An absolute, explicit DB path also makes a legacy data/ directory irrelevant.
+    lines = Path(config['env_file']).read_text().splitlines()
+    values = [line.split('=', 1)[1].strip().strip('\"\'')
+              for line in lines if line.startswith('BUTUYOKUOH_DB_PATH=')]
+    if values != [config['database']] or not Path(config['database']).is_absolute():
+        raise RuntimeError('shared DB configuration mismatch')
+
+
 def atomic_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     temporary = path.with_suffix('.tmp')
@@ -227,7 +244,7 @@ class LinuxHost:
         # Never mutate an active or previously built release. Incomplete builds remain
         # for inspection and a rerun uses a fresh staging directory.
         if release.exists():
-            if (release / 'RELEASE_SHA').read_text().strip() != sha: raise RuntimeError('invalid release')
+            validate_release(release, self.c, sha)
             return
         staging = Path(tempfile.mkdtemp(prefix=f'build-{sha[:8]}-', dir=self.releases))
         self.app(['git', 'clone', '--no-checkout', self.c['repository'], '.'], staging, timeout=300)
@@ -245,6 +262,7 @@ class LinuxHost:
         # data may have been created by build; production always uses absolute DB path.
         (staging / 'public' / 'uploads').symlink_to(self.c['uploads'])
         (staging / 'RELEASE_SHA').write_text(sha + '\n')
+        validate_release(staging, self.c, sha)
         os.rename(staging, release)
 
     def timers(self):
@@ -288,7 +306,7 @@ class LinuxHost:
 
     def switch(self, sha):
         target = self.releases / sha
-        if not (target / '.next' / 'BUILD_ID').is_file(): raise RuntimeError('release not built')
+        validate_release(target, self.c, sha)
         temporary = self.current.with_name('current.next')
         temporary.unlink(missing_ok=True)
         temporary.symlink_to(target)
