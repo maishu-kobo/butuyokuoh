@@ -8,6 +8,7 @@ on:
       - feature/photo-capture
       - feature/capture-existing-bugfixes
       - develop
+      - main
 
 permissions:
   contents: read

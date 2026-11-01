@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
+import { cleanedStoredItemUrlTaken, normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
 import { localCalendarDate } from '@/lib/local-date';
 
 async function handleGET(
@@ -45,8 +46,28 @@ async function handlePATCH(
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
 
-  if (typeof body.url === 'string' && body.url && !isStorableItemUrl(body.url)) {
-    return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
+  // 保存済み URL と同じなら更新対象にしない（整形で hb.afl / tag 等が消えて identity が飛ぶのを防ぐ）。
+  if (typeof body.url === 'string' && body.url) {
+    if (body.url === item.url) {
+      delete body.url;
+    } else {
+      const cleaned = sanitizeStoredItemUrl(body.url);
+      if (!cleaned || !isStorableItemUrl(cleaned)) {
+        return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
+      }
+      body.url = cleaned;
+    }
+  } else if (body.url !== undefined) {
+    // 空文字などは URL 更新として扱わない
+    delete body.url;
+  }
+
+  if (typeof body.name === 'string') {
+    const name = normalizeItemName(body.name);
+    if (!name) {
+      return NextResponse.json({ error: '商品名は必須です' }, { status: 400 });
+    }
+    body.name = name;
   }
 
   assertOwnedRelations(db, user.id, body);
@@ -80,6 +101,10 @@ async function handlePATCH(
 
   // 商品URLを変えたら、以前の検索APIの商品コードと取得時刻を引き継がない。
   if (body.url !== undefined && body.url !== item.url) {
+    const itemId = Number(id);
+    if (cleanedStoredItemUrlTaken(db, user.id, body.url, Number.isFinite(itemId) ? itemId : undefined)) {
+      return NextResponse.json({ error: 'この商品はすでに登録されています' }, { status: 409 });
+    }
     updates.push('source_item_code = NULL', 'price_fetched_at = NULL');
   }
 

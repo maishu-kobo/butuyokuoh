@@ -695,3 +695,41 @@ test('Rakuten credit is the developers attribution and the client does not read 
   assert.equal(/process\.env/.test(source), false);
   assert.equal(source.includes(SECRET), false);
 });
+
+
+test('a one-character token is joined so Rakuten does not reject Pixel 7', async () => {
+  const name = 'Google Pixel 7 Pro グレー スマートフォン';
+  const { search, calls } = harness();
+  const result = await search.search({ name, brand: 'Google', model: 'Pixel 7 Pro', jan: null });
+  assert.equal(result.ok, true);
+  assert.equal(calls.length, 1);
+  assert.equal(new URL(calls[0].url).searchParams.get('keyword'), 'Google Pixel7 Pro グレー スマートフォン');
+
+  const digit = harness();
+  const blocked = await digit.search.search({ name: '7', brand: null, model: null, jan: null });
+  assert.equal(blocked.ok, false);
+  assert.equal(digit.calls.length, 0);
+
+  const kanji = harness();
+  await kanji.search.search({ name: '本', brand: null, model: null, jan: null });
+  assert.equal(new URL(kanji.calls[0].url).searchParams.get('keyword'), '本');
+
+  const phone = harness();
+  await phone.search.search({ name: 'iPhone X', brand: null, model: null, jan: null });
+  assert.equal(new URL(phone.calls[0].url).searchParams.get('keyword'), 'iPhoneX');
+});
+
+test('photo keyword punctuation is removed without removing Japanese names or model identifiers (#251)', async () => {
+  for (const [name, expected] of [
+    ['Gucci - Gucci Sylvie Bag', 'Gucci Sylvie Bag'],
+    ['黒い ハンドバッグ', '黒い ハンドバッグ'],
+    ['ソニーのWH-1000XM5ヘッドホン', 'ソニーのWH-1000XM5ヘッドホン'],
+    ['G-SHOCK GW-M5610U', 'G-SHOCK GW-M5610U'],
+    ['7897722AA4V1000', '7897722AA4V1000'],
+  ]) {
+    const { search, calls } = harness();
+    const result = await search.search({ name, brand: null, model: null, jan: null });
+    assert.equal(result.ok, true);
+    assert.equal(new URL(calls[0].url).searchParams.get('keyword'), expected);
+  }
+});

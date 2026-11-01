@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { safeImgSrc } from '@/lib/capture/image-hosts';
 
 import { useAuth } from './AuthProvider';
 import { useCallback, useEffect, useState, useRef } from 'react';
@@ -10,6 +11,8 @@ import { showPhotoPicker } from '@/lib/capture/photo-pick';
 import { CapturePhotoControls, useCapturePhotoPick } from './CapturePhotoPicker';
 import type { RegisteredLocation } from '@/lib/capture/register';
 import { CaptureSearchPanel } from './CaptureSearchPanel';
+
+// 手動画像のプレビューはアップロード API の戻りだけを src にする（DOM 入力の XSS 経路を断つ）。
 
 interface AddItemFormProps {
   onAdd: () => void;
@@ -26,6 +29,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
   if (!captureOpen && captureEnabled) setCaptureEnabled(false);
   const [photoRevision, setPhotoRevision] = useState(0);
   const [pickedFile, setPickedFile] = useState<File | null>(null);
+  const [serverPreview, setServerPreview] = useState<string | null>(null);
   const [isPhotoMode, setIsPhotoMode] = useState(false);
   const [isManualMode, setIsManualMode] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -34,11 +38,13 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
   const [photoSuccess, setPhotoSuccess] = useState('');
   const [successNote, setSuccessNote] = useState(''); // 追加成功時の注意メッセージ
   const [uploading, setUploading] = useState(false);
+  const [uploadPreviewSrc, setUploadPreviewSrc] = useState<string | null>(null);
   const photoPick = useCapturePhotoPick(
     showPhotoPicker({ enabled: captureOpen && captureEnabled }, isGuest),
     (file) => {
       setPhotoRevision(value => value + 1);
       setPickedFile(file);
+      setServerPreview(null);
       setIsPhotoMode(true);
       setIsManualMode(false);
       setError('');
@@ -94,7 +100,9 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
     setError('');
     setCanAddManually(false);
     setPickedFile(null);
+    setServerPreview(null);
     setIsPhotoMode(false);
+    setUploadPreviewSrc(null);
   };
 
   const enterManual = (name: string) => {
@@ -129,6 +137,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
 
       const { url } = await res.json();
       setFormData({ ...formData, image_url: url });
+      setUploadPreviewSrc(safeImgSrc(typeof url === 'string' ? url : null));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'アップロードエラー');
     } finally {
@@ -243,11 +252,12 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
           <X size={20} />
         </button>
       </div>
-      <CapturePhotoControls pick={photoPick} file={pickedFile} />
+      <CapturePhotoControls pick={photoPick} file={pickedFile} previewSrc={serverPreview} />
       {photoPick.enabled && pickedFile && (
         <CaptureSearchPanel
           key={photoRevision}
           file={pickedFile}
+          onPreview={setServerPreview}
           onSearching={startPhotoSearch}
           onManual={enterManual}
           onRegistered={(summary) => { resetForm(); setIsOpen(false); setPhotoSuccess(summary); onAdd(); }}
@@ -259,7 +269,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
         <div className="flex justify-between gap-3 mt-4">
           <button
             type="button"
-            onClick={() => { photoPick.clear(); setPickedFile(null); setIsPhotoMode(false); setIsManualMode(false); setError(''); setCanAddManually(false); }}
+            onClick={() => { photoPick.clear(); setPickedFile(null); setServerPreview(null); setIsPhotoMode(false); setIsManualMode(false); setError(''); setCanAddManually(false); }}
             className="min-h-[24px] text-sm text-blue-600 dark:text-blue-300 underline"
           >URL・手入力に切り替える</button>
           <button
@@ -332,7 +342,10 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
                 <input
                   type="text"
                   value={formData.image_url}
-                  onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, image_url: e.target.value });
+                    setUploadPreviewSrc(null);
+                  }}
                   placeholder="画像URLを入力またはアップロード"
                   className="flex-1 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 />
@@ -353,9 +366,9 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
                   {uploading ? '...' : 'アップロード'}
                 </button>
               </div>
-              {formData.image_url && (
+              {uploadPreviewSrc && (
                 <div className="mt-2">
-                  <img src={formData.image_url} alt="プレビュー" className="h-16 w-16 object-cover rounded" />
+                  <img src={uploadPreviewSrc} alt="プレビュー" className="h-16 w-16 object-cover rounded" />
                 </div>
               )}
             </div>}

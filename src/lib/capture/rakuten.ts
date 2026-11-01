@@ -12,6 +12,7 @@ import {
 } from './contract';
 import { canonicalCandidateImageUrl } from './image-hosts';
 import { canonicalRakutenAffiliateUrl, canonicalRakutenProductUrl } from './rakuten-link';
+import { storeSearchKeyword } from './product-query';
 import { textQueryVariants } from './search-attempt';
 import { reportStoreAttempt, type StoreAttempt } from './search-log';
 
@@ -192,6 +193,7 @@ export function createRakutenSearch(options: {
       let chargedUser = false;
       let waitedMs = 0;
       const seen = new Set<string>();
+      const lookup = query.lookup === true;
 
       async function acquireRakutenSlot(later: boolean): Promise<{ ok: true } | { ok: false; result: CaptureResult<CaptureCandidate[]> }> {
         const slotWait = (at: number) => options.limiter.globalSlotWait?.(at) ?? 0;
@@ -220,8 +222,8 @@ export function createRakutenSearch(options: {
         }
         const slot = options.limiter.tryAcquire(userId, now().getTime(), false);
         if (slot.ok) return { ok: true };
-        if (slot.reason === RakutenMessages.globalRate) {
-          return { ok: false, result: lastEmpty ?? { ok: true, value: [] } };
+        if (slot.reason === RakutenMessages.globalRate && lastEmpty) {
+          return { ok: false, result: lastEmpty };
         }
         return {
           ok: false,
@@ -236,7 +238,7 @@ export function createRakutenSearch(options: {
         const keyword = rakutenKeyword(variant);
         if (!keyword || seen.has(keyword)) continue;
         seen.add(keyword);
-        const acquired = await acquireRakutenSlot(chargedUser);
+        const acquired = await acquireRakutenSlot(chargedUser || lookup);
         if (!acquired.ok) return acquired.result;
         chargedUser = true;
         const result = reportStoreAttempt('rakuten', await requestOnce(credentials, referer, variant));
@@ -295,22 +297,40 @@ function canonicalItemUrl(raw: string): string | null {
 
 function rakutenKeyword(query: SearchQuery): string {
   if (query.jan && isValidJan(query.jan)) return query.jan;
-  const parts = [query.name, query.brand ?? '', query.model ?? ''].map(part => part.trim()).filter(Boolean);
-  return truncateUtf8(parts.join(' '), KEYWORD_MAX_BYTES);
+  return joinShortRakutenTokens(storeSearchKeyword(query, { maxChars: KEYWORD_MAX_BYTES, maxBytes: KEYWORD_MAX_BYTES }));
 }
 
-function truncateUtf8(value: string, maxBytes: number): string {
-  const chars = Array.from(value);
-  const encoder = new TextEncoder();
-  let bytes = 0;
-  let count = 0;
-  for (const char of chars) {
-    const size = encoder.encode(char).byteLength;
-    if (bytes + size > maxBytes) break;
-    bytes += size;
-    count += 1;
+// 楽天は空白区切りの語が半角1文字だと keyword が不正で HTTP 400 になる。
+// 例: 「Pixel 7 Pro」の「7」。短い語は隣にくっつけ、Yahoo! の検索語は変えない。
+export function joinShortRakutenTokens(keyword: string): string {
+  const tokens = keyword.split(/ +/).filter(Boolean);
+  const out: string[] = [];
+  let pending = '';
+  const push = (token: string) => {
+    if (rakutenTokenAllowed(token)) {
+      out.push(token);
+      return;
+    }
+    if (out.length > 0 && rakutenTokenAllowed(out[out.length - 1] + token)) {
+      out[out.length - 1] += token;
+      return;
+    }
+    pending = token;
+  };
+  for (const token of tokens) {
+    const chunk = pending + token;
+    pending = '';
+    push(chunk);
   }
-  return chars.slice(0, count).join('');
+  if (pending) push(pending);
+  return out.join(' ');
+}
+
+function rakutenTokenAllowed(token: string): boolean {
+  const chars = [...token];
+  if (chars.length >= 2) return true;
+  if (chars.length !== 1) return false;
+  return /^\p{Script=Han}$/u.test(chars[0]);
 }
 
 function aborted(signal: AbortSignal): Promise<never> {

@@ -5,18 +5,31 @@ import { apiFetch } from '@/lib/api-fetch';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
-import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2, Download, Tag, Layers, Plus, Pencil, X, ChevronDown, ChevronUp, Sun, Moon, Monitor, Palette } from 'lucide-react';
+import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2, Download, Tag, Layers, Plus, Pencil, X, ChevronDown, ChevronUp, Sun, Moon, Monitor, Palette, Bot, Lock } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import Link from 'next/link';
 import LegalLinks from '@/components/LegalLinks';
 import { Category, ComparisonGroup } from '@/types';
 
+type AgentScope = 'read' | 'write' | 'extension';
+
+type AgentTokenRecord = {
+  id: number;
+  name: string;
+  token_prefix: string;
+  scopes: AgentScope[];
+  expires_at: string;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+  active: boolean;
+  undoable_count?: number;
+};
+
 export default function SettingsPage() {
-  const { user, isGuest, token, loading, logout } = useAuth();
+  const { user, isGuest, loading, logout } = useAuth();
   const { theme, setTheme, colorScheme, setColorScheme } = useTheme();
   const router = useRouter();
-  const [copied, setCopied] = useState(false);
-  const [displayToken, setDisplayToken] = useState<string | null>(null);
   const [notifySettings, setNotifySettings] = useState({
     slack_webhook: '',
     discord_webhook: '',
@@ -27,6 +40,36 @@ export default function SettingsPage() {
   const [notifySaved, setNotifySaved] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [accountError, setAccountError] = useState('');
+
+  // エージェント用トークン
+  const [agentTokens, setAgentTokens] = useState<AgentTokenRecord[]>([]);
+  const [agentName, setAgentName] = useState('');
+  const [agentScopeRead, setAgentScopeRead] = useState(true);
+  const [agentScopeWrite, setAgentScopeWrite] = useState(true);
+  const [agentDays, setAgentDays] = useState<number | ''>(90);
+  const [creatingAgentToken, setCreatingAgentToken] = useState(false);
+  const [createdAgentPlaintext, setCreatedAgentPlaintext] = useState<string | null>(null);
+  const [copiedAgent, setCopiedAgent] = useState(false);
+  const [agentError, setAgentError] = useState('');
+  const [agentBusyId, setAgentBusyId] = useState<number | null>(null);
+  const [agentAuditId, setAgentAuditId] = useState<number | null>(null);
+  const [agentAuditEntries, setAgentAuditEntries] = useState<{ id: number; action: string; meta: string | null; created_at: string }[]>([]);
+
+  // Chrome 拡張用トークン（scope: extension）
+  const [extensionTokenName, setExtensionTokenName] = useState('Chrome拡張');
+  const [extensionDays, setExtensionDays] = useState<number | ''>(90);
+  const [creatingExtensionToken, setCreatingExtensionToken] = useState(false);
+  const [createdExtensionPlaintext, setCreatedExtensionPlaintext] = useState<string | null>(null);
+  const [copiedExtension, setCopiedExtension] = useState(false);
+  const [extensionError, setExtensionError] = useState('');
+
+  // パスワード変更（Google のみの会員は欄を出さない）
+  const [hasPassword, setHasPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
   
   // カテゴリ管理
   const [categories, setCategories] = useState<Category[]>([]);
@@ -49,6 +92,8 @@ export default function SettingsPage() {
     theme: false,
     notify: false,
     token: false,
+    agentTokens: false,
+    password: false,
     export: false,
   });
   const toggleSection = (key: string) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
@@ -69,20 +114,33 @@ export default function SettingsPage() {
     if (res.ok) setGroups(await res.json());
   };
 
+  const fetchAgentTokens = async () => {
+    const res = await apiFetch('/api/agent-tokens');
+    if (!res.ok) return;
+    const data = await res.json() as { tokens: AgentTokenRecord[] };
+    setAgentTokens(data.tokens || []);
+  };
+
+  // パスワード変更後などに拡張用トークン一覧を取り直す（#274 Bugbot。JWT は出さない）。
+  // setState だけ閉じる形にして、useEffect の lint が増えないようにする。
+  const fetchExtensionToken = async () => {
+    const res = await apiFetch('/api/agent-tokens');
+    if (!res.ok) return;
+    const data = await res.json() as { tokens: AgentTokenRecord[] };
+    setAgentTokens(data.tokens || []);
+  };
+
+  const fetchHasPassword = async () => {
+    const res = await apiFetch('/api/auth/me');
+    if (!res.ok) {
+      setHasPassword(false);
+      return;
+    }
+    const data = await res.json() as { has_password?: boolean };
+    setHasPassword(!!data.has_password);
+  };
+
   useEffect(() => {
-    // トークンを取得
-    const fetchToken = async () => {
-      try {
-        const res = await apiFetch('/api/auth/token');
-        if (res.ok) {
-          const data = await res.json();
-          setDisplayToken(data.token);
-        }
-      } catch (e) {
-        console.error('Failed to fetch token');
-      }
-    };
-    
     // 通知設定を取得
     const fetchNotifySettings = async () => {
       try {
@@ -104,8 +162,9 @@ export default function SettingsPage() {
     if (user) {
       // 取得は今までどおり同時に始める。await で包むと、新しい react-hooks が中の setState を同期呼び出しと誤認しない。
       if (!isGuest) {
-        void (async () => { await fetchToken(); })();
+        void (async () => { await fetchExtensionToken(); })();
         void (async () => { await fetchNotifySettings(); })();
+        void (async () => { await fetchHasPassword(); })();
       }
       void (async () => { await fetchCategories(); })();
       void (async () => { await fetchGroups(); })();
@@ -209,11 +268,187 @@ export default function SettingsPage() {
     }
   };
 
-  const copyToken = async () => {
-    if (displayToken) {
-      await navigator.clipboard.writeText(displayToken);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const createAgentAccessToken = async () => {
+    if (creatingAgentToken) return;
+    setAgentError('');
+    setCreatedAgentPlaintext(null);
+    const scopes: AgentScope[] = [];
+    if (agentScopeRead) scopes.push('read');
+    if (agentScopeWrite) scopes.push('write');
+    if (!scopes.length) {
+      setAgentError('権限を1つ以上選んでください');
+      return;
+    }
+    const days = agentDays === '' ? 90 : agentDays;
+    if (!Number.isSafeInteger(days) || days < 1 || days > 365) {
+      setAgentError('有効期限は1〜365日です');
+      return;
+    }
+    setCreatingAgentToken(true);
+    try {
+      const res = await apiFetch('/api/agent-tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: agentName, scopes, expiresInDays: days }),
+      });
+      const data = await res.json().catch(() => ({})) as { token?: string; error?: string };
+      if (!res.ok || !data.token) {
+        setAgentError(data.error || 'トークンを作成できませんでした');
+        return;
+      }
+      setCreatedAgentPlaintext(data.token);
+      setAgentName('');
+      await fetchAgentTokens();
+    } catch {
+      setAgentError('通信に失敗しました');
+    } finally {
+      setCreatingAgentToken(false);
+    }
+  };
+
+  const copyCreatedAgentToken = async () => {
+    if (!createdAgentPlaintext) return;
+    await navigator.clipboard.writeText(createdAgentPlaintext);
+    setCopiedAgent(true);
+    setTimeout(() => setCopiedAgent(false), 2000);
+  };
+
+  const createExtensionAccessToken = async () => {
+    if (creatingExtensionToken) return;
+    setExtensionError('');
+    setCreatedExtensionPlaintext(null);
+    const days = extensionDays === '' ? 90 : extensionDays;
+    if (!Number.isSafeInteger(days) || days < 1 || days > 365) {
+      setExtensionError('有効期限は1〜365日です');
+      return;
+    }
+    const name = extensionTokenName.trim() || 'Chrome拡張';
+    setCreatingExtensionToken(true);
+    try {
+      const res = await apiFetch('/api/agent-tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, scopes: ['extension'], expiresInDays: days }),
+      });
+      const data = await res.json().catch(() => ({})) as { token?: string; error?: string };
+      if (!res.ok || !data.token) {
+        setExtensionError(data.error || 'トークンを作成できませんでした');
+        return;
+      }
+      setCreatedExtensionPlaintext(data.token);
+      setExtensionTokenName('Chrome拡張');
+      await fetchAgentTokens();
+    } catch {
+      setExtensionError('通信に失敗しました');
+    } finally {
+      setCreatingExtensionToken(false);
+    }
+  };
+
+  const copyCreatedExtensionToken = async () => {
+    if (!createdExtensionPlaintext) return;
+    await navigator.clipboard.writeText(createdExtensionPlaintext);
+    setCopiedExtension(true);
+    setTimeout(() => setCopiedExtension(false), 2000);
+  };
+
+  const extensionTokens = agentTokens.filter((t) => t.scopes.includes('extension'));
+
+  const revokeAgentAccessToken = async (id: number) => {
+    if (!confirm('このエージェント用トークンを失効しますか？')) return;
+    setAgentBusyId(id);
+    setAgentError('');
+    try {
+      const res = await apiFetch(`/api/agent-tokens/${id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      if (!res.ok) {
+        setAgentError(data.error || '失効できませんでした');
+        return;
+      }
+      await fetchAgentTokens();
+    } catch {
+      setAgentError('通信に失敗しました');
+    } finally {
+      setAgentBusyId(null);
+    }
+  };
+
+  const undoAgentAdditions = async (id: number) => {
+    const count = agentTokens.find((token) => token.id === id)?.undoable_count ?? 0;
+    if (!confirm(`このトークンが追加した未購入の品目 ${count} 件をゴミ箱へ移しますか？（購入済みは対象外です）`)) return;
+    setAgentBusyId(id);
+    setAgentError('');
+    try {
+      const res = await apiFetch(`/api/agent-tokens/${id}/undo`, { method: 'POST' });
+      const data = await res.json().catch(() => ({})) as { moved?: number; error?: string };
+      if (!res.ok) {
+        setAgentError(data.error || '取り消しに失敗しました');
+        return;
+      }
+      alert(`${data.moved ?? 0} 件をゴミ箱へ移しました`);
+      await fetchAgentTokens();
+    } catch {
+      setAgentError('通信に失敗しました');
+    } finally {
+      setAgentBusyId(null);
+    }
+  };
+
+  const loadAgentAudit = async (id: number) => {
+    if (agentAuditId === id) {
+      setAgentAuditId(null);
+      setAgentAuditEntries([]);
+      return;
+    }
+    setAgentBusyId(id);
+    setAgentError('');
+    try {
+      const res = await apiFetch(`/api/agent-tokens/${id}/audit`);
+      const data = await res.json().catch(() => ({})) as { entries?: typeof agentAuditEntries; error?: string };
+      if (!res.ok) {
+        setAgentError(data.error || '操作ログを取得できませんでした');
+        return;
+      }
+      setAgentAuditId(id);
+      setAgentAuditEntries(data.entries || []);
+    } catch {
+      setAgentError('通信に失敗しました');
+    } finally {
+      setAgentBusyId(null);
+    }
+  };
+
+  const changePassword = async () => {
+    if (savingPassword) return;
+    setPasswordError('');
+    setPasswordMessage('');
+    setSavingPassword(true);
+    try {
+      // 入力ミスの 400 をフォーム内に出す。notifyError を切ってバナーと二重にしない。
+      const res = await apiFetch('/api/auth/password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      }, { notifyError: false });
+      const data = await res.json().catch(() => ({})) as { error?: string; code?: string };
+      if (!res.ok) {
+        if (data.code === 'WRONG_CURRENT_PASSWORD') {
+          setPasswordError('現在のパスワードが違います');
+        } else {
+          setPasswordError(data.error || 'パスワードを変更できませんでした');
+        }
+        return;
+      }
+      setCurrentPassword('');
+      setNewPassword('');
+      setPasswordMessage('パスワードを変更し、エージェント用トークンをすべて失効しました');
+      await fetchAgentTokens();
+      // session_generation が進むので、拡張用 JWT も新しいものを読み直す。
+      await fetchExtensionToken();
+    } catch {
+      setPasswordError('通信に失敗しました');
+    } finally {
+      setSavingPassword(false);
     }
   };
 
@@ -267,8 +502,7 @@ export default function SettingsPage() {
           </div>
 
           <div className="bg-[var(--color-card)] rounded-lg shadow p-6">
-            <h3 className="font-semibold text-[var(--color-text)] mb-2">方針（下書き）</h3>
-            <p className="text-sm text-[var(--color-muted)] mb-3">Sota の確認待ちです。確定した文面ではありません。</p>
+            <h3 className="font-semibold text-[var(--color-text)] mb-2">プライバシーと利用規約</h3>
             <LegalLinks />
           </div>
 
@@ -480,27 +714,299 @@ export default function SettingsPage() {
             )}
           </div>
 
-          {/* Chrome拡張機能用トークン */}
+          {/* エージェント用トークン */}
+          <div className="bg-[var(--color-card)] rounded-lg shadow">
+            <button onClick={() => toggleSection('agentTokens')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
+              <div className="flex items-center gap-2">
+                <Bot size={20} className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">エージェント用トークン</h3>
+                <span className="text-sm text-[var(--color-muted)]">({agentTokens.filter((t) => t.active && t.scopes.some((s) => s === 'read' || s === 'write')).length})</span>
+              </div>
+              {openSections.agentTokens ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+            {openSections.agentTokens && (
+              <div className="px-4 pb-4 border-t pt-4 space-y-4">
+                <p className="text-sm text-[var(--color-muted)]">
+                  AI エージェントからリストを読む・品目を追加するためのトークンです。平文は作成時に一度だけ表示します。パスワードを変更するとすべて失効します（ログアウトでは失効しません）。
+                </p>
+                <div className="space-y-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-md">
+                  <input
+                    type="text"
+                    value={agentName}
+                    onChange={(e) => setAgentName(e.target.value)}
+                    placeholder="名前（例: Cursor）"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+                    maxLength={100}
+                  />
+                  <div className="flex flex-wrap gap-4 text-sm text-[var(--color-text)]">
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={agentScopeRead} onChange={(e) => setAgentScopeRead(e.target.checked)} />
+                      読み取り (read)
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={agentScopeWrite} onChange={(e) => setAgentScopeWrite(e.target.checked)} />
+                      書き込み (write)
+                    </label>
+                  </div>
+                  <label className="block text-sm text-[var(--color-text)]">
+                    有効期限（日）
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={agentDays}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') {
+                          setAgentDays('');
+                          return;
+                        }
+                        const next = Number(raw);
+                        setAgentDays(Number.isFinite(next) ? next : '');
+                      }}
+                      className="mt-1 w-28 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+                    />
+                    <span className="ml-2 text-[var(--color-muted)]">空欄なら 90 / 最長 365</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={createAgentAccessToken}
+                    disabled={creatingAgentToken || !agentName.trim()}
+                    className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-hover)] disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {creatingAgentToken ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                    トークンを作成
+                  </button>
+                </div>
+                {createdAgentPlaintext && (
+                  <div className="p-3 border border-amber-300 bg-amber-50 dark:bg-amber-950/40 rounded-md space-y-2">
+                    <p className="text-sm text-amber-900 dark:text-amber-100 font-medium">このトークンは今だけ表示されます。コピーして安全な場所に保存してください。</p>
+                    <div className="flex gap-2">
+                      <input type="text" value={createdAgentPlaintext} readOnly className="flex-1 px-3 py-2 border rounded-md bg-white dark:bg-slate-800 text-sm font-mono" />
+                      <button type="button" onClick={copyCreatedAgentToken} className="px-3 py-2 bg-blue-500 text-white rounded-md flex items-center gap-1">
+                        {copiedAgent ? <Check size={16} /> : <Copy size={16} />}
+                        {copiedAgent ? 'コピーした' : 'コピー'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {agentError && <p className="text-sm text-red-600">{agentError}</p>}
+                {agentTokens.filter((t) => t.scopes.some((s) => s === 'read' || s === 'write')).length === 0 ? (
+                  <p className="text-sm text-[var(--color-muted)]">まだトークンがありません</p>
+                ) : (
+                  <div className="space-y-3">
+                    {agentTokens.filter((t) => t.scopes.some((s) => s === 'read' || s === 'write')).map((t) => (
+                      <div key={t.id} className="p-3 border border-[var(--color-border)] rounded-md space-y-2">
+                        <div className="flex flex-wrap items-center gap-2 justify-between">
+                          <div>
+                            <div className="font-medium text-[var(--color-text)]">{t.name}</div>
+                            <div className="text-xs font-mono text-[var(--color-muted)]">{t.token_prefix}…</div>
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded ${t.active ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'}`}>
+                            {t.active ? '有効' : '失効または期限切れ'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-[var(--color-muted)] space-y-0.5">
+                          <div>権限: {t.scopes.join(', ')}</div>
+                          <div>期限: {t.expires_at}</div>
+                          {t.revoked_at && <div>失効: {t.revoked_at}</div>}
+                          {t.last_used_at && <div>最終利用: {t.last_used_at}</div>}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {t.active && (
+                            <button
+                              type="button"
+                              disabled={agentBusyId === t.id}
+                              onClick={() => revokeAgentAccessToken(t.id)}
+                              className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md disabled:opacity-50"
+                            >
+                              失効
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={agentBusyId === t.id}
+                            onClick={() => undoAgentAdditions(t.id)}
+                            className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded-md disabled:opacity-50"
+                          >
+                            追加分をゴミ箱へ
+                          </button>
+                          <button
+                            type="button"
+                            disabled={agentBusyId === t.id}
+                            onClick={() => loadAgentAudit(t.id)}
+                            className="px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-600 rounded-md disabled:opacity-50"
+                          >
+                            {agentAuditId === t.id ? 'ログを閉じる' : '操作ログ'}
+                          </button>
+                        </div>
+                        {agentAuditId === t.id && (
+                          <div className="text-xs bg-gray-50 dark:bg-slate-800 rounded p-2 max-h-48 overflow-auto space-y-1">
+                            {agentAuditEntries.length === 0 ? (
+                              <p className="text-[var(--color-muted)]">ログはありません（90日保持）</p>
+                            ) : agentAuditEntries.map((entry) => (
+                              <div key={entry.id} className="font-mono">
+                                <span className="text-[var(--color-muted)]">{entry.created_at}</span>{' '}
+                                {entry.action}
+                                {entry.meta ? ` ${entry.meta}` : ''}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* パスワード変更（Google のみの会員は出さない） */}
+          {hasPassword && (
+          <div className="bg-[var(--color-card)] rounded-lg shadow">
+            <button onClick={() => toggleSection('password')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
+              <div className="flex items-center gap-2">
+                <Lock size={20} className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">パスワード変更</h3>
+              </div>
+              {openSections.password ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+            {openSections.password && (
+              <div className="px-4 pb-4 border-t pt-4 space-y-3">
+                <p className="text-sm text-[var(--color-muted)]">変更するとエージェント用・拡張用トークンはすべて失効します。ログアウトでは失効しません。</p>
+                <p className="text-sm text-[var(--color-muted)]">他の端末からログアウトされます。Chrome 拡張は新しい拡張用トークンを作り直してください。</p>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="現在のパスワード"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+                  autoComplete="current-password"
+                />
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="新しいパスワード（6文字以上）"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+                  autoComplete="new-password"
+                />
+                {passwordError && <p className="text-sm text-red-600">{passwordError}</p>}
+                {passwordMessage && <p className="text-sm text-green-700">{passwordMessage}</p>}
+                <button
+                  type="button"
+                  onClick={changePassword}
+                  disabled={savingPassword || !currentPassword || newPassword.length < 6}
+                  className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-md disabled:opacity-50 flex items-center gap-2"
+                >
+                  {savingPassword ? <Loader2 size={18} className="animate-spin" /> : null}
+                  変更する
+                </button>
+              </div>
+            )}
+          </div>
+          )}
+
+          {/* Chrome拡張機能用トークン（extension スコープ。ログイン用 JWT は出さない） */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
             <button onClick={() => toggleSection('token')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Key size={20} className="text-[var(--color-primary)]" />
                 <h3 className="font-semibold text-[var(--color-text)]">Chrome拡張機能用トークン</h3>
+                <span className="text-sm text-[var(--color-muted)]">({extensionTokens.filter((t) => t.active).length})</span>
               </div>
               {openSections.token ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </button>
             {openSections.token && (
-              <div className="px-4 pb-4 border-t pt-4">
-                <p className="text-sm text-[var(--color-muted)] mb-4">Chrome拡張機能でほしいものリストをインポートする際に必要です。</p>
-                {displayToken ? (
-                  <div className="flex gap-2">
-                    <input type="text" value={displayToken} readOnly className="flex-1 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-gray-50 dark:bg-slate-700 text-sm font-mono" />
-                    <button onClick={copyToken} className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center gap-2">
-                      {copied ? <Check size={18} /> : <Copy size={18} />}{copied ? 'コピーした' : 'コピー'}
-                    </button>
+              <div className="px-4 pb-4 border-t pt-4 space-y-4">
+                <p className="text-sm text-[var(--color-muted)]">
+                  拡張機能専用の最小権限トークンです（byoagt_… / 権限 extension）。ログイン用の JWT は表示しません。平文は作成時に一度だけ表示します。
+                </p>
+                <div className="space-y-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-md">
+                  <input
+                    type="text"
+                    value={extensionTokenName}
+                    onChange={(e) => setExtensionTokenName(e.target.value)}
+                    placeholder="名前（例: Chrome拡張）"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+                    maxLength={100}
+                  />
+                  <label className="block text-sm text-[var(--color-text)]">
+                    有効期限（日）
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={extensionDays}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') {
+                          setExtensionDays('');
+                          return;
+                        }
+                        const next = Number(raw);
+                        setExtensionDays(Number.isFinite(next) ? next : '');
+                      }}
+                      className="mt-1 w-28 px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+                    />
+                    <span className="ml-2 text-[var(--color-muted)]">空欄なら 90 / 最長 365</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={createExtensionAccessToken}
+                    disabled={creatingExtensionToken}
+                    className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:bg-[var(--color-primary-hover)] disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {creatingExtensionToken ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                    拡張用トークンを作成
+                  </button>
+                </div>
+                {createdExtensionPlaintext && (
+                  <div className="p-3 border border-amber-300 bg-amber-50 dark:bg-amber-950/40 rounded-md space-y-2">
+                    <p className="text-sm text-amber-900 dark:text-amber-100 font-medium">このトークンは今だけ表示されます。拡張機能の設定に貼り付けてください。</p>
+                    <div className="flex gap-2">
+                      <input type="text" value={createdExtensionPlaintext} readOnly className="flex-1 px-3 py-2 border rounded-md bg-white dark:bg-slate-800 text-sm font-mono" />
+                      <button type="button" onClick={copyCreatedExtensionToken} className="px-3 py-2 bg-blue-500 text-white rounded-md flex items-center gap-1">
+                        {copiedExtension ? <Check size={16} /> : <Copy size={16} />}
+                        {copiedExtension ? 'コピーした' : 'コピー'}
+                      </button>
+                    </div>
                   </div>
-                ) : <div className="text-[var(--color-muted)]">トークンを取得中...</div>}
-                <p className="text-xs text-[var(--color-muted)] mt-2">※ このトークンは他人に共有しないでください</p>
+                )}
+                {extensionError && <p className="text-sm text-red-600">{extensionError}</p>}
+                {extensionTokens.length === 0 ? (
+                  <p className="text-sm text-[var(--color-muted)]">まだ拡張用トークンがありません</p>
+                ) : (
+                  <div className="space-y-3">
+                    {extensionTokens.map((t) => (
+                      <div key={t.id} className="p-3 border border-[var(--color-border)] rounded-md space-y-2">
+                        <div className="flex flex-wrap items-center gap-2 justify-between">
+                          <div>
+                            <div className="font-medium text-[var(--color-text)]">{t.name}</div>
+                            <div className="text-xs font-mono text-[var(--color-muted)]">{t.token_prefix}…</div>
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded ${t.active ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'}`}>
+                            {t.active ? '有効' : '失効または期限切れ'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-[var(--color-muted)] space-y-0.5">
+                          <div>権限: {t.scopes.join(', ')}</div>
+                          <div>期限: {t.expires_at}</div>
+                        </div>
+                        {t.active && (
+                          <button
+                            type="button"
+                            disabled={agentBusyId === t.id}
+                            onClick={() => revokeAgentAccessToken(t.id)}
+                            className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md disabled:opacity-50"
+                          >
+                            失効
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

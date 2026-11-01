@@ -32,9 +32,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   let selectedPriority = 3;
 
   // 設定を読み込み
+  const migrationBanner = document.getElementById('migrationBanner');
+
   const settings = await chrome.storage.sync.get(['serverUrl', 'authToken']);
   serverUrlInput.value = settings.serverUrl || 'https://butsuyokuoh.exe.xyz:8000';
   authTokenInput.value = settings.authToken || '';
+
+  function isExtensionAccessToken(value) {
+    return typeof value === 'string' && value.startsWith('byoagt_') && value.length > 16;
+  }
+
+  function updateMigrationBanner() {
+    if (!migrationBanner) return;
+    const token = (authTokenInput.value || '').trim();
+    const showLegacy = token.length > 0 && !isExtensionAccessToken(token);
+    migrationBanner.classList.toggle('show', showLegacy);
+  }
+
+  updateMigrationBanner();
+  authTokenInput.addEventListener('input', updateMigrationBanner);
 
   // 設定パネルのトグル
   settingsToggle.addEventListener('click', () => {
@@ -47,6 +63,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       serverUrl: serverUrlInput.value,
       authToken: authTokenInput.value
     });
+    updateMigrationBanner();
     showStatus(addStatus, '保存しました', 'success');
   });
 
@@ -157,11 +174,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     addBtn.disabled = true;
     addBtnText.innerHTML = '<span class="spinner"></span> 追加中...';
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
     try {
       const response = await fetch(`${serverUrl}/api/extension-add`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        signal: controller.signal,
         body: JSON.stringify({
+          // 移行期間中の古い拡張向けに body.token も残す
           token: authToken,
           item: {
             name: currentProduct.name,
@@ -177,6 +201,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const result = await response.json();
 
       if (response.ok) {
+        if (result.auth_warning === 'legacy_jwt_deprecated') {
+          updateMigrationBanner();
+        }
         showStatus(addStatus, '✅ 追加しました！', 'success');
         addBtnText.textContent = '✅ 追加済み';
       } else {
@@ -186,9 +213,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     } catch (error) {
       console.error('Add error:', error);
-      showStatus(addStatus, 'エラー: ' + error.message, 'error');
+      const timedOut = error && (error.name === 'AbortError' || /aborted/i.test(String(error.message || '')));
+      showStatus(
+        addStatus,
+        timedOut
+          ? 'タイムアウトしました。一覧に追加済みか確認してください'
+          : 'エラー: ' + error.message,
+        'error',
+      );
       addBtn.disabled = false;
       addBtnText.textContent = '👑 物欲王に追加';
+    } finally {
+      clearTimeout(timeoutId);
     }
   });
 
@@ -255,10 +291,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const importResponse = await fetch(`${serverUrl}/api/extension-import`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`,
+          },
           body: JSON.stringify({
             source: pageType.replace('-wishlist', ''),
             items: response.items,
+            // 移行期間中の古い拡張向けに body.token も残す
             token: authToken,
           }),
         });
@@ -266,6 +306,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const result = await importResponse.json();
 
         if (importResponse.ok) {
+          if (result.auth_warning === 'legacy_jwt_deprecated') {
+            updateMigrationBanner();
+          }
           showStatus(importStatus,
             `インポート完了！ ${result.imported}件追加、${result.skipped}件スキップ`,
             'success'

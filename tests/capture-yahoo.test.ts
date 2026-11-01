@@ -486,3 +486,9 @@ test('yahoo stops even when fetch ignores the abort signal', async () => {
     assert.equal(result.error.error, TIMEOUT);
   }
 });
+
+test('Yahoo keeps the single-digit token that Rakuten joins to the previous word', async () => {
+  const { calls, search } = harness();
+  await search.search({ name: 'Google Pixel 7 Pro グレー スマートフォン', brand: null, model: null, jan: null });
+  assert.equal(new URL(calls[0].url).searchParams.get('query'), 'Google Pixel 7 Pro グレー スマートフォン');
+});

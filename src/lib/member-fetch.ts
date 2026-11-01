@@ -65,16 +65,26 @@ export function requestPinned(
   signal: AbortSignal,
 ): Promise<PinnedResponse> {
   return new Promise((resolve, reject) => {
-    const options: RequestOptions = {
+    // URL オブジェクトを http.request の第1引数に渡さない。
+    // 接続先は解決済みの公開アドレスのみ（SSRF）。Host/SNI に元ホストを残す。
+    const requestHeaders: Record<string, string> = { ...headers };
+    if (!Object.keys(requestHeaders).some((key) => key.toLowerCase() === 'host')) {
+      requestHeaders.Host = url.host;
+    }
+    const options: RequestOptions & { servername?: string } = {
       agent: false,
+      protocol: url.protocol,
+      host: address.address,
       family: address.family,
+      servername: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: `${url.pathname}${url.search}`,
+      method: 'GET',
       signal,
-      headers,
-      lookup: (_host, _options, callback) => {
-        callback(null, address.address, address.family);
-      },
+      headers: requestHeaders,
     };
-    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, options, (response) => {
+    // codeql[js/request-forgery] — 接続先は resolvedPublicAddress 済みの公開 IP のみ。Host/SNI に元ホストを使う。
+    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(options, (response) => {
       const status = response.statusCode || 502;
       response.on('error', reject);
       if (status >= 300 && status < 400) {
