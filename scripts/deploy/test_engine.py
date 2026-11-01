@@ -114,9 +114,22 @@ class DeployTests(unittest.TestCase):
                 self.assertEqual(host.events.count('restore_db'), 1)
                 self.assertEqual(host.rows.count('write accepted by recovered app'), 2)
 
+    def test_failed_recovery_checkpoint_does_not_restart_writers(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as folder:
+            host = Host()
+            runner = engine.Deployer(Path(folder), host)
+            runner.save({'sha': SHA, 'old': OLD, 'phase': 'migrating', 'timers': []})
+            with patch.object(runner, 'save', side_effect=OSError('disk unavailable')):
+                with self.assertRaises(OSError): runner.recover()
+            self.assertIn('restore_db', host.events)
+            self.assertNotIn('start', host.events)
+            self.assertNotIn('resume', host.events)
+
 class SqliteTests(unittest.TestCase):
     def test_recovery_retry_keeps_c_and_next_deployment_backs_it_up(self):
         import sqlite3
+        from contextlib import closing
         for failure in ('health', 'resume'):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as folder:
                 root = Path(folder)
@@ -134,7 +147,7 @@ class SqliteTests(unittest.TestCase):
                     def start(self):
                         # A real write accepted after the old app is restarted.
                         if not self.accepted_c:
-                            with sqlite3.connect(self.db) as db:
+                            with closing(sqlite3.connect(self.db)) as db, db:
                                 db.execute("INSERT INTO items VALUES ('C')")
                             self.accepted_c = True
                     def health(self, sha):
@@ -145,11 +158,11 @@ class SqliteTests(unittest.TestCase):
                         super().backup(tx)
                         self.backups.append(self.backup_path(tx))
                     def migrate(self, sha):
-                        with sqlite3.connect(self.db) as db:
+                        with closing(sqlite3.connect(self.db)) as db, db:
                             db.execute('CREATE TABLE IF NOT EXISTS new_table(value TEXT)')
                 host = HostWithSqlite({'state': str(root), 'releases': str(root),
                     'current': str(root/'current'), 'node': '/unused', 'database': str(root/'app.db')})
-                with sqlite3.connect(host.db) as db:
+                with closing(sqlite3.connect(host.db)) as db, db:
                     db.execute('PRAGMA journal_mode=WAL')
                     db.execute('CREATE TABLE items(name TEXT PRIMARY KEY)')
                     db.executemany('INSERT INTO items VALUES (?)', [('A',), ('B',)])
@@ -160,7 +173,7 @@ class SqliteTests(unittest.TestCase):
                 host.failing = False
                 runner.recover()
                 def contents(path):
-                    with sqlite3.connect(path) as db:
+                    with closing(sqlite3.connect(path)) as db:
                         self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
                         return db.execute('SELECT name FROM items ORDER BY name').fetchall()
                 self.assertEqual(contents(host.db), [('A',), ('B',), ('C',)])

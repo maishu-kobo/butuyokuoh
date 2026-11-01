@@ -48,6 +48,11 @@ class Deployer:
         # No candidate process has served traffic in these phases.
         if tx['phase'] in ('backed-up', 'migrating'):
             self.host.restore_db(tx)
+        # Persist the no-more-DB-restore boundary before any writer can restart.
+        # A failed health/timer check or process restart may retry recovery after
+        # the old app has accepted new writes; those writes must survive.
+        tx['phase'] = 'recovering'
+        self.save(tx)
         self.host.switch(tx['old'])
         if not offline:
             self.host.start()
