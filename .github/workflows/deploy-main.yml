@@ -16,7 +16,12 @@ concurrency:
 
 jobs:
   ci:
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/ci.yml
+    with:
+      github_hosted_only: true
   browser:
     uses: ./.github/workflows/playwright.yml
   secrets-scan:
