@@ -1,0 +1,23 @@
+{
+  "repository": "https://github.com/maishu-kobo/butuyokuoh.git",
+  "ref": "refs/heads/main",
+  "user": "exedev",
+  "home": "/home/exedev",
+  "node": "/home/exedev/.local/opt/node-v22.23.4-linux-x64/bin/node",
+  "state": "/var/lib/butuyokuoh-deploy",
+  "releases": "/home/exedev/releases/butuyokuoh",
+  "current": "/home/exedev/releases/butuyokuoh/current",
+  "initial_release": "/home/exedev/releases/butuyokuoh/REPLACE_WITH_CURRENT_FULL_SHA",
+  "database": "/home/exedev/butuyokuoh/data/butuyokuoh.db",
+  "uploads": "/home/exedev/butuyokuoh/public/uploads",
+  "env_file": "/home/exedev/.config/butuyokuoh/app.env",
+  "service": "butuyokuoh",
+  "port": 8000,
+  "health_url": "http://127.0.0.1:8000/api/health",
+  "legacy_health_sha": "REPLACE_WITH_CURRENT_FULL_SHA",
+  "legacy_health_url": "http://127.0.0.1:8000/",
+  "minimum_free_bytes": 2147483648,
+  "timers": ["butuyokuoh-price-check.timer", "butuyokuoh-guest-cleanup.timer", "butuyokuoh-stock-watch.timer"],
+  "writers": ["butuyokuoh-price-check", "butuyokuoh-guest-cleanup", "butuyokuoh-stock-watch"],
+  "writer_scripts": {"butuyokuoh-price-check": "check-prices.ts", "butuyokuoh-guest-cleanup": "cleanup-guests.ts", "butuyokuoh-stock-watch": "check-prices.ts --mode=stock-watch"}
+}

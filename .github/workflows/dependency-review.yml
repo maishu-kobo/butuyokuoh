@@ -6,6 +6,7 @@ on:
     branches:
       - feature/photo-capture
       - feature/capture-existing-bugfixes
+      - feature/auto-deploy
       - develop
       - main
 
