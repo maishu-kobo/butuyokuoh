@@ -142,6 +142,14 @@ export function mcpResourceUrl(requestUrl?: string): string {
   return `${oauthIssuer(requestUrl)}/api/mcp`;
 }
 
+/** 画面表示用。リクエスト Host から mcpResourceUrl と同じ規則で組み立てる。 */
+export function mcpResourceUrlFromHeaders(headers: Headers): string {
+  const host = headers.get('x-forwarded-host') ?? headers.get('host');
+  const proto = headers.get('x-forwarded-proto') ?? 'http';
+  if (!host) return mcpResourceUrl();
+  return mcpResourceUrl(`${proto}://${host}/`);
+}
+
 export function normalizeResource(value: string): string {
   const url = new URL(value);
   url.hash = '';

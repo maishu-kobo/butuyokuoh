@@ -6,6 +6,7 @@
 
 ### Added
 
+- トップ・設定・エージェント連携ヘルプに MCP 接続 URL（コピーと説明つき）を表示する（#308）。
 - 配備した版の確認と、更新失敗時に保存データを保ちながら旧版へ戻す自動配備の基盤（#285）。
 - エージェント向け OAuth 2.1（PKCE 必須、CIMD / DCR、Protected Resource Metadata、同意画面）。発行するアクセス・トークンは既存の `byoagt_` を再利用し、権限・操作ログ・レート制限も同じ（#272）。
 - エージェント向け REST API（`/api/agent/v1/...`）とリモート MCP（`/api/mcp`、Streamable HTTP / 2025-11-25）。OpenAPI（`/openapi/agent-v1.yaml`）と `/llms.txt` を追加。価格・画像はサーバ取得のみ（#269）。
