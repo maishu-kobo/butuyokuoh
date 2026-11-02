@@ -379,11 +379,21 @@ npm run check-prices
 
 ## GitHubからの自動配備の操作（#286）
 
-導入後は、mainへの更新に対して単体テスト・型検査・Lint・ビルド・依存監査・ブラウザテスト・秘密検査・CodeQLを実行し、すべて成功した同じSHAだけを配備する。
+2026-11-02に本番で自動配備を有効化した。通常の反映では、以下の初回設定や従来の手動配備を繰り返さない。
+mainへの更新に対して単体テスト・型検査・Lint・ビルド・依存監査・ブラウザテスト・秘密検査・CodeQLを実行し、すべて成功した同じSHAだけを配備する。
 Sotaを含むリポジトリへの書き込み権限を持つ担当者は、Actionsの **main validation and deployment** から状態を確認できる。
 失敗を直した後の再試行は **Run workflow → main** を使う。古いSHAの再実行では最新mainと一致しなければ配備しない。
 ジョブの緑色だけでなく、deployジョブのSummaryのSHAとResult、サイト表示を確認する。
 初回有効化後は毎回の手動承認を要求しない。PRやfeatureブランチの実行には本番接続情報を渡さない。
+
+### 開発者・エージェントが確認する場所
+
+- [Actionsの実行一覧](https://github.com/maishu-kobo/butuyokuoh/actions/workflows/deploy-main.yml)で、対象mainのSHAとイベント（pushまたはworkflow_dispatch）を確認する。PRでの成功は配備の成功ではない。
+- deployジョブのSummaryが成功し、[本番の稼働確認API](https://butsuyokuoh.exe.xyz/api/health)の`ok`が`true`、`sha`が配備したSHAと一致することを確認する。最後に本番画面の表示も確認する。
+- 入口は `.github/workflows/deploy-main.yml`、接続・完了確認は `scripts/deploy/client.py`、VM側の切替・バックアップ・復旧は `scripts/deploy/engine.py`。VM側プログラムの更新はアプリの自動配備に含まれず、独立レビューと管理者による設置が必要。
+- 初期設定は完了しているため、担当者のMacや個人のSSH鍵は不要。運用状態を判断するときは過去の成功記録だけでなく最新のActionsと稼働確認APIを見る。
+
+main向けPRでも同じworkflowからCodeQLを呼び、mainとの解析設定を揃える。PRでは検査だけを実行し、deployジョブはmainのpushまたは手動実行かつ有効化済みの場合だけ動く。本番Environment・SSH秘密はdeployジョブ内だけで参照する。
 
 ### 一度だけ必要な設定
 
