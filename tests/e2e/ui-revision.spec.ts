@@ -1,0 +1,117 @@
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { test, expect, type Page } from '@playwright/test';
+import { japaneseScreenshotFont } from './ui-revision-font';
+
+test.use({ locale: 'ja-JP' });
+
+async function capture(page: Page, name: string) {
+  await japaneseScreenshotFont(page);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const bytes = await page.screenshot({ type: 'jpeg', quality: 80, fullPage: !(await page.locator('dialog[open]').count()) });
+  await test.info().attach(name, { body: bytes, contentType: 'image/jpeg' });
+  if (!existsSync(path.resolve('docs/ui-refresh-256/v2/screenshots', name + '.jpg'))) {
+    console.log('UI_V2|' + name + '|' + bytes.toString('base64'));
+  }
+}
+async function expectReadableAction(page: Page, selector: string) {
+  await page.locator(selector).hover();
+  const contrast = await page.locator(selector).evaluate(el => {
+    const css = getComputedStyle(el);
+    const lum = (color: string) => {
+      const c = (color.match(/[0-9.]+/g) || []).slice(0, 3).map(Number).map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+      return .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
+    };
+    const l = [lum(css.color), lum(css.backgroundColor)].sort((a, b) => b - a);
+    return (l[0] + .05) / (l[1] + .05);
+  });
+  expect(contrast).toBeGreaterThanOrEqual(4.5);
+}
+for (const concept of ['a', 'b', 'c']) for (const width of [390, 1280]) {
+  test(`revision ${concept} completes photo-to-plan at ${width}`, async ({ page }) => {
+    test.setTimeout(90000);
+    const errors: string[] = [];
+    const requests: string[] = [];
+    page.on('pageerror', e => errors.push(e.message));
+    page.on('request', r => requests.push(r.url()));
+    await page.setViewportSize({ width, height: 844 });
+    await page.route('**/*', route => route.abort());
+    await page.setContent(await readFile(path.resolve('docs/ui-refresh-256/v2/prototypes.html'), 'utf8'));
+    await page.locator(`[data-choose="${concept}"]`).click();
+    await expectReadableAction(page, '#capture-top');
+    await capture(page, concept + '-' + width + '-list');
+    await page.locator('#query').fill('存在しない商品');
+    await expect(page.getByText(/一致する商品はありません/)).toBeVisible();
+    await page.locator('#query').fill('読書灯');
+    await expect(page.locator('[data-item]')).toHaveCount(1);
+    await expect(page.getByText('価格未取得', { exact: true }).first()).toBeVisible();
+    await page.locator('#query').fill('');
+    if (concept === 'c' && width === 1280) {
+      await page.locator('[data-item="shoes"]').focus();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('[data-item="shoes"]')).toBeFocused();
+    }
+    await page.locator('#capture-top').focus();
+    await page.keyboard.press('Enter');
+    if (concept === 'c') {
+      await expect(page.locator('#capture-dialog')).toBeVisible();
+      await page.locator('#capture-close').focus();
+      await page.keyboard.press('Shift+Tab');
+      await expect(page.locator('#sample-photo')).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(page.locator('#capture-close')).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#capture-top')).toBeFocused();
+      await page.keyboard.press('Enter');
+      await page.locator('#photo-file').setInputFiles({ name: 'invalid.txt', mimeType: 'text/plain', buffer: Buffer.from('fixture') });
+      await expect(page.locator('#capture-status')).toContainText('10MB以下の画像');
+    }
+    await page.locator('#photo-file').setInputFiles({
+      name: 'anonymous.png', mimeType: 'image/png',
+      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==', 'base64'),
+    });
+    if (concept !== 'c') await expect(page.locator('[data-local-photo]')).toBeVisible();
+    // Use the identical source image for the comparison screenshots.
+    if (concept === 'c') await page.getByRole('button', { name: '写真を選び直す', exact: true }).click();
+    await page.locator('#sample-photo').click();
+    await expect(page.getByText('写真からの推定：ヘッドホン。ブランド・型番は未確定です。')).toBeVisible();
+    const next = page.locator(concept === 'c' ? '#confirm-candidate' : '#register-candidate');
+    await expect(next).toBeDisabled();
+    await page.locator('#candidate-qc25').focus();
+    await page.keyboard.press('Space');
+    await expect(page.locator('#candidate-qc25')).toBeChecked();
+    await capture(page, concept + '-' + width + '-candidates');
+    if (concept === 'c') {
+      await next.click();
+      await expect(page.getByText(/写真から同一商品と確定できたわけではありません/)).toBeVisible();
+    }
+    await page.locator('#register-candidate').click();
+    await expect(page.locator('#heading')).toContainText('Bose QuietComfort 25');
+    await expect(page.locator('.offers .offer')).toHaveCount(2);
+    await page.locator('#plan-date').fill('2026-11-25');
+    const cheaper = page.getByRole('radio', { name: 'リユース音楽店（架空）を選ぶ' });
+    await cheaper.focus();
+    await page.keyboard.press('Space');
+    await expect(cheaper).toBeFocused();
+    await expect(cheaper).toBeChecked();
+    await expect(page.locator('#plan-date')).toHaveValue('2026-11-25');
+    await page.locator('#save-plan').click();
+    await expectReadableAction(page, '#save-plan');
+    await capture(page, concept + '-' + width + '-stores');
+    await page.locator('#view-plans').click();
+    await expect(page.locator('.summary-total')).toContainText('¥153,200');
+    await expect(page.getByText('1件は価格未取得のため合計に含みません。')).toBeVisible();
+    await capture(page, concept + '-' + width + '-plans');
+    await page.locator('#theme').click();
+    await expectReadableAction(page, '#capture-top');
+    await capture(page, concept + '-' + width + '-dark');
+    await page.locator('#reset').click();
+    await expect(page.locator('[data-item]')).toHaveCount(4);
+    await expect(page.locator('[data-item="registered-qc25"]')).toHaveCount(0);
+    await page.setViewportSize({ width: 320, height: 844 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+    expect(requests).toEqual([]);
+  });
+}
