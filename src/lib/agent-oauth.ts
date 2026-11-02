@@ -255,8 +255,24 @@ export function isAllowedRedirectUri(value: string): boolean {
  * scheme・host・path・query は完全一致。公開 https などは文字列完全一致。
  */
 export function redirectUriMatches(registered: string, requested: string): boolean {
-  // 暫定: 完全一致のみ（次コミットで RFC 8252 §7.3 の loopback ポート例外を入れる）
-  return registered === requested;
+  if (registered === requested) return true;
+  let reg: URL;
+  let req: URL;
+  try {
+    reg = new URL(registered);
+    req = new URL(requested);
+  } catch {
+    return false;
+  }
+  if (!isLoopbackHttpRedirect(reg) || !isLoopbackHttpRedirect(req)) {
+    return false;
+  }
+  return (
+    reg.protocol === req.protocol
+    && redirectHostname(reg) === redirectHostname(req)
+    && reg.pathname === req.pathname
+    && reg.search === req.search
+  );
 }
 
 function parseJsonStringArray(raw: string): string[] {
