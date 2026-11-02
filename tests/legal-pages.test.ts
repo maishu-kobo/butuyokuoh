@@ -292,7 +292,7 @@ test('ログイン画面から2つの方針ページを開ける', () => {
 });
 
 test('設定画面から2つの方針ページを開ける', async () => {
-  const { default: SettingsPage } = await import('../src/app/(app)/settings/page');
+  const { default: SettingsClient } = await import('../src/app/(app)/settings/SettingsClient');
   const value = {
     user: { id: 1, account_type: 'member' as const, email: 'member@example.com', name: '会員' },
     token: null,
@@ -309,7 +309,7 @@ test('設定画面から2つの方針ページを開ける', async () => {
   const page = renderToStaticMarkup(createElement(
     AppRouterContext.Provider,
     { value: router },
-    createElement(AuthContext.Provider, { value }, createElement(SettingsPage)),
+    createElement(AuthContext.Provider, { value }, createElement(SettingsClient, { mcpUrl: 'http://localhost/api/mcp' })),
   ));
   assert.match(page, /href="\/privacy"/);
   assert.match(page, /href="\/terms"/);
