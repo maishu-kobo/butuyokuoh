@@ -360,64 +360,70 @@ export default function HomeClient({ mcpUrl }: { mcpUrl: string }) {
             className="mb-4"
           />
         )}
-        {/* overflow-clip はタブ切替アニメ用。カードの説明パネルを切らないよう main には付けない */}
-        <div className={`overflow-clip ${animationClass}`}>
-          {activeTab === 'list' && (
-            <HomeListView
-              items={items}
-              filteredItems={filteredItems}
-              wishlist={wishlist}
-              totalAmount={totalAmount}
-              loading={loading}
-              loadError={loadError}
-              categories={categories}
-              groups={groups}
-              searchQuery={searchQuery}
-              onSearchQuery={setSearchQuery}
-              sortBy={sortBy}
-              onSortBy={setSortBy}
-              selectedPriority={selectedPriority}
-              onSelectedPriority={setSelectedPriority}
-              selectedCategory={selectedCategory}
-              onSelectedCategory={setSelectedCategory}
-              selectedGroup={selectedGroup}
-              onSelectedGroup={setSelectedGroup}
-              isFilterOpen={isFilterOpen}
-              onToggleFilter={() => setIsFilterOpen(!isFilterOpen)}
-              selectionMode={selectionMode}
-              selectedCount={selectedItems.size}
-              selectedItems={selectedItems}
-              onToggleSelectionMode={toggleSelectionMode}
-              onSelectAll={selectAll}
-              onDeselectAll={deselectAll}
-              onClearFilters={clearFilters}
-              onRetry={handleRetry}
-              onDelete={handleDelete}
-              onToggleSelect={toggleItemSelection}
-              onItemsChanged={fetchItems}
-              onPhotoChanged={refreshPhotoCard}
-              onImport={() => setShowImportModal(true)}
-              onRefreshAll={handleRefreshAll}
-              onViewRegistered={(location) => {
-                clearFilters();
-                changeTab(location);
-                if (location === 'list') void fetchItems();
-              }}
-              onDragEnd={handleDragEnd}
-              refreshing={refreshing}
-              isGuest={isGuest}
-              dragEnabled={dragEnabled}
-              lowestPriceInGroup={lowestPriceInGroup}
-            />
-          )}
+        {/*
+          overflow-clip は親、スライドは子。同じ要素だと transform が
+          文書の横スクロール幅を押し広げる（モバイルの出費予定 E2E が落ちる）。
+          カードの説明パネルはここより外なので切れない。
+        */}
+        <div className="overflow-clip">
+          <div className={animationClass || undefined}>
+            {activeTab === 'list' && (
+              <HomeListView
+                items={items}
+                filteredItems={filteredItems}
+                wishlist={wishlist}
+                totalAmount={totalAmount}
+                loading={loading}
+                loadError={loadError}
+                categories={categories}
+                groups={groups}
+                searchQuery={searchQuery}
+                onSearchQuery={setSearchQuery}
+                sortBy={sortBy}
+                onSortBy={setSortBy}
+                selectedPriority={selectedPriority}
+                onSelectedPriority={setSelectedPriority}
+                selectedCategory={selectedCategory}
+                onSelectedCategory={setSelectedCategory}
+                selectedGroup={selectedGroup}
+                onSelectedGroup={setSelectedGroup}
+                isFilterOpen={isFilterOpen}
+                onToggleFilter={() => setIsFilterOpen(!isFilterOpen)}
+                selectionMode={selectionMode}
+                selectedCount={selectedItems.size}
+                selectedItems={selectedItems}
+                onToggleSelectionMode={toggleSelectionMode}
+                onSelectAll={selectAll}
+                onDeselectAll={deselectAll}
+                onClearFilters={clearFilters}
+                onRetry={handleRetry}
+                onDelete={handleDelete}
+                onToggleSelect={toggleItemSelection}
+                onItemsChanged={fetchItems}
+                onPhotoChanged={refreshPhotoCard}
+                onImport={() => setShowImportModal(true)}
+                onRefreshAll={handleRefreshAll}
+                onViewRegistered={(location) => {
+                  clearFilters();
+                  changeTab(location);
+                  if (location === 'list') void fetchItems();
+                }}
+                onDragEnd={handleDragEnd}
+                refreshing={refreshing}
+                isGuest={isGuest}
+                dragEnabled={dragEnabled}
+                lowestPriceInGroup={lowestPriceInGroup}
+              />
+            )}
 
-          {activeTab === 'budget' && <BudgetView />}
+            {activeTab === 'budget' && <BudgetView />}
 
-          {activeTab === 'purchased' && <PurchasedHistory />}
+            {activeTab === 'purchased' && <PurchasedHistory />}
 
-          {activeTab === 'stats' && <StatsView />}
+            {activeTab === 'stats' && <StatsView />}
 
-          {activeTab === 'trash' && <TrashView />}
+            {activeTab === 'trash' && <TrashView />}
+          </div>
         </div>
       </main>
 
