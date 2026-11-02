@@ -351,7 +351,7 @@ export default function HomeClient({ mcpUrl }: { mcpUrl: string }) {
       <HomeHeader user={user} onLogout={logout} />
       <HomeTabNav activeTab={activeTab} onChange={changeTab} onOpenList={fetchItems} />
 
-      <main className="max-w-4xl mx-auto px-4 py-6 overflow-clip">
+      <main className="max-w-4xl mx-auto px-4 py-6">
         {activeTab === 'list' && (
           <McpConnectionCard
             url={mcpUrl}
@@ -360,7 +360,8 @@ export default function HomeClient({ mcpUrl }: { mcpUrl: string }) {
             className="mb-4"
           />
         )}
-        <div className={animationClass}>
+        {/* overflow-clip はタブ切替アニメ用。カードの説明パネルを切らないよう main には付けない */}
+        <div className={`overflow-clip ${animationClass}`}>
           {activeTab === 'list' && (
             <HomeListView
               items={items}

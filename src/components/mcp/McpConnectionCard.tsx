@@ -117,31 +117,30 @@ export default function McpConnectionCard({
             <h2 className={`font-semibold text-[var(--color-text)] ${variant === 'home' ? 'text-sm' : 'text-base'}`}>
               {MCP_CARD_TITLE}
             </h2>
-            <div className="relative">
-              <button
-                ref={infoButtonRef}
-                type="button"
-                className="p-1 rounded-md text-[var(--color-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-border)] transition-colors"
-                aria-label="MCP接続の説明を開く"
-                aria-expanded={infoOpen}
-                aria-controls={panelId}
-                onClick={() => setInfoOpen((open) => !open)}
-              >
-                <Info size={16} aria-hidden="true" />
-              </button>
-              {infoOpen && (
-                <div
-                  ref={panelRef}
-                  id={panelId}
-                  role="dialog"
-                  aria-label="MCP接続の説明"
-                  className="absolute left-0 z-20 mt-1 w-[min(100vw-2rem,20rem)] rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-3 shadow-lg text-sm text-[var(--color-text)]"
-                >
-                  <McpConnectionInfoPanel url={url} />
-                </div>
-              )}
-            </div>
+            <button
+              ref={infoButtonRef}
+              type="button"
+              className="p-1 rounded-md text-[var(--color-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-border)] transition-colors"
+              aria-label="MCP接続の説明を開く"
+              aria-expanded={infoOpen}
+              aria-controls={panelId}
+              onClick={() => setInfoOpen((open) => !open)}
+            >
+              <Info size={16} aria-hidden="true" />
+            </button>
           </div>
+
+          {infoOpen && (
+            <div
+              ref={panelRef}
+              id={panelId}
+              role="dialog"
+              aria-label="MCP接続の説明"
+              className="w-full rounded-lg border border-[var(--color-border)] bg-gray-50 dark:bg-slate-800/60 p-3 text-sm text-[var(--color-text)]"
+            >
+              <McpConnectionInfoPanel url={url} />
+            </div>
+          )}
 
           {guest && (
             <p className="text-xs text-amber-800 dark:text-amber-200">{MCP_GUEST_HINT}</p>
