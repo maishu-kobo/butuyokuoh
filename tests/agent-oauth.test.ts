@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import { call, createMember, db, setTestUser } from './regression-harness';
 import {
   assertMcpResource,
+  clientAllowsRedirect,
   createAuthorizePending,
   exchangeAuthorizationCode,
   isAllowedRedirectUri,
@@ -12,12 +13,14 @@ import {
   oauthWwwAuthenticate,
   parseOAuthScopeParam,
   pkceChallengeS256,
+  redirectUriMatches,
   refreshAccessToken,
   registerDynamicClient,
   resolveOAuthClient,
   revokeAllAgentAccessIncludingOAuth,
   revokeOAuthToken,
   verifyPkceS256,
+  type OAuthClientRow,
 } from '../src/lib/agent-oauth';
 import { findAgentTokenByPlaintext } from '../src/lib/agent-token';
 import type { PinnedResponse } from '../src/lib/member-fetch';
@@ -62,6 +65,133 @@ test('oauth helpers: pkce, scopes, redirect, resource, www-authenticate', () => 
   assert.equal(assertMcpResource(mcpResourceUrl('http://localhost/')), mcpResourceUrl());
   assert.match(oauthWwwAuthenticate(), /resource_metadata=.*oauth-protected-resource\/api\/mcp/);
 });
+
+test('oauth redirect_uri: RFC 8252 loopback port may differ; host/path/scheme must match', () => {
+  // Claude Code CIMD: ポートなし登録 + ランダムポート要求
+  assert.equal(
+    redirectUriMatches('http://localhost/callback', 'http://localhost:51905/callback'),
+    true,
+  );
+  assert.equal(
+    redirectUriMatches('http://127.0.0.1/callback', 'http://127.0.0.1:3911/callback'),
+    true,
+  );
+  assert.equal(
+    redirectUriMatches('http://[::1]/callback', 'http://[::1]:51905/callback'),
+    true,
+  );
+  // 登録側にポートがあっても、別ポートの要求は一致
+  assert.equal(
+    redirectUriMatches('http://127.0.0.1:4000/cb', 'http://127.0.0.1:9999/cb'),
+    true,
+  );
+
+  // 別 path
+  assert.equal(
+    redirectUriMatches('http://localhost/callback', 'http://localhost:51905/other'),
+    false,
+  );
+  // 別 host（localhost ↔ 127.0.0.1 は一致しない）
+  assert.equal(
+    redirectUriMatches('http://localhost/callback', 'http://127.0.0.1:51905/callback'),
+    false,
+  );
+  // https の公開ホストはポート違いも拒否（完全一致のみ）
+  assert.equal(
+    redirectUriMatches('https://example.com/cb', 'https://example.com:8443/cb'),
+    false,
+  );
+  assert.equal(
+    redirectUriMatches('https://example.com/cb', 'https://example.com/cb'),
+    true,
+  );
+  // query が違えば拒否
+  assert.equal(
+    redirectUriMatches('http://localhost/callback?x=1', 'http://localhost:9/callback'),
+    false,
+  );
+
+  const claudeLike = {
+    redirect_uris: JSON.stringify([
+      'http://localhost/callback',
+      'http://127.0.0.1/callback',
+    ]),
+  } as OAuthClientRow;
+  assert.equal(clientAllowsRedirect(claudeLike, 'http://localhost:51905/callback'), true);
+  assert.equal(clientAllowsRedirect(claudeLike, 'http://127.0.0.1:3911/callback'), true);
+  assert.equal(clientAllowsRedirect(claudeLike, 'http://localhost:51905/other'), false);
+  assert.equal(clientAllowsRedirect(claudeLike, 'https://evil.example/callback'), false);
+});
+
+test('oauth CIMD + random loopback port: authorize pending accepts Claude Code style', () => serial(async () => {
+  const database = await db();
+  const cimdDeps = {
+    resolve: async () => [{ address: '93.184.216.34', family: 4 }],
+    request: async (): Promise<PinnedResponse> => ({
+      status: 200,
+      body: Buffer.from(JSON.stringify({
+        client_id: 'https://claude.ai/oauth/claude-code-client-metadata',
+        client_name: 'Claude Code',
+        redirect_uris: ['http://localhost/callback', 'http://127.0.0.1/callback'],
+        grant_types: ['authorization_code'],
+        response_types: ['code'],
+        token_endpoint_auth_method: 'none',
+      })),
+      contentType: 'application/json',
+    }),
+  };
+  const metaUrl = 'https://claude.ai/oauth/claude-code-client-metadata';
+  const { challenge } = pkcePair();
+  const resource = mcpResourceUrl();
+
+  const pending = await createAuthorizePending({
+    client_id: metaUrl,
+    redirect_uri: 'http://localhost:51905/callback',
+    scope: 'read write',
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    resource,
+    response_type: 'code',
+  }, database, cimdDeps);
+  assert.ok(pending.pendingId);
+  assert.equal(pending.client.client_id, metaUrl);
+
+  await assert.rejects(
+    () => createAuthorizePending({
+      client_id: metaUrl,
+      redirect_uri: 'http://localhost:51905/other',
+      scope: 'read write',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      resource,
+      response_type: 'code',
+      state: 'path-mismatch',
+    }, database, cimdDeps),
+    (err: Error & { code?: string; message?: string }) =>
+      err.code === 'invalid_request' && /redirect_uri/.test(err.message ?? ''),
+  );
+
+  // localhost だけ登録したクライアントへ 127.0.0.1 で来たら拒否（host は一致必須）
+  const localhostOnly = registerDynamicClient({
+    client_name: 'Localhost Only',
+    redirect_uris: ['http://localhost/callback'],
+    token_endpoint_auth_method: 'none',
+  }, database);
+  await assert.rejects(
+    () => createAuthorizePending({
+      client_id: localhostOnly.client_id,
+      redirect_uri: 'http://127.0.0.1:51905/callback',
+      scope: 'read write',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      resource,
+      response_type: 'code',
+      state: 'host-mismatch',
+    }, database),
+    (err: Error & { code?: string; message?: string }) =>
+      err.code === 'invalid_request' && /redirect_uri/.test(err.message ?? ''),
+  );
+}));
 
 test('oauth metadata endpoints advertise AS, PRM, CIMD, DCR', () => serial(async () => {
   const asMeta = await call(asMetaPath, 'GET', '/.well-known/oauth-authorization-server');

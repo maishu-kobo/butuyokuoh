@@ -219,6 +219,16 @@ export function scopesToParam(scopes: readonly string[]): string {
   return scopes.join(' ');
 }
 
+function redirectHostname(url: URL): string {
+  return url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+}
+
+function isLoopbackHttpRedirect(url: URL): boolean {
+  if (url.protocol !== 'http:') return false;
+  const host = redirectHostname(url);
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+}
+
 /** loopback と https の公開ホストのみ。完全一致検証用に正規化はしない。 */
 export function isAllowedRedirectUri(value: string): boolean {
   let url: URL;
@@ -228,15 +238,25 @@ export function isAllowedRedirectUri(value: string): boolean {
     return false;
   }
   if (url.username || url.password || url.hash) return false;
-  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  const host = redirectHostname(url);
   if (url.protocol === 'http:') {
-    return host === '127.0.0.1' || host === 'localhost' || host === '[::1]' || host === '::1';
+    return isLoopbackHttpRedirect(url);
   }
   if (url.protocol !== 'https:') return false;
   if (!host.includes('.') && !isIP(host)) return false;
   if (/(^|\.)(localhost|local|internal|test|invalid)$/.test(host)) return false;
   if (isIP(host) && !isPublicAddress(host)) return false;
   return true;
+}
+
+/**
+ * 登録済み redirect_uri と要求 URI の照合。
+ * RFC 8252 §7.3 / OAuth 2.1: loopback の http に限りポート番号だけ違っても一致とみなす。
+ * scheme・host・path・query は完全一致。公開 https などは文字列完全一致。
+ */
+export function redirectUriMatches(registered: string, requested: string): boolean {
+  // 暫定: 完全一致のみ（次コミットで RFC 8252 §7.3 の loopback ポート例外を入れる）
+  return registered === requested;
 }
 
 function parseJsonStringArray(raw: string): string[] {
@@ -520,7 +540,9 @@ export function registerDynamicClient(
 }
 
 export function clientAllowsRedirect(client: OAuthClientRow, redirectUri: string): boolean {
-  return parseJsonStringArray(client.redirect_uris).includes(redirectUri);
+  return parseJsonStringArray(client.redirect_uris).some((registered) =>
+    redirectUriMatches(registered, redirectUri),
+  );
 }
 
 export function authenticateOAuthClient(
