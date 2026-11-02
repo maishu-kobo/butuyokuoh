@@ -26,6 +26,15 @@ cd butuyokuoh
 npm install
 ```
 
+`package.json` の `overrides` は、TypeScript解析器が使う `minimatch` だけを
+パターン前処理の増幅問題が修正された11.0.3へ固定する。
+現在の解析器は既定の最適化レベルで呼び出しており、問題のレベル2の経路を使わない。
+回帰テストは、導入したライブラリ版でレベル2の増幅が制限されることを確認する。
+ESLint本体や既存プラグインが使う3系には適用しない。
+11系では関数形式のCommonJS APIや `makeRe` が使えず、一括置換するとLintを壊すため。
+親パッケージが修正版へ対応したら、この限定指定を外して依存ツリーとLintの挙動を再確認する。
+背景と監査で残る項目は [Issue #297](https://github.com/maishu-kobo/butuyokuoh/issues/297) で追跡する。
+
 ### 3. 環境変数の設定
 
 `.env.local`を作成:
