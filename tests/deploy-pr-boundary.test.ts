@@ -4,9 +4,10 @@ import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
 
-// ESLint already depends on this YAML parser; do not add a second parser version.
+// @eslint/eslintrc owns this parser in the existing ESLint dependency tree.
+// Resolve from that package so the test does not depend on root-level hoisting.
 const require = createRequire(import.meta.url);
-const { load } = createRequire(require.resolve('eslint'))('js-yaml');
+const { load } = createRequire(require.resolve('@eslint/eslintrc'))('js-yaml');
 const source = readFileSync('.github/workflows/deploy-main.yml', 'utf8');
 const workflow = load(source);
 
@@ -16,12 +17,13 @@ test('main PRs run the same CodeQL caller as main pushes for comparable analyses
   }
   assert.equal(workflow.jobs.security.uses, './.github/workflows/codeql.yml');
   assert.equal(workflow.jobs.security.if, undefined, 'analysis must run for both event types');
-  assert.ok(workflow.jobs.deploy.needs.includes('security'));
+  assert.deepEqual([...workflow.jobs.deploy.needs].sort(), ['browser', 'ci', 'quarantine', 'secrets-scan', 'security']);
 });
 
 test('only enabled main push or manual dispatch can enter the production credential job', () => {
-  // This expression uses only string equality and boolean operators, which have
-  // the same result here in Actions and JS. Evaluate the actual job condition.
+  // Evaluate the actual job condition over these lowercase fixtures. Actions
+  // compares strings case-insensitively, so this is not a general interpreter.
+  // The deployment client separately enforces exact event/ref/repository values.
   for (const event of ['push', 'workflow_dispatch', 'pull_request', 'pull_request_target', 'workflow_run', 'schedule']) {
     for (const ref of ['refs/heads/main', 'refs/heads/develop', 'refs/heads/feature/auto-deploy', 'refs/pull/1/merge']) {
       for (const repository of ['maishu-kobo/butuyokuoh', 'fork/butuyokuoh']) {
