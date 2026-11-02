@@ -19,7 +19,8 @@ test('エージェント連携ヘルプは定数の数字を出し、秘密や�
     const mcpUrl = mcpResourceUrl();
     const page = renderToStaticMarkup(createElement(AgentHelpContent, { mcpUrl }));
     assert.match(page, /エージェント連携/);
-    assert.match(page, /MCP 接続 URL/);
+    assert.match(page, /AI エージェントとつなぐ/);
+    assert.match(page, /接続用 URL（MCP）/);
     assert.match(page, new RegExp(mcpUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.match(page, /つなぎ方/);
     assert.match(page, /OAuth 対応の MCP クライアント/);

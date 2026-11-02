@@ -71,11 +71,11 @@ test('settings token lifecycle, REST wishlist ops, undo, and audit log', async (
   expect((await api.get('/api/auth/me')).ok()).toBeTruthy();
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await waitForAuthedHome(page);
-  await expect(page.getByRole('region', { name: 'MCP 接続 URL' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'AI エージェントとつなぐ' })).toBeVisible();
   await expect(page.getByText(`${origin}/api/mcp`, { exact: true })).toBeVisible();
 
   const token = await createTokenViaSettings(page, 'E2E Cursor');
-  await expect(page.getByRole('region', { name: 'MCP 接続 URL' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'AI エージェントとつなぐ' })).toBeVisible();
   await expect(page.locator('code', { hasText: `${origin}/api/mcp` }).first()).toBeVisible();
   // 発行直後だけ平文が input に入り、一覧側はプレフィックスのみ
   const plaintextField = page.locator('div').filter({ has: page.getByText('このトークンは今だけ表示されます') }).locator('input[readonly]');
