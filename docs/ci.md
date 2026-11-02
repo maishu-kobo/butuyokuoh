@@ -123,7 +123,9 @@ CodeQL は `.github/workflows/codeql.yml` の advanced setup を使う。GitHub 
 
 確認するときは、対象コミットのログで `Analysis upload status is complete`、CodeQLチェックで正常な取り込み、Code scanningの解析一覧で対象のrefとcommit SHAおよび空のerrorを確認する。単に `Successfully uploaded results` と出ただけでは完了としない。
 
-このワークフローの対象は冒頭の3ブランチ向けPR。mainの既存解析は、[PR #206](https://github.com/maishu-kobo/butuyokuoh/pull/206) の `codeql-main.yml` へ引き継ぐ。main向けPR・push・週次・手動の解析を持ち、JS/TSと既定クエリを維持する。Default setupの解除とmain用ワークフローの適用を両方完了させること。PRを作っただけではmainの継続解析は復旧しない。ブランチ保護は変更しない。
+`codeql.yml` はfeature/photo-capture、feature/capture-existing-bugfixes、feature/auto-deploy、develop、main向けPRと、再利用workflowとしての呼び出しを対象にする。拡張クエリとhigh判定を実行する。`deploy-main.yml` からもmain更新時とmain向けPRの両方で呼び、同じ解析設定で比較する。呼び出し元が異なる解析は別設定になるため、main側にだけある設定がないかも確認する。
+
+`codeql-main.yml` はmain向けPR・push・週次・手動でJS/TSの既定クエリを実行する。これは拡張クエリ側とは別に維持する。Default setupは無効のままとし、ブランチ保護は変更しない。main向けPRでは独立した検査と配備workflow経由の検査が重複するが、本変更では既存ゲートを削除しない。
 
 ## Playwright のブラウザ
 
