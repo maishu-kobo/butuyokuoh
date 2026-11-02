@@ -8,7 +8,7 @@ const require = createRequire(import.meta.url);
 const parserRequire = createRequire(require.resolve('@typescript-eslint/typescript-estree'));
 const { Minimatch, minimatch } = parserRequire('minimatch');
 
-test('the TypeScript parser matcher bounds recursive parent-pattern expansion', () => {
+test('the parser matcher dependency bounds level-2 parent-pattern expansion', () => {
   // GHSA-g3hv-75wg-m249: **/../ can amplify preprocessing even without braces.
   // A small fixed input reproduces the missing limit without exhausting memory.
   const limit = 32;
