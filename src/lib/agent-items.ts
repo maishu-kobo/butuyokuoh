@@ -25,6 +25,16 @@ export const AGENT_NOTES_MAX = 2000;
 
 export type AgentItemStatus = 'active' | 'trashed' | 'purchased' | 'all';
 
+/** 1商品に属する店ページ（写真グループの店行、または単独品目そのもの） */
+export type AgentStoreView = {
+  item_id: number;
+  url: string;
+  store: string;
+  source: string;
+  current_price: number | null;
+  image_url: string | null;
+};
+
 export type AgentItemView = {
   id: number;
   name: string;
@@ -52,7 +62,11 @@ export type AgentItemView = {
   updated_at: string;
   /** 同じクリーン後 URL がゴミ箱や別ステータスにもあるとき true */
   has_url_duplicate: boolean;
+  /** 1商品としての店一覧（写真グループなら複数。単独は1件） */
+  stores: AgentStoreView[];
 };
+
+const MAX_AGENT_URLS = 20;
 
 function normalizeNotes(raw: unknown): string | null {
   if (raw === undefined || raw === null) return null;
@@ -112,6 +126,109 @@ function requireHttpUrl(raw: unknown): string {
   return cleaned;
 }
 
+/**
+ * add_item_by_url 用。`url` と `urls` をまとめて整形・重複除去する。
+ * 呼び出し側の価格・画像はここでは見ない。
+ */
+export function parseAgentProductUrls(body: Record<string, unknown>): string[] {
+  const collected: string[] = [];
+  if (body.urls !== undefined) {
+    if (!Array.isArray(body.urls)) {
+      throw new GuestError(400, 'INVALID_INPUT', 'urls は配列で指定してください');
+    }
+    if (body.urls.length === 0) {
+      throw new GuestError(400, 'INVALID_INPUT', 'urls は1件以上必要です');
+    }
+    if (body.urls.length > MAX_AGENT_URLS) {
+      throw new GuestError(400, 'INVALID_INPUT', `urls は${MAX_AGENT_URLS}件までです`);
+    }
+    for (const entry of body.urls) {
+      collected.push(requireHttpUrl(entry));
+    }
+  }
+  if (body.url !== undefined && body.url !== null && body.url !== '') {
+    collected.push(requireHttpUrl(body.url));
+  }
+  if (collected.length === 0) {
+    throw new GuestError(400, 'INVALID_INPUT', 'URLは必須です');
+  }
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const url of collected) {
+    if (seen.has(url)) continue;
+    seen.add(url);
+    unique.push(url);
+  }
+  if (unique.length > MAX_AGENT_URLS) {
+    throw new GuestError(400, 'INVALID_INPUT', `urls は${MAX_AGENT_URLS}件までです`);
+  }
+  return unique;
+}
+
+/**
+ * レート制限でまとめて消費する店 URL 件数。
+ * 不正な入力では 1 とみなし、本保存時の厳密な検証に任せる（未認証で 400 にしない）。
+ */
+export function countAgentUrlAddUnits(body: Record<string, unknown>): number {
+  try {
+    return parseAgentProductUrls(body).length;
+  } catch {
+    return 1;
+  }
+}
+
+function storeLabel(source: string, sourceName: string | null | undefined): string {
+  const named = typeof sourceName === 'string' ? sourceName.trim() : '';
+  if (named) return named;
+  if (source === 'yahoo') return 'Yahoo!ショッピング';
+  if (source === 'rakuten') return '楽天';
+  if (source === 'amazon') return 'Amazon';
+  return source || 'その他';
+}
+
+function toStoreView(row: Record<string, unknown>): AgentStoreView {
+  return {
+    item_id: Number(row.id),
+    url: String(row.url ?? ''),
+    store: storeLabel(String(row.source ?? 'other'), row.source_name as string | null),
+    source: String(row.source ?? 'other'),
+    current_price: (row.current_price as number | null) ?? null,
+    image_url: (row.image_url as string | null) ?? null,
+  };
+}
+
+function photoGroupStores(
+  db: Database.Database,
+  userId: number,
+  groupId: number,
+): AgentStoreView[] {
+  const rows = db.prepare(`
+    SELECT id, url, source, source_name, current_price, image_url
+    FROM items
+    WHERE user_id = ? AND comparison_group_id = ? AND deleted_at IS NULL
+    ORDER BY sort_order ASC, id ASC
+  `).all(userId, groupId) as Record<string, unknown>[];
+  return rows.map(toStoreView);
+}
+
+function storesForItemRow(
+  db: Database.Database,
+  userId: number,
+  row: Record<string, unknown>,
+): AgentStoreView[] {
+  const groupId = row.comparison_group_id == null ? null : Number(row.comparison_group_id);
+  if (groupId != null) {
+    const group = db.prepare(
+      'SELECT origin FROM comparison_groups WHERE id = ? AND user_id = ?',
+    ).get(groupId, userId) as { origin: string | null } | undefined;
+    if (group?.origin === 'photo') {
+      const stores = photoGroupStores(db, userId, groupId);
+      if (stores.length > 0) return stores;
+    }
+  }
+  return [toStoreView(row)];
+}
+
 const PUBLIC_URL_HELP = '公開されている商品ページのHTTP(S) URLを指定してください';
 
 /** 保存前に SSRF ガード（publicPageUrl + 名前解決）。fetchPublicMember と同じ公開判定。 */
@@ -145,6 +262,8 @@ function rejectBlockedScrape(media: ServerItemMedia): void {
 function rowToView(
   row: Record<string, unknown>,
   duplicateUrls: Set<string>,
+  db: Database.Database,
+  userId: number,
 ): AgentItemView {
   const url = String(row.url ?? '');
   const cleaned = sanitizeStoredItemUrl(url) ?? url;
@@ -174,6 +293,7 @@ function rowToView(
     created_at: String(row.created_at ?? ''),
     updated_at: String(row.updated_at ?? ''),
     has_url_duplicate: duplicateUrls.has(cleaned),
+    stores: storesForItemRow(db, userId, row),
   };
 }
 
@@ -268,7 +388,7 @@ export function listAgentItems(
   `).all(...params, limit, offset) as Record<string, unknown>[];
 
   const dupes = duplicateCleanedUrls(db, userId);
-  return { items: rows.map((row) => rowToView(row, dupes)), total };
+  return { items: rows.map((row) => rowToView(row, dupes, db, userId)), total };
 }
 
 export function getAgentItem(
@@ -290,7 +410,7 @@ export function getAgentItem(
   if (!row) {
     throw new GuestError(404, 'ITEM_NOT_FOUND', '品目が見つかりません');
   }
-  return rowToView(row, duplicateCleanedUrls(db, userId));
+  return rowToView(row, duplicateCleanedUrls(db, userId), db, userId);
 }
 
 function insertAgentItem(
@@ -352,14 +472,110 @@ function insertAgentItem(
   return getAgentItem(auth.userId, result, db);
 }
 
+type PreparedStore = {
+  url: string;
+  media: ServerItemMedia;
+  scrapedName: string | null;
+};
+
+async function prepareStoreMedia(
+  auth: AgentAuthContext,
+  url: string,
+  mediaOptions: FetchServerItemMediaOptions,
+): Promise<PreparedStore> {
+  await assertAgentPublicUrl(url, mediaOptions.deps);
+  const media = await fetchServerItemMedia(url, {
+    ...mediaOptions,
+    accountType: 'member',
+    userId: auth.userId,
+  });
+  rejectBlockedScrape(media);
+  // 呼び出し側の price / image はここでは絶対に使わない
+  const scrapedName = media.scraped && !media.scraped.name.includes('取得')
+    ? normalizeItemName(media.scraped.name)
+    : null;
+  return {
+    url,
+    media: {
+      ...media,
+      price: media.price,
+      imageUrl: media.imageUrl,
+    },
+    scrapedName,
+  };
+}
+
+function createPhotoComparisonGroup(
+  db: Database.Database,
+  userId: number,
+  name: string,
+  priority: number,
+): number {
+  return Number(db.prepare(`
+    INSERT INTO comparison_groups (user_id, name, priority, origin, capture_id, budget_item_id)
+    VALUES (?, ?, ?, 'photo', NULL, NULL)
+  `).run(userId, name, priority).lastInsertRowid);
+}
+
+function syncProductFieldsOnGroup(
+  db: Database.Database,
+  userId: number,
+  groupId: number,
+  fields: {
+    name: string;
+    priority: number;
+    quantity: number;
+    notes: string | null;
+    planned_purchase_date: string | null;
+    category_id: number | null;
+  },
+): void {
+  db.prepare(`
+    UPDATE items
+    SET name = ?, priority = ?, quantity = ?, notes = ?,
+      planned_purchase_date = ?, category_id = ?, updated_at = datetime('now')
+    WHERE user_id = ? AND comparison_group_id = ? AND deleted_at IS NULL
+  `).run(
+    fields.name,
+    fields.priority,
+    fields.quantity,
+    fields.notes,
+    fields.planned_purchase_date,
+    fields.category_id,
+    userId,
+    groupId,
+  );
+  db.prepare(`
+    UPDATE comparison_groups SET name = ?, priority = ? WHERE id = ? AND user_id = ?
+  `).run(fields.name, fields.priority, groupId, userId);
+}
+
+function nextSortOrder(db: Database.Database, userId: number, groupId: number): number {
+  const row = db.prepare(`
+    SELECT COALESCE(MAX(sort_order), -1) AS max_order
+    FROM items WHERE user_id = ? AND comparison_group_id = ?
+  `).get(userId, groupId) as { max_order: number };
+  return Number(row.max_order) + 1;
+}
+
+/**
+ * URL 1本・既存品目なし → 従来どおり単独品目。
+ * URL 2本以上、または既存品目へ店を足す → origin='photo' のグループにまとめる。
+ */
 export async function addAgentItemByUrl(
   auth: AgentAuthContext,
   body: Record<string, unknown>,
   mediaOptions: FetchServerItemMediaOptions = {},
   db: Database.Database = getDb(),
-): Promise<{ item: AgentItemView; media_fetched: boolean }> {
-  const url = requireHttpUrl(body.url);
-  await assertAgentPublicUrl(url, mediaOptions.deps);
+): Promise<{ item: AgentItemView; stores: AgentStoreView[]; media_fetched: boolean }> {
+  const urls = parseAgentProductUrls(body);
+  const attachId = body.item_id === undefined
+    ? undefined
+    : normalizeOptionalId(body.item_id, 'item_id');
+  if (attachId === null) {
+    throw new GuestError(400, 'INVALID_INPUT', 'item_id が不正です');
+  }
+
   const nameFromInput = body.name === undefined || body.name === null
     ? null
     : normalizeItemName(String(body.name));
@@ -367,17 +583,107 @@ export async function addAgentItemByUrl(
     throw new GuestError(400, 'INVALID_INPUT', '商品名を入力してください');
   }
 
-  const media = await fetchServerItemMedia(url, {
-    ...mediaOptions,
-    accountType: 'member',
-    userId: auth.userId,
-  });
-  rejectBlockedScrape(media);
-  const scrapedName = media.scraped && !media.scraped.name.includes('取得')
-    ? normalizeItemName(media.scraped.name)
-    : null;
-  const name = nameFromInput ?? scrapedName;
-  if (!name) {
+  // 従来互換: URL 1本・既存指定なしはグループを作らない
+  if (urls.length === 1 && attachId === undefined) {
+    const prepared = await prepareStoreMedia(auth, urls[0], mediaOptions);
+    const name = nameFromInput ?? prepared.scrapedName;
+    if (!name) {
+      throw new GuestError(
+        422,
+        'NAME_REQUIRED',
+        '商品名を取得できませんでした。name を指定して再度追加してください',
+      );
+    }
+    const item = insertAgentItem(auth, {
+      name,
+      url: prepared.url,
+      media: prepared.media,
+      priority: normalizePriority(body.priority),
+      quantity: normalizeQuantity(body.quantity),
+      notes: normalizeNotes(body.notes),
+      planned_purchase_date: normalizeOptionalDate(body.planned_purchase_date, 'planned_purchase_date') ?? null,
+      category_id: normalizeOptionalId(body.category_id, 'category_id') ?? null,
+      comparison_group_id: normalizeOptionalId(body.comparison_group_id, 'comparison_group_id') ?? null,
+    }, db);
+    return {
+      item,
+      stores: item.stores,
+      media_fetched: prepared.media.price != null || prepared.media.imageUrl != null,
+    };
+  }
+
+  let existing: Record<string, unknown> | null = null;
+  let groupId: number | null = null;
+  if (attachId !== undefined) {
+    existing = getOwnedItemOrThrow(auth.userId, attachId, db);
+    if (existing.deleted_at) {
+      throw new GuestError(409, 'ITEM_TRASHED', 'ゴミ箱の品目には店を足せません。先に復元してください');
+    }
+    const existingGroupId = existing.comparison_group_id == null
+      ? null
+      : Number(existing.comparison_group_id);
+    if (existingGroupId != null) {
+      const group = db.prepare(
+        'SELECT id, origin FROM comparison_groups WHERE id = ? AND user_id = ?',
+      ).get(existingGroupId, auth.userId) as { id: number; origin: string | null } | undefined;
+      if (group?.origin === 'photo') {
+        groupId = group.id;
+      }
+    }
+  }
+
+  const preparedList: PreparedStore[] = [];
+  for (const url of urls) {
+    if (cleanedStoredItemUrlTaken(db, auth.userId, url)) {
+      throw new GuestError(409, 'URL_TAKEN', 'このURLは既に登録されています（ゴミ箱内を含む）');
+    }
+    preparedList.push(await prepareStoreMedia(auth, url, mediaOptions));
+  }
+
+  const priority = body.priority !== undefined
+    ? normalizePriority(body.priority)
+    : (existing ? Number(existing.priority) || 3 : 3);
+  const quantity = body.quantity !== undefined
+    ? normalizeQuantity(body.quantity)
+    : (existing ? Number(existing.quantity) || 1 : 1);
+  const notes = body.notes !== undefined
+    ? normalizeNotes(body.notes)
+    : (existing ? ((existing.notes as string | null) ?? null) : null);
+  const planned = body.planned_purchase_date !== undefined
+    ? (normalizeOptionalDate(body.planned_purchase_date, 'planned_purchase_date') ?? null)
+    : (existing ? ((existing.planned_purchase_date as string | null) ?? null) : null);
+  const categoryId = body.category_id !== undefined
+    ? (normalizeOptionalId(body.category_id, 'category_id') ?? null)
+    : (existing ? ((existing.category_id as number | null) ?? null) : null);
+
+  let productName = nameFromInput;
+  if (!productName && existing) {
+    productName = normalizeItemName(String(existing.name ?? '')) ?? String(existing.name ?? '');
+  }
+  if (!productName) {
+    for (const prepared of preparedList) {
+      if (prepared.scrapedName) {
+        productName = prepared.scrapedName;
+        break;
+      }
+    }
+  }
+
+  const savable = preparedList.filter((prepared) => productName || prepared.scrapedName);
+  if (!productName && savable.length === 0) {
+    throw new GuestError(
+      422,
+      'NAME_REQUIRED',
+      '商品名を取得できませんでした。name を指定して再度追加してください',
+    );
+  }
+  if (!productName) {
+    productName = savable[0].scrapedName as string;
+  }
+
+  // 名前が無い店は保存しない（商品名が取れていれば商品名で埋める）
+  const toInsert = preparedList.filter((prepared) => Boolean(productName || prepared.scrapedName));
+  if (toInsert.length === 0) {
     throw new GuestError(
       422,
       'NAME_REQUIRED',
@@ -385,24 +691,93 @@ export async function addAgentItemByUrl(
     );
   }
 
-  const item = insertAgentItem(auth, {
-    name,
-    url,
-    media: {
-      ...media,
-      // 取得失敗時は価格・画像を空にする（決定事項）
-      price: media.price,
-      imageUrl: media.imageUrl,
-    },
-    priority: normalizePriority(body.priority),
-    quantity: normalizeQuantity(body.quantity),
-    notes: normalizeNotes(body.notes),
-    planned_purchase_date: normalizeOptionalDate(body.planned_purchase_date, 'planned_purchase_date') ?? null,
-    category_id: normalizeOptionalId(body.category_id, 'category_id') ?? null,
-    comparison_group_id: normalizeOptionalId(body.comparison_group_id, 'comparison_group_id') ?? null,
-  }, db);
+  assertOwnedRelations(db, auth.userId, { category_id: categoryId });
 
-  return { item, media_fetched: media.price != null || media.imageUrl != null };
+  const faceId = db.transaction(() => {
+    let targetGroupId = groupId;
+    if (targetGroupId == null) {
+      targetGroupId = createPhotoComparisonGroup(db, auth.userId, productName as string, priority);
+      if (existing) {
+        db.prepare(`
+          UPDATE items
+          SET comparison_group_id = ?, name = ?, priority = ?, quantity = ?, notes = ?,
+            planned_purchase_date = ?, category_id = ?, sort_order = 0,
+            updated_at = datetime('now')
+          WHERE id = ? AND user_id = ?
+        `).run(
+          targetGroupId,
+          productName,
+          priority,
+          quantity,
+          notes,
+          planned,
+          categoryId,
+          Number(existing.id),
+          auth.userId,
+        );
+      }
+    } else {
+      syncProductFieldsOnGroup(db, auth.userId, targetGroupId, {
+        name: productName as string,
+        priority,
+        quantity,
+        notes,
+        planned_purchase_date: planned,
+        category_id: categoryId,
+      });
+    }
+
+    let sortOrder = nextSortOrder(db, auth.userId, targetGroupId);
+    let firstNewId: number | null = null;
+    for (const prepared of toInsert) {
+      if (cleanedStoredItemUrlTaken(db, auth.userId, prepared.url)) {
+        throw new GuestError(409, 'URL_TAKEN', 'このURLは既に登録されています（ゴミ箱内を含む）');
+      }
+      const inserted = db.prepare(`
+        INSERT INTO items (
+          user_id, name, url, image_url, current_price, original_price,
+          source, source_name, priority, planned_purchase_date,
+          comparison_group_id, category_id, notes, quantity, sort_order, added_by_agent_token_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        auth.userId,
+        productName,
+        prepared.url,
+        prepared.media.imageUrl,
+        prepared.media.price,
+        prepared.media.price,
+        prepared.media.source,
+        prepared.media.sourceName,
+        priority,
+        planned,
+        targetGroupId,
+        categoryId,
+        notes,
+        quantity,
+        sortOrder,
+        auth.token.id,
+      );
+      const itemId = Number(inserted.lastInsertRowid);
+      if (prepared.media.price != null) {
+        db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(itemId, prepared.media.price);
+      }
+      markItemAddedByAgent(itemId, auth.token.id, auth.userId, db);
+      if (firstNewId == null) firstNewId = itemId;
+      sortOrder += 1;
+    }
+
+    return firstNewId ?? (existing ? Number(existing.id) : null);
+  }).immediate();
+
+  if (faceId == null) {
+    throw new GuestError(500, 'SAVE_FAILED', '商品を保存できませんでした');
+  }
+
+  const item = getAgentItem(auth.userId, faceId, db);
+  const mediaFetched = toInsert.some(
+    (prepared) => prepared.media.price != null || prepared.media.imageUrl != null,
+  );
+  return { item, stores: item.stores, media_fetched: mediaFetched };
 }
 
 export async function addAgentItem(

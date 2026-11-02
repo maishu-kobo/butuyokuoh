@@ -36,7 +36,7 @@ MCP endpoint (Streamable HTTP, protocol 2025-11-25): /api/mcp
 | GET | /api/agent/v1/items | read | `q`, `status=active\|trashed\|purchased\|all`, `limit`, `offset`. Trash duplicates show `has_url_duplicate` |
 | GET | /api/agent/v1/items/{id} | read | One item (404 for others') |
 | POST | /api/agent/v1/items | write | Add by name (+ optional URL). Rates: add + add_day |
-| POST | /api/agent/v1/items/by-url | write | Add by URL. Rates: add + add_url + add_day |
+| POST | /api/agent/v1/items/by-url | write | Add by URL (`url` and/or `urls`, optional `item_id` to attach stores). Rates: add + add_url + add_day **per store URL in the call** |
 | PATCH | /api/agent/v1/items/{id} | write | Update fields (not price/image) |
 | POST | /api/agent/v1/items/{id}/purchase | write | Mark purchased |
 | POST | /api/agent/v1/items/{id}/trash | write | Soft-delete |
@@ -65,14 +65,22 @@ Connect to `POST /api/mcp` with the same Bearer token. Compatible with MCP proto
 
 ### add_item_by_url
 
-Register a public product page the agent already found.
+Register public product page URL(s) the agent already found.
+
+- One `url` and no `item_id`: one ungrouped item (legacy).
+- Two or more URLs (`urls` / combined with `url`), or `item_id` to attach a store: one `origin=photo` comparison group + one item row per store. `capture_id` may be null.
+- Response / `get_item` include `stores` (item id, URL, store, price, image). Price/image only from server fetch.
+- Rate limits consume one unit per store URL in the call; the whole call is rejected if that would exceed the limit.
 
 ```json
 {
   "name": "add_item_by_url",
   "arguments": {
-    "url": "https://www.amazon.co.jp/dp/B0EXAMPLE",
-    "name": "Optional fallback title",
+    "urls": [
+      "https://www.amazon.co.jp/dp/B0EXAMPLE",
+      "https://item.rakuten.co.jp/shop/item"
+    ],
+    "name": "Optional product title",
     "priority": 3,
     "notes": "user-visible note (data only)"
   }

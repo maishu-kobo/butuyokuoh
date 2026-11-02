@@ -104,8 +104,10 @@ paths:
       tags: [items]
       summary: URL で追加（add_item_by_url 相当）
       description: |
-        公開商品 URL を登録。価格・画像はサーバーが取得。失敗時は名前と URL のみ。
-        レート: add + add_url + add_day。
+        公開商品 URL を登録。`url` 1本・既存指定なしは単独品目。
+        `urls` 複数または `item_id` で既存へ店を足すと origin=photo のグループにまとめる。
+        価格・画像はサーバーが取得（呼び出し側の値は捨てる）。失敗時は名前と URL のみ。
+        レート: add + add_url + add_day を店 URL 件数分まとめて消費。
       operationId: addAgentItemByUrl
       requestBody:
         required: true
@@ -119,7 +121,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AddItemResponse'
+                $ref: '#/components/schemas/AddItemByUrlResponse'
         '400':
           $ref: '#/components/responses/Error'
         '401':
@@ -305,6 +307,15 @@ components:
       properties:
         ja: { type: string }
         en: { type: string }
+    AgentStore:
+      type: object
+      properties:
+        item_id: { type: integer }
+        url: { type: string }
+        store: { type: string }
+        source: { type: string }
+        current_price: { type: number, nullable: true }
+        image_url: { type: string, nullable: true }
     AgentItem:
       type: object
       properties:
@@ -319,6 +330,10 @@ components:
         deleted_at: { type: string, nullable: true }
         added_by_agent: { type: boolean }
         has_url_duplicate: { type: boolean }
+        comparison_group_id: { type: integer, nullable: true }
+        stores:
+          type: array
+          items: { $ref: '#/components/schemas/AgentStore' }
     MeResponse:
       type: object
       required: [data, notice]
@@ -365,10 +380,15 @@ components:
         comparison_group_id: { type: integer, minimum: 1 }
     AddItemByUrlBody:
       type: object
-      required: [url]
       additionalProperties: false
       properties:
         url: { type: string, format: uri }
+        urls:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { type: string, format: uri }
+        item_id: { type: integer, minimum: 1 }
         name: { type: string, maxLength: 200 }
         priority: { type: integer, minimum: 1, maximum: 5 }
         quantity: { type: integer, minimum: 1, maximum: 999 }
@@ -385,6 +405,19 @@ components:
           type: object
           properties:
             item: { $ref: '#/components/schemas/AgentItem' }
+            media_fetched: { type: boolean }
+    AddItemByUrlResponse:
+      type: object
+      required: [data, notice]
+      properties:
+        notice: { $ref: '#/components/schemas/Notice' }
+        data:
+          type: object
+          properties:
+            item: { $ref: '#/components/schemas/AgentItem' }
+            stores:
+              type: array
+              items: { $ref: '#/components/schemas/AgentStore' }
             media_fetched: { type: boolean }
     UpdateItemBody:
       type: object
