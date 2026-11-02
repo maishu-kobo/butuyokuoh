@@ -5,7 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
   pull_request:
-    branches: [feature/auto-deploy]
+    # Keep the CodeQL caller/configuration identical on main and its PRs.
+    # The deploy job below still rejects every PR before accessing production.
+    branches: [feature/auto-deploy, main]
 
 permissions:
   contents: read
