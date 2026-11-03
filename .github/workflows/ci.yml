@@ -57,7 +57,7 @@ jobs:
       contents: read
       actions: read
     environment: blacksmith-budget
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 3
     outputs:
       runner: ${{ steps.budget.outcome == 'success' && steps.budget.outputs.runner || 'ubuntu-latest' }}
@@ -146,7 +146,7 @@ jobs:
 
   audit:
     name: npm audit
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - name: Checkout
