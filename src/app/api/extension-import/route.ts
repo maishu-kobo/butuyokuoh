@@ -12,8 +12,9 @@ import { requireExtensionImportItems } from '@/lib/extension-item-input';
 import { cleanedStoredItemUrlTaken, normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
 
 // 一括 import はクライアントの価格・画像を保存しない（#276 / #267）。
-// 件数が多いとサーバ取得はタイムアウトしやすいので、価格・画像は空で登録し、
-// 既存の定期価格更新（check-prices）に埋めてもらう。
+// 件数が多いとサーバ取得はタイムアウトしやすいので、価格・画像は空で登録する。
+// 価格は既存の定期 check-prices が埋める。画像は check-prices では更新されないので、
+// 手動の再取得（/api/items/[id]/refresh）まで空のまま（#267 の取得失敗時と同じ）。
 
 const corsHeaders = extensionCorsHeaders('POST, OPTIONS');
 
