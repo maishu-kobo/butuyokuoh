@@ -21,6 +21,7 @@
 
 ### Changed
 
+- トップのエージェント接続カードとヘルプに、AIごと（Claude / Claude Code / ChatGPT / Cursor / Grok Bot）のつなぎ方を載せ、OAuth なら手動トークン不要・トークンが要る場合を分けて書く（#325）。
 - Chrome 拡張の認証を拡張用トークンへ移す。移行期間中は古いログイン用 JWT も受け付け、拡張に案内を出す。終了日は `EXTENSION_LEGACY_JWT_UNTIL`（既定 2026-11-30 UTC）。拡張 manifest を 1.2.0 にする（#271）。
 
 - `/privacy` と `/terms` にエージェント連携の説明を足し、数字の詳細は `/help/agents` に載せる（#273）。

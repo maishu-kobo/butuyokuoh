@@ -7,6 +7,12 @@ import {
   AGENT_TOKEN_DEFAULT_DAYS,
   AGENT_TOKEN_MAX_DAYS,
 } from '@/lib/agent-access-limits';
+import {
+  MCP_CLIENT_GUIDES,
+  MCP_OAUTH_NO_TOKEN,
+  MCP_TOKEN_NEEDED_CASES,
+  MCP_TOKEN_NEEDED_INTRO,
+} from '@/lib/mcp-connection-copy';
 
 export default function AgentHelpContent({ mcpUrl }: { mcpUrl: string }) {
   const agentItemsUrl = mcpUrl.replace(/\/api\/mcp\/?$/, '/api/agent/v1/items');
@@ -18,20 +24,38 @@ export default function AgentHelpContent({ mcpUrl }: { mcpUrl: string }) {
         </p>
         <h1 className="text-2xl font-bold">エージェント連携</h1>
         <p>
-          AIエージェントから、自分のほしいものリストを読んだり更新したりできます。
-          ここでは、トークンと OAuth、回数の上限を説明します。
+          自分の AI（ChatGPT や Claude など）から、ほしいものリストを読んだり更新したりできます。
+          まずは下の URL をコピーして、使っている AI の設定に貼ります。
         </p>
 
         <McpConnectionCard url={mcpUrl} variant="help" />
 
-        <h2 className="text-lg font-semibold pt-2">つなぎ方</h2>
+        <h2 className="text-lg font-semibold pt-2">トークンは基本いらない</h2>
+        <p>{MCP_OAUTH_NO_TOKEN}</p>
+
+        <h2 className="text-lg font-semibold pt-2">AIごとのつなぎ方</h2>
+        <p>
+          メニュー名は各 AI の公式ヘルプの表記です。画面が違うときは、その AI の公式ヘルプで
+          「コネクター」「MCP」「custom connector」を探してください。
+        </p>
+        {MCP_CLIENT_GUIDES.map((guide) => (
+          <div key={guide.name} className="space-y-2">
+            <h3 className="text-base font-semibold">{guide.name}</h3>
+            <ol className="list-decimal pl-6 space-y-2">
+              {guide.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+            {guide.note ? <p>{guide.note}</p> : null}
+          </div>
+        ))}
+
+        <h2 className="text-lg font-semibold pt-2">トークンが要るとき</h2>
+        <p>{MCP_TOKEN_NEEDED_INTRO}</p>
         <ul className="list-disc pl-6 space-y-2">
-          <li>
-            設定画面でエージェント用トークンを発行し、対応する AI エージェントや MCP クライアントに渡します。
-          </li>
-          <li>
-            OAuth 対応の MCP クライアントは、同意画面で許可すると、同じ種類のアクセス・トークンが発行されます。
-          </li>
+          {MCP_TOKEN_NEEDED_CASES.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
           <li>
             使い方の技術メモはサイト上のエージェント向け案内（llms.txt）にもあります。
           </li>
@@ -41,6 +65,7 @@ export default function AgentHelpContent({ mcpUrl }: { mcpUrl: string }) {
         <p>
           iPhone のショートカット App と組み合わせると、Siri に話しかけて品目を追加したり、
           Safari で見ている商品ページを共有シートから登録したりできます。専用のアプリは要りません。
+          ショートカットは OAuth ではなくトークンを使うため、設定でエージェント用トークンが必要です。
         </p>
         <ol className="list-decimal pl-6 space-y-2">
           <li>設定画面でエージェント用トークンを発行し、コピーします。</li>
@@ -63,8 +88,8 @@ export default function AgentHelpContent({ mcpUrl }: { mcpUrl: string }) {
           トークンの文字列はショートカットの中に残るので、ほかの人と共有するときは自分のトークンを外してください。
         </p>
         <p>
-          Claude の iPhone アプリを使う場合は、カスタムコネクタに上の接続用 URL（MCP）を登録すると、
-          「Ask Claude」から Siri 経由で操作できます。
+          Claude の iPhone アプリを使う場合は、カスタムコネクタに上の「自分の AI につなぐ URL」を登録すると、
+          「Ask Claude」から Siri 経由で操作できます（こちらはログインして許可する方式で、手動トークンは不要です）。
         </p>
 
         <h2 className="text-lg font-semibold pt-2">トークンの発行と無効化</h2>
