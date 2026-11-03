@@ -39,7 +39,14 @@ export async function POST(request: NextRequest) {
 
     const csrfCookie = request.cookies.get(OAUTH_CSRF_COOKIE)?.value || '';
     const input = parseConsentBody(body, csrfCookie);
-    const { redirectUrl } = approveAuthorizePending(input.pendingId, input.csrf, user.id, input.decision);
+    const { redirectUrl } = approveAuthorizePending(
+      input.pendingId,
+      input.csrf,
+      user.id,
+      input.decision,
+      undefined,
+      request.url,
+    );
     const response = NextResponse.json({ redirect_url: redirectUrl }, {
       headers: { 'Cache-Control': 'no-store' },
     });

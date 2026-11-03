@@ -38,6 +38,18 @@ import { isIP } from 'node:net';
 export const OAUTH_SCOPES = ['read', 'write'] as const;
 export type OAuthScope = (typeof OAUTH_SCOPES)[number];
 
+/** DCR / トークン端点で受け付ける client 認証方式（AS metadata に載せる）。 */
+export const OAUTH_TOKEN_ENDPOINT_AUTH_METHODS = ['none', 'client_secret_post'] as const;
+export type OAuthTokenEndpointAuthMethod = (typeof OAUTH_TOKEN_ENDPOINT_AUTH_METHODS)[number];
+
+/**
+ * CIMD で実際に交渉・検証できる方式。
+ * ChatGPT の CIMD は private_key_jwt を優先しつつ none も出す（SEP-3149）。
+ * 共有シークレットは CIMD では確立できないため client_secret_* は含めない。
+ * private_key_jwt は未実装なので、交差に none があれば none で登録する。
+ */
+export const OAUTH_CIMD_TOKEN_ENDPOINT_AUTH_METHODS = ['none'] as const;
+
 export const OAUTH_CODE_TTL_MS = 10 * 60 * 1000;
 export const OAUTH_PENDING_TTL_MS = 15 * 60 * 1000;
 export const OAUTH_REFRESH_DEFAULT_DAYS = AGENT_TOKEN_DEFAULT_DAYS;
@@ -179,6 +191,8 @@ export function buildAuthorizationServerMetadata(requestUrl?: string) {
   const issuer = oauthIssuer(requestUrl);
   return {
     issuer,
+    // RFC 9207: ChatGPT が安定 redirect / 安定 CIMD を使う条件。authorize 応答に iss を必ず付ける。
+    authorization_response_iss_parameter_supported: true,
     authorization_endpoint: `${issuer}/oauth/authorize`,
     token_endpoint: `${issuer}/api/oauth/token`,
     registration_endpoint: `${issuer}/api/oauth/register`,
@@ -187,11 +201,17 @@ export function buildAuthorizationServerMetadata(requestUrl?: string) {
     response_types_supported: ['code'],
     grant_types_supported: ['authorization_code', 'refresh_token'],
     code_challenge_methods_supported: ['S256'],
-    token_endpoint_auth_methods_supported: ['none', 'client_secret_post'],
-    revocation_endpoint_auth_methods_supported: ['none', 'client_secret_post'],
+    token_endpoint_auth_methods_supported: [...OAUTH_TOKEN_ENDPOINT_AUTH_METHODS],
+    revocation_endpoint_auth_methods_supported: [...OAUTH_TOKEN_ENDPOINT_AUTH_METHODS],
     resource_indicator_parameter_supported: true,
     client_id_metadata_document_supported: true,
   };
+}
+
+/** 認可応答（成功・エラー）の redirect に RFC 9207 の iss を付ける。 */
+export function appendAuthorizationIss(redirect: URL, requestUrl?: string): URL {
+  redirect.searchParams.set('iss', oauthIssuer(requestUrl));
+  return redirect;
 }
 
 export function buildProtectedResourceMetadata(requestUrl?: string) {
@@ -352,6 +372,49 @@ async function fetchJsonDocument(
   return { json, bodyText };
 }
 
+/**
+ * CIMD の token_endpoint_auth_method(s) を AS 側の実装と交差して決める。
+ * 単数形は SEP-3149 / OpenAI ドキュメント上の「好み」であり、必須ではない。
+ * ChatGPT の本番 CIMD は private_key_jwt を好みつつ none も列挙する。
+ */
+export function negotiateCimdTokenEndpointAuthMethod(doc: Record<string, unknown>): OAuthTokenEndpointAuthMethod {
+  const asSupported = new Set<string>(OAUTH_CIMD_TOKEN_ENDPOINT_AUTH_METHODS);
+  let offered: string[];
+  if (Array.isArray(doc.token_endpoint_auth_methods_supported)) {
+    offered = doc.token_endpoint_auth_methods_supported.filter((m): m is string => typeof m === 'string');
+  } else if (typeof doc.token_endpoint_auth_method === 'string') {
+    offered = [doc.token_endpoint_auth_method];
+  } else {
+    offered = ['none'];
+  }
+  if (offered.length === 0) {
+    throw new GuestError(400, 'CLIENT_METADATA_INVALID', 'token_endpoint_auth_methods_supported が空です');
+  }
+  // 単数形があるとき、複数形にも含まれていなければならない（RP Metadata Choices）。
+  if (
+    typeof doc.token_endpoint_auth_method === 'string'
+    && Array.isArray(doc.token_endpoint_auth_methods_supported)
+    && !offered.includes(doc.token_endpoint_auth_method)
+  ) {
+    throw new GuestError(400, 'CLIENT_METADATA_INVALID', 'token_endpoint_auth_method が supported 一覧にありません');
+  }
+  const intersection = offered.filter((method) => asSupported.has(method));
+  if (intersection.length === 0) {
+    throw new GuestError(
+      400,
+      'CLIENT_METADATA_INVALID',
+      '対応する token_endpoint_auth_method がありません',
+    );
+  }
+  const preference =
+    typeof doc.token_endpoint_auth_method === 'string' ? doc.token_endpoint_auth_method : null;
+  if (preference && intersection.includes(preference)) {
+    return preference as OAuthTokenEndpointAuthMethod;
+  }
+  if (intersection.includes('none')) return 'none';
+  return intersection[0] as OAuthTokenEndpointAuthMethod;
+}
+
 function validateClientMetadataShape(
   json: unknown,
   expectedClientId: string,
@@ -395,13 +458,7 @@ function validateClientMetadataShape(
   if (!responseTypes.includes('code')) {
     throw new GuestError(400, 'CLIENT_METADATA_INVALID', 'response_type code が必要です');
   }
-  const authMethod =
-    typeof doc.token_endpoint_auth_method === 'string'
-      ? doc.token_endpoint_auth_method
-      : 'none';
-  if (authMethod !== 'none' && authMethod !== 'client_secret_post') {
-    throw new GuestError(400, 'CLIENT_METADATA_INVALID', 'token_endpoint_auth_method が不正です');
-  }
+  const authMethod = negotiateCimdTokenEndpointAuthMethod(doc);
   return {
     client_id: expectedClientId,
     client_name: doc.client_name.trim(),
@@ -677,6 +734,7 @@ export function approveAuthorizePending(
   userId: number,
   decision: 'approve' | 'deny',
   db: Database.Database = getDb(),
+  requestUrl?: string,
 ): { redirectUrl: string } {
   const pending = getAuthorizePending(pendingId, db);
   if (!pending) {
@@ -702,6 +760,7 @@ export function approveAuthorizePending(
   if (decision === 'deny') {
     redirect.searchParams.set('error', 'access_denied');
     redirect.searchParams.set('error_description', 'user_denied');
+    appendAuthorizationIss(redirect, requestUrl);
     return { redirectUrl: redirect.toString() };
   }
 
@@ -724,6 +783,7 @@ export function approveAuthorizePending(
   );
 
   redirect.searchParams.set('code', code);
+  appendAuthorizationIss(redirect, requestUrl);
   return { redirectUrl: redirect.toString() };
 }
 

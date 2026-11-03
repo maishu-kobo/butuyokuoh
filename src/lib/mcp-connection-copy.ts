@@ -80,11 +80,12 @@ export const MCP_CLIENT_GUIDES: readonly McpClientGuide[] = [
     steps: [
       'Plugins を開く',
       '「+」→「Add custom MCP server」を選ぶ',
-      '名前を入れ、Connection の Server URL に上の URL を貼る',
+      '名前を入れ、Connection の Server URL に上の URL を貼る（本番は https。localhost ではつながらない）',
       '認証で OAuth（ログイン）を選び、注意事項に同意して作成し、物欲王の許可画面で許可する',
+      '作成後はプラグインをインストールし、会話で @ から選んで使う',
     ],
     note:
-      '手動のエージェント用トークンは不要です。公式ヘルプによると、カスタム MCP の接続は主に Business / Enterprise・Edu 向けです（プランによって画面が出ないことがあります）。スマホアプリからは追加できません。',
+      '手動のエージェント用トークンは不要です。公式ヘルプによると、カスタム MCP の接続は主に Business / Enterprise・Edu 向けです（プランによって画面が出ないことがあります）。スマホアプリからは追加できません。くわしくは OpenAI の「Connecting custom MCP servers in ChatGPT」を見てください。',
   },
   {
     name: 'Cursor',

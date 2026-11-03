@@ -75,13 +75,9 @@ export async function GET(request: NextRequest) {
     });
     return response;
   } catch (error) {
-    // redirect_uri が信頼できるときだけそこに error を返す。そうでなければ HTML。
-    if (
-      error instanceof GuestError
-      && redirectUri
-      && clientId
-      && responseType === 'code'
-    ) {
+    // 登録済みクライアントと一致する redirect_uri のときだけ error を返す。
+    // クエリの有無でこの判定を迂回しない（CodeQL js/user-controlled-bypass）。
+    if (error instanceof GuestError) {
       try {
         const { getDb } = await import('@/lib/db');
         const oauth = await import('@/lib/agent-oauth');
@@ -94,6 +90,7 @@ export async function GET(request: NextRequest) {
           target.searchParams.set('error', error.code === 'unsupported_response_type' ? error.code : 'invalid_request');
           target.searchParams.set('error_description', error.message);
           if (state) target.searchParams.set('state', state);
+          oauth.appendAuthorizationIss(target, request.url);
           const response = NextResponse.redirect(target.toString(), 302);
           response.headers.set('Content-Security-Policy', csp);
           response.headers.set('Cache-Control', 'no-store');

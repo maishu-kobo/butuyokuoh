@@ -4,12 +4,16 @@ import { randomBytes } from 'node:crypto';
 import { test } from 'node:test';
 import { call, createMember, db, setTestUser } from './regression-harness';
 import {
+  appendAuthorizationIss,
   assertMcpResource,
+  buildAuthorizationServerMetadata,
   clientAllowsRedirect,
   createAuthorizePending,
   exchangeAuthorizationCode,
   isAllowedRedirectUri,
   mcpResourceUrl,
+  negotiateCimdTokenEndpointAuthMethod,
+  oauthIssuer,
   oauthWwwAuthenticate,
   parseOAuthScopeParam,
   pkceChallengeS256,
@@ -203,6 +207,9 @@ test('oauth metadata endpoints advertise AS, PRM, CIMD, DCR', () => serial(async
     registration_endpoint: string;
     code_challenge_methods_supported: string[];
     client_id_metadata_document_supported: boolean;
+    authorization_response_iss_parameter_supported: boolean;
+    token_endpoint_auth_methods_supported: string[];
+    grant_types_supported: string[];
   };
   assert.ok(asJson.issuer);
   assert.match(asJson.authorization_endpoint, /\/oauth\/authorize$/);
@@ -210,6 +217,10 @@ test('oauth metadata endpoints advertise AS, PRM, CIMD, DCR', () => serial(async
   assert.match(asJson.registration_endpoint, /\/api\/oauth\/register$/);
   assert.deepEqual(asJson.code_challenge_methods_supported, ['S256']);
   assert.equal(asJson.client_id_metadata_document_supported, true);
+  assert.equal(asJson.authorization_response_iss_parameter_supported, true);
+  assert.deepEqual(asJson.token_endpoint_auth_methods_supported, ['none', 'client_secret_post']);
+  assert.ok(asJson.grant_types_supported.includes('refresh_token'));
+  assert.equal(buildAuthorizationServerMetadata().authorization_response_iss_parameter_supported, true);
 
   const prm = await call(prmPath, 'GET', '/.well-known/oauth-protected-resource');
   assert.equal(prm.status, 200, prm.text);
@@ -315,6 +326,7 @@ test('oauth DCR + authorize + consent + token + refresh rotation + revoke', () =
   const code = new URL(redirectUrl).searchParams.get('code');
   assert.ok(code);
   assert.equal(new URL(redirectUrl).searchParams.get('state'), state);
+  assert.equal(new URL(redirectUrl).searchParams.get('iss'), oauthIssuer('http://localhost/api/oauth/consent'));
 
   const tokenRes = await call(
     tokenPath,
@@ -410,6 +422,136 @@ test('oauth DCR + authorize + consent + token + refresh rotation + revoke', () =
     }).toString(),
   }));
   assert.equal(revokeRes.status, 200);
+}));
+
+test('oauth CIMD: ChatGPT-style private_key_jwt preference negotiates to none', () => serial(async () => {
+  // https://chatgpt.com/oauth/client.json （本番スナップショット相当）
+  // OpenAI: singular は好み、plural との交差で方式を決める。AS は none のみ実装。
+  const chatgptDoc = {
+    client_id: 'https://chatgpt.com/oauth/client.json',
+    client_uri: 'https://chatgpt.com/',
+    redirect_uris: ['https://chatgpt.com/connector_platform_oauth_redirect'],
+    token_endpoint_auth_method: 'private_key_jwt',
+    token_endpoint_auth_methods_supported: ['none', 'private_key_jwt'],
+    grant_types: ['authorization_code', 'refresh_token'],
+    response_types: ['code'],
+    client_name: 'ChatGPT',
+    logo_uri: 'https://persistent.oaistatic.com/sonic/misc/openai-logo.png',
+    token_endpoint_auth_signing_alg: 'RS256',
+    jwks_uri: 'https://chatgpt.com/oauth/jwks.json',
+  };
+  assert.equal(
+    negotiateCimdTokenEndpointAuthMethod(chatgptDoc),
+    'none',
+  );
+  assert.equal(
+    negotiateCimdTokenEndpointAuthMethod({
+      token_endpoint_auth_method: 'none',
+    }),
+    'none',
+  );
+  assert.throws(
+    () => negotiateCimdTokenEndpointAuthMethod({
+      token_endpoint_auth_method: 'private_key_jwt',
+      token_endpoint_auth_methods_supported: ['private_key_jwt'],
+    }),
+    (err: Error & { code?: string }) => err.code === 'CLIENT_METADATA_INVALID',
+  );
+  assert.throws(
+    () => negotiateCimdTokenEndpointAuthMethod({
+      token_endpoint_auth_method: 'private_key_jwt',
+      token_endpoint_auth_methods_supported: ['none'],
+    }),
+    (err: Error & { code?: string }) => err.code === 'CLIENT_METADATA_INVALID',
+  );
+
+  assert.equal(
+    isAllowedRedirectUri('https://chatgpt.com/connector_platform_oauth_redirect'),
+    true,
+  );
+  assert.equal(
+    isAllowedRedirectUri('https://chatgpt.com/connector/oauth/callback-id-example'),
+    true,
+  );
+
+  const database = await db();
+  const metaUrl = chatgptDoc.client_id;
+  const client = await resolveOAuthClient(metaUrl, database, {
+    resolve: async () => [{ address: '104.18.0.1', family: 4 }],
+    request: async (): Promise<PinnedResponse> => ({
+      status: 200,
+      body: Buffer.from(JSON.stringify(chatgptDoc)),
+      contentType: 'application/json',
+    }),
+  });
+  assert.equal(client.client_id, metaUrl);
+  assert.equal(client.registration_type, 'cimd');
+  assert.equal(client.token_endpoint_auth_method, 'none');
+  assert.equal(
+    clientAllowsRedirect(client, 'https://chatgpt.com/connector_platform_oauth_redirect'),
+    true,
+  );
+
+  const { challenge } = pkcePair();
+  const pending = await createAuthorizePending({
+    client_id: metaUrl,
+    redirect_uri: 'https://chatgpt.com/connector_platform_oauth_redirect',
+    scope: 'read write',
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    resource: mcpResourceUrl(),
+    response_type: 'code',
+    state: 'chatgpt-cimd',
+  }, database, {
+    resolve: async () => [{ address: '104.18.0.1', family: 4 }],
+    request: async (): Promise<PinnedResponse> => ({
+      status: 200,
+      body: Buffer.from(JSON.stringify(chatgptDoc)),
+      contentType: 'application/json',
+    }),
+  });
+  assert.equal(pending.client.token_endpoint_auth_method, 'none');
+
+  const issuer = oauthIssuer();
+  const withIss = appendAuthorizationIss(new URL('https://chatgpt.com/connector_platform_oauth_redirect'));
+  assert.equal(withIss.searchParams.get('iss'), issuer);
+}));
+
+test('oauth authorize consent redirect includes RFC 9207 iss', () => serial(async () => {
+  const user = await createMember('oauth-iss');
+  const registered = registerDynamicClient({
+    client_name: 'Iss Client',
+    redirect_uris: ['http://127.0.0.1:3913/callback'],
+    token_endpoint_auth_method: 'none',
+  });
+  const { challenge } = pkcePair();
+  const resource = mcpResourceUrl();
+  const { pendingId, csrf } = await createAuthorizePending({
+    client_id: registered.client_id,
+    redirect_uri: registered.redirect_uris[0],
+    scope: 'read write',
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    resource,
+    response_type: 'code',
+    state: 'iss-state',
+  });
+  await setTestUser(user);
+  const approved = await call(
+    consentPath,
+    'POST',
+    '/api/oauth/consent',
+    { pending_id: pendingId, decision: 'approve', csrf },
+    undefined,
+    { Origin: 'http://localhost', Cookie: `byo_oauth_csrf=${csrf}` },
+    'http://localhost/api/oauth/consent',
+  );
+  assert.equal(approved.status, 200, approved.text);
+  const redirectUrl = (approved.json as { redirect_url: string }).redirect_url;
+  const redirected = new URL(redirectUrl);
+  assert.ok(redirected.searchParams.get('code'));
+  assert.equal(redirected.searchParams.get('state'), 'iss-state');
+  assert.equal(redirected.searchParams.get('iss'), oauthIssuer('http://localhost/api/oauth/consent'));
 }));
 
 test('oauth CIMD fetch uses SSRF guard; private hosts rejected', () => serial(async () => {
