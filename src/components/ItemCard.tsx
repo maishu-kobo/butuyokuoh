@@ -230,29 +230,51 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     yahoo: 'Yahoo!ショッピング',
     other: 'その他',
   };
+  const productUrl = linkableHttpUrl(item.url);
+  const storeLabel = item.source_name || sourceNames[item.source] || 'その他';
+  const openStoreLabel =
+    !productUrl
+      ? null
+      : item.source === 'other' && !item.source_name
+        ? '商品ページを開く'
+        : `${storeLabel}で開く`;
+  const productTitle = heading || item.name;
   const shownImage = displayableItemImageUrl(
     displayImageUrl !== undefined ? displayImageUrl : item.image_url,
+  );
+  const imageBody = shownImage ? (
+    <img
+      src={shownImage}
+      alt={productTitle}
+      loading="lazy"
+      decoding="async"
+      className="w-full h-full object-contain"
+    />
+  ) : (
+    <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
+      No Image
+    </div>
   );
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
       <div className="flex">
-        {/* 画像 */}
-        <div className="w-32 h-32 flex-shrink-0 bg-gray-100 dark:bg-slate-700">
-          {shownImage ? (
-            <img
-              src={shownImage}
-              alt={heading || item.name}
-              loading="lazy"
-              decoding="async"
-              className="w-full h-full object-contain"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
-              No Image
-            </div>
-          )}
-        </div>
+        {/* 画像（商品URLがあるときだけリンク。ドラッグハンドル・操作バーとは別領域） */}
+        {productUrl ? (
+          <a
+            href={productUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={openStoreLabel || `${productTitle}を開く`}
+            className="w-32 h-32 flex-shrink-0 bg-gray-100 dark:bg-slate-700 block focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset"
+          >
+            {imageBody}
+          </a>
+        ) : (
+          <div className="w-32 h-32 flex-shrink-0 bg-gray-100 dark:bg-slate-700">
+            {imageBody}
+          </div>
+        )}
 
         {/* 情報 */}
         <div className="flex-1 p-4">
@@ -265,7 +287,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   </span>
                 )) : (
                   <span className={`text-xs px-2 py-0.5 rounded ${sourceColors[item.source] || sourceColors.other}`}>
-                    {item.source_name || sourceNames[item.source] || 'その他'}
+                    {storeLabel}
                   </span>
                 )}
                 {item.category_name && item.category_color && (
@@ -297,16 +319,43 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
               {item.added_by_agent_token_id != null && (
                 <span className="text-xs text-sky-700 dark:text-sky-300">エージェントが追加</span>
               )}
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">{heading || item.name}</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">
+                {productUrl ? (
+                  <a
+                    href={productUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline focus:underline focus:outline-none"
+                  >
+                    {productTitle}
+                  </a>
+                ) : (
+                  productTitle
+                )}
+              </h3>
+              {openStoreLabel && productUrl && (
+                <a
+                  href={productUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 min-h-[44px] px-3 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-slate-500 rounded hover:bg-gray-100 dark:hover:bg-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  <ExternalLink size={16} aria-hidden="true" />
+                  {openStoreLabel}
+                </a>
+              )}
             </div>
-              {linkableHttpUrl(item.url) && <a
-              href={linkableHttpUrl(item.url)!}
+              {productUrl && (
+              <a
+              href={productUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-400 dark:text-gray-500 hover:text-blue-500 ml-2"
+              aria-label={openStoreLabel || `${productTitle}を開く`}
+              className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-gray-400 dark:text-gray-500 hover:text-blue-500 ml-2"
             >
-              <ExternalLink size={18} />
-            </a>}
+              <ExternalLink size={18} aria-hidden="true" />
+            </a>
+              )}
           </div>
 
           <div className="mt-2 flex items-baseline gap-2 flex-wrap">
@@ -392,9 +441,9 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           {offerPriceRefresh && (
             <button
               onClick={handleRefresh}
-              disabled={refreshing || !linkableHttpUrl(item.url)}
+              disabled={refreshing || !productUrl}
               aria-label="価格を更新"
-              title={linkableHttpUrl(item.url) ? "商品名・価格・画像をURLから更新" : "商品URLを登録すると更新できます"}
+              title={productUrl ? "商品名・価格・画像をURLから更新" : "商品URLを登録すると更新できます"}
               className={`${auxiliaryActionClass} disabled:opacity-50`}
             >
               <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
