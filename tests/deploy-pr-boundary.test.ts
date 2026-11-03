@@ -10,13 +10,22 @@ const require = createRequire(import.meta.url);
 const { load } = createRequire(require.resolve('@eslint/eslintrc'))('js-yaml');
 const source = readFileSync('.github/workflows/deploy-main.yml', 'utf8');
 const workflow = load(source);
+const codeql = load(readFileSync('.github/workflows/codeql.yml', 'utf8'));
+const codeqlMain = load(readFileSync('.github/workflows/codeql-main.yml', 'utf8'));
 
-test('main PRs run the same CodeQL caller as main pushes for comparable analyses', () => {
+test('main and its PRs share codeql.yml configuration; deploy-main security runs only off PRs', () => {
   for (const branch of workflow.on.push.branches) {
     assert.ok(workflow.on.pull_request.branches.includes(branch), `missing PR comparison for ${branch}`);
   }
+  assert.ok(codeql.on.pull_request.branches.includes('main'));
   assert.equal(workflow.jobs.security.uses, './.github/workflows/codeql.yml');
-  assert.equal(workflow.jobs.security.if, undefined, 'analysis must run for both event types');
+  assert.match(String(workflow.jobs.security.if), /github\.event_name\s*!=\s*'pull_request'/);
+  for (const name of ['ci', 'browser', 'secrets-scan', 'quarantine', 'security'] as const) {
+    assert.match(String(workflow.jobs[name].if), /github\.event_name\s*!=\s*'pull_request'/, name);
+  }
+  assert.equal(codeqlMain.on.pull_request, undefined);
+  assert.equal(codeqlMain.on.push, undefined);
+  assert.ok(codeqlMain.on.schedule);
   assert.deepEqual([...workflow.jobs.deploy.needs].sort(), ['browser', 'ci', 'quarantine', 'secrets-scan', 'security']);
 });
 

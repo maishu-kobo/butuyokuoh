@@ -1,6 +1,6 @@
 # CI
 
-`feature/capture-existing-bugfixes`、`develop`、`main` 向けの pull request で走る。`ci.yml`、`playwright.yml`、`quarantine.yml` は `develop` への push でも走る。`ci.yml` は `main` への push も対象にする。path フィルタは付けない。必須のジョブが skip になると、その SHA のチェックが pending のままになる。通常ジョブの権限は `contents: read` だけ。mainのBlacksmith判定ジョブに限って `actions: read` を加える。失敗した Playwright の結果は `actions/upload-artifact` v4 が上げる。`actions: write` は付けない。アクションはコミット SHA でピンする。
+`feature/capture-existing-bugfixes`、`develop`、`main` 向けの pull request で走る。`ci.yml`、`playwright.yml`、`quarantine.yml` は `develop` への push でも走る。`main` への push の CI は `deploy-main.yml` が reusable で `ci.yml` を呼ぶ（単体の `ci.yml` push は二重起動を避けるため対象外）。path フィルタは付けない。必須のジョブが skip になると、その SHA のチェックが pending のままになる。通常ジョブの権限は `contents: read` だけ。mainのBlacksmith判定ジョブに限って `actions: read` を加える。失敗した Playwright の結果は `actions/upload-artifact` v4 が上げる。`actions: write` は付けない。アクションはコミット SHA でピンする。
 
 マージを赤で止める必須ステータスチェックは、GitHub のブランチ保護と ruleset で設定する。このリポジトリのファイルだけでは有効にならない。
 
@@ -17,7 +17,7 @@
 
 ### Blacksmith の予算判定と自動切り替え
 
-関連 Issue は #287、導入調査は #232。`main` への push で `Select CI runner` が先に利用量を確認し、`test, types, build` の実行先を選ぶ。PR（同一リポジトリ・fork とも）、他ブランチ、再実行は GitHub 標準ランナーを使う。main push を CI の対象に追加するが、既存の検査とジョブ名、20分の制限、`contents: read` は維持する。audit、Playwright、CodeQL 等は GitHub のまま。
+関連 Issue は #287、導入調査は #232。`main` への push では `deploy-main.yml` 経由の reusable `ci.yml` で `Select CI runner` が先に利用量を確認し、`ci / test, types, build` の実行先を選ぶ。履歴の対象ワークフローは `deploy-main.yml`（#319）。PR（同一リポジトリ・fork とも）、他ブランチ、再実行は GitHub 標準ランナーを使う。既存の検査内容、20分の制限、`contents: read` は維持する。audit、Playwright、CodeQL 等は GitHub のまま。
 
 判定ジョブ自身は `ubuntu-latest` で動く。スキップ、失敗、タイムアウト、認証欠落、取得不能、不正な応答、対象組織・対象期間の不一致、ストレージ請求データの欠落、予算不足の場合も、後続の検査を省略せず `ubuntu-latest` に戻す。開始済みのジョブを別のランナーへ移すものではない。
 
@@ -54,7 +54,7 @@ GitHub Environment `blacksmith-budget` の利用可能ブランチはbranchのma
 | Repository variable | 内容 |
 | --- | --- |
 | `BLACKSMITH_NO_CHARGE_CONFIRMED` | 無課金条件を確認したUTC月。例: `2026-11` |
-| `BLACKSMITH_BUDGET` | 例: `{"month":"2026-11","freeVcpuMinutes":6000,"historyStartRunNumber":483}`。無料枠は確認済みのvCPU分、履歴開始位置は有効化前に確認した次のCI番号 |
+| `BLACKSMITH_BUDGET` | 例: `{"month":"2026-11","freeVcpuMinutes":6000,"historyStartRunNumber":38}`。無料枠は確認済みのvCPU分、履歴開始位置は有効化前に確認した次の **deploy-main.yml** 実行番号 |
 
 旧形式・未設定・対象月不一致は無効。`freeVcpuMinutes` は確認済みの3,000または6,000のみ受け付ける。**同月に履歴の開始位置を前進させない。** 履歴を削除したりワークフローを再作成した場合は無効化して調査する。月途中の初回有効化は、その時点まで組織全体の当月利用量が0である場合に限る。
 
@@ -103,7 +103,7 @@ Blacksmith選択後にランナーが供給されないと、`test, types, build
 
 | チェック名 | ファイル | 中身 |
 | --- | --- | --- |
-| `playwright` | `.github/workflows/playwright.yml` | 開発サーバの e2e。固定の商品ページ。ジョブの時間制限は 30 分 |
+| `playwright` | `.github/workflows/playwright.yml` | 開発サーバの e2e（2 shard 集約）。固定の商品ページ。各 shard の時間制限は 30 分 |
 | `production smoke` | 同じファイル | `npm run build` のあと `next start`。キャプチャのテスト用フックは渡さない |
 | `guest disabled` | 同じファイル | `GUEST_MODE_ENABLED=false` の `disabled.spec.ts` |
 | `analyze` | `.github/workflows/codeql.yml` | CodeQL。解析・取り込み失敗で停止。high は `.github/codeql/high_gate.py` で判定 |
@@ -123,9 +123,9 @@ CodeQL は `.github/workflows/codeql.yml` の advanced setup を使う。GitHub 
 
 確認するときは、対象コミットのログで `Analysis upload status is complete`、CodeQLチェックで正常な取り込み、Code scanningの解析一覧で対象のrefとcommit SHAおよび空のerrorを確認する。単に `Successfully uploaded results` と出ただけでは完了としない。
 
-`codeql.yml` はfeature/photo-capture、feature/capture-existing-bugfixes、feature/auto-deploy、develop、main向けPRと、再利用workflowとしての呼び出しを対象にする。拡張クエリとhigh判定を実行する。`deploy-main.yml` からもmain更新時とmain向けPRの両方で呼び、同じ解析設定で比較する。呼び出し元が異なる解析は別設定になるため、main側にだけある設定がないかも確認する。
+`codeql.yml` はfeature/photo-capture、feature/capture-existing-bugfixes、feature/auto-deploy、develop、main向けPRと、再利用workflowとしての呼び出しを対象にする。拡張クエリとhigh判定を実行する。main向けPRではこのファイルの `pull_request` 起動だけを使い、main への push では `deploy-main.yml` の `security` ジョブから同じ `codeql.yml` を呼ぶ。設定（クエリ・high判定・取り込み確認）は同一ファイルに置く。
 
-`codeql-main.yml` はmain向けPR・push・週次・手動でJS/TSの既定クエリを実行する。これは拡張クエリ側とは別に維持する。Default setupは無効のままとし、ブランチ保護は変更しない。main向けPRでは独立した検査と配備workflow経由の検査が重複するが、本変更では既存ゲートを削除しない。
+`codeql-main.yml` は週次と手動だけ、JS/TSの既定クエリを実行する。Default setupの代替として残し、PR・main pushでは起動しない（#319）。Default setupは無効のまま。ブランチ保護はリポジトリ設定側の作業。
 
 ## Playwright のブラウザ
 
@@ -181,4 +181,4 @@ tests/e2e/guest.spec.ts
 
 `required` の認証保護は、差分がなくても必須。develop へ取り込み済みの場合は、両方のスナップショットでパスワード無効化・セッション世代・未確認 Google の拒否を直接確認し、「維持」と表示する。両方が同じ危険な動作へ戻った場合も失敗する。未対応の必須ルールは失敗させるため、必須ルールを足す際は比較処理の不変条件と回帰テストも追加する。
 
-自動配備の `main validation and deployment` から呼ぶCIは `github_hosted_only: true` を指定し、GitHub標準runnerで検査する。通常のmain CIのBlacksmith予算判定・予約を二重実行しない。通常CIの利用上限・有効化条件は変えない。
+自動配備の `main validation and deployment` から呼ぶCIは `github_hosted_only: false` とし、main push の唯一の CI 経路として Blacksmith 判定（`Select CI runner`）を行う。PR ではこの reusable 呼び出し自体を skip し、単体ワークフロー側の検査だけを残す（#319）。

@@ -29,7 +29,8 @@ export async function readHistory(env, window, anchor, fetchImpl = globalThis.fe
     }
     throw new Error('github-history-incomplete');
   }
-  const runs = await pages('workflows/ci.yml/runs', { created: `${window.start}..${window.end}` }, 'workflow_runs');
+  // reusable ci は deploy-main の run に載る。単体 ci.yml の履歴は使わない。
+  const runs = await pages('workflows/deploy-main.yml/runs', { created: `${window.start}..${window.end}` }, 'workflow_runs');
   const jobRuns = [];
   for (const run of runs) {
     // Exclusive runner/workflow scope is an activation prerequisite. PRs cannot use it.

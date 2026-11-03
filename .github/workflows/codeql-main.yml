@@ -1,12 +1,9 @@
-# Replace repository-level default setup for main without changing application code.
-# Feature PRs use their existing advanced workflow; default setup must remain off.
+# Default setup の代わりに、週次と手動だけ既定クエリを回す。
+# PR / main push の解析は codeql.yml（拡張クエリ + high 判定）に一本化した。
+# Default setup は無効のまま。
 name: CodeQL main
 
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
   schedule:
     - cron: '17 4 * * 3'
   workflow_dispatch:

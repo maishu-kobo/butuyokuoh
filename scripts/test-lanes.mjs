@@ -141,7 +141,11 @@ function runE2e(files) {
     console.error('必須の e2e が 0 件。隔離リストで全部は外せない。');
     return false;
   }
-  return run('npx', ['playwright', 'test', ...files]);
+  // CI のジョブ分割用。同一プロセス内の workers は共有 SQLite のため 1 のまま（playwright.config.ts）。
+  const shard = typeof process.env.E2E_SHARD === 'string' ? process.env.E2E_SHARD.trim() : '';
+  const args = ['playwright', 'test', ...files];
+  if (shard) args.push(`--shard=${shard}`);
+  return run('npx', args);
 }
 
 function runQuarantine(state) {
