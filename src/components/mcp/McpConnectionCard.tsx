@@ -9,16 +9,20 @@ import {
   MCP_ASK_EXAMPLES,
   MCP_CARD_SUBTITLE,
   MCP_CARD_TITLE,
+  MCP_CLIENT_GUIDES,
   MCP_CONNECT_STEPS,
   MCP_GUEST_HINT,
   MCP_LOCALHOST_NOTE,
+  MCP_OAUTH_NO_TOKEN,
+  MCP_TOKEN_NEEDED_CASES,
+  MCP_TOKEN_NEEDED_INTRO,
   MCP_TROUBLESHOOTING,
   MCP_URL_LABEL,
   MCP_WHAT_IS,
   isLoopbackMcpUrl,
 } from '@/lib/mcp-connection-copy';
 
-/** 「全て更新」などと同じ中立セカンダリ。赤（危険色）は使わない。 */
+/** 「全て更新」などと同じ中立セカンダリ。赤（危険色）は破壊操作だけに使う。 */
 const SECONDARY_BTN =
   'shrink-0 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors';
 
@@ -31,21 +35,55 @@ export function McpConnectionInfoPanel({ url }: { url: string }) {
       </div>
 
       <div>
-        <p className="font-medium mb-1">AI に頼めること</p>
+        <p className="font-medium mb-1">トークンは基本いらない</p>
+        <p className="text-[var(--color-muted)]">{MCP_OAUTH_NO_TOKEN}</p>
+      </div>
+
+      <div>
+        <p className="font-medium mb-1">つなぎ方（共通）</p>
+        <ol className="list-decimal pl-4 space-y-1 text-[var(--color-muted)]">
+          {MCP_CONNECT_STEPS.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ol>
+      </div>
+
+      <div>
+        <p className="font-medium mb-1">AIごとのつなぎ方</p>
+        <div className="space-y-3">
+          {MCP_CLIENT_GUIDES.map((guide) => (
+            <div key={guide.name}>
+              <p className="text-[var(--color-text)] font-medium">{guide.name}</p>
+              <ol className="list-decimal pl-4 space-y-1 text-[var(--color-muted)]">
+                {guide.steps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+              {guide.note ? (
+                <p className="mt-1 text-[var(--color-muted)] text-sm">{guide.note}</p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="font-medium mb-1">トークンが要るとき</p>
+        <p className="text-[var(--color-muted)] mb-1">{MCP_TOKEN_NEEDED_INTRO}</p>
         <ul className="list-disc pl-4 space-y-1 text-[var(--color-muted)]">
-          {MCP_ASK_EXAMPLES.map((line) => (
+          {MCP_TOKEN_NEEDED_CASES.map((line) => (
             <li key={line}>{line}</li>
           ))}
         </ul>
       </div>
 
       <div>
-        <p className="font-medium mb-1">つなぎ方</p>
-        <ol className="list-decimal pl-4 space-y-1 text-[var(--color-muted)]">
-          {MCP_CONNECT_STEPS.map((line) => (
+        <p className="font-medium mb-1">AI に頼めること</p>
+        <ul className="list-disc pl-4 space-y-1 text-[var(--color-muted)]">
+          {MCP_ASK_EXAMPLES.map((line) => (
             <li key={line}>{line}</li>
           ))}
-        </ol>
+        </ul>
       </div>
 
       <div>
