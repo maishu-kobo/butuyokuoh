@@ -320,35 +320,102 @@ export function touchAgentToken(tokenId: number, db: Database.Database = getDb()
   db.prepare(`UPDATE agent_tokens SET last_used_at = datetime('now') WHERE id = ?`).run(tokenId);
 }
 
+function rateBucket(tokenId: number, kind: AgentRateKind): string {
+  return `agent:${tokenId}:${kind}`;
+}
+
+/** 現在の窓で使っている回数。窓外または未使用は 0。 */
+export function agentRateUsed(
+  tokenId: number,
+  kind: AgentRateKind,
+  db: Database.Database = getDb(),
+  now = Date.now(),
+): number {
+  const row = db.prepare('SELECT count, resets_at FROM agent_rate_limits WHERE bucket = ?')
+    .get(rateBucket(tokenId, kind)) as { count: number; resets_at: number } | undefined;
+  if (!row || row.resets_at <= now) return 0;
+  return row.count;
+}
+
+function rateLimitedError(
+  kind: AgentRateKind,
+  row: { resets_at: number } | undefined,
+  now: number,
+): GuestError {
+  const windowMs = RATE_WINDOW_MS[kind];
+  const retryAfter = row && row.resets_at > now
+    ? Math.max(1, Math.ceil((row.resets_at - now) / 1000))
+    : Math.max(1, Math.ceil(windowMs / 1000));
+  return new GuestError(
+    429,
+    'AGENT_RATE_LIMITED',
+    '操作が集中しています。少し待ってからお試しください。',
+    retryAfter,
+  );
+}
+
+function applyRateConsume(
+  tokenId: number,
+  kind: AgentRateKind,
+  units: number,
+  db: Database.Database,
+  now: number,
+): void {
+  const windowMs = RATE_WINDOW_MS[kind];
+  const bucket = rateBucket(tokenId, kind);
+  const row = db.prepare('SELECT count, resets_at FROM agent_rate_limits WHERE bucket = ?')
+    .get(bucket) as { count: number; resets_at: number } | undefined;
+  const active = row && row.resets_at > now;
+  if (!active) {
+    db.prepare(`INSERT INTO agent_rate_limits (bucket, count, resets_at) VALUES (?, ?, ?)
+      ON CONFLICT(bucket) DO UPDATE SET count = excluded.count, resets_at = excluded.resets_at`)
+      .run(bucket, units, now + windowMs);
+  } else {
+    db.prepare('UPDATE agent_rate_limits SET count = count + ? WHERE bucket = ?').run(units, bucket);
+  }
+}
+
+/**
+ * 複数バケットを1トランザクションで検査し、全部余裕があるときだけまとめて消費する。
+ * どれか不足なら何も書かず 429（add だけ先に減る事故を防ぐ）。
+ */
+export function consumeAgentRates(
+  tokenId: number,
+  kinds: AgentRateKind[],
+  units = 1,
+  db: Database.Database = getDb(),
+  now = Date.now(),
+): void {
+  if (!Number.isSafeInteger(units) || units < 1) {
+    throw new GuestError(400, 'INVALID_INPUT', 'レート単位が不正です');
+  }
+  if (kinds.length === 0) return;
+  db.transaction(() => {
+    for (const kind of kinds) {
+      const limit = AGENT_RATE_LIMITS[kind];
+      const bucket = rateBucket(tokenId, kind);
+      const row = db.prepare('SELECT count, resets_at FROM agent_rate_limits WHERE bucket = ?')
+        .get(bucket) as { count: number; resets_at: number } | undefined;
+      const used = row && row.resets_at > now ? row.count : 0;
+      if (used + units > limit) {
+        throw rateLimitedError(kind, row, now);
+      }
+    }
+    for (const kind of kinds) {
+      applyRateConsume(tokenId, kind, units, db, now);
+    }
+  }).immediate();
+}
+
 export function consumeAgentRate(
   tokenId: number,
   kind: AgentRateKind,
   db: Database.Database = getDb(),
   now = Date.now(),
+  /** 1回の呼び出しでまとめて消費する回数（店 URL 件数など）。既定 1。 */
+  units = 1,
 ): void {
-  const limit = AGENT_RATE_LIMITS[kind];
-  const windowMs = RATE_WINDOW_MS[kind];
-  const bucket = `agent:${tokenId}:${kind}`;
-  db.transaction(() => {
-    const row = db.prepare('SELECT count, resets_at FROM agent_rate_limits WHERE bucket = ?')
-      .get(bucket) as { count: number; resets_at: number } | undefined;
-    if (row && row.resets_at > now && row.count >= limit) {
-      throw new GuestError(
-        429,
-        'AGENT_RATE_LIMITED',
-        '操作が集中しています。少し待ってからお試しください。',
-        Math.max(1, Math.ceil((row.resets_at - now) / 1000)),
-      );
-    }
-    if (!row || row.resets_at <= now) {
-      // 新しい窓の開始。add_day もここで固定の24時間窓を切る。
-      db.prepare(`INSERT INTO agent_rate_limits (bucket, count, resets_at) VALUES (?, 1, ?)
-        ON CONFLICT(bucket) DO UPDATE SET count = 1, resets_at = excluded.resets_at`)
-        .run(bucket, now + windowMs);
-    } else {
-      db.prepare('UPDATE agent_rate_limits SET count = count + 1 WHERE bucket = ?').run(bucket);
-    }
-  }).immediate();
+  consumeAgentRates(tokenId, [kind], units, db, now);
 }
 
 export function extractBearerToken(request: NextRequest): string | null {
@@ -374,6 +441,8 @@ export async function requireAgentToken(
   scope: AgentScope,
   options?: {
     rate?: AgentRateKind | AgentRateKind[];
+    /** rate 各種を何回分まとめて消費するか。店 URL 複数登録で使う。既定 1。 */
+    rateUnits?: number;
     auditAction?: string;
     auditMeta?: Record<string, unknown>;
   },
@@ -395,12 +464,13 @@ export async function requireAgentToken(
     throw new GuestError(403, 'AGENT_SCOPE_DENIED', 'この操作に必要な権限がありません');
   }
   const rates = normalizeRates(options?.rate);
-  for (const kind of rates) {
+  const units = options?.rateUnits ?? 1;
+  if (rates.length > 0) {
     try {
-      consumeAgentRate(auth.token.id, kind, db);
+      consumeAgentRates(auth.token.id, rates, units, db);
     } catch (error) {
       if (error instanceof GuestError && error.code === 'AGENT_RATE_LIMITED') {
-        recordAgentAudit(auth.token.id, auth.userId, 'auth.rate_limited', { kind }, db);
+        recordAgentAudit(auth.token.id, auth.userId, 'auth.rate_limited', { kinds: rates, units }, db);
       }
       throw error;
     }
