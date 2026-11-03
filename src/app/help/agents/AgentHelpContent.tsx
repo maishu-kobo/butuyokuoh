@@ -9,6 +9,7 @@ import {
 } from '@/lib/agent-access-limits';
 
 export default function AgentHelpContent({ mcpUrl }: { mcpUrl: string }) {
+  const agentItemsUrl = mcpUrl.replace(/\/api\/mcp\/?$/, '/api/agent/v1/items');
   return (
     <main className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)]">
       <article className="max-w-3xl mx-auto px-4 py-8 space-y-4">
@@ -35,6 +36,36 @@ export default function AgentHelpContent({ mcpUrl }: { mcpUrl: string }) {
             使い方の技術メモはサイト上のエージェント向け案内（llms.txt）にもあります。
           </li>
         </ul>
+
+        <h2 className="text-lg font-semibold pt-2">iPhone の Siri・ショートカットから使う</h2>
+        <p>
+          iPhone のショートカット App と組み合わせると、Siri に話しかけて品目を追加したり、
+          Safari で見ている商品ページを共有シートから登録したりできます。専用のアプリは要りません。
+        </p>
+        <ol className="list-decimal pl-6 space-y-2">
+          <li>設定画面でエージェント用トークンを発行し、コピーします。</li>
+          <li>
+            ショートカット App で新しいショートカットを作り、はじめに「テキストを入力」などで
+            商品名や商品ページのURLを受け取るアクションを足します。
+          </li>
+          <li>
+            「URL の内容を取得」アクションを足し、{agentItemsUrl} へ POST する設定にします。
+            ヘッダは Authorization に「Bearer 発行したトークン」、Content-Type に「application/json」。
+            本文は {'{"name": "商品名"}'} の形の JSON です。「url」も入れると、価格と画像をサーバが取ります。
+          </li>
+          <li>
+            ショートカットに「ほしいもの追加」などの名前を付けます。
+            Siri にその名前を話しかけると、そのショートカットが起動します。
+          </li>
+        </ol>
+        <p>
+          共有シートに出す設定にすると、Safari で開いている商品ページをそのまま登録できます。
+          トークンの文字列はショートカットの中に残るので、ほかの人と共有するときは自分のトークンを外してください。
+        </p>
+        <p>
+          Claude の iPhone アプリを使う場合は、カスタムコネクタに上の接続用 URL（MCP）を登録すると、
+          「Ask Claude」から Siri 経由で操作できます。
+        </p>
 
         <h2 className="text-lg font-semibold pt-2">トークンの発行と無効化</h2>
         <ul className="list-disc pl-6 space-y-2">
