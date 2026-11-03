@@ -16,7 +16,9 @@ permissions:
 
 concurrency:
   group: main-deployment-${{ github.ref }}
-  cancel-in-progress: true
+  # main では Blacksmith 予算モデルの排他のためキャンセルしない（ci.yml と同じ）。
+  # PR は latest-run のまま。
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   ci:

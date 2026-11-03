@@ -57,3 +57,11 @@ test('only enabled main push or manual dispatch can enter the production credent
   }
   assert.equal(workflow.on.pull_request_target, undefined);
 });
+
+test('main deploy-main concurrency keeps Blacksmith lock (no cancel-in-progress on main)', () => {
+  assert.equal(workflow.concurrency.group, 'main-deployment-${{ github.ref }}');
+  assert.equal(
+    workflow.concurrency['cancel-in-progress'],
+    "${{ github.ref != 'refs/heads/main' }}",
+  );
+});
