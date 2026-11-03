@@ -386,7 +386,8 @@ components:
         urls:
           type: array
           minItems: 1
-          maxItems: 20
+          maxItems: 10
+          description: 上限は add_url の分あたり制限と同じ（AGENT_RATE_LIMITS.add_url）
           items: { type: string, format: uri }
         item_id: { type: integer, minimum: 1 }
         name: { type: string, maxLength: 200 }

@@ -1,10 +1,11 @@
 // MCP tools / REST で共有するツール定義と実行。店舗検索は公開しない。
 
 import type { NextRequest } from 'next/server';
+import { AGENT_RATE_LIMITS } from '@/lib/agent-access-limits';
 import {
   addAgentItem,
   addAgentItemByUrl,
-  countAgentUrlAddUnits,
+  assertAgentUrlAddPreflight,
   getAgentBudgetSummary,
   getAgentItem,
   getAgentPriceHistory,
@@ -17,7 +18,10 @@ import {
 } from '@/lib/agent-items';
 import { withAgentNotice } from '@/lib/agent-response';
 import {
+  consumeAgentRates,
+  recordAgentAudit,
   requireAgentToken,
+  touchAgentToken,
   type AgentAuthContext,
   type AgentRateKind,
   type AgentScope,
@@ -201,14 +205,16 @@ export const AGENT_TOOLS: AgentToolDef[] = [
         urls: {
           type: 'array',
           minItems: 1,
-          maxItems: 20,
+          maxItems: AGENT_RATE_LIMITS.add_url,
           items: { type: 'string', format: 'uri' },
-          description: '同じ商品の店ページ URL をまとめて登録（2本以上で写真グループ）',
+          description:
+            `同じ商品の店ページ URL をまとめて登録（2本以上で写真グループ。上限は add_url 分あたり ${AGENT_RATE_LIMITS.add_url} 件）`,
         },
         item_id: {
           type: 'integer',
           minimum: 1,
-          description: '既存の自分の品目 ID。グループ外なら写真グループへ移し、写真グループなら店を足す',
+          description:
+            '既存の自分の品目 ID。グループ外なら写真グループへ移し、写真グループなら店を足す。手作業比較グループは不可',
         },
         name: {
           type: 'string',
@@ -413,17 +419,30 @@ export async function callAgentToolFromRequest(
     throw new GuestError(404, 'TOOL_NOT_FOUND', `未知のツールです: ${name}`);
   }
   const input = asObject(args ?? {});
-  let rateUnits = 1;
-  let auditMeta: Record<string, unknown> = { tool: tool.name };
+
+  // add_item_by_url は件数・attach 検査をレート消費より先に行い、拒否時はバケットを減らさない。
   if (tool.name === 'add_item_by_url') {
-    rateUnits = countAgentUrlAddUnits(input);
-    auditMeta = { ...auditMeta, url_count: rateUnits };
+    const auth = await requireAgentToken(request, tool.scope);
+    const { units } = assertAgentUrlAddPreflight(auth.userId, input);
+    const rates = Array.isArray(tool.rate) ? tool.rate : tool.rate ? [tool.rate] : [];
+    if (rates.length > 0) {
+      consumeAgentRates(auth.token.id, rates, units);
+    }
+    touchAgentToken(auth.token.id);
+    if (tool.auditAction) {
+      recordAgentAudit(auth.token.id, auth.userId, tool.auditAction, {
+        scope: tool.scope,
+        tool: tool.name,
+        url_count: units,
+      });
+    }
+    return executeAgentTool(tool.name, input, auth);
   }
+
   const auth = await requireAgentToken(request, tool.scope, {
     rate: tool.rate,
-    rateUnits,
     auditAction: tool.auditAction,
-    auditMeta,
+    auditMeta: { tool: tool.name },
   });
   return executeAgentTool(tool.name, input, auth);
 }

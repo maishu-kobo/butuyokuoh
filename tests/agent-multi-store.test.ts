@@ -44,6 +44,12 @@ function bearer(token: string) {
   return { Authorization: `Bearer ${token}` };
 }
 
+async function rateUsed(tokenId: number, kind: 'add' | 'add_url' | 'add_day' | 'read', now = Date.now()) {
+  const { agentRateUsed } = await import('../src/lib/agent-token');
+  const database = await db();
+  return agentRateUsed(tokenId, kind, database, now);
+}
+
 test('agent multi-store: single URL stays one ungrouped item', () => serial(async () => {
   const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
   installProductFetchPort(regressionFetchPort());
@@ -323,6 +329,9 @@ test('agent multi-store: one call with too many URLs fails the whole rate budget
     const database = await db();
     const now = Date.now();
     for (let i = 0; i < 9; i++) consumeAgentRate(token.record.id, 'add_url', database, now);
+    const addBefore = await rateUsed(token.record.id, 'add', now);
+    const urlBefore = await rateUsed(token.record.id, 'add_url', now);
+    const dayBefore = await rateUsed(token.record.id, 'add_day', now);
 
     const blocked = await call(byUrlPath, 'POST', '/api/agent/v1/items/by-url', {
       urls: [AMAZON_PRODUCT_URL, RAKUTEN_URL],
@@ -334,6 +343,86 @@ test('agent multi-store: one call with too many URLs fails the whole rate budget
       (database.prepare("SELECT COUNT(*) AS n FROM items WHERE name = 'レート超過'").get() as { n: number }).n,
       0,
     );
+    assert.equal(await rateUsed(token.record.id, 'add', now), addBefore);
+    assert.equal(await rateUsed(token.record.id, 'add_url', now), urlBefore);
+    assert.equal(await rateUsed(token.record.id, 'add_day', now), dayBefore);
+  } finally {
+    installProductFetchPort(null);
+  }
+}));
+
+test('agent multi-store: over URL cap is 400 and spends no rate units', () => serial(async () => {
+  const { AGENT_RATE_LIMITS } = await import('../src/lib/agent-access-limits');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  installProductFetchPort(regressionFetchPort());
+  try {
+    await createMember('agent-ms-cap');
+    const token = await createToken(['write'], 'ms-cap');
+    const now = Date.now();
+    const over = AGENT_RATE_LIMITS.add_url + 1;
+    const urls = Array.from({ length: over }, (_, i) => `https://example.com/products/cap-${i}`);
+    const blocked = await call(byUrlPath, 'POST', '/api/agent/v1/items/by-url', {
+      urls,
+      name: '上限超過',
+    }, undefined, bearer(token.token));
+    assert.equal(blocked.status, 400, blocked.text);
+    assert.equal((blocked.json as { code: string }).code, 'INVALID_INPUT');
+
+    const database = await db();
+    assert.equal(
+      (database.prepare("SELECT COUNT(*) AS n FROM items WHERE name = '上限超過'").get() as { n: number }).n,
+      0,
+    );
+    assert.equal(await rateUsed(token.record.id, 'add', now), 0);
+    assert.equal(await rateUsed(token.record.id, 'add_url', now), 0);
+    assert.equal(await rateUsed(token.record.id, 'add_day', now), 0);
+  } finally {
+    installProductFetchPort(null);
+  }
+}));
+
+test('agent multi-store: attach to manual comparison group is 409 without writes or rate spend', () => serial(async () => {
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  installProductFetchPort(regressionFetchPort());
+  try {
+    const owner = await createMember('agent-ms-manual');
+    const token = await createToken(['write'], 'ms-manual');
+    const database = await db();
+    const groupId = Number(database.prepare(
+      `INSERT INTO comparison_groups (user_id, name, priority, origin) VALUES (?, '手のグループ', 3, NULL)`,
+    ).run(owner.id).lastInsertRowid);
+    const itemId = Number(database.prepare(`
+      INSERT INTO items (user_id, name, url, priority, quantity, comparison_group_id)
+      VALUES (?, '手動の本', 'https://example.com/products/manual-book', 3, 1, ?)
+    `).run(owner.id, groupId).lastInsertRowid);
+
+    const now = Date.now();
+    const denied = await call(byUrlPath, 'POST', '/api/agent/v1/items/by-url', {
+      item_id: itemId,
+      url: AMAZON_PRODUCT_URL,
+      name: '足せない',
+    }, undefined, bearer(token.token));
+    assert.equal(denied.status, 409, denied.text);
+    assert.equal((denied.json as { code: string }).code, 'MANUAL_GROUP');
+    assert.match((denied.json as { error: string }).error, /手/);
+
+    const row = database.prepare(
+      'SELECT comparison_group_id FROM items WHERE id = ?',
+    ).get(itemId) as { comparison_group_id: number };
+    assert.equal(row.comparison_group_id, groupId);
+    assert.equal(
+      (database.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id = ?').get(owner.id) as { n: number }).n,
+      1,
+    );
+    assert.equal(
+      (database.prepare(
+        "SELECT origin FROM comparison_groups WHERE id = ?",
+      ).get(groupId) as { origin: string | null }).origin,
+      null,
+    );
+    assert.equal(await rateUsed(token.record.id, 'add', now), 0);
+    assert.equal(await rateUsed(token.record.id, 'add_url', now), 0);
+    assert.equal(await rateUsed(token.record.id, 'add_day', now), 0);
   } finally {
     installProductFetchPort(null);
   }

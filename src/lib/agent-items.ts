@@ -2,6 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
+import { AGENT_RATE_LIMITS } from '@/lib/agent-access-limits';
 import { assertOwnedRelations } from '@/lib/api-access';
 import { markItemAddedByAgent, type AgentAuthContext } from '@/lib/agent-token';
 import { getDb } from '@/lib/db';
@@ -66,7 +67,8 @@ export type AgentItemView = {
   stores: AgentStoreView[];
 };
 
-const MAX_AGENT_URLS = 20;
+/** 1回の呼び出しで受け付ける店 URL 上限。add_url の分あたり上限と同じ定数から取る。 */
+export const MAX_AGENT_PRODUCT_URLS = AGENT_RATE_LIMITS.add_url;
 
 function normalizeNotes(raw: unknown): string | null {
   if (raw === undefined || raw === null) return null;
@@ -139,8 +141,8 @@ export function parseAgentProductUrls(body: Record<string, unknown>): string[] {
     if (body.urls.length === 0) {
       throw new GuestError(400, 'INVALID_INPUT', 'urls は1件以上必要です');
     }
-    if (body.urls.length > MAX_AGENT_URLS) {
-      throw new GuestError(400, 'INVALID_INPUT', `urls は${MAX_AGENT_URLS}件までです`);
+    if (body.urls.length > MAX_AGENT_PRODUCT_URLS) {
+      throw new GuestError(400, 'INVALID_INPUT', `urls は${MAX_AGENT_PRODUCT_URLS}件までです`);
     }
     for (const entry of body.urls) {
       collected.push(requireHttpUrl(entry));
@@ -159,22 +161,64 @@ export function parseAgentProductUrls(body: Record<string, unknown>): string[] {
     seen.add(url);
     unique.push(url);
   }
-  if (unique.length > MAX_AGENT_URLS) {
-    throw new GuestError(400, 'INVALID_INPUT', `urls は${MAX_AGENT_URLS}件までです`);
+  if (unique.length > MAX_AGENT_PRODUCT_URLS) {
+    throw new GuestError(400, 'INVALID_INPUT', `urls は${MAX_AGENT_PRODUCT_URLS}件までです`);
   }
   return unique;
 }
 
 /**
- * レート制限でまとめて消費する店 URL 件数。
- * 不正な入力では 1 とみなし、本保存時の厳密な検証に任せる（未認証で 400 にしない）。
+ * レート消費の前に、URL 件数と attach 先を検査する。
+ * 上限超えは 400、手作業比較グループは 409。いずれもレートはまだ触らない。
  */
-export function countAgentUrlAddUnits(body: Record<string, unknown>): number {
-  try {
-    return parseAgentProductUrls(body).length;
-  } catch {
-    return 1;
+export function assertAgentUrlAddPreflight(
+  userId: number,
+  body: Record<string, unknown>,
+  db: Database.Database = getDb(),
+): { urls: string[]; units: number } {
+  const urls = parseAgentProductUrls(body);
+  const attachId = body.item_id === undefined
+    ? undefined
+    : normalizeOptionalId(body.item_id, 'item_id');
+  if (attachId === null) {
+    throw new GuestError(400, 'INVALID_INPUT', 'item_id が不正です');
   }
+  if (attachId !== undefined) {
+    assertAgentAttachTarget(userId, attachId, db);
+  }
+  return { urls, units: urls.length };
+}
+
+/** 既存品目へ店を足せるか。手作業比較グループは拒否（写真グループへ勝手に移さない）。 */
+export function assertAgentAttachTarget(
+  userId: number,
+  itemId: number,
+  db: Database.Database = getDb(),
+): { groupId: number | null; existing: Record<string, unknown> } {
+  const existing = getOwnedItemOrThrow(userId, itemId, db);
+  if (existing.deleted_at) {
+    throw new GuestError(409, 'ITEM_TRASHED', 'ゴミ箱の品目には店を足せません。先に復元してください');
+  }
+  const existingGroupId = existing.comparison_group_id == null
+    ? null
+    : Number(existing.comparison_group_id);
+  if (existingGroupId == null) {
+    return { groupId: null, existing };
+  }
+  const group = db.prepare(
+    'SELECT id, origin FROM comparison_groups WHERE id = ? AND user_id = ?',
+  ).get(existingGroupId, userId) as { id: number; origin: string | null } | undefined;
+  if (!group) {
+    return { groupId: null, existing };
+  }
+  if (group.origin === 'photo') {
+    return { groupId: group.id, existing };
+  }
+  throw new GuestError(
+    409,
+    'MANUAL_GROUP',
+    '手作業の比較グループに入っている品目には店を足せません。グループから外してから再度追加してください',
+  );
 }
 
 function storeLabel(source: string, sourceName: string | null | undefined): string {
@@ -615,21 +659,10 @@ export async function addAgentItemByUrl(
   let existing: Record<string, unknown> | null = null;
   let groupId: number | null = null;
   if (attachId !== undefined) {
-    existing = getOwnedItemOrThrow(auth.userId, attachId, db);
-    if (existing.deleted_at) {
-      throw new GuestError(409, 'ITEM_TRASHED', 'ゴミ箱の品目には店を足せません。先に復元してください');
-    }
-    const existingGroupId = existing.comparison_group_id == null
-      ? null
-      : Number(existing.comparison_group_id);
-    if (existingGroupId != null) {
-      const group = db.prepare(
-        'SELECT id, origin FROM comparison_groups WHERE id = ? AND user_id = ?',
-      ).get(existingGroupId, auth.userId) as { id: number; origin: string | null } | undefined;
-      if (group?.origin === 'photo') {
-        groupId = group.id;
-      }
-    }
+    // 手作業比較グループは 409（写真グループへ移さない）
+    const attach = assertAgentAttachTarget(auth.userId, attachId, db);
+    existing = attach.existing;
+    groupId = attach.groupId;
   }
 
   const preparedList: PreparedStore[] = [];

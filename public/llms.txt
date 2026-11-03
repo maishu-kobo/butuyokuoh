@@ -70,7 +70,7 @@ Register public product page URL(s) the agent already found.
 - One `url` and no `item_id`: one ungrouped item (legacy).
 - Two or more URLs (`urls` / combined with `url`), or `item_id` to attach a store: one `origin=photo` comparison group + one item row per store. `capture_id` may be null.
 - Response / `get_item` include `stores` (item id, URL, store, price, image). Price/image only from server fetch.
-- Rate limits consume one unit per store URL in the call; the whole call is rejected if that would exceed the limit.
+- Rate limits consume one unit per store URL in the call; the whole call is rejected if that would exceed the limit (nothing spent). URL count per call is capped at the `add_url` per-minute limit. Manual comparison groups cannot be attached via `item_id` (409).
 
 ```json
 {
