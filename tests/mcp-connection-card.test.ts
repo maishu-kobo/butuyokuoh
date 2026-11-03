@@ -9,9 +9,13 @@ import {
   MCP_ASK_EXAMPLES,
   MCP_CARD_SUBTITLE,
   MCP_CARD_TITLE,
+  MCP_CLIENT_GUIDES,
   MCP_CONNECT_STEPS,
   MCP_GUEST_HINT,
   MCP_LOCALHOST_NOTE,
+  MCP_OAUTH_NO_TOKEN,
+  MCP_TOKEN_NEEDED_CASES,
+  MCP_TOKEN_NEEDED_INTRO,
   MCP_URL_LABEL,
   MCP_WHAT_IS,
   isLoopbackMcpUrl,
@@ -102,14 +106,18 @@ test('本番風の https URL では開発用注記を出さない', () => {
   }
 });
 
-test('説明パネルは初心者向けの順で短く出す', () => {
+test('説明パネルは AI ごとの手順と OAuth・トークンの区別を出す', () => {
   const html = renderToStaticMarkup(
     createElement(McpConnectionInfoPanel, { url: 'http://localhost:3107/api/mcp' }),
   );
   assert.ok(html.includes(MCP_WHAT_IS), MCP_WHAT_IS);
+  assert.ok(html.includes(MCP_OAUTH_NO_TOKEN), MCP_OAUTH_NO_TOKEN);
   assert.match(html, /これは何か/);
+  assert.match(html, /トークンは基本いらない/);
+  assert.match(html, /つなぎ方（共通）/);
+  assert.match(html, /AIごとのつなぎ方/);
+  assert.match(html, /トークンが要るとき/);
   assert.match(html, /AI に頼めること/);
-  assert.match(html, /つなぎ方/);
   assert.match(html, /うまくつながらないとき/);
   assert.match(html, /上級者向け/);
   for (const line of MCP_ASK_EXAMPLES) {
@@ -117,6 +125,19 @@ test('説明パネルは初心者向けの順で短く出す', () => {
   }
   for (const line of MCP_CONNECT_STEPS) {
     assert.ok(html.includes(line), line);
+  }
+  assert.ok(html.includes(MCP_TOKEN_NEEDED_INTRO), MCP_TOKEN_NEEDED_INTRO);
+  for (const line of MCP_TOKEN_NEEDED_CASES) {
+    assert.ok(html.includes(line), line);
+  }
+  for (const guide of MCP_CLIENT_GUIDES) {
+    assert.ok(html.includes(guide.name), guide.name);
+    for (const step of guide.steps) {
+      assert.ok(html.includes(step), step);
+    }
+    if (guide.note) {
+      assert.ok(html.includes(guide.note), guide.note);
+    }
   }
   assert.ok(html.includes(MCP_ADVANCED_TOKEN), MCP_ADVANCED_TOKEN);
   assert.ok(
@@ -128,4 +149,6 @@ test('説明パネルは初心者向けの順で短く出す', () => {
   assert.match(html, /エージェント連携のヘルプ/);
   assert.match(html, />設定</);
   assert.match(html, /http:\/\/localhost:3107\/api\/mcp/);
+  // 発明した UI パスを出さない（フォーラムのみの「チャットで Add this MCP」など）
+  assert.equal(html.includes('Add this MCP server'), false);
 });

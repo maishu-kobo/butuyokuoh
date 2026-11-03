@@ -10,6 +10,12 @@ import {
   AGENT_TOKEN_MAX_DAYS,
 } from '../src/lib/agent-access-limits';
 import { mcpResourceUrl } from '../src/lib/agent-oauth';
+import {
+  MCP_CLIENT_GUIDES,
+  MCP_OAUTH_NO_TOKEN,
+  MCP_TOKEN_NEEDED_CASES,
+  MCP_URL_LABEL,
+} from '../src/lib/mcp-connection-copy';
 
 test('エージェント連携ヘルプは定数の数字を出し、秘密や内部構成を出さない', () => {
   const previousAuth = process.env.AUTH_URL;
@@ -20,10 +26,21 @@ test('エージェント連携ヘルプは定数の数字を出し、秘密や�
     const page = renderToStaticMarkup(createElement(AgentHelpContent, { mcpUrl }));
     assert.match(page, /エージェント連携/);
     assert.match(page, /AI エージェントとつなぐ/);
-    assert.match(page, /接続用 URL（MCP）/);
+    assert.match(page, new RegExp(MCP_URL_LABEL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.match(page, new RegExp(mcpUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-    assert.match(page, /つなぎ方/);
-    assert.match(page, /OAuth 対応の MCP クライアント/);
+    assert.match(page, /トークンは基本いらない/);
+    assert.ok(page.includes(MCP_OAUTH_NO_TOKEN), MCP_OAUTH_NO_TOKEN);
+    assert.match(page, /AIごとのつなぎ方/);
+    for (const guide of MCP_CLIENT_GUIDES) {
+      assert.ok(page.includes(guide.name), guide.name);
+      for (const step of guide.steps) {
+        assert.ok(page.includes(step), step);
+      }
+    }
+    assert.match(page, /トークンが要るとき/);
+    for (const line of MCP_TOKEN_NEEDED_CASES) {
+      assert.ok(page.includes(line), line);
+    }
     assert.match(page, /設定画面の「エージェント用トークン」/);
     assert.match(page, /発行したときに一度だけ表示します/);
     assert.match(page, new RegExp(`既定の有効期限は${AGENT_TOKEN_DEFAULT_DAYS}日`));
@@ -57,6 +74,7 @@ test('エージェント連携ヘルプは定数の数字を出し、秘密や�
     assert.equal(page.includes('exe.dev'), false);
     assert.equal(page.includes('GitHub'), false);
     assert.equal(page.includes('byoagt_'), false);
+    assert.equal(page.includes('Add this MCP server'), false);
   } finally {
     if (previousAuth === undefined) delete process.env.AUTH_URL;
     else process.env.AUTH_URL = previousAuth;
