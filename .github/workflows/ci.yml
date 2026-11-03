@@ -115,6 +115,11 @@ jobs:
         if: steps.node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
+      # node_modules ヒット時は postinstall が走らない。Chrome 本体は ~/.cache/puppeteer 側。
+      - name: Ensure Puppeteer Chrome
+        if: steps.node-modules.outputs.cache-hit == 'true'
+        run: npx puppeteer browsers install chrome
+
       # Chrome のサンドボックスは非特権 user namespace を使う。
       # Ubuntu 23.10 以降は AppArmor がそれを止め、No usable sandbox! で起動前に死ぬ。
       # --no-sandbox は付けない。この捨てるランナーで、その制限だけを外す。
