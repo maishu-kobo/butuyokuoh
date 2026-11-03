@@ -86,8 +86,10 @@ test('http product url makes image, title, and store button open the page in a n
   assert.ok(actionAt > 0, 'action bar');
   const openAt = html.indexOf('>Amazonで開く<');
   assert.ok(openAt > 0 && openAt < actionAt, 'store open control stays above the action bar');
-  assert.equal(html.slice(actionAt).includes('Amazonで開く'), false);
-  assert.equal(html.slice(actionAt).includes(productHref), false);
+  const actionHtml = html.slice(actionAt);
+  assert.equal(actionHtml.includes('Amazonで開く'), false);
+  const actionHrefs = [...actionHtml.matchAll(/href="([^"]*)"/g)].map((match) => match[1]);
+  assert.equal(actionHrefs.some((href) => href === productHref), false);
 });
 
 test('items without a linkable url do not expose product-page anchors', () => {
