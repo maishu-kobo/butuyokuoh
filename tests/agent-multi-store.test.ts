@@ -219,7 +219,7 @@ test('agent multi-store: adding a store URL to an existing item joins a photo gr
   }
 }));
 
-test('agent multi-store: duplicate URL and foreign item_id are rejected; caller price ignored', () => serial(async () => {
+test('agent multi-store: duplicate URL and foreign item_id are rejected; caller price rejected', () => serial(async () => {
   const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
   installProductFetchPort(regressionFetchPort());
   try {
@@ -238,14 +238,22 @@ test('agent multi-store: duplicate URL and foreign item_id are rejected; caller 
     assert.equal(dupe.status, 409, dupe.text);
     assert.equal((dupe.json as { code: string }).code, 'URL_TAKEN');
 
-    // 呼び出し側の価格・画像は空のときも埋まらない
-    const empty = await call(byUrlPath, 'POST', '/api/agent/v1/items/by-url', {
+    // 呼び出し側の価格・画像は 400（サーバ取得のみ）
+    const clientPrice = await call(byUrlPath, 'POST', '/api/agent/v1/items/by-url', {
       url: 'https://example.com/products/reference-only',
       name: '参照のみ',
       current_price: 1,
       price: 1,
       image_url: 'https://evil.example/x.png',
       imageUrl: 'https://evil.example/x.png',
+    }, undefined, bearer(token.token));
+    assert.equal(clientPrice.status, 400, clientPrice.text);
+    assert.equal((clientPrice.json as { code: string }).code, 'INVALID_INPUT');
+
+    // 価格が取れない公開 URL は、クライアント値無しなら null のまま保存できる
+    const empty = await call(byUrlPath, 'POST', '/api/agent/v1/items/by-url', {
+      url: 'https://example.com/products/reference-only',
+      name: '参照のみ',
     }, undefined, bearer(token.token));
     assert.equal(empty.status, 201, empty.text);
     const emptyItem = (empty.json as {

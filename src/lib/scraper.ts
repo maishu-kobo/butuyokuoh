@@ -1,5 +1,5 @@
 import { extractAmazonProduct } from './amazon-product';
-import { parseProductHtml } from './product-html';
+import { isAppleShopBuyPage, parseProductHtml } from './product-html';
 import { readHtmlResponse } from './html-encoding';
 import { launchPageBrowser } from './page-browser';
 import { validateAndSanitizeUrl, sanitizeGenericUrl } from './url-validator';
@@ -222,10 +222,14 @@ export function isUnusableScrape(scraped: { name?: string | null }): boolean {
 }
 
 const PRICE_LATER_NOTE = '価格は取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
+const CONFIGURATOR_PRICE_NOTE =
+  '構成を選ぶページのため単一の価格を取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
 
 export async function scrapeUrl(url: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
   const result = await scrapeUrlFromPage(url, deps ?? productFetchDeps());
-  if (!result.price && !result.note && !isUnusableScrape(result)) result.note = PRICE_LATER_NOTE;
+  if (!result.price && !result.note && !isUnusableScrape(result)) {
+    result.note = isAppleShopBuyPage(url) ? CONFIGURATOR_PRICE_NOTE : PRICE_LATER_NOTE;
+  }
   return result;
 }
 

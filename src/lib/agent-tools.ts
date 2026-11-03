@@ -6,6 +6,7 @@ import {
   addAgentItem,
   addAgentItemByUrl,
   assertAgentUrlAddPreflight,
+  assertAgentWriteFields,
   getAgentBudgetSummary,
   getAgentItem,
   getAgentPriceHistory,
@@ -83,7 +84,7 @@ const sharedWriteProps = {
   planned_purchase_date: {
     type: 'string',
     pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-    description: '購入予定日 YYYY-MM-DD',
+    description: '購入予定日。YYYY-MM-DD の実在する暦日（例: 2026-11-03。2026-13-45 は不可）',
   },
   category_id: {
     type: 'integer',
@@ -300,7 +301,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
         purchased_at: {
           type: 'string',
           pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-          description: '購入日 YYYY-MM-DD。省略時は日本の今日',
+          description: '購入日。YYYY-MM-DD の実在する暦日。省略時は日本の今日',
         },
       },
     },
@@ -437,6 +438,11 @@ export async function callAgentToolFromRequest(
       });
     }
     return executeAgentTool(tool.name, input, auth);
+  }
+
+  // 日付・価格の不正はレート消費より前に拒否する
+  if (tool.name === 'add_item' || tool.name === 'update_item' || tool.name === 'mark_item_purchased') {
+    assertAgentWriteFields(input);
   }
 
   const auth = await requireAgentToken(request, tool.scope, {
