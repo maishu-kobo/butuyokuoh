@@ -11,8 +11,9 @@ import { markItemAddedByAgent, recordAgentAudit } from '@/lib/agent-token';
 import { requireExtensionImportItems } from '@/lib/extension-item-input';
 import { cleanedStoredItemUrlTaken, normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
 
-// 既知の課題: 一括 import はまだクライアントの価格・画像を保存する。
-// サーバ取得に揃えると件数・タイムアウトの影響が大きいため、別 Issue で扱う（PR #275）。
+// 一括 import はクライアントの価格・画像を保存しない（#276 / #267）。
+// 件数が多いとサーバ取得はタイムアウトしやすいので、価格・画像は空で登録し、
+// 既存の定期価格更新（check-prices）に埋めてもらう。
 
 const corsHeaders = extensionCorsHeaders('POST, OPTIONS');
 
@@ -41,7 +42,6 @@ export async function POST(request: NextRequest) {
       INSERT OR IGNORE INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    const priceHistoryStmt = db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)');
 
     let imported = 0;
     let skipped = 0;
@@ -57,10 +57,8 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        const fields: Record<string, unknown> = { url, name };
-        if (item.price !== undefined) fields.price = item.price;
-        if (item.imageUrl !== undefined) fields.image_url = item.imageUrl;
-        validateMemberInput(fields, 'POST');
+        // 価格・画像はクライアント値を渡さない（#267）。
+        validateMemberInput({ url, name }, 'POST');
 
         // 既存チェック（トラッキング付きの保存 URL もクリーン後で同じならスキップ）
         if (cleanedStoredItemUrlTaken(db, userId, url)) {
@@ -72,9 +70,9 @@ export async function POST(request: NextRequest) {
           userId,
           name,
           url,
-          item.imageUrl,
-          item.price,
-          item.price,
+          null,
+          null,
+          null,
           source,
           sourceName,
           3 // デフォルト優先度
@@ -82,9 +80,6 @@ export async function POST(request: NextRequest) {
 
         if (result.changes > 0) {
           imported++;
-          if (item.price) {
-            priceHistoryStmt.run(result.lastInsertRowid, item.price);
-          }
           if (auth.agent) {
             markItemAddedByAgent(Number(result.lastInsertRowid), auth.agent.token.id, userId, db);
           }

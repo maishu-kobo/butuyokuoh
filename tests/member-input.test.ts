@@ -202,10 +202,11 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
     ],
   });
   assert.equal(imported.status, 200, imported.text);
-  // 不正価格はスキップ。長い品名は 200 文字に切り詰めて取り込む。
-  assert.equal((imported.json as { imported: number }).imported, 2);
+  // クライアント価格・画像は信用しないので不正価格も名前+URLで取り込む。長い品名は 200 文字に切り詰める。
+  assert.equal((imported.json as { imported: number }).imported, 3);
   const urls = (database.prepare('SELECT url FROM items WHERE user_id = ? ORDER BY url').all(owner.id) as { url: string }[]).map((row) => row.url);
   assert.deepEqual(urls, [
+    'https://example.test/bad-price',
     'https://example.test/extension',
     'https://example.test/keep',
     'https://example.test/long',
@@ -216,6 +217,11 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
     (database.prepare('SELECT name FROM items WHERE url = ?').get('https://example.test/long-name') as { name: string }).name.length,
     200,
   );
+  const keepRow = database.prepare(
+    'SELECT current_price, image_url FROM items WHERE url = ?',
+  ).get('https://example.test/keep') as { current_price: number | null; image_url: string | null };
+  assert.equal(keepRow.current_price, null);
+  assert.equal(keepRow.image_url, null);
 
   const longHook = `https://hooks.slack.com/services/${'a'.repeat(2100)}`;
   const rejectedHook = await call(notify, 'PUT', '/api/notification-settings', { slack_webhook: longHook, notify_on_price_drop: false });

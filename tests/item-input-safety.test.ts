@@ -14,6 +14,7 @@ import {
 import { call, createMember, db } from './bugfix-harness';
 
 const extensionAdd = '../src/app/api/extension-add/route.ts';
+const extensionImport = '../src/app/api/extension-import/route.ts';
 
 test('sanitizeStoredItemUrl strips tracking without dropping product identity', () => {
   assert.equal(
@@ -376,6 +377,118 @@ test('extension-add stores server-fetched price and image, ignores client values
     assert.equal(emptyRow.url, 'https://example.test/extension-empty');
     assert.equal(emptyRow.image_url, null);
     assert.equal(emptyRow.current_price, null);
+  } finally {
+    port.installProductFetchPort(null);
+  }
+});
+
+test('extension-import never stores client price or image; sanitizes url/name and leaves media empty', async () => {
+  const member = await createMember('ext-import-safe');
+  const { generateToken } = await import('../src/lib/auth');
+  const token = generateToken(member as never);
+  const database = await db();
+
+  const dirtyAmazon = `${AMAZON_PRODUCT_URL}/ref=sr_1_1?tag=import-22&utm_medium=email`;
+  const response = await call(extensionImport, 'POST', '/api/extension-import', {
+    token,
+    source: 'amazon',
+    items: [
+      {
+        name: `  ${AMAZON_NAME}  `,
+        url: dirtyAmazon,
+        price: 1,
+        imageUrl: 'https://evil.example/client.png',
+      },
+      {
+        name: '  クライアント画像付き  ',
+        url: 'https://example.test/import-empty?utm_source=x&fbclid=1',
+        price: 999_999,
+        imageUrl: 'https://evil.example/nope.png',
+      },
+      {
+        name: '負のクライアント価格',
+        url: 'https://example.test/import-neg',
+        price: -1,
+        imageUrl: 'javascript:alert(1)',
+      },
+    ],
+  });
+  assert.equal(response.status, 200, response.text);
+  const body = response.json as { imported: number; skipped: number; total: number };
+  assert.equal(body.total, 3);
+  assert.equal(body.imported, 3);
+  assert.equal(body.skipped, 0);
+
+  const rows = database.prepare(
+    `SELECT name, url, image_url, current_price, original_price, source
+     FROM items WHERE user_id = ? ORDER BY url`,
+  ).all(member.id) as {
+    name: string;
+    url: string;
+    image_url: string | null;
+    current_price: number | null;
+    original_price: number | null;
+    source: string;
+  }[];
+  assert.equal(rows.length, 3);
+
+  const amazon = rows.find((row) => row.url === AMAZON_PRODUCT_URL);
+  assert.ok(amazon);
+  assert.equal(amazon.name, AMAZON_NAME);
+  assert.equal(amazon.image_url, null);
+  assert.equal(amazon.current_price, null);
+  assert.equal(amazon.original_price, null);
+  assert.equal(amazon.source, 'amazon');
+
+  const empty = rows.find((row) => row.url === 'https://example.test/import-empty');
+  assert.ok(empty);
+  assert.equal(empty.name, 'クライアント画像付き');
+  assert.equal(empty.image_url, null);
+  assert.equal(empty.current_price, null);
+
+  const neg = rows.find((row) => row.url === 'https://example.test/import-neg');
+  assert.ok(neg);
+  assert.equal(neg.name, '負のクライアント価格');
+  assert.equal(neg.image_url, null);
+  assert.equal(neg.current_price, null);
+
+  for (const row of rows) {
+    assert.equal(row.image_url, null, row.url);
+    assert.equal(row.current_price, null, row.url);
+    assert.equal(
+      (database.prepare(
+        'SELECT COUNT(*) AS n FROM price_history WHERE item_id = (SELECT id FROM items WHERE user_id = ? AND url = ?)',
+      ).get(member.id, row.url) as { n: number }).n,
+      0,
+      row.url,
+    );
+  }
+
+  // フィクスチャがある URL でも、一括 import はサーバ取得せず空のまま（タイムアウト回避）。
+  const port = await import('../src/lib/product-fetch-port');
+  port.installProductFetchPort(regressionFetchPort());
+  try {
+    const again = await call(extensionImport, 'POST', '/api/extension-import', {
+      token,
+      source: 'amazon',
+      items: [
+        {
+          name: '二度目',
+          url: 'https://example.test/import-second',
+          price: AMAZON_PRICE,
+          imageUrl: AMAZON_IMAGE,
+        },
+      ],
+    });
+    assert.equal(again.status, 200, again.text);
+    const second = database.prepare(
+      'SELECT image_url, current_price FROM items WHERE url = ?',
+    ).get('https://example.test/import-second') as {
+      image_url: string | null;
+      current_price: number | null;
+    };
+    assert.equal(second.image_url, null);
+    assert.equal(second.current_price, null);
   } finally {
     port.installProductFetchPort(null);
   }
