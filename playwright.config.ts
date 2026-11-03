@@ -12,6 +12,8 @@ export default defineConfig({
   testDir: './tests/e2e',
   testMatch: lane === 'default' ? /.*\.spec\.ts/ : filesForLane(specNames, lane),
   testIgnore: lane === 'default' ? Object.keys(OTHER_LANE_FILES) : undefined,
+  // 1 プロセスで 1 つの SQLite（E2E_DB_PATH）を共有するため並列にしない。
+  // GitHub Actions のジョブ shard はランナーごと別 DB なので別件（E2E_SHARD）。
   fullyParallel: false,
   workers: 1,
   timeout: 60_000,

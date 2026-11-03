@@ -44,6 +44,10 @@ const github = (reason) => ({ runner: 'ubuntu-latest', reason });
 const positiveInteger = (value) => Number.isSafeInteger(value) && value > 0;
 const timestamp = (value) => typeof value === 'string' ? Date.parse(value) : NaN;
 const mainPush = (run) => run.event === 'push' && run.head_branch === 'main';
+// main の CI は deploy-main.yml が reusable で ci.yml を呼ぶ。caller の context が残る。
+export const gatedWorkflowPath = '.github/workflows/deploy-main.yml';
+export const gatedWorkflowRef = `maishu-kobo/butuyokuoh/${gatedWorkflowPath}@refs/heads/main`;
+export const gatedCheckJobName = 'ci / test, types, build';
 
 function eligibility(env, now) {
   if (!(now instanceof Date) || !Number.isFinite(now.getTime())) return null;
@@ -51,7 +55,7 @@ function eligibility(env, now) {
   const end = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
   if (env.GITHUB_REPOSITORY !== 'maishu-kobo/butuyokuoh' ||
       env.GITHUB_EVENT_NAME !== 'push' || env.GITHUB_REF !== 'refs/heads/main' ||
-      env.GITHUB_WORKFLOW_REF !== 'maishu-kobo/butuyokuoh/.github/workflows/ci.yml@refs/heads/main' ||
+      env.GITHUB_WORKFLOW_REF !== gatedWorkflowRef ||
       env.GITHUB_RUN_ATTEMPT !== '1' || env.BLACKSMITH_NO_CHARGE_CONFIRMED !== month ||
       end - now.getTime() <= 24 * 60 * 60 * 1000) return null;
   const budget = JSON.parse(env.BLACKSMITH_BUDGET || 'null');
@@ -80,7 +84,7 @@ export function measureHistory(history, env, now, anchor) {
   for (const run of history.runs) {
     if (!record(run) || !positiveInteger(run.id) || !positiveInteger(run.run_number) ||
         !positiveInteger(run.run_attempt) || !positiveInteger(run.workflow_id) ||
-        run.path !== '.github/workflows/ci.yml' || typeof run.event !== 'string' || typeof run.head_branch !== 'string' ||
+        run.path !== gatedWorkflowPath || typeof run.event !== 'string' || typeof run.head_branch !== 'string' ||
         !['completed', 'in_progress', 'queued', 'waiting', 'pending', 'requested'].includes(run.status) ||
         !Number.isFinite(timestamp(run.created_at)) || timestamp(run.created_at) < monthStart || timestamp(run.created_at) > now.getTime() ||
         ids.has(run.id) || numbers.has(run.run_number)) invalid();
@@ -111,7 +115,7 @@ export function measureHistory(history, env, now, anchor) {
           !['completed', 'in_progress', 'queued'].includes(job.status)) invalid();
       jobIds.add(job.id);
       if (job.labels.length === 1 && job.labels[0] === 'ubuntu-latest') continue;
-      if (job.labels.length !== 1 || job.labels[0] !== limits.blacksmithRunner || job.name !== 'test, types, build') invalid();
+      if (job.labels.length !== 1 || job.labels[0] !== limits.blacksmithRunner || job.name !== gatedCheckJobName) invalid();
       if (job.status === 'queued') { inFlight += limits.reservation; continue; }
       const start = timestamp(job.started_at);
       if (!Number.isFinite(start) || start < monthStart || start < timestamp(run.created_at) || start > now.getTime()) invalid();

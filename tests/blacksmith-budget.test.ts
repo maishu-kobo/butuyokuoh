@@ -7,15 +7,15 @@ const now = new Date('2026-11-10T12:00:00Z');
 const env = {
   GITHUB_REPOSITORY: 'maishu-kobo/butuyokuoh', GITHUB_EVENT_NAME: 'push',
   GITHUB_REF: 'refs/heads/main', GITHUB_RUN_ATTEMPT: '1', GITHUB_RUN_NUMBER: '102', GITHUB_RUN_ID: '1002',
-  GITHUB_WORKFLOW_REF: 'maishu-kobo/butuyokuoh/.github/workflows/ci.yml@refs/heads/main',
+  GITHUB_WORKFLOW_REF: 'maishu-kobo/butuyokuoh/.github/workflows/deploy-main.yml@refs/heads/main',
   BLACKSMITH_NO_CHARGE_CONFIRMED: '2026-11',
   BLACKSMITH_BUDGET: JSON.stringify({ month: '2026-11', freeVcpuMinutes: 6000, historyStartRunNumber: 100 }),
 };
 const run = (number: number, extra = {}) => ({ id: number + 900, run_number: number,
-  run_attempt: 1, workflow_id: 50, path: '.github/workflows/ci.yml', event: 'push', head_branch: 'main',
+  run_attempt: 1, workflow_id: 50, path: '.github/workflows/deploy-main.yml', event: 'push', head_branch: 'main',
   created_at: '2026-11-10T09:00:00Z', status: number === 102 ? 'in_progress' : 'completed', ...extra });
 const job = (id: number, runId = 1000, extra = {}) => ({ id, run_id: runId, run_attempt: 1,
-  name: 'test, types, build', labels: ['blacksmith-4vcpu-ubuntu-2404'], status: 'completed', conclusion: 'success',
+  name: 'ci / test, types, build', labels: ['blacksmith-4vcpu-ubuntu-2404'], status: 'completed', conclusion: 'success',
   started_at: '2026-11-10T10:00:00Z', completed_at: '2026-11-10T10:05:00Z', ...extra });
 const history = () => ({ runs: [run(102), run(101, { event: 'pull_request', head_branch: 'feature/example' }), run(100)],
   jobRuns: [{ runId: 1000, jobs: [job(1)] }] });

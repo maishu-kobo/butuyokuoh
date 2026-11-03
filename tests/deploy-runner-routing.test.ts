@@ -20,11 +20,13 @@ function evaluate(expression: string | undefined, hostedOnly: boolean, event = '
   }, { timeout: 100 });
 }
 
-test('deployment CI neither reserves external budget nor reuses an external runner selection', () => {
+test('deploy-main CI enables Blacksmith selection on the reusable main path', () => {
   assert.equal(evaluate(selector, true), false);
   assert.equal(evaluate(runner, true), 'ubuntu-latest');
   const caller = readFileSync('.github/workflows/deploy-main.yml', 'utf8');
-  assert.match(caller, /ci:\n[\s\S]*?with:\n\s+github_hosted_only: true\n/);
+  assert.match(caller, /ci:\n[\s\S]*?with:\n[\s\S]*?github_hosted_only: false\n/);
+  assert.equal(evaluate(selector, false, 'workflow_call'), true);
+  assert.equal(evaluate(runner, false, 'workflow_call'), 'blacksmith-4vcpu-ubuntu-2404');
 });
 
 test('normal main CI retains its existing guarded routing and retry fallback', () => {

@@ -43,7 +43,7 @@ process.stdout.write(JSON.stringify({window, installation: {installation_name: '
       GITHUB_REPOSITORY: 'maishu-kobo/butuyokuoh', GITHUB_EVENT_NAME: 'push',
       GITHUB_REF: 'refs/heads/main', GITHUB_RUN_ATTEMPT: '1', GITHUB_RUN_NUMBER: '100', GITHUB_RUN_ID: '1000',
       GITHUB_TOKEN: 'synthetic-github-token',
-      GITHUB_WORKFLOW_REF: 'maishu-kobo/butuyokuoh/.github/workflows/ci.yml@refs/heads/main',
+      GITHUB_WORKFLOW_REF: 'maishu-kobo/butuyokuoh/.github/workflows/deploy-main.yml@refs/heads/main',
       BLACKSMITH_NO_CHARGE_CONFIRMED: '2026-11',
       BLACKSMITH_BUDGET: JSON.stringify({ month: '2026-11', freeVcpuMinutes: 6000, historyStartRunNumber: 100 }),
       BLACKSMITH_BINARY: binary, BLACKSMITH_ORG_TOKEN: token,
@@ -53,11 +53,13 @@ process.stdout.write(JSON.stringify({window, installation: {installation_name: '
       if (mode === 'github-timeout') throw new DOMException('synthetic-sensitive-error', 'TimeoutError');
       if (mode === 'github-error') return new Response('synthetic-sensitive-error', { status: 403 });
       assert.doesNotMatch(JSON.stringify(options), /synthetic-unit-test-secret/);
+      const href = String(url);
+      assert.match(href, /workflows\/deploy-main\.yml\/runs|\/runs\/1000\/jobs/);
       return new Response(JSON.stringify({ total_count: 1, workflow_runs: [{
         id: 1000, run_number: 100, run_attempt: 1, workflow_id: 50,
-        event: 'push', head_branch: 'main', path: '.github/workflows/ci.yml',
+        event: 'push', head_branch: 'main', path: '.github/workflows/deploy-main.yml',
         status: 'in_progress', created_at: '2026-11-10T11:59:00Z',
-      }] }));
+      }], jobs: [] }));
     });
     return { result, output: readFileSync(output, 'utf8'), summary: readFileSync(summary, 'utf8'),
       calls: existsSync(calls) ? readFileSync(calls, 'utf8') : '' };

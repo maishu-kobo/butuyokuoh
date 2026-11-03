@@ -10,7 +10,7 @@
 # フレークの隔離は quarantine.yml。失敗すると赤になる。チェック名は必須の名前ではない。
 # 保護したテストは .github/test-quarantine.txt に書けない。このレーンが拒否する。
 # 実店舗の e2e（E2E_LIVE_SCRAPE / E2E_LIVE_AMAZON / E2E_LIVE_RAKUTEN）は環境変数を付けない。
-# develop と main への push でも実行する。
+# develop への push でも実行する。main への push は deploy-main.yml の reusable 呼び出しに寄せる。
 # マージ条件（必須ステータスチェック）はリポジトリ設定なので、このファイルではしない。
 # path フィルタは付けない。必須ジョブが skip になると、その SHA のチェックが pending のままマージを止める。
 name: CI
@@ -19,7 +19,7 @@ on:
   workflow_call:
     inputs:
       github_hosted_only:
-        description: Keep reusable deployment checks on GitHub-hosted runners
+        description: When true, skip Blacksmith and stay on GitHub-hosted runners
         type: boolean
         default: true
   pull_request:
@@ -33,7 +33,7 @@ on:
     branches:
       - feature/photo-capture
       - develop
-      - main
+      # main への push は deploy-main.yml 内の reusable ci に寄せる（二重起動を避ける）。
 
 permissions:
   contents: read
@@ -47,8 +47,10 @@ jobs:
   select-runner:
     name: Select CI runner
     # The environment allows only main. PR jobs cannot access its organization token.
+    # reusable 呼び出しでは github.event_name が workflow_call になる。
     if: >-
-      ${{ !inputs.github_hosted_only && github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      ${{ !inputs.github_hosted_only && github.ref == 'refs/heads/main' &&
+          (github.event_name == 'push' || github.event_name == 'workflow_call') &&
           github.run_attempt == 1 && vars.BLACKSMITH_NO_CHARGE_CONFIRMED != '' &&
           vars.BLACKSMITH_BUDGET != '' }}
     permissions:
@@ -82,7 +84,8 @@ jobs:
     if: ${{ !cancelled() }}
     # Re-runs can reuse an old selector output: re-check the attempt here as well.
     runs-on: >-
-      ${{ !inputs.github_hosted_only && github.run_attempt == 1 && github.event_name == 'push' &&
+      ${{ !inputs.github_hosted_only && github.run_attempt == 1 &&
+          (github.event_name == 'push' || github.event_name == 'workflow_call') &&
           github.ref == 'refs/heads/main' && needs.select-runner.result == 'success' &&
           needs.select-runner.outputs.runner == 'blacksmith-4vcpu-ubuntu-2404' &&
           'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-latest' }}
@@ -101,8 +104,21 @@ jobs:
           # lockfile をキーにする。pull_request の cache はマージ ref に閉じ、トークンは contents: read のまま。
           cache: npm
 
+      - name: Cache node_modules
+        id: node-modules
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: node_modules
+          key: node_modules-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
       - name: Install dependencies
+        if: steps.node-modules.outputs.cache-hit != 'true'
         run: npm ci
+
+      # node_modules ヒット時は postinstall が走らない。Chrome 本体は ~/.cache/puppeteer 側。
+      - name: Ensure Puppeteer Chrome
+        if: steps.node-modules.outputs.cache-hit == 'true'
+        run: npx puppeteer browsers install chrome
 
       # Chrome のサンドボックスは非特権 user namespace を使う。
       # Ubuntu 23.10 以降は AppArmor がそれを止め、No usable sandbox! で起動前に死ぬ。
@@ -143,7 +159,15 @@ jobs:
           node-version: "22"
           cache: npm
 
+      - name: Cache node_modules
+        id: node-modules
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: node_modules
+          key: node_modules-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
       - name: Install dependencies
+        if: steps.node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
       # braces は開発依存だけの期限つき例外。.github/audit-exceptions.json を見る。
