@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
@@ -9,6 +10,7 @@ import PrivacyPage from '../src/app/privacy/page';
 import TermsPage from '../src/app/terms/page';
 import { RootProviders } from '../src/components/RootProviders';
 import LoginForm from '../src/components/LoginForm';
+import SiteFooter from '../src/components/SiteFooter';
 import { AuthContext, AuthProvider } from '../src/components/AuthProvider';
 import {
   CONTACT_EMAIL,
@@ -318,4 +320,43 @@ test('設定画面から2つの方針ページを開ける', async () => {
   assert.match(page, /プライバシーと利用規約/);
   assert.equal(page.includes('下書き'), false);
   assert.equal(page.includes('Sota'), false);
+});
+
+test('アプリのフッターから2つの方針ページを開ける', () => {
+  const footer = html(createElement(SiteFooter));
+  assert.match(footer, /<footer/);
+  assert.match(footer, /href="\/privacy"/);
+  assert.match(footer, /href="\/terms"/);
+  assert.match(footer, /プライバシーポリシー/);
+  assert.match(footer, /利用規約/);
+  assert.equal(footer.includes(OPERATOR_NAME), true);
+
+  const layout = readFileSync('src/app/(app)/layout.tsx', 'utf8');
+  assert.match(layout, /SiteFooter/);
+});
+
+test('新規登録は同意チェックを必須にし、ほかの開始経路も同意を明示する', () => {
+  // 登録タブだけに出るチェックは静的描画で取れないので、ソースの形で確認する
+  const source = readFileSync('src/components/LoginForm.tsx', 'utf8');
+  assert.match(source, /type="checkbox"[^>]*required/);
+
+  // Google ログインとゲスト体験は静的描画に出る。続行が同意になることを両方に書く
+  const value = {
+    user: null,
+    token: null,
+    loading: false,
+    isGuest: false,
+    guestEnabled: true,
+    ttlHours: 24,
+    googleLogin: true,
+    startGuest: async () => {},
+    login: async () => {},
+    register: async () => {},
+    logout: async () => {},
+  };
+  const page = renderToStaticMarkup(
+    createElement(AuthContext.Provider, { value }, createElement(LoginForm)),
+  );
+  const notices = page.match(/同意したものとみなします/g) ?? [];
+  assert.ok(notices.length >= 2, 'Google ログインとゲスト体験の両方に同意の説明が要ります');
 });
