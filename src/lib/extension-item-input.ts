@@ -11,11 +11,10 @@ export type ExtensionAddItemInput = {
   categoryId?: string | null;
 };
 
+/** 一括 import の1件。価格・画像はクライアントから来ても使わない（#276）。 */
 export type ExtensionImportItemInput = {
   name: string;
   url: string;
-  price?: number | null;
-  imageUrl?: string | null;
 };
 
 /** 拡張 add 用。不正なら GuestError(400)。 */
@@ -47,10 +46,22 @@ export function requireExtensionAddItem(item: unknown): {
   };
 }
 
-/** 拡張 import 用。空なら GuestError(400)。 */
+/**
+ * 拡張 import 用。空なら GuestError(400)。
+ * 各要素の価格・画像は捨て、名前と URL だけ返す（整形は呼び出し側）。
+ */
 export function requireExtensionImportItems(items: unknown): ExtensionImportItemInput[] {
   if (!items || !Array.isArray(items) || items.length === 0) {
     throw new GuestError(400, 'INVALID_INPUT', 'インポートするアイテムがありません');
   }
-  return items as ExtensionImportItemInput[];
+  return items.map((item) => {
+    if (!item || typeof item !== 'object') {
+      return { name: '', url: '' };
+    }
+    const rec = item as Record<string, unknown>;
+    return {
+      name: typeof rec.name === 'string' ? rec.name : '',
+      url: typeof rec.url === 'string' ? rec.url : '',
+    };
+  });
 }
