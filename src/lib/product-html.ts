@@ -5,9 +5,47 @@ function parseYenPrice(value: unknown): number | null {
   return Number.isFinite(price) && price > 0 && price <= 1_000_000_000 ? Math.round(price) : null;
 }
 
+/**
+ * Apple Store の構成（buy-）ページ。モデル未選択で単一価格が無い。
+ * ページ内の「月額」「最低購入金額」「修理サービス料」などを商品価格と誤認しやすい。
+ */
+export function isAppleShopBuyPage(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (host !== 'www.apple.com' && host !== 'apple.com') return false;
+    return /\/shop\/buy[-/]/i.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+// 分割払い・月額・保証修理料など、商品本体の売価ではない円表記の近傍語。
+const NON_PRODUCT_PRICE_HINT =
+  /分割|月々|\/\s*月|円\s*\/\s*月|最低購入|ペイディ|あと払い|サービス料|AppleCare|修理|損傷|月額|金利|手数料|送料|配送料/;
+
+function yenMatchLooksLikeProductPrice(html: string, index: number, matched: string): boolean {
+  const start = Math.max(0, index - 80);
+  const end = Math.min(html.length, index + matched.length + 48);
+  return !NON_PRODUCT_PRICE_HINT.test(html.slice(start, end));
+}
+
+function firstProductYenMatch(
+  html: string,
+  pattern: RegExp,
+): number | null {
+  for (const match of html.matchAll(pattern)) {
+    if (match.index == null) continue;
+    if (!yenMatchLooksLikeProductPrice(html, match.index, match[0])) continue;
+    const extracted = parseInt(match[1].replace(/,/g, ''), 10);
+    if (extracted > 0) return extracted;
+  }
+  return null;
+}
+
 // Pure parser shared by member scraping and the bounded guest HTTP client.
 export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedItem {
   const hostname = new URL(sanitizedUrl).hostname;
+  const appleBuyPage = isAppleShopBuyPage(sanitizedUrl);
   // タイトルから商品名
   const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
   let name = titleMatch ? titleMatch[1].trim() : '不明な商品';
@@ -121,8 +159,10 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
     }
   }
 
-  // フォールバック: HTMLから価格パターンを検索
-  if (!price) {
+  // フォールバック: HTMLから価格パターンを検索。
+  // Apple の構成ページは単一価格が無く、月額・修理料・最低購入金額を拾いやすいので
+  // JSON-LD / og:price 以外の緩い円表記フォールバックは使わない（価格未取得）。
+  if (!price && !appleBuyPage) {
     // EC-CUBE系サイトの販売価格（price02_default）を優先
     const eccubePriceMatch = html.match(/id="price02_default">([\d,]+)/);
     if (eccubePriceMatch) {
@@ -130,7 +170,7 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
     }
   }
 
-  if (!price) {
+  if (!price && !appleBuyPage) {
     // 「販売価格」の近くにある価格を探す（より厳密なパターン）
     // 「販売価格: 1,234円」や「販売価格：¥1,234」のような形式
     const salePriceMatch = html.match(/販売価格[\s：:]*¥?\s*([\d,]+)/);
@@ -142,10 +182,11 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
     }
   }
 
-  if (!price) {
+  if (!price && !appleBuyPage) {
     // まず価格用のクラス/ID内の価格を探す（0円を除外）
     const structuredPriceMatches = html.matchAll(/<[^>]*(?:class|id)="[^"]*price[^"]*"[^>]*>\s*¥?\s*([\d,]+)/gi);
     for (const match of structuredPriceMatches) {
+      if (match.index != null && !yenMatchLooksLikeProductPrice(html, match.index, match[0])) continue;
       const extracted = parseInt(match[1].replace(/,/g, ''), 10);
       if (extracted > 0) {
         price = extracted;
@@ -154,7 +195,7 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
     }
   }
 
-  if (!price) {
+  if (!price && !appleBuyPage) {
     // data-price属性
     const dataPriceMatch = html.match(/data-price="([\d,]+)"/);
     if (dataPriceMatch) {
@@ -164,27 +205,15 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
       }
     }
   }
-  
-  if (!price) {
-    // 一般的な価格パターン（0円を除外）
-    const priceMatches = html.matchAll(/([\d,]+)円/g);
-    for (const match of priceMatches) {
-      const extracted = parseInt(match[1].replace(/,/g, ''), 10);
-      if (extracted > 0) {
-        price = extracted;
-        break;
-      }
-    }
+
+  if (!price && !appleBuyPage) {
+    // 一般的な価格パターン。分割払い・月額・保証修理料などの近傍は除外する。
+    price = firstProductYenMatch(html, /([\d,]+)円/g);
   }
 
-  if (!price) {
-    const yenMatch = html.match(/¥\s*([\d,]+)/) || html.match(/JPY\s*([\d,]+)/i);
-    if (yenMatch) {
-      const extracted = parseInt(yenMatch[1].replace(/,/g, ''), 10);
-      if (extracted > 0) {
-        price = extracted;
-      }
-    }
+  if (!price && !appleBuyPage) {
+    price = firstProductYenMatch(html, /¥\s*([\d,]+)/g)
+      ?? firstProductYenMatch(html, /JPY\s*([\d,]+)/gi);
   }
 
   // OG画像

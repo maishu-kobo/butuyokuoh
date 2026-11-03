@@ -16,7 +16,7 @@ import {
   type FetchServerItemMediaOptions,
   type ServerItemMedia,
 } from '@/lib/item-input';
-import { localCalendarDate } from '@/lib/local-date';
+import { isCalendarDate, localCalendarDate } from '@/lib/local-date';
 import { BlockedTargetError, resolvedPublicAddress, type MemberFetchDeps } from '@/lib/member-fetch';
 import { annotateSpend, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
 import { publicPageUrl } from '@/lib/public-page';
@@ -103,9 +103,34 @@ function normalizeOptionalDate(raw: unknown, field: string): string | null | und
   if (raw === undefined) return undefined;
   if (raw === null || raw === '') return null;
   if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    throw new GuestError(400, 'INVALID_INPUT', `${field} は YYYY-MM-DD 形式です`);
+    throw new GuestError(400, 'INVALID_INPUT', `${field} は YYYY-MM-DD 形式の実在する日付です（例: 2026-11-03）`);
+  }
+  if (!isCalendarDate(raw)) {
+    throw new GuestError(
+      400,
+      'INVALID_INPUT',
+      `${field} は実在する暦日にしてください（例: 2026-13-45 や 2026-02-30 は不可）`,
+    );
   }
   return raw;
+}
+
+/** 価格・画像はサーバ取得のみ。エージェントが値を付けてきたら分かりやすく拒否する。 */
+function rejectAgentClientMediaFields(body: Record<string, unknown>): void {
+  if (
+    body.current_price !== undefined
+    || body.price !== undefined
+    || body.original_price !== undefined
+    || body.target_price !== undefined
+    || body.image_url !== undefined
+    || body.imageUrl !== undefined
+  ) {
+    throw new GuestError(
+      400,
+      'INVALID_INPUT',
+      '価格と画像はサーバー取得のみです。エージェントからは指定できません',
+    );
+  }
 }
 
 function normalizeOptionalId(raw: unknown, field: string): number | null | undefined {
@@ -168,6 +193,20 @@ export function parseAgentProductUrls(body: Record<string, unknown>): string[] {
 }
 
 /**
+ * 書き込みボディの共通検査（価格・画像の拒否、日付の暦日チェック）。
+ * レート消費より前に呼ぶ。
+ */
+export function assertAgentWriteFields(body: Record<string, unknown>): void {
+  rejectAgentClientMediaFields(body);
+  if (body.planned_purchase_date !== undefined) {
+    normalizeOptionalDate(body.planned_purchase_date, 'planned_purchase_date');
+  }
+  if (body.purchased_at !== undefined) {
+    normalizeOptionalDate(body.purchased_at, 'purchased_at');
+  }
+}
+
+/**
  * レート消費の前に、URL 件数と attach 先を検査する。
  * 上限超えは 400、手作業比較グループは 409。いずれもレートはまだ触らない。
  */
@@ -176,6 +215,7 @@ export function assertAgentUrlAddPreflight(
   body: Record<string, unknown>,
   db: Database.Database = getDb(),
 ): { urls: string[]; units: number } {
+  assertAgentWriteFields(body);
   const urls = parseAgentProductUrls(body);
   const attachId = body.item_id === undefined
     ? undefined
@@ -612,6 +652,7 @@ export async function addAgentItemByUrl(
   mediaOptions: FetchServerItemMediaOptions = {},
   db: Database.Database = getDb(),
 ): Promise<{ item: AgentItemView; stores: AgentStoreView[]; media_fetched: boolean }> {
+  rejectAgentClientMediaFields(body);
   const urls = parseAgentProductUrls(body);
   const attachId = body.item_id === undefined
     ? undefined
@@ -819,6 +860,7 @@ export async function addAgentItem(
   mediaOptions: FetchServerItemMediaOptions = {},
   db: Database.Database = getDb(),
 ): Promise<{ item: AgentItemView; media_fetched: boolean }> {
+  rejectAgentClientMediaFields(body);
   const name = typeof body.name === 'string' ? normalizeItemName(body.name) : null;
   if (!name) {
     throw new GuestError(400, 'INVALID_INPUT', '商品名は必須です');
@@ -938,13 +980,7 @@ export function updateAgentItem(
   }
 
   // 価格・画像はエージェントから直接書き換えさせない
-  if (body.current_price !== undefined || body.price !== undefined || body.image_url !== undefined || body.imageUrl !== undefined) {
-    throw new GuestError(
-      400,
-      'INVALID_INPUT',
-      '価格と画像はサーバー取得のみです。エージェントからは変更できません',
-    );
-  }
+  rejectAgentClientMediaFields(body);
 
   if (updates.length === 0) {
     throw new GuestError(400, 'INVALID_INPUT', '更新する項目がありません');

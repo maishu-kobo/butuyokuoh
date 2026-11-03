@@ -193,6 +193,74 @@ test('agent api: read/write scopes, ownership, notice, and CRUD without hard del
   }
 }));
 
+test('agent api/MCP: reject impossible dates and client-supplied prices', () => serial(async () => {
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const { isCalendarDate } = await import('../src/lib/local-date');
+  installProductFetchPort(regressionFetchPort());
+  try {
+    assert.equal(isCalendarDate('2026-11-03'), true);
+    assert.equal(isCalendarDate('2026-13-45'), false);
+    assert.equal(isCalendarDate('2026-02-30'), false);
+    assert.equal(isCalendarDate('2026-02-28'), true);
+
+    await createMember('agent-date-price');
+    const token = await createToken(['read', 'write'], 'date-price');
+
+    const badDate = await call(byUrlPath, 'POST', '/api/agent/v1/items/by-url', {
+      url: AMAZON_PRODUCT_URL,
+      planned_purchase_date: '2026-13-45',
+    }, undefined, bearer(token.token));
+    assert.equal(badDate.status, 400, badDate.text);
+    assert.equal((badDate.json as { code: string }).code, 'INVALID_INPUT');
+    assert.match((badDate.json as { error: string }).error, /暦日|日付/);
+
+    const feb30 = await call(itemsPath, 'POST', '/api/agent/v1/items', {
+      name: '日付不正',
+      planned_purchase_date: '2026-02-30',
+    }, undefined, bearer(token.token));
+    assert.equal(feb30.status, 400, feb30.text);
+
+    const clientPrice = await call(byUrlPath, 'POST', '/api/agent/v1/items/by-url', {
+      url: AMAZON_PRODUCT_URL,
+      price: 3000,
+      planned_purchase_date: '2026-11-28',
+    }, undefined, bearer(token.token));
+    assert.equal(clientPrice.status, 400, clientPrice.text);
+    assert.match((clientPrice.json as { error: string }).error, /価格と画像はサーバー取得のみ/);
+
+    const ok = await call(byUrlPath, 'POST', '/api/agent/v1/items/by-url', {
+      url: AMAZON_PRODUCT_URL,
+      planned_purchase_date: '2026-11-28',
+    }, undefined, bearer(token.token));
+    assert.equal(ok.status, 201, ok.text);
+    assert.equal(
+      (ok.json as { data: { item: { planned_purchase_date: string | null; current_price: number | null } } }).data.item.planned_purchase_date,
+      '2026-11-28',
+    );
+    assert.equal(
+      (ok.json as { data: { item: { current_price: number | null } } }).data.item.current_price,
+      AMAZON_PRICE,
+    );
+
+    const mcpBad = await mcpCall(token.token, {
+      jsonrpc: '2.0',
+      id: 90,
+      method: 'tools/call',
+      params: {
+        name: 'add_item',
+        arguments: { name: 'mcp日付', planned_purchase_date: '2026-13-45' },
+      },
+    });
+    assert.equal(mcpBad.status, 200, mcpBad.text);
+    const mcpResult = mcpBad.json as { result: { isError: boolean; content?: { text: string }[] } };
+    assert.equal(mcpResult.result.isError, true);
+    const mcpText = mcpResult.result.content?.map((c) => c.text).join(' ') || '';
+    assert.match(mcpText, /暦日|日付|INVALID_INPUT/);
+  } finally {
+    installProductFetchPort(null);
+  }
+}));
+
 test('agent api: SSRF blocked before save; failed media leaves empty price', () => serial(async () => {
   const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
   const { assertAgentPublicUrl } = await import('../src/lib/agent-items');

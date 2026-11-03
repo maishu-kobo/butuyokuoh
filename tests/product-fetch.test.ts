@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { isPublicAddress, publicPageUrl, fetchPublicPage, requestPage, MAX_PAGE_BYTES, MAX_AMAZON_PAGE_BYTES, PRODUCT_FETCH_HELP } from '../src/lib/public-page';
-import { parseProductHtml } from '../src/lib/product-html';
+import { isAppleShopBuyPage, parseProductHtml } from '../src/lib/product-html';
 import { extractAmazonProduct, isAmazonProductPage } from '../src/lib/amazon-product';
 
 test('public addresses only, including normalized and mapped IP bypasses', () => {
@@ -90,6 +90,36 @@ test('PITAKA-style product metadata preserves decimal yen and HTTPS CDN images',
   const relative = parseProductHtml('<title>Product</title><meta property="og:image" content="//cdn.example.com/a.webp">','https://example.com/products/a');
   assert.equal(relative.imageUrl,'https://cdn.example.com/a.webp');
   assert.equal(parseProductHtml('<title>Product</title>','https://example.com').price,null);
+});
+
+test('Apple shop buy pages and installment copy do not become a product price', () => {
+  assert.equal(isAppleShopBuyPage('https://www.apple.com/jp/shop/buy-mac/macbook-pro-proled-xdr'), true);
+  assert.equal(isAppleShopBuyPage('https://www.apple.com/jp/macbook-pro/'), false);
+  assert.equal(isAppleShopBuyPage('https://evil.example/shop/buy-mac/x'), false);
+
+  // 再現: 月額 9,366 / 最低購入 3,000 / AppleCare 修理 12,900 が先に出る構成ページ
+  const appleBuy = `<title>MacBook Airを購入 - Apple</title>
+    <meta property="og:description" content="新しいMacBook Airが分割払いで9,366円/月（税込）から。" />
+    <meta property="og:image" content="https://store.storeimages.cdn-apple.com/air.png" />
+    <p>最低購入金額は3,000円です。月々の支払い。</p>
+    <p>画面または外部筐体の損傷は12,900円（税込）、そのほかの損傷は37,100円のサービス料。</p>
+    <p>本体の参考表示 224,800円から（構成により異なります）。</p>`;
+  const air = parseProductHtml(appleBuy, 'https://www.apple.com/jp/shop/buy-mac/macbook-air');
+  assert.equal(air.price, null);
+  assert.match(air.name, /MacBook Air/);
+
+  const pro = parseProductHtml(
+    appleBuy.replace('MacBook Air', 'MacBook Pro'),
+    'https://www.apple.com/jp/shop/buy-mac/macbook-pro-proled-xdr',
+  );
+  assert.equal(pro.price, null);
+
+  // 通常の商品ページでは、分割の近傍だけ飛ばして本体価格を取る
+  const shop = parseProductHtml(
+    `<title>ノート - Shop</title><p>分割払い 9,366円/月</p><p>販売価格: 89,800円</p>`,
+    'https://shop.example/products/note',
+  );
+  assert.equal(shop.price, 89800);
 });
 
 const amazonProduct = `<img src="https://m.media-amazon.com/images/I/case.jpg" id="landingImage">
