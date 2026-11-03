@@ -94,6 +94,7 @@ export async function GET(request: NextRequest) {
           target.searchParams.set('error', error.code === 'unsupported_response_type' ? error.code : 'invalid_request');
           target.searchParams.set('error_description', error.message);
           if (state) target.searchParams.set('state', state);
+          oauth.appendAuthorizationIss(target, request.url);
           const response = NextResponse.redirect(target.toString(), 302);
           response.headers.set('Content-Security-Policy', csp);
           response.headers.set('Cache-Control', 'no-store');

@@ -37,6 +37,23 @@ export default function AgentHelpContent({ mcpUrl }: { mcpUrl: string }) {
           </li>
         </ul>
 
+        <h2 className="text-lg font-semibold pt-2">ChatGPT から使う</h2>
+        <p>
+          ChatGPT のカスタム MCP（コネクタ／プラグイン）は、公開 HTTPS の接続用 URL（MCP）と OAuth でつなぎます。
+          手順は OpenAI の公式ヘルプに沿っています。接続できるプランやメニュー名は ChatGPT 側の仕様に従います。
+        </p>
+        <ol className="list-decimal pl-6 space-y-2">
+          <li>上の接続用 URL（MCP）をコピーします（本番は https の公開 URL です。localhost ではつながりません）。</li>
+          <li>ChatGPT（Web）の Plugins で、カスタム MCP サーバーを追加する画面を開きます。</li>
+          <li>名前を入れ、Connection にコピーした URL を貼ります。認証は OAuth を選びます。</li>
+          <li>注意事項に同意し、作成（Create）を進めます。物欲王の許可画面が出たら「許可」を選びます。</li>
+          <li>作成後はプラグインをインストールし、会話で @ から選んで使います。</li>
+        </ol>
+        <p>
+          くわしい画面操作・権限・プラン条件は OpenAI の「Connecting custom MCP servers in ChatGPT」を見てください。
+          Claude Code や他の OAuth 対応クライアントも、同じ接続用 URL で使えます。
+        </p>
+
         <h2 className="text-lg font-semibold pt-2">iPhone の Siri・ショートカットから使う</h2>
         <p>
           iPhone のショートカット App と組み合わせると、Siri に話しかけて品目を追加したり、
