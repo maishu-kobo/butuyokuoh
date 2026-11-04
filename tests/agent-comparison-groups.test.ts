@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { call, createMember, db, setTestUser } from './regression-harness';
 
-type Group = { id: number; name: string; origin: string | null; item_count: number };
+import type { AgentComparisonGroup as Group } from '../src/lib/agent-comparison-groups';
 type Rpc = {
   result?: {
     isError?: boolean;
     tools?: { name: string }[];
-    structuredContent?: { data: { group?: Group; groups?: Group[]; id?: number } };
+    structuredContent?: { data: { group?: Group; groups?: Group[] } };
     _meta?: { code: string };
   };
   error?: { data: { code: string } };

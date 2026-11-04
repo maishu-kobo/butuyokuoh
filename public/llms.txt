@@ -23,7 +23,7 @@ MCP endpoint (Streamable HTTP, protocol 2025-11-25): /api/mcp
 2. Prefer official or major-retailer product pages. Confirm model numbers and capacity; ask the user when unsure.
 3. Do **not** use Butuyokuoh store search through this API/MCP. Find product URLs with your own tools, then register the URL.
 4. Price and image must come from the server fetch only. Client-supplied price/image are ignored. If fetch fails, save name + URL and leave price empty.
-5. Writes are limited to: add, update, mark purchased, move to trash, create comparison groups. **No hard delete.**
+5. Writes are limited to: add, update, mark purchased, move to trash, create comparison groups (MCP only). **No hard delete.**
 6. Items added by an agent appear in the normal list with an "added by agent" mark.
 7. Any public http(s) product URL is accepted; private/internal targets are rejected (SSRF guard via `fetchPublicMember`).
 8. Rate limits per token: read 60/min, add 20/min, URL-add 10/min, 200 adds/day.

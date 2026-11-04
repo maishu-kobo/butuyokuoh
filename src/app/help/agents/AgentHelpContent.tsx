@@ -125,6 +125,7 @@ export default function AgentHelpContent({ mcpUrl }: { mcpUrl: string }) {
           <li>品目を更新する</li>
           <li>購入済みにする</li>
           <li>ゴミ箱に移す</li>
+          <li>比較グループを作成・一覧取得する（MCP のみ）</li>
         </ul>
         <p>
           完全に削除することはできません。間違えた操作は、取り消し機能で戻せる場合があります。
