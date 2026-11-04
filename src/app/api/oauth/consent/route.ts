@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { approveAuthorizePending, OAUTH_CSRF_COOKIE } from '@/lib/agent-oauth';
+import { approveAuthorizePending, OAUTH_CSRF_COOKIE, oauthIssuer } from '@/lib/agent-oauth';
 import { guestErrorResponse, requireSameOrigin } from '@/lib/api-access';
 import { getCurrentUser } from '@/lib/auth';
 import { GuestError } from '@/lib/guest';
@@ -24,7 +24,7 @@ function parseConsentBody(
 
 export async function POST(request: NextRequest) {
   try {
-    requireSameOrigin(request);
+    requireSameOrigin(request, oauthIssuer(request.url));
     const user = await getCurrentUser();
     if (!user || user.account_type !== 'member') {
       throw new GuestError(401, 'MEMBER_REQUIRED', '会員ログインが必要です');
