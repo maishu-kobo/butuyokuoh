@@ -45,6 +45,7 @@ export interface ScrapedItem {
   source: string;
   sourceName: string | null;
   note?: string; // ユーザーへのメッセージ（短縮リンクの制限など）
+  failureCode?: 'BOT_CHALLENGE';
 }
 
 // スクレイプ結果から items テーブルに記録する状態を導出する。
