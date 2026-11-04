@@ -7,7 +7,9 @@ import { call, createMember, db } from './regression-harness';
 import { parseProductHtml } from '../src/lib/product-html';
 import { deriveScrapeOutcome, scrapeUrl } from '../src/lib/scraper';
 import { installProductFetchPort } from '../src/lib/product-fetch-port';
-import { PITAKA_URL, regressionLookup } from '../src/lib/product-regression-fixtures';
+import { PRODUCT_FETCH_HELP } from '../src/lib/public-page';
+import type { AgentMediaFetchError } from '../src/lib/agent-items';
+import { BOT_URL, PITAKA_URL, regressionLookup } from '../src/lib/product-regression-fixtures';
 
 const url = 'https://www.patagonia.jp/product/terravia-convertible-tote-bag-backpack-24-liters/48814.html';
 const waiting = readFileSync(new URL('./fixtures/patagonia-waiting.html', import.meta.url), 'utf8');
@@ -49,9 +51,26 @@ test('Web registration/preview and the bounded guest scraper explain the waiting
     }
     const { scrapeGuestUrl } = await import('../src/lib/guest-scraper');
     await assert.rejects(() => scrapeGuestUrl(url, user.id), error =>
-      error instanceof Error && /待機ページ|ボット対策/.test(error.message));
+      error instanceof Error && messagePattern.test(error.message));
     const database = await db();
     assert.equal((database.prepare('SELECT COUNT(*) AS count FROM items WHERE user_id = ?').get(user.id) as { count: number }).count, 0);
+  } finally { installProductFetchPort(null); }
+});
+
+test('Web rejects an Amazon bot page with guidance for an item that has not been saved', async () => {
+  const owner = await createMember('amazon-bot-guidance');
+  installFixture();
+  try {
+    for (const [module, path] of [
+      ['../src/app/api/items/preview/route.ts', '/api/items/preview'],
+      ['../src/app/api/items/route.ts', '/api/items'],
+    ]) {
+      const response = await call(module, 'POST', path, { url: BOT_URL });
+      assert.equal(response.status, 422, response.text);
+      assert.deepEqual(response.json, { error: PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' });
+    }
+    const database = await db();
+    assert.equal((database.prepare('SELECT COUNT(*) AS count FROM items WHERE user_id = ?').get(owner.id) as { count: number }).count, 0);
   } finally { installProductFetchPort(null); }
 });
 
@@ -64,7 +83,7 @@ test('MCP returns per-URL failure reasons and saves a failed status for Web card
   assert.equal(tokenResponse.status, 201, tokenResponse.text);
   const token = (tokenResponse.json as { token: string }).token;
   installFixture();
-  type Data = { item: { id: number; name: string; current_price: number | null; image_url: string | null }; media_fetched: boolean; media_fetch_errors: { url: string; code: string; message: string }[] };
+  type Data = { media_fetched: boolean; media_fetch_errors: AgentMediaFetchError[] };
   async function mcp(name: string, args: object) {
     const response = await call('../src/app/api/mcp/route.ts', 'POST', '/api/mcp',
       { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, undefined,
