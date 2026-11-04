@@ -21,8 +21,17 @@ const sameOrigin = { origin: 'http://localhost' } as const;
 const sameOriginUrl = 'http://localhost';
 
 // 商品取得は fixture、API の事前 DNS 検査も固定して実ネットワークを使わない。
-before(() => { mock.method(dns, 'lookup', async () => [{ address: '8.8.8.8', family: 4 }]); });
-after(() => { mock.restoreAll(); });
+let dnsLookupCalls = 0;
+before(() => {
+  mock.method(dns, 'lookup', async () => {
+    dnsLookupCalls += 1;
+    return [{ address: '8.8.8.8', family: 4 }];
+  });
+});
+after(() => {
+  mock.restoreAll();
+  assert.ok(dnsLookupCalls > 0, 'fixture URL validation must use the DNS mock');
+});
 
 let exclusive: Promise<void> = Promise.resolve();
 function serial(run: () => Promise<void>): Promise<void> {
