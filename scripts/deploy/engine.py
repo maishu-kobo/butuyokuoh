@@ -353,12 +353,21 @@ class LinuxHost:
         if self.releases.is_symlink(): raise SafeFailure('retention-release-root-is-symlink')
         # Reject layouts where a release could own persistent storage. Symlinks
         # FROM releases to shared files outside this tree are safe to unlink.
-        for key in ('state', 'database', 'uploads', 'env_file'):
-            if Path(self.c[key]).resolve().is_relative_to(root):
+        shared_paths = {Path(self.c[key]).resolve()
+                        for key in ('state', 'database', 'uploads', 'env_file')}
+        for path in shared_paths:
+            if path.is_relative_to(root):
                 raise SafeFailure('retention-persistent-storage-inside-releases')
-        shared_files = {(entry.st_dev, entry.st_ino)
-                        for key in ('state', 'database', 'uploads', 'env_file')
-                        for entry in [os.stat(self.c[key])]}
+        mounts = mounted_paths()
+        # Include nested bind-mount targets, e.g. uploads/photos or state/backups.
+        shared_mounts = {mount for mount in mounts
+                         if any(mount.is_relative_to(path) for path in shared_paths)}
+        try:
+            shared_files = {(entry.st_dev, entry.st_ino)
+                            for path in shared_paths | shared_mounts
+                            for entry in [path.stat()]}
+        except OSError:
+            raise SafeFailure('retention-persistent-storage-unavailable') from None
         if os.path.lexists(self.state / 'transaction.json'):
             raise SafeFailure('retention-pending-transaction')
         current = self.current.resolve(strict=True)
@@ -418,7 +427,6 @@ class LinuxHost:
         remove = sorted(set(managed) - keep)
         # Validate every candidate BEFORE deleting anything. rmtree does not
         # follow symlinks; reject mounted data inside a release as well.
-        mounts = mounted_paths()
         for sha in remove:
             if any(mount.is_relative_to(root / sha) for mount in mounts):
                 raise SafeFailure('retention-mounted-storage')

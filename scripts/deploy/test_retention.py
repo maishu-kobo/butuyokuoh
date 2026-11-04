@@ -206,6 +206,36 @@ class RetentionTests(unittest.TestCase):
     def test_shared_state_bind_source_is_preserved(self):
         self.assert_shared_bind_mount_source_is_preserved('state')
 
+    def assert_shared_child_bind_mount_source_is_preserved(self, key):
+        import os
+        shas = [self.release(n) for n in range(1, 6)]
+        self.activate(shas[-1])
+        source = self.releases / shas[1] / '.next'
+        target = Path(self.config[key]) / 'mounted-child'
+        target.mkdir()
+        original_stat = os.stat
+        def stat(path, *args, **kwargs):
+            return original_stat(source if Path(path) == target else path, *args, **kwargs)
+        with patch.object(engine.os, 'stat', side_effect=stat), \
+                patch.object(engine, 'mounted_paths', return_value={target}):
+            with self.assertRaises(engine.SafeFailure): self.host.prune_releases(apply=True)
+        self.assertEqual(self.names(), shas)
+
+    def test_shared_upload_child_bind_source_is_preserved(self):
+        self.assert_shared_child_bind_mount_source_is_preserved('uploads')
+
+    def test_shared_state_child_bind_source_is_preserved(self):
+        self.assert_shared_child_bind_mount_source_is_preserved('state')
+
+    def test_missing_shared_resource_reports_safe_reason_without_deleting(self):
+        shas = [self.release(n) for n in range(1, 6)]
+        self.activate(shas[-1])
+        self.db.unlink()
+        with self.assertRaises(engine.SafeFailure) as raised:
+            self.host.prune_releases(apply=True)
+        self.assertEqual(raised.exception.reason, 'retention-persistent-storage-unavailable')
+        self.assertEqual(self.names(), shas)
+
     def test_mountinfo_decodes_bind_mount_paths_with_spaces(self):
         text = '1 2 0:1 /source /releases/a\\040b/data rw - ext4 /dev/root rw\n'
         with patch.object(engine.sys, 'platform', 'linux'), patch.object(Path, 'read_text', return_value=text):
