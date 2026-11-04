@@ -356,6 +356,9 @@ class LinuxHost:
         for key in ('state', 'database', 'uploads', 'env_file'):
             if Path(self.c[key]).resolve().is_relative_to(root):
                 raise SafeFailure('retention-persistent-storage-inside-releases')
+        shared_files = {(entry.st_dev, entry.st_ino)
+                        for key in ('state', 'database', 'uploads', 'env_file')
+                        for entry in [os.stat(self.c[key])]}
         if os.path.lexists(self.state / 'transaction.json'):
             raise SafeFailure('retention-pending-transaction')
         current = self.current.resolve(strict=True)
@@ -421,6 +424,11 @@ class LinuxHost:
                 raise SafeFailure('retention-mounted-storage')
             for directory, dirs, files in os.walk(root / sha, followlinks=False):
                 for path in [Path(directory), *(Path(directory) / name for name in dirs + files)]:
+                    # A bind mount may expose a source INSIDE this candidate at
+                    # a shared path OUTSIDE it. Compare identity, not just paths.
+                    entry = path.lstat()
+                    if (entry.st_dev, entry.st_ino) in shared_files:
+                        raise SafeFailure('retention-persistent-storage-inside-releases')
                     if not path.is_symlink() and os.path.ismount(path):
                         raise SafeFailure('retention-mounted-storage')
         plan = {'keep': sorted(keep), 'remove': remove, 'unmanaged': unmanaged}
@@ -594,6 +602,12 @@ def main():
 
 if __name__ == '__main__':
     try: raise SystemExit(main())
+    except SafeFailure as error:
+        print(json.dumps({'status': 'failed', 'reason': error.reason}))
+        raise SystemExit(1)
+    except BlockingIOError:
+        print(json.dumps({'status': 'failed', 'reason': 'deployment-lock-busy'}))
+        raise SystemExit(1)
     except Exception:
         print('Deployment failed; inspect private host logs/state. No credentials emitted.')
         raise SystemExit(1)

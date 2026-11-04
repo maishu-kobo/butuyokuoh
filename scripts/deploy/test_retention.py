@@ -178,6 +178,34 @@ class RetentionTests(unittest.TestCase):
             with self.assertRaises(engine.SafeFailure): self.host.prune_releases(apply=True)
         self.assertEqual(self.names(), shas)
 
+    def assert_shared_bind_mount_source_is_preserved(self, key):
+        import os
+        shas = [self.release(n) for n in range(1, 6)]
+        self.activate(shas[-1])
+        original_stat = os.stat
+        source = self.releases / shas[1] / ('.next' if key in ('uploads', 'state') else 'payload')
+        # A bind mount exposes the source inode at an outside path;
+        # resolve() still reports the outside path, not its source.
+        def stat(path, *args, **kwargs):
+            if Path(path) == Path(self.config[key]):
+                return original_stat(source, *args, **kwargs)
+            return original_stat(path, *args, **kwargs)
+        with patch.object(engine.os, 'stat', side_effect=stat):
+            with self.assertRaises(engine.SafeFailure): self.host.prune_releases(apply=True)
+        self.assertEqual(self.names(), shas)
+
+    def test_shared_upload_bind_source_is_preserved(self):
+        self.assert_shared_bind_mount_source_is_preserved('uploads')
+
+    def test_shared_database_bind_source_is_preserved(self):
+        self.assert_shared_bind_mount_source_is_preserved('database')
+
+    def test_shared_configuration_bind_source_is_preserved(self):
+        self.assert_shared_bind_mount_source_is_preserved('env_file')
+
+    def test_shared_state_bind_source_is_preserved(self):
+        self.assert_shared_bind_mount_source_is_preserved('state')
+
     def test_mountinfo_decodes_bind_mount_paths_with_spaces(self):
         text = '1 2 0:1 /source /releases/a\\040b/data rw - ext4 /dev/root rw\n'
         with patch.object(engine.sys, 'platform', 'linux'), patch.object(Path, 'read_text', return_value=text):
@@ -230,7 +258,41 @@ class RetentionTests(unittest.TestCase):
                                      'prune', '--apply', '--config', str(config)],
                                     capture_output=True, timeout=5)
         self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout)['reason'], 'deployment-lock-busy')
         self.assertEqual(self.names(), shas)
+
+    def test_prune_cli_reports_safe_failure_reason(self):
+        import os
+        import pwd
+        import subprocess
+        import sys
+        sha = self.release(1)
+        self.activate(sha)
+        (self.state / 'transaction.json').write_text('{}')
+        config = self.root / 'config.json'
+        config.write_text(json.dumps({**self.config, 'user': pwd.getpwuid(os.geteuid()).pw_name}))
+        result = subprocess.run([sys.executable, str(Path(__file__).with_name('engine.py')),
+                                 'prune', '--apply', '--config', str(config)],
+                                capture_output=True, timeout=5)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout), {'status': 'failed', 'reason': 'retention-pending-transaction'})
+
+    def test_install_rejects_symlinked_release_layouts(self):
+        spec = importlib.util.spec_from_file_location('install', Path(__file__).with_name('install.py'))
+        install = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(install)
+        sha = self.release(1)
+        self.activate(sha)
+        config = {**self.config, 'initial_release': str(self.releases / sha)}
+        alias = self.root / 'release-alias'
+        alias.symlink_to(self.releases)
+        with self.assertRaises(ValueError):
+            install.validate_initial({**config, 'releases': str(alias)})
+        release = self.releases / sha
+        actual = self.root / 'actual-release'
+        release.rename(actual)
+        release.symlink_to(actual)
+        with self.assertRaises(ValueError): install.validate_initial(config)
 
     def test_prune_cli_defaults_to_preview_and_apply_keeps_three(self):
         import os
