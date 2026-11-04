@@ -403,6 +403,13 @@ components:
           description: YYYY-MM-DD の実在する暦日（2026-13-45 等は 400）。価格・画像フィールドは不可。
         category_id: { type: integer, minimum: 1 }
         comparison_group_id: { type: integer, minimum: 1 }
+    MediaFetchError:
+      type: object
+      required: [url, code, message]
+      properties:
+        url: { type: string, format: uri }
+        code: { type: string, enum: [BOT_CHALLENGE, FETCH_FAILED] }
+        message: { type: string }
     AddItemResponse:
       type: object
       required: [data, notice]
@@ -413,6 +420,10 @@ components:
           properties:
             item: { $ref: '#/components/schemas/AgentItem' }
             media_fetched: { type: boolean }
+            media_fetch_errors:
+              type: array
+              description: URL ごとの取得失敗理由。手動品目や取得成功時は空配列。
+              items: { $ref: '#/components/schemas/MediaFetchError' }
     AddItemByUrlResponse:
       type: object
       required: [data, notice]
@@ -426,6 +437,10 @@ components:
               type: array
               items: { $ref: '#/components/schemas/AgentStore' }
             media_fetched: { type: boolean }
+            media_fetch_errors:
+              type: array
+              description: URL ごとの取得失敗理由。複数店の一部だけ成功すると media_fetched は true でも失敗が含まれる。
+              items: { $ref: '#/components/schemas/MediaFetchError' }
     UpdateItemBody:
       type: object
       additionalProperties: false

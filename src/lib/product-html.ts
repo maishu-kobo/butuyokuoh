@@ -1,5 +1,14 @@
 import type { ScrapedItem } from './scraper';
 
+export const PRODUCT_WAITING_HELP = '販売サイトのボット対策による待機ページが返されたため、価格と画像を取得できませんでした。商品ページをブラウザで確認し、時間をおいて再試行するか、別の店のURLを使ってください。商品名を入力して手動で追加することもできます。';
+
+/** HTTP 200 でも商品ではない botfailover テンプレートを解析前に除外する。 */
+function isProductWaitingPage(html: string): boolean {
+  const title = html.match(/<title\b[^>]*>([^<]*)<\/title\s*>/i)?.[1]
+    .replace(/\s+/g, ' ').trim();
+  return !!title && /^hang tight!\s*routing to checkout(?:\.{0,3}|…)?$/i.test(title);
+}
+
 function parseYenPrice(value: unknown): number | null {
   const price = Number(String(value).replace(/[,¥￥\s]/g, ''));
   return Number.isFinite(price) && price > 0 && price <= 1_000_000_000 ? Math.round(price) : null;
@@ -45,6 +54,12 @@ function firstProductYenMatch(
 // Pure parser shared by member scraping and the bounded guest HTTP client.
 export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedItem {
   const hostname = new URL(sanitizedUrl).hostname;
+  if (isProductWaitingPage(html)) {
+    return {
+      name: '取得失敗', price: null, imageUrl: null, source: 'other', sourceName: null,
+      note: PRODUCT_WAITING_HELP, failureCode: 'BOT_CHALLENGE',
+    };
+  }
   const appleBuyPage = isAppleShopBuyPage(sanitizedUrl);
   // タイトルから商品名
   const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
