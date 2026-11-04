@@ -25,8 +25,17 @@ const sameOrigin = { origin: 'http://localhost' } as const;
 const sameOriginUrl = 'http://localhost';
 
 // 商品取得は fixture、API の事前 DNS 検査も固定して実ネットワークを使わない。
-before(() => { mock.method(dns, 'lookup', async () => [{ address: '8.8.8.8', family: 4 }]); });
-after(() => { mock.restoreAll(); });
+let dnsLookupCalls = 0;
+before(() => {
+  mock.method(dns, 'lookup', async () => {
+    dnsLookupCalls += 1;
+    return [{ address: '8.8.8.8', family: 4 }];
+  });
+});
+after(() => {
+  mock.restoreAll();
+  assert.ok(dnsLookupCalls > 0, 'fixture URL validation must use the DNS mock');
+});
 
 let exclusive: Promise<void> = Promise.resolve();
 function serial(run: () => Promise<void>): Promise<void> {
@@ -274,13 +283,14 @@ test('agent api: SSRF blocked before save; failed media leaves empty price', () 
     await createMember('agent-ssrf');
     const token = await createToken(['write'], 'ssrf');
 
+    const urlBlocked = (error: unknown) => error instanceof Error && (error as { code?: string }).code === 'URL_BLOCKED';
     await assert.rejects(
       () => assertAgentPublicUrl('http://127.0.0.1/secret'),
-      (error: unknown) => error instanceof Error && 'code' in error && (error as { code: string }).code === 'URL_BLOCKED',
+      urlBlocked,
     );
     await assert.rejects(
       () => assertAgentPublicUrl('http://169.254.169.254/latest/meta-data'),
-      (error: unknown) => error instanceof Error && 'code' in error && (error as { code: string }).code === 'URL_BLOCKED',
+      urlBlocked,
     );
     // DNS を固定しても、公開ホストが private / 混在アドレスへ解決されれば拒否する。
     for (const addresses of [
@@ -289,7 +299,7 @@ test('agent api: SSRF blocked before save; failed media leaves empty price', () 
     ]) {
       await assert.rejects(
         () => assertAgentPublicUrl('https://example.com/private', { resolve: async () => addresses }),
-        (error: unknown) => error instanceof Error && 'code' in error && (error as { code: string }).code === 'URL_BLOCKED',
+        urlBlocked,
       );
     }
 
