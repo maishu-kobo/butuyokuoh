@@ -33,7 +33,8 @@ function tool(bearer: string, name: string, args = {}) {
   return rpc(bearer, 'tools/call', { name, arguments: args });
 }
 
-test('MCP comparison groups: create, attach existing items, list and display through the Web API', async () => {
+test('MCP comparison groups: create, attach existing items, list and display through the Web API', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-04T12:00:00Z') });
   const owner = await createMember('comparison-owner');
   const auth = await token(['read', 'write']);
   const created = await tool(auth.token, 'create_comparison_group', { name: '  トラウザーの比較  ' });
@@ -79,7 +80,7 @@ test('MCP comparison groups: create, attach existing items, list and display thr
 });
 
 test('MCP comparison groups: scopes, validation and existing rate limits apply', async (t) => {
-  t.mock.method(Date, 'now', () => Date.parse('2026-11-04T12:00:00Z'));
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-04T12:00:00Z') });
   await createMember('comparison-permissions');
   const read = await token(['read']);
   const write = await token(['write']);
