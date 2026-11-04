@@ -12,6 +12,9 @@ spec.loader.exec_module(engine)
 
 class RetentionTests(unittest.TestCase):
     def setUp(self):
+        clock = patch.object(engine.time, 'time', return_value=1000000)
+        clock.start()
+        self.addCleanup(clock.stop)
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         self.root = Path(self.folder.name).resolve()
@@ -98,6 +101,27 @@ class RetentionTests(unittest.TestCase):
         self.assertEqual(self.names(), shas[-3:])
         self.assertFalse((self.releases / failed).exists())
 
+    def test_initial_release_survives_after_success_without_per_sha_result(self):
+        old = self.release(1)
+        (self.state / 'results' / (old + '.json')).unlink()
+        self.activate(old)
+        self.host.prune_releases(apply=True)
+        current = self.release(2)
+        self.activate(current)
+        self.host.prune_releases(apply=True, protected=[old])
+        self.host.prune_releases(apply=True)
+        self.assertEqual(self.names(), [old, current])
+
+    def test_success_history_survives_result_reset_and_superseded_retry(self):
+        shas = [self.release(n) for n in range(1, 4)]
+        self.activate(shas[-1])
+        self.host.prune_releases(apply=True)
+        (self.state / 'results' / (shas[0] + '.json')).unlink()
+        (self.state / 'results' / (shas[1] + '.json')).write_text(json.dumps(
+            dict(sha=shas[1], status='superseded', at=100)))
+        self.host.prune_releases(apply=True)
+        self.assertEqual(self.names(), shas)
+
     def test_unmanaged_directories_and_symlink_targets_are_not_removed(self):
         shas = [self.release(n) for n in range(1, 5)]
         self.activate(shas[-1])
@@ -147,6 +171,25 @@ class RetentionTests(unittest.TestCase):
             with self.assertRaises(engine.SafeFailure): self.host.prune_releases(apply=True)
         self.assertEqual(self.names(), shas)
 
+    def test_bind_mount_beneath_candidate_aborts_before_any_deletion(self):
+        shas = [self.release(n) for n in range(1, 6)]
+        self.activate(shas[-1])
+        with patch.object(engine, 'mounted_paths', return_value={self.releases / shas[1] / 'bound-data'}):
+            with self.assertRaises(engine.SafeFailure): self.host.prune_releases(apply=True)
+        self.assertEqual(self.names(), shas)
+
+    def test_mountinfo_decodes_bind_mount_paths_with_spaces(self):
+        text = '1 2 0:1 /source /releases/a\\040b/data rw - ext4 /dev/root rw\n'
+        with patch.object(engine.sys, 'platform', 'linux'), patch.object(Path, 'read_text', return_value=text):
+            self.assertEqual(engine.mounted_paths(), {Path('/releases/a b/data')})
+
+    def test_missing_mountinfo_on_linux_aborts_cleanup(self):
+        shas = [self.release(n) for n in range(1, 6)]
+        self.activate(shas[-1])
+        with patch.object(engine, 'mounted_paths', side_effect=engine.SafeFailure('retention-mount-information-unavailable')):
+            with self.assertRaises(engine.SafeFailure): self.host.prune_releases(apply=True)
+        self.assertEqual(self.names(), shas)
+
     def test_corrupt_result_aborts_before_any_deletion(self):
         shas = [self.release(n) for n in range(1, 6)]
         self.activate(shas[-1])
@@ -154,12 +197,63 @@ class RetentionTests(unittest.TestCase):
         with self.assertRaises(engine.SafeFailure): self.host.prune_releases(apply=True)
         self.assertEqual(self.names(), shas)
 
+    def test_failed_build_removes_only_its_temporary_directory(self):
+        from collections import namedtuple
+        sha = self.release(1)
+        self.activate(sha)
+        self.config['home'] = str(self.root)
+        host = engine.LinuxHost(self.config)
+        usage = namedtuple('usage', 'total used free')(10**12, 0, 10**12)
+        def failed_build(target, staging):
+            (staging / 'partial').write_text('partial build')
+            raise engine.SafeFailure('build-failed')
+        with patch.object(host, 'command', return_value='22.23.4'), \
+                patch.object(engine.shutil, 'disk_usage', return_value=usage), \
+                patch.object(host, 'build_release', side_effect=failed_build):
+            with self.assertRaises(engine.SafeFailure): host.prepare('f' * 40)
+        self.assertEqual(self.names(), [sha])
+        self.assertEqual(self.db.read_text(), 'live database')
+
+    def test_prune_cli_refuses_deployment_lock(self):
+        import fcntl
+        import os
+        import pwd
+        import subprocess
+        import sys
+        shas = [self.release(n) for n in range(1, 5)]
+        self.activate(shas[-1])
+        config = self.root / 'config.json'
+        config.write_text(json.dumps({**self.config, 'user': pwd.getpwuid(os.geteuid()).pw_name}))
+        with (self.state / 'lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            result = subprocess.run([sys.executable, str(Path(__file__).with_name('engine.py')),
+                                     'prune', '--apply', '--config', str(config)],
+                                    capture_output=True, timeout=5)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.names(), shas)
+
+    def test_prune_cli_defaults_to_preview_and_apply_keeps_three(self):
+        import os
+        import pwd
+        shas = [self.release(n) for n in range(1, 5)]
+        self.activate(shas[-1])
+        config = self.root / 'config.json'
+        config.write_text(json.dumps({**self.config, 'user': pwd.getpwuid(os.geteuid()).pw_name}))
+        args = ['engine.py', 'prune', '--config', str(config)]
+        with patch('sys.argv', args), patch('builtins.print'):
+            self.assertEqual(engine.main(), 0)
+        self.assertEqual(self.names(), shas)
+        with patch('sys.argv', [*args, '--apply']), patch('builtins.print'):
+            self.assertEqual(engine.main(), 0)
+        self.assertEqual(self.names(), shas[-3:])
+
     def test_retention_for_each_active_generation_and_count(self):
         # Exhaust the boundary cases, including rollback to an older active SHA.
         for count in range(1, 8):
             for active in range(1, count + 1):
                 with self.subTest(count=count, active=active):
                     with tempfile.TemporaryDirectory() as directory:
+                        (self.state / 'release-history.json').unlink(missing_ok=True)
                         previous = self.config['releases'], self.config['current']
                         self.config['releases'] = directory
                         self.config['current'] = str(Path(directory) / 'current')
