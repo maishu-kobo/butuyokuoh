@@ -27,6 +27,7 @@ on:
       - feature/photo-capture
       - feature/capture-existing-bugfixes
       - feature/auto-deploy
+      - feature/agent-improvements
       - develop
       - main
   push:
