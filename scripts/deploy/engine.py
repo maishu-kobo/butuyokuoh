@@ -14,11 +14,25 @@ import shutil
 import signal
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
 
 SHA_RE = re.compile(r'[0-9a-f]{40}')
+RELEASES_TO_KEEP = 3
+
+
+def mounted_paths():
+    # ismount() misses same-device bind mounts on Linux. mountinfo describes
+    # these too; octal escapes protect whitespace in the mountpoint field.
+    if not sys.platform.startswith('linux'): return set()
+    try:
+        lines = Path('/proc/self/mountinfo').read_text().splitlines()
+        return {Path(re.sub(r'\\([0-7]{3})', lambda m: chr(int(m[1], 8)), line.split()[4]))
+                for line in lines}
+    except (OSError, IndexError):
+        raise SafeFailure('retention-mount-information-unavailable') from None
 
 
 class SafeFailure(RuntimeError):
@@ -76,9 +90,9 @@ class Deployer:
 
     def save(self, tx): atomic_json(self.transaction, tx)
 
-    def step(self, phase, function, *args):
+    def step(self, phase, function, *args, **kwargs):
         self.phase = phase
-        return function(*args)
+        return function(*args, **kwargs)
 
     def failure(self, error):
         # Never serialize exception text, arguments, subprocess output or DB rows.
@@ -147,7 +161,8 @@ class Deployer:
                 self.step('preflight', self.host.preflight)
                 if self.step('active', self.host.active) == sha:
                     self.step('health', self.host.health, sha)
-                    return self.result(sha, 'already-deployed')
+                    return self.success(sha, 'already-deployed')
+                self.step('retention', self.host.prune_releases, apply=True, protected=[sha])
                 self.step('prepare', self.host.prepare, sha)
                 if self.step('latest', self.host.latest) != sha: return self.result(sha, 'superseded')
                 # Recheck service configuration after a potentially lengthy build.
@@ -171,7 +186,7 @@ class Deployer:
                 self.step('health', self.host.health, sha)
                 self.step('timers', self.host.resume, tx['timers'])
                 self.transaction.unlink()
-                return self.result(sha, 'success')
+                return self.success(sha, 'success', previous=tx['old'])
             except Exception as error:
                 failure = self.failure(error)
                 if tx is None:
@@ -186,6 +201,18 @@ class Deployer:
                     return self.result(sha, 'rolled-back', failure)
                 except Exception as recovery_error:
                     return self.result(sha, 'recovery-required', failure, self.failure(recovery_error))
+
+    def success(self, sha, status, previous=None):
+        result = self.result(sha, status)
+        try:
+            self.step('retention', self.host.prune_releases, apply=True,
+                      protected=[previous] if previous else [])
+        except Exception as error:
+            # The app is already healthy and accepting writes. A housekeeping
+            # failure must never trigger a rollback or erase its success record.
+            result['retention_failure'] = self.failure(error)
+            atomic_json(self.state / 'results' / f'{sha}.json', result)
+        return result
 
     def result(self, sha, status, failure=None, recovery_failure=None):
         result = {'sha': sha, 'status': status, 'at': int(time.time())}
@@ -320,6 +347,106 @@ class LinuxHost:
         if not SHA_RE.fullmatch(sha): raise SafeFailure('active-release-unknown')
         return sha
 
+    def prune_releases(self, apply=False, protected=()):
+        """Caller holds the deployment lock. Default to a read-only plan."""
+        root = self.releases.resolve(strict=True)
+        if self.releases.is_symlink(): raise SafeFailure('retention-release-root-is-symlink')
+        # Reject layouts where a release could own persistent storage. Symlinks
+        # FROM releases to shared files outside this tree are safe to unlink.
+        shared_paths = {Path(self.c[key]).resolve()
+                        for key in ('state', 'database', 'uploads', 'env_file')}
+        for path in shared_paths:
+            if path.is_relative_to(root):
+                raise SafeFailure('retention-persistent-storage-inside-releases')
+        mounts = mounted_paths()
+        # Include nested bind-mount targets, e.g. uploads/photos or state/backups.
+        shared_mounts = {mount for mount in mounts
+                         if any(mount.is_relative_to(path) for path in shared_paths)}
+        try:
+            shared_files = {(entry.st_dev, entry.st_ino)
+                            for path in shared_paths | shared_mounts
+                            for entry in [path.stat()]}
+        except OSError:
+            raise SafeFailure('retention-persistent-storage-unavailable') from None
+        if os.path.lexists(self.state / 'transaction.json'):
+            raise SafeFailure('retention-pending-transaction')
+        current = self.current.resolve(strict=True)
+        active = self.active()
+        if (not self.current.is_symlink() or current != root / active
+                or (current / 'RELEASE_SHA').is_symlink()):
+            raise SafeFailure('retention-active-release-mismatch')
+        validate_release(current, self.c, active)
+        if any(not SHA_RE.fullmatch(sha) for sha in protected):
+            raise SafeFailure('retention-invalid-protected-sha')
+        history_path = self.state / 'release-history.json'
+        history = {}
+        if os.path.lexists(history_path):
+            try:
+                if history_path.is_symlink(): raise ValueError()
+                history = json.loads(history_path.read_text())
+                if not isinstance(history, dict) or any(
+                        not SHA_RE.fullmatch(sha) or type(at) is not int or at < 0
+                        for sha, at in history.items()): raise ValueError()
+            except (ValueError, TypeError):
+                raise SafeFailure('retention-invalid-history') from None
+        managed, unmanaged = {}, []
+        for path in sorted(root.iterdir()):
+            if path == self.current: continue
+            marker = path / 'RELEASE_SHA'
+            if (not SHA_RE.fullmatch(path.name) or path.is_symlink() or not path.is_dir()
+                    or marker.is_symlink() or not marker.is_file()
+                    or marker.read_text().strip() != path.name):
+                unmanaged.append(path.name)
+                continue
+            result = self.state / 'results' / (path.name + '.json')
+            rank = history.get(path.name, 0)
+            if os.path.lexists(result):
+                try:
+                    if result.is_symlink(): raise ValueError()
+                    data = json.loads(result.read_text())
+                    if (data['sha'] != path.name or type(data['at']) is not int
+                            or data['at'] < 0): raise ValueError()
+                    if data['status'] in ('success', 'already-deployed'):
+                        rank = max(rank, data['at'])
+                except (ValueError, KeyError, TypeError):
+                    raise SafeFailure('retention-invalid-result') from None
+            managed[path.name] = rank
+            if rank: history[path.name] = rank
+        # Results are mutable (request.py clears them for a retry). Preserve a
+        # separate success history, including an initial release with no result.
+        history[active] = max(history.get(active, 0), int(time.time()))
+        managed[active] = history[active]
+        keep = {active, *(sha for sha in protected if sha in managed)}
+        if len(keep) > RELEASES_TO_KEEP: raise SafeFailure('retention-too-many-protected-releases')
+        # Only successful deployments are rollback generations. Incomplete or
+        # unrecognized directories are reported separately, never guessed at.
+        newest = sorted(managed, key=lambda sha: (managed[sha], sha), reverse=True)
+        for sha in newest:
+            if len(keep) >= RELEASES_TO_KEEP: break
+            if managed[sha] > 0: keep.add(sha)
+        remove = sorted(set(managed) - keep)
+        # Validate every candidate BEFORE deleting anything. rmtree does not
+        # follow symlinks; reject mounted data inside a release as well.
+        for sha in remove:
+            if any(mount.is_relative_to(root / sha) for mount in mounts):
+                raise SafeFailure('retention-mounted-storage')
+            for directory, dirs, files in os.walk(root / sha, followlinks=False):
+                for path in [Path(directory), *(Path(directory) / name for name in dirs + files)]:
+                    # A bind mount may expose a source INSIDE this candidate at
+                    # a shared path OUTSIDE it. Compare identity, not just paths.
+                    entry = path.lstat()
+                    if (entry.st_dev, entry.st_ino) in shared_files:
+                        raise SafeFailure('retention-persistent-storage-inside-releases')
+                    if not path.is_symlink() and os.path.ismount(path):
+                        raise SafeFailure('retention-mounted-storage')
+        plan = {'keep': sorted(keep), 'remove': remove, 'unmanaged': unmanaged}
+        if apply:
+            if not shutil.rmtree.avoids_symlink_attacks:
+                raise SafeFailure('retention-safe-rmtree-required')
+            atomic_json(history_path, history)
+            for sha in remove: shutil.rmtree(root / sha)
+        return plan
+
     def app(self, args, cwd, env=None, timeout=120):
         # No inherited API credentials; production .env is linked only AFTER build.
         environment = {'PATH': str(Path(self.node).parent) + ':/usr/bin:/bin',
@@ -335,14 +462,19 @@ class LinuxHost:
         for required in ('env_file', 'database', 'uploads'):
             if not Path(self.c[required]).exists(): raise SafeFailure('missing-persistent-configuration')
         if shutil.disk_usage(self.releases).free < self.c.get('minimum_free_bytes', 2 * 1024**3):
-            raise SafeFailure('insufficient-free-space-no-automatic-deletion')
+            raise SafeFailure('insufficient-free-space-after-retention')
         release = self.releases / sha
-        # Never mutate an active or previously built release. Incomplete builds remain
-        # for inspection and a rerun uses a fresh staging directory.
+        # Never mutate an active or previously built release. Failed builds use
+        # temporary storage and cannot accumulate another full dependency tree.
         if release.exists():
             validate_release(release, self.c, sha)
             return
-        staging = Path(tempfile.mkdtemp(prefix=f'build-{sha[:8]}-', dir=self.releases))
+        with tempfile.TemporaryDirectory(prefix=f'build-{sha[:8]}-', dir=self.releases) as folder:
+            staging = Path(folder)
+            self.build_release(sha, staging)
+            os.rename(staging, release)
+
+    def build_release(self, sha, staging):
         self.app(['git', 'clone', '--no-checkout', self.c['repository'], '.'], staging, timeout=300)
         self.app(['git', 'checkout', '--detach', sha], staging)
         if self.app(['git', 'rev-parse', 'HEAD'], staging) != sha: raise SafeFailure('checkout-mismatch')
@@ -359,7 +491,6 @@ class LinuxHost:
         (staging / 'public' / 'uploads').symlink_to(self.c['uploads'])
         (staging / 'RELEASE_SHA').write_text(sha + '\n')
         validate_release(staging, self.c, sha)
-        os.rename(staging, release)
 
     def timers(self):
         return [name for name in self.c['timers'] if subprocess.run(
@@ -437,9 +568,10 @@ class LinuxHost:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('mode', choices=['run', 'recover', 'recover-online', 'status'])
+    parser.add_argument('mode', choices=['run', 'recover', 'recover-online', 'status', 'prune'])
     parser.add_argument('sha', nargs='?')
     parser.add_argument('--config', default='/etc/butuyokuoh-deploy.json')
+    parser.add_argument('--apply', action='store_true', help='apply the prune plan (default: preview only)')
     args = parser.parse_args()
     config = json.loads(Path(args.config).read_text())
     import pwd
@@ -457,6 +589,12 @@ def main():
         return 0
     runner.state.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (runner.state / 'lock').open('a') as lock:
+        if args.mode == 'prune':
+            # An operator must never wait and apply a stale preview while a
+            # deployment is running. Re-read the plan under the same lock.
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            print(json.dumps(runner.host.prune_releases(apply=args.apply)))
+            return 0
         fcntl.flock(lock, fcntl.LOCK_EX)
         runner.phase = 'recovery'
         try:
@@ -472,6 +610,12 @@ def main():
 
 if __name__ == '__main__':
     try: raise SystemExit(main())
+    except SafeFailure as error:
+        print(json.dumps({'status': 'failed', 'reason': error.reason}))
+        raise SystemExit(1)
+    except BlockingIOError:
+        print(json.dumps({'status': 'failed', 'reason': 'deployment-lock-busy'}))
+        raise SystemExit(1)
     except Exception:
         print('Deployment failed; inspect private host logs/state. No credentials emitted.')
         raise SystemExit(1)

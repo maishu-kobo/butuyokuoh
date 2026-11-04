@@ -33,7 +33,8 @@ def validate_initial(c):
     sha = (release / 'RELEASE_SHA').read_text().strip()
     if not re.fullmatch('[a-f0-9]{40}', sha) or not (release / '.next' / 'BUILD_ID').is_file():
         raise ValueError('invalid initial release')
-    if release.resolve() != (Path(c['releases']) / sha).resolve():
+    if (Path(c['releases']).is_symlink() or release.is_symlink()
+            or release.resolve() != Path(c['releases']).resolve() / sha):
         raise ValueError('initial release must be stored as releases/FULL_SHA')
     current = Path(c['current'])
     if os.path.lexists(current) and (not current.is_symlink() or current.resolve() != release.resolve()):

@@ -24,6 +24,7 @@ class Host:
         if self.fail == event: raise RuntimeError(event)
     def preflight(self): self.act('preflight')
     def prepare(self, sha): self.act('prepare')
+    def prune_releases(self, **options): self.act('retention')
     def timers(self): return ['prices']
     def stop(self): self.act('stop')
     def backup(self, tx): self.act('backup')
@@ -96,6 +97,29 @@ class DeployTests(unittest.TestCase):
         self.assertEqual(result['status'], 'failed')
         self.assertNotIn('stop', host.events)
         self.assertEqual(host.current, OLD)
+    def test_cleanup_runs_before_build_and_after_success(self):
+        result, host = self.execute(Host())
+        self.assertEqual(result['status'], 'success')
+        self.assertLess(host.events.index('retention'), host.events.index('prepare'))
+        self.assertEqual(host.events[-1], 'retention')
+        self.assertEqual(host.events.count('retention'), 2)
+    def test_cleanup_failure_before_build_never_stops_old_app(self):
+        result, host = self.execute(Host('retention'))
+        self.assertEqual(result['status'], 'failed')
+        self.assertEqual(result['failure']['phase'], 'retention')
+        self.assertNotIn('prepare', host.events)
+        self.assertNotIn('stop', host.events)
+    def test_cleanup_failure_after_success_does_not_rollback_live_app(self):
+        host = Host()
+        def prune(**options):
+            host.act('retention')
+            if host.current == SHA: raise RuntimeError('private path or config')
+        host.prune_releases = prune
+        result, host = self.execute(host)
+        self.assertEqual(result['status'], 'success')
+        self.assertEqual(result['retention_failure'], {'phase': 'retention', 'reason': 'operation-failed'})
+        self.assertEqual(host.current, SHA)
+        self.assertEqual(host.events.count('stop'), 1)
     def test_stale_sha_and_repeat_are_noops(self):
         host = Host(); host.tip = OLD
         self.assertEqual(self.execute(host)[0]['status'], 'superseded')
@@ -184,6 +208,7 @@ class SqliteTests(unittest.TestCase):
                     def active(self): return self.current
                     def preflight(self): pass
                     def prepare(self, sha): pass
+                    def prune_releases(self, **options): pass
                     def timers(self): return ['test.timer']
                     def stop(self): pass
                     def switch(self, sha): self.current = sha
