@@ -18,7 +18,7 @@
 - ゴミ箱
 - 通知設定
 - エージェント用トークン（作成・失効・操作ログ・追加分の一括取り消し）
-- エージェント向け REST API（`/api/agent/v1`）とリモート MCP（`/api/mcp`）。使い方は `/llms.txt`、仕様は `/openapi/agent-v1.yaml`。`add_item_by_url` は複数店 URL を1商品（写真比較グループ）にまとめられる（#312）
+- エージェント向け REST API（`/api/agent/v1`）とリモート MCP（`/api/mcp`）。使い方は `/llms.txt`、仕様は `/openapi/agent-v1.yaml`。`add_item_by_url` は複数店 URL を1商品（写真比較グループ）にまとめられる（#312）。MCP の `create_comparison_group` で手作業比較グループを作成し、`update_item` で既存品目を所属させ、`list_comparison_groups` で一覧と未購入・非ゴミ箱の件数を確認できる（#335）
 - エージェント向け OAuth 2.1（PKCE、CIMD / DCR、Protected Resource Metadata）。アクセス・トークンは `byoagt_` を再利用
 - パスワード変更（変更時にエージェント用トークンをすべて失効）
 - Chrome 拡張機能用トークン（`extension` スコープの byoagt_。ログイン用 JWT は出さない）
