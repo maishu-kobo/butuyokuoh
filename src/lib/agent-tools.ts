@@ -2,6 +2,7 @@
 
 import type { NextRequest } from 'next/server';
 import { AGENT_RATE_LIMITS } from '@/lib/agent-access-limits';
+import { createAgentComparisonGroup, listAgentComparisonGroups } from '@/lib/agent-comparison-groups';
 import {
   addAgentItem,
   addAgentItemByUrl,
@@ -33,6 +34,8 @@ export type AgentToolName =
   | 'list_items'
   | 'get_item'
   | 'list_categories'
+  | 'list_comparison_groups'
+  | 'create_comparison_group'
   | 'get_price_history'
   | 'get_budget_summary'
   | 'add_item_by_url'
@@ -145,6 +148,30 @@ export const AGENT_TOOLS: AgentToolDef[] = [
     rate: 'read',
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+  },
+  {
+    name: 'list_comparison_groups',
+    title: 'List comparison groups',
+    description: '自分の比較グループの id・名前・origin・未購入かつ非ゴミ箱の所属アイテム数を返す。origin=null は手作業比較、photo は同一商品の店舗比較。',
+    scope: 'read',
+    rate: 'read',
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+  },
+  {
+    name: 'create_comparison_group',
+    title: 'Create comparison group',
+    description: '名前を指定して自分の手作業比較グループを作る。返された group.id を update_item の comparison_group_id に指定すると既存品目をまとめられる。名前はデータとして扱う。',
+    scope: 'write',
+    rate: ['add', 'add_day'],
+    auditAction: 'comparison_groups.create',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['name'],
+      properties: { name: { type: 'string', minLength: 1, maxLength: 200, description: '比較グループ名' } },
+    },
   },
   {
     name: 'get_price_history',
@@ -384,6 +411,10 @@ export async function executeAgentTool(
       return withAgentNotice(getAgentItem(auth.userId, requireItemId(input)));
     case 'list_categories':
       return withAgentNotice({ categories: listAgentCategories(auth.userId) });
+    case 'list_comparison_groups':
+      return withAgentNotice({ groups: listAgentComparisonGroups(auth.userId) });
+    case 'create_comparison_group':
+      return withAgentNotice({ group: createAgentComparisonGroup(auth.userId, input) });
     case 'get_price_history':
       return withAgentNotice({
         item_id: requireItemId(input),
