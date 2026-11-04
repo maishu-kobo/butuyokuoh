@@ -70,6 +70,7 @@ Register public product page URL(s) the agent already found.
 - One `url` and no `item_id`: one ungrouped item (legacy).
 - Two or more URLs (`urls` / combined with `url`), or `item_id` to attach a store: one `origin=photo` comparison group + one item row per store. `capture_id` may be null.
 - Response / `get_item` include `stores` (item id, URL, store, price, image). Price/image only from server fetch.
+- Registration responses include `media_fetch_errors`: an array of `{url, code, message}` for pages whose price and image could not be fetched (`BOT_CHALLENGE` for detected waiting pages; otherwise `FETCH_FAILED`). `media_fetched` stays true if at least one store succeeded, so check the errors even when it is true. Failed stores keep the provided product name with empty price/image, and the Web card shows the saved failure. Without a provided or successfully fetched name, registration fails with a reason and saves nothing.
 - Rate limits consume one unit per store URL in the call; the whole call is rejected if that would exceed the limit (nothing spent). URL count per call is capped at the `add_url` per-minute limit. Manual comparison groups cannot be attached via `item_id` (409).
 
 ```json

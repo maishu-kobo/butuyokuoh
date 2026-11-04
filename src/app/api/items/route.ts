@@ -149,7 +149,7 @@ async function handlePOST(request: NextRequest) {
   assertGuestCapacity(user, 'items', db);
   const scraped = user.account_type === 'guest' ? await scrapeGuestUrl(storedUrl, user.id) : await scrapeUrl(storedUrl);
   if (isUnusableScrape(scraped)) {
-    return NextResponse.json({ error: PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' }, { status: 422 });
+    return NextResponse.json({ error: scraped.note || PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' }, { status: 422 });
   }
   const scrapedName = normalizeItemName(scraped.name);
   if (!scrapedName) {

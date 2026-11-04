@@ -19,6 +19,9 @@ export async function scrapeGuestUrl(url: string, userId: number) {
       throw new GuestError(422, 'SCRAPE_FAILED', 'Amazonの商品ページを確認できませんでした。商品ページをブラウザで開き、そのURLを貼り直してください。');
     }
     const result = isAmazonProductPage(resolvedUrl) ? extractAmazonProduct(page.html) : parseProductHtml(page.html, page.url);
+    if (result.failureCode) {
+      throw new GuestError(422, 'SCRAPE_FAILED', result.note ?? PRODUCT_FETCH_HELP);
+    }
     if (!result.name || result.name === '不明な商品') {
       throw new GuestError(422, 'SCRAPE_FAILED', PRODUCT_FETCH_HELP);
     }

@@ -44,7 +44,7 @@ async function handlePOST(request: NextRequest) {
     // スクレイピング
     const result = user.account_type === 'guest' ? await scrapeGuestUrl(url, user.id) : await scrapeUrl(url);
     if (isUnusableScrape(result)) {
-      return NextResponse.json({ error: PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' }, { status: 422 });
+      return NextResponse.json({ error: result.note || PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' }, { status: 422 });
     }
 
     return NextResponse.json({

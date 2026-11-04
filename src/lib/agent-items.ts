@@ -546,6 +546,7 @@ function insertAgentItem(
       auth.token.id,
     );
     const itemId = Number(inserted.lastInsertRowid);
+    recordMediaFetchFailure(db, auth.userId, itemId, input.url, input.media);
     if (input.media.price != null) {
       db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(itemId, input.media.price);
     }
@@ -561,6 +562,25 @@ type PreparedStore = {
   media: ServerItemMedia;
   scrapedName: string | null;
 };
+
+export type AgentMediaFetchError = { url: string; code: 'BOT_CHALLENGE' | 'FETCH_FAILED'; message: string };
+
+function mediaFetchErrors(url: string, media: ServerItemMedia): AgentMediaFetchError[] {
+  if (url.startsWith('manual://') || media.price != null || media.imageUrl != null) return [];
+  return [{
+    url,
+    code: media.scraped?.failureCode ?? 'FETCH_FAILED',
+    message: media.scraped?.note ?? '価格と画像を取得できませんでした。時間をおいて再試行するか、別の店のURLを使ってください。',
+  }];
+}
+
+function recordMediaFetchFailure(db: Database.Database, userId: number, itemId: number, url: string, media: ServerItemMedia) {
+  const failure = mediaFetchErrors(url, media)[0];
+  if (failure) {
+    db.prepare(`UPDATE items SET last_scraped_at = datetime('now'), scrape_status = 'failed', scrape_error = ?
+      WHERE id = ? AND user_id = ?`).run(failure.message, itemId, userId);
+  }
+}
 
 async function prepareStoreMedia(
   auth: AgentAuthContext,
@@ -651,7 +671,7 @@ export async function addAgentItemByUrl(
   body: Record<string, unknown>,
   mediaOptions: FetchServerItemMediaOptions = {},
   db: Database.Database = getDb(),
-): Promise<{ item: AgentItemView; stores: AgentStoreView[]; media_fetched: boolean }> {
+): Promise<{ item: AgentItemView; stores: AgentStoreView[]; media_fetched: boolean; media_fetch_errors: AgentMediaFetchError[] }> {
   rejectAgentClientMediaFields(body);
   const urls = parseAgentProductUrls(body);
   const attachId = body.item_id === undefined
@@ -676,7 +696,7 @@ export async function addAgentItemByUrl(
       throw new GuestError(
         422,
         'NAME_REQUIRED',
-        '商品名を取得できませんでした。name を指定して再度追加してください',
+        `${prepared.media.scraped?.note ? `${prepared.media.scraped.note} ` : ''}商品名を取得できませんでした。name を指定して再度追加してください`,
       );
     }
     const item = insertAgentItem(auth, {
@@ -694,6 +714,7 @@ export async function addAgentItemByUrl(
       item,
       stores: item.stores,
       media_fetched: prepared.media.price != null || prepared.media.imageUrl != null,
+      media_fetch_errors: mediaFetchErrors(prepared.url, prepared.media),
     };
   }
 
@@ -748,7 +769,7 @@ export async function addAgentItemByUrl(
     throw new GuestError(
       422,
       'NAME_REQUIRED',
-      '商品名を取得できませんでした。name を指定して再度追加してください',
+      `${preparedList.find(entry => entry.media.scraped?.note)?.media.scraped?.note ?? ''} 商品名を取得できませんでした。name を指定して再度追加してください`.trim(),
     );
   }
   if (!productName) {
@@ -832,6 +853,7 @@ export async function addAgentItemByUrl(
         auth.token.id,
       );
       const itemId = Number(inserted.lastInsertRowid);
+      recordMediaFetchFailure(db, auth.userId, itemId, prepared.url, prepared.media);
       if (prepared.media.price != null) {
         db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(itemId, prepared.media.price);
       }
@@ -851,7 +873,10 @@ export async function addAgentItemByUrl(
   const mediaFetched = toInsert.some(
     (prepared) => prepared.media.price != null || prepared.media.imageUrl != null,
   );
-  return { item, stores: item.stores, media_fetched: mediaFetched };
+  return {
+    item, stores: item.stores, media_fetched: mediaFetched,
+    media_fetch_errors: toInsert.flatMap(prepared => mediaFetchErrors(prepared.url, prepared.media)),
+  };
 }
 
 export async function addAgentItem(
@@ -859,7 +884,7 @@ export async function addAgentItem(
   body: Record<string, unknown>,
   mediaOptions: FetchServerItemMediaOptions = {},
   db: Database.Database = getDb(),
-): Promise<{ item: AgentItemView; media_fetched: boolean }> {
+): Promise<{ item: AgentItemView; media_fetched: boolean; media_fetch_errors: AgentMediaFetchError[] }> {
   rejectAgentClientMediaFields(body);
   const name = typeof body.name === 'string' ? normalizeItemName(body.name) : null;
   if (!name) {
@@ -907,7 +932,7 @@ export async function addAgentItem(
     comparison_group_id: normalizeOptionalId(body.comparison_group_id, 'comparison_group_id') ?? null,
   }, db);
 
-  return { item, media_fetched: mediaFetched };
+  return { item, media_fetched: mediaFetched, media_fetch_errors: mediaFetchErrors(url, media) };
 }
 
 export function updateAgentItem(
