@@ -1,6 +1,6 @@
 # CI
 
-`feature/capture-existing-bugfixes`、`develop`、`main` 向けの pull request で走る。`ci.yml`、`playwright.yml`、`quarantine.yml` は `develop` への push でも走る。`main` への push の CI は `deploy-main.yml` が reusable で `ci.yml` を呼ぶ（単体の `ci.yml` push は二重起動を避けるため対象外）。path フィルタは付けない。必須のジョブが skip になると、その SHA のチェックが pending のままになる。通常ジョブの権限は `contents: read` だけ。mainのBlacksmith判定ジョブに限って `actions: read` を加える。失敗した Playwright の結果は `actions/upload-artifact` v4 が上げる。`actions: write` は付けない。アクションはコミット SHA でピンする。
+`feature/photo-capture`、`feature/capture-existing-bugfixes`、`feature/auto-deploy`、`feature/agent-improvements`、`develop`、`main` 向けの pull request で走る。`ci.yml`、`playwright.yml`、`quarantine.yml` は `develop` への push でも走る。`main` への push の CI は `deploy-main.yml` が reusable で `ci.yml` を呼ぶ（単体の `ci.yml` push は二重起動を避けるため対象外）。path フィルタは付けない。必須のジョブが skip になると、その SHA のチェックが pending のままになる。通常ジョブの権限は `contents: read` だけ。mainのBlacksmith判定ジョブに限って `actions: read` を加える。失敗した Playwright の結果は `actions/upload-artifact` v4 が上げる。`actions: write` は付けない。アクションはコミット SHA でピンする。
 
 マージを赤で止める必須ステータスチェックは、GitHub のブランチ保護と ruleset で設定する。このリポジトリのファイルだけでは有効にならない。
 
@@ -14,6 +14,12 @@
 | `npm audit` | `npm run audit:high`。high は落とす |
 
 単体テストは `node scripts/test-lanes.mjs blocking-unit`。隔離リストが空なら `npm test` と同じファイルを実行する。`tsc` と `next build` は並べない。両方とも `.next/types` を触る。
+
+### ローカルでの実行条件
+
+`npm test` には一時 SQLite、localhost の HTTP サーバ、Chromium、Next.js の開発サーバを使うテストを含む。localhost の待受けやブラウザ起動を禁止した実行環境では全体成功を検証できない。テストを skip / 隔離せず、これらが使用できるローカル環境または上記 CI で全体を実行する。結果には実行場所、コミット、コマンド、成功 / 失敗件数を記録し、制限による失敗を成功扱いにしない。
+
+Agent API の fixture テストは商品応答に加えて DNS もテスト内で固定する。実店舗や実 DNS の状態に依存させず、private IP・混在した DNS 応答の拒否も検証する。本番の URL 検査や SSRF 防御は変更しない。
 
 ### Blacksmith の予算判定と自動切り替え
 
@@ -123,7 +129,7 @@ CodeQL は `.github/workflows/codeql.yml` の advanced setup を使う。GitHub 
 
 確認するときは、対象コミットのログで `Analysis upload status is complete`、CodeQLチェックで正常な取り込み、Code scanningの解析一覧で対象のrefとcommit SHAおよび空のerrorを確認する。単に `Successfully uploaded results` と出ただけでは完了としない。
 
-`codeql.yml` はfeature/photo-capture、feature/capture-existing-bugfixes、feature/auto-deploy、develop、main向けPRと、再利用workflowとしての呼び出しを対象にする。拡張クエリとhigh判定を実行する。main向けPRではこのファイルの `pull_request` 起動だけを使い、main への push では `deploy-main.yml` の `security` ジョブから同じ `codeql.yml` を呼ぶ。設定（クエリ・high判定・取り込み確認）は同一ファイルに置く。
+`codeql.yml` はfeature/photo-capture、feature/capture-existing-bugfixes、feature/auto-deploy、feature/agent-improvements、develop、main向けPRと、再利用workflowとしての呼び出しを対象にする。拡張クエリとhigh判定を実行する。main向けPRではこのファイルの `pull_request` 起動だけを使い、main への push では `deploy-main.yml` の `security` ジョブから同じ `codeql.yml` を呼ぶ。設定（クエリ・high判定・取り込み確認）は同一ファイルに置く。
 
 `codeql-main.yml` は週次と手動だけ、JS/TSの既定クエリを実行する。Default setupの代替として残し、PR・main pushでは起動しない（#319）。Default setupは無効のまま。ブランチ保護はリポジトリ設定側の作業。
 

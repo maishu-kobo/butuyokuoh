@@ -1,14 +1,15 @@
 import { after, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import type Database from 'better-sqlite3';
 
-const root = mkdtempSync(path.join(tmpdir(), 'guest-issue-73-'));
+// SQLite は実パスを返す。macOS の /var → /private/var などを先に解決する。
+const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'guest-issue-73-')));
 const cleanupFile = path.join(root, 'cleanup.sqlite');
 const spyFile = path.join(root, 'spy.sqlite');
 process.env.BUTUYOKUOH_DB_PATH = spyFile;
