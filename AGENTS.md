@@ -98,3 +98,5 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 ## 作業の前後
 
 始める前に、`git log`、開いている Issue と PR、`npm test` を確認する。同じ失敗を2回したら、再発を防ぐ1行をこのファイルに足す PR を開く。
+
+Turbopack がローカルのポート制限で失敗したら、通信権限を確認し、失敗を保持した `.next/cache` を除去してからビルドを再実行する。
