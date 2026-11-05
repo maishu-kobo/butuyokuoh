@@ -7,12 +7,6 @@
       "reason": "商品名の表示用に既知の実体参照を一度だけ戻す。HTML へは再挿入しない"
     },
     {
-      "rule": "js/incomplete-multi-character-sanitization",
-      "path": "src/lib/product-html.ts",
-      "line": "          jsonContent = jsonContent.replace(/<script[^>]*>/gi, '');",
-      "reason": "JSON.parse で価格を読む前のタグ除去。結果は HTML として解釈しない"
-    },
-    {
       "rule": "js/incomplete-url-substring-sanitization",
       "path": "src/lib/product-html.ts",
       "line": "    const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme');",
