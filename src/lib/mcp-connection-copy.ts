@@ -53,7 +53,7 @@ export type McpClientGuide = {
  * - Claude Code: code.claude.com/docs/en/mcp（claude mcp add --transport http、/mcp または claude mcp login）
  * - ChatGPT: help.openai.com / developers.openai.com（Plugins → Add custom MCP server）
  * - Cursor: cursor.com/docs/mcp（Customize または mcp.json の url）
- * - Grok Bot: cursor.com/docs/mcp と cursor.com/docs/grok-bot/work（Connect apps でログイン）
+ * - Grok Bot: docs.x.ai/grok-bot/computer-and-apps（BotにURLで追加を依頼し、Connectカードで認証）
  */
 export const MCP_CLIENT_GUIDES: readonly McpClientGuide[] = [
   {
@@ -99,11 +99,12 @@ export const MCP_CLIENT_GUIDES: readonly McpClientGuide[] = [
   {
     name: 'Grok Bot',
     steps: [
-      'Cursor と同じく、Customize または mcp.json の url に上の URL を入れる',
-      'Grok Bot のサイドバーで Connect apps を開き、接続のログインをブラウザで完了する',
+      'Grok Bot に「この URL の MCP サーバーを追加して」と頼み、上の URL を渡す',
+      'Connect カードの Authorize または Authenticate を選び、物欲王のログインと権限の確認を完了する',
+      '会話で @ からアプリを選び、一覧取得などの読み取りを試す',
     ],
     note:
-      '手動のエージェント用トークンは不要です（OAuth）。Grok Bot は Cursor の MCP 設定を使います。チャットに URL を貼るだけの手順は、公式ドキュメントには載っていません。',
+      'Grok Bot の公式手順に基づく案内です。物欲王との実接続は未確認です。Installed の表示だけでは認証済みとは限りません。',
   },
 ] as const;
 
