@@ -1,4 +1,5 @@
 import { pathToFileURL } from 'node:url';
+import { parseDocument, DomUtils } from 'htmlparser2';
 
 /**
  * Anonymous, read-only deployment check. The expected origin comes from the
@@ -57,9 +58,9 @@ export async function checkMcpPublicConfiguration(origin, { fetchImpl = fetch, c
   await read('/api/mcp', 401, false, 'POST');
   const html = await read('/help/agents', 200, false);
   // Inspect displayed code elements, not the Next.js hydration payload/script.
-  const displayed = typeof html === 'string'
-    ? Array.from(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').matchAll(/<code\b[^>]*>([^<]*)<\/code>/gi), (m) => m[1].trim())
-    : [];
+  const document = parseDocument(typeof html === 'string' ? html : '');
+  const displayed = DomUtils.findAll((element) => element.name === 'code', document.children)
+    .map((element) => DomUtils.textContent(element).trim());
   const mcpUrls = displayed.filter((text) => /^https?:\/\//.test(text) && /\/api\/mcp(?:[/?#]|$)/.test(text));
   check('displayed MCP URL', mcpUrls.length > 0 && mcpUrls.every((url) => url === resource));
   clientUrls.forEach((url, i) => check(`client URL ${i + 1}`, url === resource));

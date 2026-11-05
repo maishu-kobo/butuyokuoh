@@ -89,7 +89,7 @@ test('unreachable, redirected, invalid JSON and unexpected status responses fail
 
 test('help scripts mentioning the correct URL cannot conceal a wrong visible connection URL', async () => {
   const rows = fixture();
-  rows.get('/help/agents')!.body = `<script>${resource}</script><code>${origin}:8000/api/mcp</code>`;
+  rows.get('/help/agents')!.body = `<script>const example = '<code>${resource}</code>';</script ><code>${origin}:8000/api/mcp</code>`;
   assert.equal((await checkMcpPublicConfiguration(origin, { fetchImpl: transport(rows) })).ok, false);
 });
 
