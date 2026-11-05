@@ -216,10 +216,17 @@ function rakutenAffiliateProductUrl(value: string): string | null | undefined {
   return canonicalRakutenAffiliateUrl(value) ? rakutenProductIdentity(value) : null;
 }
 
-export function isUnusableScrape(scraped: { name?: string | null }): boolean {
+export function isUnusableScrape(scraped: { name?: string | null; failureCode?: string | null }): boolean {
+  if (scraped.failureCode) return true;
   const name = scraped.name?.trim() || '';
   if (!name || name === '不明な商品' || name === '取得失敗' || name === '無効なURL') return true;
-  return name.includes('取得できません') || name.includes('失敗しました') || name.includes('展開できませんでした');
+  return (
+    name.includes('取得できません') ||
+    name.includes('失敗しました') ||
+    name.includes('展開できませんでした') ||
+    name.includes('自動取得を制限') ||
+    name.includes('ボット対策')
+  );
 }
 
 const PRICE_LATER_NOTE = '価格は取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';

@@ -38,8 +38,37 @@ test('sanitizeStoredItemUrl strips tracking without dropping product identity', 
 
 test('sanitizeStoredItemUrl keeps generic-site affiliate-ish params and only drops shared trackers', () => {
   assert.equal(
-    sanitizeStoredItemUrl('https://shop.example/item?tag=aff&si=1&camp=2&creative=3&adid=4&ref=x&sc_foo=1&pk_campaign=1&utm_source=x&gclid=1'),
+    sanitizeStoredItemUrl(
+      'https://shop.example/item?tag=aff&si=1&camp=2&creative=3&adid=4&ref=x&sc_foo=1&pk_campaign=1&utm_source=x&gclid=1&aff_platform=g&gad_source=1',
+    ),
     'https://shop.example/item?tag=aff&si=1&camp=2&creative=3&adid=4&ref=x&sc_foo=1&pk_campaign=1',
+  );
+});
+
+test('sanitizeStoredItemUrl strips AliExpress ad tracking but keeps sku identity and other shops intact', () => {
+  // 本番の長い広告 URL は載せない。短い偽パラメータ版で正規化だけ見る。
+  assert.equal(
+    sanitizeStoredItemUrl(
+      'https://ja.aliexpress.com/item/1005009497617522.html?osf=ppc_ug&guideModule=ppc_ug&src=google&albch=search&acnt=479-062-3723&aff_short_key=UneMJZVf&albcp=1&gad_source=1&gbraid=0AAAA&gclid=CjwFake&gatewayAdapt=glo2jpn&sku_id=120000',
+    ),
+    'https://ja.aliexpress.com/item/1005009497617522.html?sku_id=120000',
+  );
+  assert.equal(
+    sanitizeStoredItemUrl('https://www.aliexpress.com/item/123.html?utm_source=x&fbclid=1'),
+    'https://www.aliexpress.com/item/123.html',
+  );
+  // Amazon / 楽天 / Yahoo は従来どおり（商品特定キーは残す）
+  assert.equal(
+    sanitizeStoredItemUrl('https://www.amazon.co.jp/dp/B0TESTASIN?th=1&psc=1&tag=shop-22&aff_platform=x'),
+    'https://www.amazon.co.jp/dp/B0TESTASIN?th=1&psc=1',
+  );
+  assert.equal(
+    sanitizeStoredItemUrl('https://item.rakuten.co.jp/shop/item/?variantId=9&aff_short_key=x&gad_source=1'),
+    'https://item.rakuten.co.jp/shop/item/?variantId=9',
+  );
+  assert.equal(
+    sanitizeStoredItemUrl('https://store.shopping.yahoo.co.jp/shop/item.html?sc_i=shopping-pc&utm_source=x&gclid=1'),
+    'https://store.shopping.yahoo.co.jp/shop/item.html?sc_i=shopping-pc',
   );
 });
 

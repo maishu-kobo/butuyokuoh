@@ -37,9 +37,9 @@ const STORE_TRACKING_EXACT = new Set([
   'ref_',
 ]);
 
-const STORE_TRACKING_PREFIXES = ['utm_', 'pk_', 'sc_', 'mc_'] as const;
+const STORE_TRACKING_PREFIXES = ['utm_', 'pk_', 'sc_', 'mc_', 'aff_', 'gad_'] as const;
 
-/** Amazon / 楽天以外。共通の計測パラメータだけ。 */
+/** Amazon / 楽天以外。共通の計測・広告パラメータ。 */
 const GENERIC_TRACKING_EXACT = new Set([
   'gclid',
   'fbclid',
@@ -53,10 +53,36 @@ const GENERIC_TRACKING_EXACT = new Set([
   'igshid',
 ]);
 
-const GENERIC_TRACKING_PREFIXES = ['utm_', 'mc_'] as const;
+const GENERIC_TRACKING_PREFIXES = ['utm_', 'mc_', 'aff_', 'gad_'] as const;
+
+/** AliExpress 広告経由。商品パス以外の PPC / 計測パラメータ。 */
+const ALIEXPRESS_TRACKING_EXACT = new Set([
+  ...GENERIC_TRACKING_EXACT,
+  'osf',
+  'guidemodule',
+  'src',
+  'acnt',
+  'isdl',
+  'slnk',
+  'trgt',
+  'plac',
+  'crea',
+  'netw',
+  'device',
+  'mtctp',
+  'memo1',
+  'gatewayadapt',
+  'issmbactive',
+  'issmbautocall',
+  'needsmbhouyi',
+]);
+
+const ALIEXPRESS_TRACKING_PREFIXES = ['utm_', 'mc_', 'aff_', 'gad_', 'alb'] as const;
 
 const AMAZON_KEEP_PARAMS = new Set(['th', 'psc', 'smid', 'asin', 'colid', 'coliid', 'variant']);
 const RAKUTEN_KEEP_PARAMS = new Set(['variantid', 's_id', 's']);
+/** バリエーション特定に使うことがあるキーだけ残す。 */
+const ALIEXPRESS_KEEP_PARAMS = new Set(['sku_id', 'pdp_npi', 'pdp_ext_f']);
 
 type TrackingRules = {
   exact: Set<string>;
@@ -84,12 +110,26 @@ function isRakutenProductHost(host: string): boolean {
   );
 }
 
+function isAliExpressHost(host: string): boolean {
+  return (
+    host === 'aliexpress.com' ||
+    host.endsWith('.aliexpress.com') ||
+    host === 'aliexpress.us' ||
+    host.endsWith('.aliexpress.us') ||
+    host === 'aliexpress.ru' ||
+    host.endsWith('.aliexpress.ru')
+  );
+}
+
 function trackingRulesForHost(host: string): TrackingRules {
   if (isAmazonHost(host)) {
     return { exact: STORE_TRACKING_EXACT, prefixes: STORE_TRACKING_PREFIXES, keep: AMAZON_KEEP_PARAMS };
   }
   if (isRakutenProductHost(host) || host === 'hb.afl.rakuten.co.jp') {
     return { exact: STORE_TRACKING_EXACT, prefixes: STORE_TRACKING_PREFIXES, keep: RAKUTEN_KEEP_PARAMS };
+  }
+  if (isAliExpressHost(host)) {
+    return { exact: ALIEXPRESS_TRACKING_EXACT, prefixes: ALIEXPRESS_TRACKING_PREFIXES, keep: ALIEXPRESS_KEEP_PARAMS };
   }
   return { exact: GENERIC_TRACKING_EXACT, prefixes: GENERIC_TRACKING_PREFIXES, keep: new Set() };
 }
