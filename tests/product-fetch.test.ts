@@ -92,6 +92,40 @@ test('PITAKA-style product metadata preserves decimal yen and HTTPS CDN images',
   assert.equal(parseProductHtml('<title>Product</title>','https://example.com').price,null);
 });
 
+test('empty og:image still finds product image on parent figure#mainimg (tsukumo-style)', () => {
+  // 再現: shop.tsukumo.co.jp は og:image が空で、商品画像は figure#mainimg 配下
+  const html = `<title>LG Electronics 34WR55QK-B モニター｜ツクモ公式通販サイト</title>
+    <meta property="og:image" content="">
+    <img src="https://cdn.tsukumo.co.jp/static/img/head/tsukumo_logo.png" alt="ツクモ"/>
+    <div id="mainimgblock" class="switchimgs goods-main-left">
+      <div class="img-main">
+        <figure id="mainimg">
+          <img src="https://cdn.tsukumo.co.jp/image/item/0406621759011_1.jpg" alt="34WR55QK-B"/>
+        </figure>
+      </div>
+    </div>
+    <p class="price"><strong id="calculated-price">60,419</strong></p>`;
+  const product = parseProductHtml(html, 'https://shop.tsukumo.co.jp/goods/0406621759011/');
+  assert.equal(product.imageUrl, 'https://cdn.tsukumo.co.jp/image/item/0406621759011_1.jpg');
+  assert.equal(product.price, 60419);
+  // タイトル末尾の「-B …｜サイト名」は既存のサイト名除去で落ちることがある
+  assert.match(product.name, /34WR55QK/);
+
+  // JSON-LD の image も og が空のときの候補になる
+  const fromLd = parseProductHtml(
+    `<title>商品</title><meta property="og:image" content="  ">
+     <script type="application/ld+json">{"@type":"Product","image":["https://cdn.example.com/p.webp"]}</script>`,
+    'https://shop.example/goods/1',
+  );
+  assert.equal(fromLd.imageUrl, 'https://cdn.example.com/p.webp');
+
+  // 画像が本当に無いページは空のまま（プレースホルダを捏造しない）
+  assert.equal(
+    parseProductHtml('<title>説明だけ</title><p>画像なし</p>', 'https://shop.example/goods/2').imageUrl,
+    null,
+  );
+});
+
 test('Apple shop buy pages and installment copy do not become a product price', () => {
   assert.equal(isAppleShopBuyPage('https://www.apple.com/jp/shop/buy-mac/macbook-pro-proled-xdr'), true);
   assert.equal(isAppleShopBuyPage('https://www.apple.com/jp/macbook-pro/'), false);
