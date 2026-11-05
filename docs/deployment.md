@@ -363,6 +363,18 @@ Google ログイン後は、設定済みの MCP 公開 origin の `/oauth/author
 
 最後に Claude のカスタムコネクタへ `https://butsuyokuoh.exe.xyz/api/mcp` を登録し、サーバー確認、OAuth 同意、読み取りツールの実行まで確認する。HTTP の応答だけでは接続成功としない。
 
+公開設定は、アプリの環境変数とは独立した「期待する公開 origin」を指定して検査する。
+
+```bash
+node scripts/check-mcp-public.mjs https://butsuyokuoh.exe.xyz
+# クライアントに登録済みのURLも照合する場合
+node scripts/check-mcp-public.mjs https://butsuyokuoh.exe.xyz --client-url https://butsuyokuoh.exe.xyz/api/mcp
+```
+
+検査は認証情報を送らず、discovery・未認証 MCP の 401 challenge・ヘルプ表示を確認する。すべて成功すると終了コード 0、不一致・通信失敗は 1、引数不正は 2。リダイレクトは追わず、各リクエストは10秒で打ち切る。各項目が同じ誤った `:8000` を返す場合も失敗する。`--client-url` は繰り返し指定でき、設定ファイルや認証情報を自動収集しない。
+
+配備後と公開URL変更時に実行し、失敗した項目を修正してから実クライアントの読み取りを確認する。この検査だけでは OAuth ログインやツール実行の成功を保証しない。ローカル・CI の `npm test` では固定レスポンスによる検査器の回帰テストを実行し、本番の到達性は上のコマンドを外部ネットワークから実行して確認する。
+
 MCP 仕様ではクライアントに `resource` の送信を求めているが、送信しないクライアントとの互換性のため、省略時だけ設定済みの `/api/mcp` を補完する。
 明示した空文字、不正な宛先、複数宛先は拒否する。認可コード、アクセストークン、更新トークンは常にその単一宛先に拘束する。
 
