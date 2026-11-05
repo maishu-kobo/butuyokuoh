@@ -98,6 +98,7 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 ## 作業の前後
 
 始める前に、`git log`、開いている Issue と PR、`npm test` を確認する。同じ失敗を2回したら、再発を防ぐ1行をこのファイルに足す PR を開く。
+ローカルのテストやビルドがポート起動の権限不足で失敗したら実行権限を確認し、権限を直しても Turbopack が同じ失敗を返す場合は生成キャッシュ `.next/cache/turbopack` を退避してから再試行する。
 
 <!-- BEGIN:nextjs-agent-rules -->
 
