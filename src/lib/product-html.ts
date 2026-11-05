@@ -70,6 +70,34 @@ function firstImgSrc(html: string, patterns: RegExp[]): string | null {
   return null;
 }
 
+/**
+ * JSON-LD `<script>` の本文だけを返す。
+ * タグ全体を取って `<script>` を置換除去すると、不完全な複数文字サニタイズとして
+ * CodeQL に指摘されるので、キャプチャで中身だけ取り出す。
+ */
+function jsonLdScriptBodies(html: string): string[] {
+  const bodies: string[] = [];
+  for (const match of html.matchAll(
+    /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi,
+  )) {
+    const body = match[1]?.trim();
+    if (body) bodies.push(body);
+  }
+  return bodies;
+}
+
+function parseJsonLdScripts(html: string): unknown[] {
+  const parsed: unknown[] = [];
+  for (const body of jsonLdScriptBodies(html)) {
+    try {
+      parsed.push(JSON.parse(body));
+    } catch {
+      // JSONパース失敗は無視
+    }
+  }
+  return parsed;
+}
+
 /** JSON-LD の image（文字列・配列・ImageObject・@graph）から最初の URL。 */
 function jsonLdImageUrl(data: unknown): string | null {
   if (data == null) return null;
@@ -101,22 +129,9 @@ function jsonLdImageUrl(data: unknown): string | null {
 }
 
 function extractJsonLdImage(html: string): string | null {
-  const scripts = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
-  if (!scripts) return null;
-  for (const script of scripts) {
-    try {
-      let jsonContent = script;
-      let prevLength = 0;
-      while (jsonContent.length !== prevLength) {
-        prevLength = jsonContent.length;
-        jsonContent = jsonContent.replace(/<script[^>]*>/gi, '');
-        jsonContent = jsonContent.replace(/<\/script>/gi, '');
-      }
-      const found = jsonLdImageUrl(JSON.parse(jsonContent));
-      if (found) return found;
-    } catch {
-      // JSONパース失敗は無視
-    }
+  for (const data of parseJsonLdScripts(html)) {
+    const found = jsonLdImageUrl(data);
+    if (found) return found;
   }
   return null;
 }
@@ -182,64 +197,54 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
     .replace(/\s+/g, ' ')                   // 連続スペースを単一に
     .trim();
 
-  // JSON-LDから価格取得を試行
+  // JSON-LDから価格取得を試行（script タグ置換はせず本文キャプチャのみ）
   let price: number | null = null;
-  const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
-  if (jsonLdMatch) {
-    for (const match of jsonLdMatch) {
-      if (price) break;
-      try {
-        // scriptタグを完全に除去（ループで繰り返し置換）
-        let jsonContent = match;
-        let prevLength = 0;
-        while (jsonContent.length !== prevLength) {
-          prevLength = jsonContent.length;
-          jsonContent = jsonContent.replace(/<script[^>]*>/gi, '');
-          jsonContent = jsonContent.replace(/<\/script>/gi, '');
+  for (const raw of parseJsonLdScripts(html)) {
+    if (price) break;
+    if (!raw || typeof raw !== 'object') continue;
+    const data = raw as {
+      hasVariant?: Array<{ offers?: { price?: unknown; priceCurrency?: string } }>;
+      offers?: { price?: unknown; priceCurrency?: string } | Array<{ price?: unknown; priceCurrency?: string }>;
+      '@graph'?: Array<{ offers?: { price?: unknown; priceCurrency?: string } }>;
+    };
+
+    // hasVariant配列をチェック（Shopifyなど）- JPYを優先
+    if (data.hasVariant && Array.isArray(data.hasVariant)) {
+      for (const variant of data.hasVariant) {
+        if (variant.offers?.price && variant.offers?.priceCurrency === 'JPY') {
+          price = parseYenPrice(variant.offers.price);
+          break;
         }
-        const data = JSON.parse(jsonContent);
-        
-        // hasVariant配列をチェック（Shopifyなど）- JPYを優先
-        if (data.hasVariant && Array.isArray(data.hasVariant)) {
-          for (const variant of data.hasVariant) {
-            if (variant.offers?.price && variant.offers?.priceCurrency === 'JPY') {
-              price = parseYenPrice(variant.offers.price);
-              break;
-            }
+      }
+    }
+
+    // 直接のoffers（JPYを優先）
+    if (!price && data.offers) {
+      // offersが配列の場合
+      if (Array.isArray(data.offers)) {
+        for (const offer of data.offers) {
+          if (offer.price && (offer.priceCurrency === 'JPY' || !offer.priceCurrency)) {
+            price = parseYenPrice(offer.price);
+            break;
           }
         }
-        
-        // 直接のoffers（JPYを優先）
-        if (!price && data.offers) {
-          // offersが配列の場合
-          if (Array.isArray(data.offers)) {
-            for (const offer of data.offers) {
-              if (offer.price && (offer.priceCurrency === 'JPY' || !offer.priceCurrency)) {
-                price = parseYenPrice(offer.price);
-                break;
-              }
-            }
-          } else if (data.offers.price) {
-            // offersがオブジェクトの場合
-            if (data.offers.priceCurrency === 'JPY' || !data.offers.priceCurrency) {
-              price = parseYenPrice(data.offers.price);
-            }
+      } else if (data.offers.price) {
+        // offersがオブジェクトの場合
+        if (data.offers.priceCurrency === 'JPY' || !data.offers.priceCurrency) {
+          price = parseYenPrice(data.offers.price);
+        }
+      }
+    }
+
+    // @graphをチェック
+    if (!price && data['@graph']) {
+      for (const item of data['@graph']) {
+        if (item.offers?.price) {
+          if (item.offers.priceCurrency === 'JPY' || !item.offers.priceCurrency) {
+            price = parseYenPrice(item.offers.price);
+            break;
           }
         }
-        
-        // @graphをチェック
-        if (!price && data['@graph']) {
-          for (const item of data['@graph']) {
-            if (item.offers?.price) {
-              if (item.offers.priceCurrency === 'JPY' || !item.offers.priceCurrency) {
-                price = parseYenPrice(item.offers.price);
-                break;
-              }
-            }
-          }
-        }
-      } catch {
-        // JSONパース失敗は無視
       }
     }
   }
