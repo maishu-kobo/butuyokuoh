@@ -17,7 +17,7 @@ node scripts/check-mcp-public.mjs https://butsuyokuoh.exe.xyz
 | Claude.ai | カスタムコネクタに公開URLを登録し、物欲王で権限を確認して接続する。 | [カスタムコネクタ](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp) |
 | Claude Code | Claude.ai由来のコネクタと、CLIで手動登録したサーバーを区別する。`/mcp`で実際に使っている登録元と接続状態を確認する。 | [Claude Code MCP](https://code.claude.com/docs/en/mcp) |
 | Codex | Streamable HTTPのサーバーとして登録し、OAuthでログインする。CLI・アプリの設定と、既に起動した会話の接続状態を区別する。 | [OpenAI Docs: MCP](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) |
-| GrokBot | BotにMCPサーバーのURLによる追加を依頼し、認証カードから提供元への認証を完了する。インストール済み表示だけでは認証成功を意味しない。 | [Grok Botのアプリ接続](https://docs.x.ai/grok-bot/computer-and-apps) |
+| GrokBot | BotにMCPサーバーのURLによる追加を依頼し、ConnectカードのAuthorize/Authenticateから提供元への認証を完了する。インストール済み表示だけでは認証成功を意味しない。 | [Grok Botのアプリ接続](https://docs.x.ai/grok-bot/computer-and-apps) |
 | Muse | Connector Platformの手順に沿って、エンドポイント・認証・権限・ツール説明・専用テストアカウントを準備する。提出・審査・承認を実接続と区別する。 | [Muse Connector guidelines](https://platform.muse.ai/docs) |
 
 公式の接続方法があることは、物欲王との実接続の証明ではない。アプリの版、契約・組織設定、登録方法によって差が出るため、未実施は確認表に「未確認」と書く。
@@ -70,4 +70,4 @@ CIでの未ログインからの確認は [MCPのブラウザE2E](./ci.md#mcpの
 | 継続利用 | refresh、再接続、クライアント再起動後の読み取りを別々に記録 |
 | 判定 | 確認済み / 失敗 / 未確認、残る作業と担当Issue |
 
-認証・公開URL・MCP SDK・ツールschemaを変えるPRでは共通テストを通し、統合後は公開検査と影響する実クライアントの読み取りを再確認する。新しいAIを対応済みと案内する前にも同じ確認を行う。定期実行や本番への自動接続は、別途運用方法を決めて設定する。
+認証・公開URL・MCP実装・ツールschemaを変えるPRでは共通テストを通し、統合後は公開検査と影響する実クライアントの読み取りを再確認する。新しいAIを対応済みと案内する前にも同じ確認を行う。定期実行や本番への自動接続は、別途運用方法を決めて設定する。
