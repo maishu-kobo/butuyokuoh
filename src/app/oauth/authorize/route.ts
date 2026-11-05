@@ -3,6 +3,7 @@ import {
   createAuthorizePending,
   OAUTH_CSRF_COOKIE,
   oauthIssuer,
+  oauthRequestResource,
 } from '@/lib/agent-oauth';
 import { GuestError } from '@/lib/guest';
 
@@ -21,7 +22,6 @@ export async function GET(request: NextRequest) {
   const state = url.searchParams.get('state');
   const codeChallenge = url.searchParams.get('code_challenge') || '';
   const codeChallengeMethod = url.searchParams.get('code_challenge_method') || '';
-  const resource = url.searchParams.get('resource') || '';
 
   const csp = [
     "default-src 'self'",
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
   };
 
   try {
-    // resource の必須・宛先チェックは createAuthorizePending → assertMcpResource に任せる。
+    const resource = oauthRequestResource(url.searchParams, request.url);
     const { pendingId, csrf } = await createAuthorizePending(
       {
         client_id: clientId,
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
         scope,
         code_challenge: codeChallenge,
         code_challenge_method: codeChallengeMethod,
-        resource: resource || 'missing',
+        resource,
         state,
         response_type: responseType,
       },

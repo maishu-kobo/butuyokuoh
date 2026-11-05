@@ -3,6 +3,7 @@ import {
   exchangeAuthorizationCode,
   readFormBody,
   refreshAccessToken,
+  oauthRequestResource,
 } from '@/lib/agent-oauth';
 import { GuestError } from '@/lib/guest';
 
@@ -27,7 +28,13 @@ export async function POST(request: NextRequest) {
     const contentType = request.headers.get('content-type') || '';
     let params: URLSearchParams;
     if (contentType.includes('application/json')) {
-      const body = await request.json() as Record<string, unknown>;
+      const body: unknown = await request.json();
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return tokenEndpointError(400, 'invalid_request', 'JSON オブジェクトが必要です');
+      }
+      if ('resource' in body && typeof body.resource !== 'string') {
+        return tokenEndpointError(400, 'invalid_request', 'resource は文字列で指定してください');
+      }
       params = new URLSearchParams();
       for (const [key, value] of Object.entries(body)) {
         if (typeof value === 'string') params.set(key, value);
@@ -45,9 +52,8 @@ export async function POST(request: NextRequest) {
       const code = params.get('code');
       const redirectUri = params.get('redirect_uri');
       const codeVerifier = params.get('code_verifier');
-      const resource = params.get('resource');
-      if (!code || !redirectUri || !codeVerifier || !resource) {
-        return tokenEndpointError(400, 'invalid_request', 'code / redirect_uri / code_verifier / resource が必要です');
+      if (!code || !redirectUri || !codeVerifier) {
+        return tokenEndpointError(400, 'invalid_request', 'code / redirect_uri / code_verifier が必要です');
       }
       const tokens = exchangeAuthorizationCode(
         {
@@ -55,7 +61,7 @@ export async function POST(request: NextRequest) {
           redirect_uri: redirectUri,
           client_id: clientId,
           code_verifier: codeVerifier,
-          resource,
+          resource: oauthRequestResource(params, request.url),
           client_secret: clientSecret,
         },
         undefined,
@@ -72,15 +78,14 @@ export async function POST(request: NextRequest) {
 
     if (grantType === 'refresh_token') {
       const refreshToken = params.get('refresh_token');
-      const resource = params.get('resource');
-      if (!refreshToken || !resource) {
-        return tokenEndpointError(400, 'invalid_request', 'refresh_token と resource が必要です');
+      if (!refreshToken) {
+        return tokenEndpointError(400, 'invalid_request', 'refresh_token が必要です');
       }
       const tokens = refreshAccessToken(
         {
           refresh_token: refreshToken,
           client_id: clientId,
-          resource,
+          resource: oauthRequestResource(params, request.url),
           client_secret: clientSecret,
           scope: params.get('scope'),
         },

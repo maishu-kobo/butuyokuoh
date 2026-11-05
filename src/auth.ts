@@ -5,6 +5,7 @@ import { getDb } from '@/lib/db';
 import { confirmVerifiedPassword, sessionGenerationMatches, User } from '@/lib/auth';
 import { linkGoogleAccount } from '@/lib/link-google-account';
 import { googleClientConfig } from '@/lib/google-login';
+import { authRedirectUrl } from '@/lib/auth-redirect';
 
 const google = googleClientConfig();
 
@@ -48,6 +49,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
+    redirect({ url, baseUrl }) {
+      return authRedirectUrl(url, baseUrl);
+    },
     async signIn({ user, account, profile }) {
       if (account?.provider === 'google') {
         const googleProfile = profile as { email?: string; email_verified?: boolean } | undefined;

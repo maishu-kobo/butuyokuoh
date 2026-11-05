@@ -337,7 +337,36 @@ exe.devのプロキシが自動でHTTPS終端を行う。
 - 内部: `http://localhost:8000`
 - 外部: `https://butsuyokuoh.exe.xyz`
 
-追加設定は不要。
+### MCP の公開URL
+
+Claude のカスタムコネクタは利用者の端末ではなく Anthropic のクラウドから接続する。
+MCP の案内と OAuth の公開先には、外部の標準 HTTPS URL を使う。
+サーバーの内部ポート `8000` を付けない。
+
+```dotenv
+MCP_PUBLIC_ORIGIN=https://butsuyokuoh.exe.xyz
+```
+
+自動配備環境では `app.env` に設定する（配備先の `.env.local` は同ファイルへのリンク）。
+値は origin だけとし、末尾の `/`、パス、クエリ、認証情報を含めない。本番では HTTPS が必要。
+未設定の場合は従来どおり `AUTH_URL`、次に `NEXTAUTH_URL` を使う。
+Google の既存コールバックを維持する場合、これらのログイン用設定は変更せず、`MCP_PUBLIC_ORIGIN` だけを設定する。
+Google ログイン後は、設定済みの MCP 公開 origin の `/oauth/authorize/consent` にも戻れる。別の外部 origin や、その origin の他のページへの転送は許可しない。
+設定変更の反映にはアプリの再起動が必要。MCP の宛先が変わった場合、既存の OAuth 接続は再接続する。
+
+反映後は次のすべてが同じ公開 origin になることを確認する。
+
+- `/help/agents` の MCP URL
+- `/.well-known/oauth-protected-resource/api/mcp` の `resource` と `authorization_servers`
+- `/.well-known/oauth-authorization-server` の `issuer` と各エンドポイント
+- 未認証の `/api/mcp` への POST が返す `WWW-Authenticate` の `resource_metadata`
+
+最後に Claude のカスタムコネクタへ `https://butsuyokuoh.exe.xyz/api/mcp` を登録し、サーバー確認、OAuth 同意、読み取りツールの実行まで確認する。HTTP の応答だけでは接続成功としない。
+
+MCP 仕様ではクライアントに `resource` の送信を求めているが、送信しないクライアントとの互換性のため、省略時だけ設定済みの `/api/mcp` を補完する。
+明示した空文字、不正な宛先、複数宛先は拒否する。認可コード、アクセストークン、更新トークンは常にその単一宛先に拘束する。
+
+参考: [Claude のネットワーク要件](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)、[RFC 8707 の既定リソース](https://www.rfc-editor.org/rfc/rfc8707.html#section-2)。
 
 ---
 
