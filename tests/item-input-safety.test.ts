@@ -182,7 +182,7 @@ test('renaming keeps stored affiliate URLs and source_item_code; sanitized URL c
     url: 'https://www.amazon.co.jp/dp/B0CLASH001?tag=moved-22',
   }, { id: String(clashId) });
   assert.equal(clash.status, 409, clash.text);
-  assert.match(String((clash.json as { error?: string }).error || clash.text), /すでに登録/);
+  assert.match(String((clash.json as { error?: string }).error || clash.text), /ほしいもの/);
   assert.equal(
     (database.prepare('SELECT url FROM items WHERE id = ?').get(clashId) as { url: string }).url,
     'https://www.amazon.co.jp/dp/B0CLASH001?tag=other-22',
@@ -206,8 +206,8 @@ test('POST /api/items and extension-import treat dirty stored URLs as duplicates
       url: 'https://www.amazon.co.jp/dp/B0DIRTY001?tag=new-22',
       name: '再登録',
     });
-    assert.equal(again.status, 400, again.text);
-    assert.match(String((again.json as { error?: string }).error || again.text), /既に登録/);
+    assert.equal(again.status, 409, again.text);
+    assert.match(String((again.json as { error?: string }).error || again.text), /ほしいもの/);
   } finally {
     port.installProductFetchPort(null);
   }

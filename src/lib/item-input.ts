@@ -211,9 +211,102 @@ export function normalizeItemName(raw: string): string | null {
   return cleaned.slice(0, ITEM_NAME_MAX);
 }
 
+/** ほしいものリスト上の同一 URL */
+export const URL_IN_LIST_MESSAGE = 'このURLはすでにほしいものリストに登録されています';
+/** 購入済みの同一 URL */
+export const URL_IN_PURCHASED_MESSAGE = 'このURLは購入済みに登録されています';
+/** 複数店追加など、自動復元しない経路向け */
+export const URL_IN_TRASH_MESSAGE =
+  'このURLはゴミ箱にあります。Webのゴミ箱タブで「元に戻す」か、先に完全削除してから追加してください';
+/** 単一 URL 追加で自動復元したとき */
+export const RESTORED_FROM_TRASH_MESSAGE = 'ゴミ箱にあった同じURLの商品を復元しました';
+
+export type StoredUrlMatch = {
+  id: number;
+  url: string;
+  name: string;
+  deleted_at: string | null;
+  is_purchased: number;
+};
+
+export type CleanedUrlRegistration =
+  | { kind: 'free' }
+  | { kind: 'active'; match: StoredUrlMatch; location: 'list' | 'purchased' }
+  | { kind: 'trashed'; match: StoredUrlMatch };
+
+function urlMatchesCleaned(rowUrl: string, cleanedUrl: string, identity: string | null): boolean {
+  if (rowUrl === cleanedUrl) return true;
+  if (sanitizeStoredItemUrl(rowUrl) === cleanedUrl) return true;
+  if (identity && rakutenProductIdentity(rowUrl) === identity) return true;
+  return false;
+}
+
+/**
+ * クリーン後 URL（＋楽天 identity）が、リスト / 購入済み / ゴミ箱のどれにあるか。
+ * アクティブ行があればゴミ箱より優先する。
+ */
+export function findCleanedStoredUrlRegistration(
+  db: Database.Database,
+  userId: number,
+  cleanedUrl: string,
+  excludeItemId?: number,
+): CleanedUrlRegistration {
+  const identity = rakutenProductIdentity(cleanedUrl);
+  const rows = (
+    excludeItemId != null
+      ? db.prepare(
+        'SELECT id, url, name, deleted_at, is_purchased FROM items WHERE user_id = ? AND id != ?',
+      ).all(userId, excludeItemId)
+      : db.prepare(
+        'SELECT id, url, name, deleted_at, is_purchased FROM items WHERE user_id = ?',
+      ).all(userId)
+  ) as StoredUrlMatch[];
+
+  const matches = rows.filter((row) => urlMatchesCleaned(row.url, cleanedUrl, identity));
+  if (matches.length === 0) return { kind: 'free' };
+
+  const active = matches.find((row) => !row.deleted_at);
+  if (active) {
+    return {
+      kind: 'active',
+      match: active,
+      location: active.is_purchased ? 'purchased' : 'list',
+    };
+  }
+
+  const trashed = [...matches].sort((a, b) => String(b.deleted_at ?? '').localeCompare(String(a.deleted_at ?? '')))[0];
+  return { kind: 'trashed', match: trashed };
+}
+
+export function activeUrlConflictMessage(location: 'list' | 'purchased'): string {
+  return location === 'purchased' ? URL_IN_PURCHASED_MESSAGE : URL_IN_LIST_MESSAGE;
+}
+
+/** ゴミ箱の品目を復元する。メモや価格履歴はそのまま。 */
+export function restoreTrashedItem(
+  db: Database.Database,
+  userId: number,
+  itemId: number,
+): StoredUrlMatch {
+  const item = db.prepare(`
+    SELECT id, url, name, deleted_at, is_purchased
+    FROM items
+    WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL
+  `).get(itemId, userId) as StoredUrlMatch | undefined;
+  if (!item) {
+    throw new Error('trashed item not found');
+  }
+  db.prepare(`
+    UPDATE items
+    SET deleted_at = NULL, updated_at = datetime('now')
+    WHERE id = ? AND user_id = ?
+  `).run(itemId, userId);
+  return { ...item, deleted_at: null };
+}
+
 /**
  * クリーン後の URL が、保存済みの生 URL（トラッキング付き含む）と一致するか。
- * 厳密一致に加え、各行を sanitize して比較する。
+ * 厳密一致に加え、各行を sanitize して比較する。楽天 identity も見る。
  */
 export function cleanedStoredItemUrlTaken(
   db: Database.Database,
@@ -221,18 +314,7 @@ export function cleanedStoredItemUrlTaken(
   cleanedUrl: string,
   excludeItemId?: number,
 ): boolean {
-  if (excludeItemId != null) {
-    if (db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ? AND id != ?').get(userId, cleanedUrl, excludeItemId)) {
-      return true;
-    }
-    const rows = db.prepare('SELECT url FROM items WHERE user_id = ? AND id != ?').all(userId, excludeItemId) as { url: string }[];
-    return rows.some((row) => sanitizeStoredItemUrl(row.url) === cleanedUrl);
-  }
-  if (db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, cleanedUrl)) {
-    return true;
-  }
-  const rows = db.prepare('SELECT url FROM items WHERE user_id = ?').all(userId) as { url: string }[];
-  return rows.some((row) => sanitizeStoredItemUrl(row.url) === cleanedUrl);
+  return findCleanedStoredUrlRegistration(db, userId, cleanedUrl, excludeItemId).kind !== 'free';
 }
 
 export type ServerItemMedia = {

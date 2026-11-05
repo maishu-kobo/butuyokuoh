@@ -10,8 +10,11 @@ import {
 import { markItemAddedByAgent, recordAgentAudit } from '@/lib/agent-token';
 import { requireExtensionAddItem } from '@/lib/extension-item-input';
 import {
-  cleanedStoredItemUrlTaken,
+  activeUrlConflictMessage,
   fetchServerItemMedia,
+  findCleanedStoredUrlRegistration,
+  restoreTrashedItem,
+  RESTORED_FROM_TRASH_MESSAGE,
   SERVER_ITEM_MEDIA_TIMEOUT_MS,
 } from '@/lib/item-input';
 
@@ -90,11 +93,28 @@ export async function POST(request: NextRequest) {
     assertOwnedRelations(db, userId, { category_id: categoryId ? Number(categoryId) : null });
 
     // ゴミ箱の行も UNIQUE(user_id, url) に残る。汚い保存 URL もクリーン後で見る。
-    if (cleanedStoredItemUrlTaken(db, userId, url)) {
+    // ゴミ箱のみの一致は復元する（#365）。
+    const urlState = findCleanedStoredUrlRegistration(db, userId, url);
+    if (urlState.kind === 'active') {
       return NextResponse.json(
-        { error: 'この商品はすでに登録されています' },
-        { status: 409, headers: corsHeaders }
+        { error: activeUrlConflictMessage(urlState.location), code: 'URL_TAKEN' },
+        { status: 409, headers: corsHeaders },
       );
+    }
+    if (urlState.kind === 'trashed') {
+      restoreTrashedItem(db, userId, urlState.match.id);
+      const headers = { ...corsHeaders };
+      applyExtensionAuthHeaders(headers, auth);
+      const payload: Record<string, unknown> = {
+        success: true,
+        id: urlState.match.id,
+        restoredFromTrash: true,
+        message: RESTORED_FROM_TRASH_MESSAGE,
+      };
+      if (auth.legacyDeprecated) {
+        payload.auth_warning = 'legacy_jwt_deprecated';
+      }
+      return NextResponse.json(payload, { headers });
     }
 
     const media = await fetchServerItemMedia(url, {

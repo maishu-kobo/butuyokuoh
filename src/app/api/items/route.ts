@@ -5,11 +5,17 @@ import { assertOwnedRelations } from '@/lib/api-access';
 import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { itemUrlTaken } from '@/lib/capture/register';
 import { isUnusableScrape, scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
-import { cleanedStoredItemUrlTaken, normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
+import {
+  activeUrlConflictMessage,
+  findCleanedStoredUrlRegistration,
+  normalizeItemName,
+  restoreTrashedItem,
+  RESTORED_FROM_TRASH_MESSAGE,
+  sanitizeStoredItemUrl,
+} from '@/lib/item-input';
 import { PRODUCT_FETCH_HELP } from '@/lib/public-page';
 import { annotateSpend, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
 
@@ -101,6 +107,30 @@ async function handlePOST(request: NextRequest) {
       return NextResponse.json({ error: '商品名は必須です' }, { status: 400 });
     }
 
+    const manualUrl = storedUrl || `manual://${randomUUID()}`; // URLなしの場合はダミーURL
+    if (storedUrl) {
+      const urlState = findCleanedStoredUrlRegistration(db, user.id, storedUrl);
+      if (urlState.kind === 'active') {
+        return NextResponse.json(
+          { error: activeUrlConflictMessage(urlState.location), code: 'URL_TAKEN' },
+          { status: 409 },
+        );
+      }
+      if (urlState.kind === 'trashed') {
+        assertGuestSessionActive(user, db);
+        restoreTrashedItem(db, user.id, urlState.match.id);
+        const item = db.prepare('SELECT * FROM items WHERE id = ?').get(urlState.match.id) as Record<string, unknown>;
+        return NextResponse.json(
+          {
+            ...item,
+            restoredFromTrash: true,
+            restoreMessage: RESTORED_FROM_TRASH_MESSAGE,
+          },
+          { status: 200 },
+        );
+      }
+    }
+
     return db.transaction(() => {
       assertGuestCapacity(user, 'items', db);
       if (manualPrice) assertGuestCapacity(user, 'price_history', db);
@@ -109,7 +139,6 @@ async function handlePOST(request: NextRequest) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      const manualUrl = storedUrl || `manual://${randomUUID()}`; // URLなしの場合はダミーURL
       const result = stmt.run(
         user.id,
         name,
@@ -140,9 +169,28 @@ async function handlePOST(request: NextRequest) {
     return NextResponse.json({ error: 'URL is required' }, { status: 400 });
   }
 
-  // 重複チェック（同じユーザー内で）。楽天 identity に加え、汚い保存 URL もクリーン後で見る。
-  if (itemUrlTaken(db, user.id, storedUrl) || cleanedStoredItemUrlTaken(db, user.id, storedUrl)) {
-    return NextResponse.json({ error: 'このURLは既に登録されています' }, { status: 400 });
+  // 重複チェック（同じユーザー内で）。楽天 identity と汚い保存 URL もクリーン後で見る。
+  // ゴミ箱だけの一致は新規追加せず復元する（#365）。
+  const urlState = findCleanedStoredUrlRegistration(db, user.id, storedUrl);
+  if (urlState.kind === 'active') {
+    return NextResponse.json(
+      { error: activeUrlConflictMessage(urlState.location), code: 'URL_TAKEN' },
+      { status: 409 },
+    );
+  }
+  if (urlState.kind === 'trashed') {
+    assertGuestSessionActive(user, db);
+    restoreTrashedItem(db, user.id, urlState.match.id);
+    const item = db.prepare('SELECT * FROM items WHERE id = ?').get(urlState.match.id) as Record<string, unknown>;
+    return NextResponse.json(
+      {
+        ...item,
+        restoredFromTrash: true,
+        restoreMessage: RESTORED_FROM_TRASH_MESSAGE,
+        scrapeNote: null,
+      },
+      { status: 200 },
+    );
   }
 
   // スクレイピング

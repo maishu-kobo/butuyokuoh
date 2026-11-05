@@ -105,7 +105,8 @@ paths:
       summary: URL で追加（add_item_by_url 相当）
       description: |
         公開商品 URL を登録。`url` 1本・既存指定なしは単独品目。
-        `urls` 複数または `item_id` で既存へ店を足すと origin=photo のグループにまとめる。
+        同じ URL がゴミ箱にだけあるときは復元し `restored_from_trash` を返す（#365）。
+        `urls` 複数または `item_id` で既存へ店を足すと origin=photo のグループにまとめる（この経路ではゴミ箱 URL は `URL_IN_TRASH`）。
         価格・画像はサーバーが取得（呼び出し側の値は捨てる）。失敗時は名前と URL のみ。
         レート: add + add_url + add_day を店 URL 件数分まとめて消費。
       operationId: addAgentItemByUrl
