@@ -40,7 +40,7 @@ export async function checkMcpPublicConfiguration(origin, { fetchImpl = fetch, c
       return json ? await response.json() : await response.text();
     } catch {
       // Do not echo response bodies, cookies, exceptions, or arbitrary URLs.
-      check(`${path} readable without redirects`, false);
+      check(`${path} fetch and parse`, false);
       return null;
     }
   }

@@ -72,6 +72,15 @@ test('a healthy server does not conceal a stale Claude Code registration', async
   }
 });
 
+test('additional authorization servers and missing PKCE S256 fail', async () => {
+  const rows = fixture();
+  (rows.get(prmPath)!.body as Record<string, unknown>).authorization_servers = [origin, 'https://other.example.test'];
+  assert.equal((await checkMcpPublicConfiguration(origin, { fetchImpl: transport(rows) })).ok, false);
+  const withoutPkce = fixture();
+  (withoutPkce.get(asPath)!.body as Record<string, unknown>).code_challenge_methods_supported = ['plain'];
+  assert.equal((await checkMcpPublicConfiguration(origin, { fetchImpl: transport(withoutPkce) })).ok, false);
+});
+
 test('unreachable, redirected, invalid JSON and unexpected status responses fail without leaking bodies', async () => {
   const secret = 'private-response-content';
   for (const response of [
