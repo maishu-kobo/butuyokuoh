@@ -16,12 +16,15 @@ function seedMember(scenario: string) {
   expect(dbPath).toBeTruthy();
   const db = new Database(dbPath!);
   try {
-    const email = `oauth-browser-${scenario}@example.test`;
+    // DB由来の連番なら時計・乱数に依存せず、retry/repeatでも他のfixtureを消さない。
+    const { nextId } = db.prepare('SELECT COALESCE(MAX(id), 0) + 1 AS nextId FROM users').get() as { nextId: number };
+    const identity = `${scenario}-${nextId}`;
+    const email = `oauth-browser-${identity}@example.test`;
     const hash = bcrypt.hashSync(password, 4);
     const owner = db.prepare('INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)')
       .run(email, `Browser ${scenario}`, hash).lastInsertRowid;
     const foreign = db.prepare('INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)')
-      .run(`oauth-foreign-${scenario}@example.test`, 'Other user', hash).lastInsertRowid;
+      .run(`oauth-foreign-${identity}@example.test`, 'Other user', hash).lastInsertRowid;
     const group = Number(db.prepare('INSERT INTO comparison_groups (user_id, name) VALUES (?, ?)')
       .run(owner, 'E2E visible group').lastInsertRowid);
     db.prepare('INSERT INTO comparison_groups (user_id, name) VALUES (?, ?)').run(foreign, 'E2E private group');
@@ -139,6 +142,11 @@ for (const explicitResource of [true, false]) {
       expect(fresh.access_token).not.toBe(tokens.access_token);
       expect(fresh.refresh_token).not.toBe(tokens.refresh_token);
       await read(fresh.access_token);
+      const staleAccess = await api.post('/api/mcp', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+        data: { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+      });
+      expect(staleAccess.status()).toBe(401);
       expect((await api.post(as.token_endpoint, { form: refreshForm })).status()).toBe(400);
     } finally { await api.dispose(); }
   });
