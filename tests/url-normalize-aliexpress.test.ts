@@ -53,7 +53,8 @@ test('refresh keeps saved name/price/image when AliExpress returns a bot challen
 
   installProductFetchPort({
     lookup: (candidate) => {
-      if (candidate.hostname.endsWith('aliexpress.com')) {
+      // ホストは完全一致（不完全な部分一致は CodeQL の対象になる）
+      if (candidate.hostname === 'ja.aliexpress.com') {
         return { status: 200, body: Buffer.from(punishHtml), contentType: 'text/html; charset=UTF-8' };
       }
       return undefined;
