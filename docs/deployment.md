@@ -351,6 +351,7 @@ MCP_PUBLIC_ORIGIN=https://butsuyokuoh.exe.xyz
 値は origin だけとし、末尾の `/`、パス、クエリ、認証情報を含めない。本番では HTTPS が必要。
 未設定の場合は従来どおり `AUTH_URL`、次に `NEXTAUTH_URL` を使う。
 Google の既存コールバックを維持する場合、これらのログイン用設定は変更せず、`MCP_PUBLIC_ORIGIN` だけを設定する。
+Google ログイン後は、設定済みの MCP 公開 origin の `/oauth/authorize/consent` にも戻れる。別の外部 origin や、その origin の他のページへの転送は許可しない。
 設定変更の反映にはアプリの再起動が必要。MCP の宛先が変わった場合、既存の OAuth 接続は再接続する。
 
 反映後は次のすべてが同じ公開 origin になることを確認する。
