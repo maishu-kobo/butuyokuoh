@@ -51,6 +51,127 @@ function firstProductYenMatch(
   return null;
 }
 
+/** meta の content。空文字や空白だけのときは未取得。 */
+function metaContent(html: string, propertyOrName: string): string | null {
+  const key = propertyOrName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match =
+    html.match(new RegExp(`<meta[^>]*(?:property|name)="${key}"[^>]*content="([^"]*)"`, 'i')) ||
+    html.match(new RegExp(`<meta[^>]*content="([^"]*)"[^>]*(?:property|name)="${key}"`, 'i'));
+  const value = match?.[1]?.replace(/&amp;/g, '&').trim() ?? '';
+  return value || null;
+}
+
+function firstImgSrc(html: string, patterns: RegExp[]): string | null {
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    const src = match?.[1]?.replace(/&amp;/g, '&').trim() ?? '';
+    if (src) return src;
+  }
+  return null;
+}
+
+/**
+ * JSON-LD `<script>` の本文だけを返す。
+ * タグ全体を取って `<script>` を置換除去すると、不完全な複数文字サニタイズとして
+ * CodeQL に指摘されるので、キャプチャで中身だけ取り出す。
+ */
+function jsonLdScriptBodies(html: string): string[] {
+  const bodies: string[] = [];
+  for (const match of html.matchAll(
+    /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi,
+  )) {
+    const body = match[1]?.trim();
+    if (body) bodies.push(body);
+  }
+  return bodies;
+}
+
+function parseJsonLdScripts(html: string): unknown[] {
+  const parsed: unknown[] = [];
+  for (const body of jsonLdScriptBodies(html)) {
+    try {
+      parsed.push(JSON.parse(body));
+    } catch {
+      // JSONパース失敗は無視
+    }
+  }
+  return parsed;
+}
+
+/** JSON-LD の image（文字列・配列・ImageObject・@graph）から最初の URL。 */
+function jsonLdImageUrl(data: unknown): string | null {
+  if (data == null) return null;
+  if (typeof data === 'string') {
+    const value = data.trim();
+    return value || null;
+  }
+  if (Array.isArray(data)) {
+    for (const entry of data) {
+      const found = jsonLdImageUrl(entry);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof data !== 'object') return null;
+  const record = data as Record<string, unknown>;
+  if ('image' in record) {
+    const fromImage = jsonLdImageUrl(record.image);
+    if (fromImage) return fromImage;
+  }
+  if (typeof record.url === 'string' && /imageobject/i.test(String(record['@type'] ?? ''))) {
+    const value = record.url.trim();
+    if (value) return value;
+  }
+  if (Array.isArray(record['@graph'])) {
+    return jsonLdImageUrl(record['@graph']);
+  }
+  return null;
+}
+
+function extractJsonLdImage(html: string): string | null {
+  for (const data of parseJsonLdScripts(html)) {
+    const found = jsonLdImageUrl(data);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * 商品画像 URL の候補。取れなければ null（プレースホルダは作らない）。
+ * ツクモのように og:image が空で、id=mainimg が figure 側にあるページ向けに
+ * 親要素の class/id も見る。
+ */
+function extractProductImageUrl(html: string): string | null {
+  const fromMeta = metaContent(html, 'og:image') || metaContent(html, 'twitter:image');
+  if (fromMeta) return fromMeta;
+
+  const fromJsonLd = extractJsonLdImage(html);
+  if (fromJsonLd) return fromJsonLd;
+
+  // EC-CUBE系: class="picture" の画像
+  const fromPicture = firstImgSrc(html, [
+    /<img[^>]*class="[^"]*picture[^"]*"[^>]*src="([^"]+)"/i,
+    /<img[^>]*src="([^"]+)"[^>]*class="[^"]*picture[^"]*"/i,
+  ]);
+  if (fromPicture) return fromPicture;
+
+  // img 自身の class/id に product / main / item
+  const fromImgAttr = firstImgSrc(html, [
+    /<img[^>]*(?:class|id)="[^"]*(?:product|main|item)[^"]*"[^>]*src="([^"]+)"/i,
+    /<img[^>]*src="([^"]+)"[^>]*(?:class|id)="[^"]*(?:product|main|item)[^"]*"/i,
+  ]);
+  if (fromImgAttr) return fromImgAttr;
+
+  // 親（figure/div など）の class/id に product|main|item|picture がある内側の img
+  // 例: <figure id="mainimg"><img src="https://cdn.../image/item/....jpg"></figure>
+  const fromParent = firstImgSrc(html, [
+    /<(?:figure|div|span|a|section)[^>]*(?:class|id)="[^"]*(?:product|main|item|picture)[^"]*"[^>]*>[\s\S]{0,800}?<img\b[^>]*\bsrc="([^"]+)"/i,
+  ]);
+  if (fromParent) return fromParent;
+
+  return null;
+}
+
 // Pure parser shared by member scraping and the bounded guest HTTP client.
 export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedItem {
   const hostname = new URL(sanitizedUrl).hostname;
@@ -76,64 +197,54 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
     .replace(/\s+/g, ' ')                   // 連続スペースを単一に
     .trim();
 
-  // JSON-LDから価格取得を試行
+  // JSON-LDから価格取得を試行（script タグ置換はせず本文キャプチャのみ）
   let price: number | null = null;
-  const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
-  if (jsonLdMatch) {
-    for (const match of jsonLdMatch) {
-      if (price) break;
-      try {
-        // scriptタグを完全に除去（ループで繰り返し置換）
-        let jsonContent = match;
-        let prevLength = 0;
-        while (jsonContent.length !== prevLength) {
-          prevLength = jsonContent.length;
-          jsonContent = jsonContent.replace(/<script[^>]*>/gi, '');
-          jsonContent = jsonContent.replace(/<\/script>/gi, '');
+  for (const raw of parseJsonLdScripts(html)) {
+    if (price) break;
+    if (!raw || typeof raw !== 'object') continue;
+    const data = raw as {
+      hasVariant?: Array<{ offers?: { price?: unknown; priceCurrency?: string } }>;
+      offers?: { price?: unknown; priceCurrency?: string } | Array<{ price?: unknown; priceCurrency?: string }>;
+      '@graph'?: Array<{ offers?: { price?: unknown; priceCurrency?: string } }>;
+    };
+
+    // hasVariant配列をチェック（Shopifyなど）- JPYを優先
+    if (data.hasVariant && Array.isArray(data.hasVariant)) {
+      for (const variant of data.hasVariant) {
+        if (variant.offers?.price && variant.offers?.priceCurrency === 'JPY') {
+          price = parseYenPrice(variant.offers.price);
+          break;
         }
-        const data = JSON.parse(jsonContent);
-        
-        // hasVariant配列をチェック（Shopifyなど）- JPYを優先
-        if (data.hasVariant && Array.isArray(data.hasVariant)) {
-          for (const variant of data.hasVariant) {
-            if (variant.offers?.price && variant.offers?.priceCurrency === 'JPY') {
-              price = parseYenPrice(variant.offers.price);
-              break;
-            }
+      }
+    }
+
+    // 直接のoffers（JPYを優先）
+    if (!price && data.offers) {
+      // offersが配列の場合
+      if (Array.isArray(data.offers)) {
+        for (const offer of data.offers) {
+          if (offer.price && (offer.priceCurrency === 'JPY' || !offer.priceCurrency)) {
+            price = parseYenPrice(offer.price);
+            break;
           }
         }
-        
-        // 直接のoffers（JPYを優先）
-        if (!price && data.offers) {
-          // offersが配列の場合
-          if (Array.isArray(data.offers)) {
-            for (const offer of data.offers) {
-              if (offer.price && (offer.priceCurrency === 'JPY' || !offer.priceCurrency)) {
-                price = parseYenPrice(offer.price);
-                break;
-              }
-            }
-          } else if (data.offers.price) {
-            // offersがオブジェクトの場合
-            if (data.offers.priceCurrency === 'JPY' || !data.offers.priceCurrency) {
-              price = parseYenPrice(data.offers.price);
-            }
+      } else if (data.offers.price) {
+        // offersがオブジェクトの場合
+        if (data.offers.priceCurrency === 'JPY' || !data.offers.priceCurrency) {
+          price = parseYenPrice(data.offers.price);
+        }
+      }
+    }
+
+    // @graphをチェック
+    if (!price && data['@graph']) {
+      for (const item of data['@graph']) {
+        if (item.offers?.price) {
+          if (item.offers.priceCurrency === 'JPY' || !item.offers.priceCurrency) {
+            price = parseYenPrice(item.offers.price);
+            break;
           }
         }
-        
-        // @graphをチェック
-        if (!price && data['@graph']) {
-          for (const item of data['@graph']) {
-            if (item.offers?.price) {
-              if (item.offers.priceCurrency === 'JPY' || !item.offers.priceCurrency) {
-                price = parseYenPrice(item.offers.price);
-                break;
-              }
-            }
-          }
-        }
-      } catch {
-        // JSONパース失敗は無視
       }
     }
   }
@@ -231,32 +342,8 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
       ?? firstProductYenMatch(html, /JPY\s*([\d,]+)/gi);
   }
 
-  // OG画像
-  let imageUrl: string | null = null;
-  const ogImageMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/) ||
-                       html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:image"/);
-  if (ogImageMatch) {
-    imageUrl = ogImageMatch[1];
-  }
-
-  // OG画像がない場合のフォールバック
-  if (!imageUrl) {
-    // EC-CUBE系: class="picture" の画像
-    const pictureMatch = html.match(/<img[^>]*class="[^"]*picture[^"]*"[^>]*src="([^"]+)"/) ||
-                         html.match(/<img[^>]*src="([^"]+)"[^>]*class="[^"]*picture[^"]*"/);
-    if (pictureMatch) {
-      imageUrl = pictureMatch[1];
-    }
-  }
-
-  if (!imageUrl) {
-    // 商品画像っぽいパターン: product, main, item などを含むクラス/IDの画像
-    const productImageMatch = html.match(/<img[^>]*(?:class|id)="[^"]*(?:product|main|item)[^"]*"[^>]*src="([^"]+)"/) ||
-                              html.match(/<img[^>]*src="([^"]+)"[^>]*(?:class|id)="[^"]*(?:product|main|item)[^"]*"/);
-    if (productImageMatch) {
-      imageUrl = productImageMatch[1];
-    }
-  }
+  // 画像。空の og:image は未取得扱い。親要素に main/product がある img も拾う。
+  let imageUrl = extractProductImageUrl(html);
 
   // Resolve relative/CDN images and prefer HTTPS on secure product pages.
   if (imageUrl) {
