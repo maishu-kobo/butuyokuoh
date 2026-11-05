@@ -4,8 +4,8 @@ import { getCurrentUser } from './auth';
 import { GuestError, consumeGuestRate, guestLimit } from './guest';
 import { DEMO_IMAGE } from './demo-data';
 
-export function requireSameOrigin(request: NextRequest) {
-  const configured = process.env.AUTH_URL || process.env.NEXTAUTH_URL;
+export function requireSameOrigin(request: NextRequest, configuredOrigin?: string) {
+  const configured = configuredOrigin || process.env.AUTH_URL || process.env.NEXTAUTH_URL;
   if (!configured && process.env.NODE_ENV === 'production') {
     throw new Error('AUTH_URL is required for guest mode in production');
   }

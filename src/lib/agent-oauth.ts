@@ -128,6 +128,22 @@ function isExpired(expiresAt: string, now = Date.now()): boolean {
 }
 
 export function oauthIssuer(requestUrl?: string): string {
+  // MCP はクラウドクライアントから到達できる origin を使う。
+  // Google ログインの既存コールバック用 AUTH_URL / NEXTAUTH_URL とは分離できる。
+  const publicOrigin = process.env.MCP_PUBLIC_ORIGIN;
+  if (publicOrigin) {
+    let url: URL;
+    try {
+      url = new URL(publicOrigin);
+    } catch {
+      throw new Error('MCP_PUBLIC_ORIGIN は公開 HTTP(S) origin を指定してください');
+    }
+    if (url.origin !== publicOrigin || !['https:', 'http:'].includes(url.protocol)
+      || (process.env.NODE_ENV === 'production' && url.protocol !== 'https:')) {
+      throw new Error('MCP_PUBLIC_ORIGIN は公開 HTTP(S) origin（本番は HTTPS）を指定してください');
+    }
+    return url.origin;
+  }
   const configured = process.env.AUTH_URL || process.env.NEXTAUTH_URL;
   if (configured) {
     try {
@@ -185,6 +201,15 @@ export function assertMcpResource(resource: string, requestUrl?: string): string
     throw new GuestError(400, 'INVALID_RESOURCE', 'このリソース向けのトークンではありません');
   }
   return normalized;
+}
+
+/** RFC 8707 の単一宛先の既定値。省略だけを補完し、明示された不正な宛先は拒否する。 */
+export function oauthRequestResource(params: URLSearchParams, requestUrl?: string): string {
+  const resources = params.getAll('resource');
+  if (resources.length > 1) {
+    throw new GuestError(400, 'INVALID_RESOURCE', 'resource は1つだけ指定してください');
+  }
+  return assertMcpResource(resources[0] ?? mcpResourceUrl(requestUrl), requestUrl);
 }
 
 export function buildAuthorizationServerMetadata(requestUrl?: string) {
