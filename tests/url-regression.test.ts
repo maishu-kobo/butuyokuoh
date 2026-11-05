@@ -79,7 +79,9 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
   const items = '../src/app/api/items/route.ts';
   const itemRoute = '../src/app/api/items/[id]/route.ts';
   const refresh = '../src/app/api/items/[id]/refresh/route.ts';
-  const help = '商品情報を自動取得できませんでした';
+  const help = '手動で追加';
+  const genericHelp = '商品情報を自動取得できませんでした';
+  const blockedHelp = '自動での商品情報取得を制限';
 
   port.installProductFetchPort(fixtures.regressionFetchPort());
   installAuthTestHooks({ user: null });
@@ -167,6 +169,11 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
       assert.equal(payload.code, 'SCRAPE_FAILED', response.text);
       assert.match(String(payload.error), new RegExp(help));
       assert.doesNotMatch(String(payload.error), /大きすぎ|MiB/);
+      if (url === fixtures.BOT_URL) {
+        assert.match(String(payload.error), new RegExp(blockedHelp));
+      } else {
+        assert.match(String(payload.error), new RegExp(genericHelp));
+      }
       const saved = await call(items, 'POST', '/api/items', { url, notes: '残すメモ' });
       assert.notEqual(saved.status, 201, `${url} ${saved.text}`);
     }

@@ -1,3 +1,4 @@
+import { isBotChallengedHtml, PRODUCT_FETCH_BLOCKED_HELP } from './public-page';
 import type { ScrapedItem } from './scraper';
 
 export const PRODUCT_WAITING_HELP = '販売サイトのボット対策による待機ページが返されたため、価格と画像を取得できませんでした。商品ページをブラウザで確認し、時間をおいて再試行するか、別の店のURLを使ってください。商品名を入力して手動で追加することもできます。';
@@ -175,6 +176,17 @@ function extractProductImageUrl(html: string): string | null {
 // Pure parser shared by member scraping and the bounded guest HTTP client.
 export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedItem {
   const hostname = new URL(sanitizedUrl).hostname;
+  if (isBotChallengedHtml(html)) {
+    return {
+      name: '取得失敗',
+      price: null,
+      imageUrl: null,
+      source: 'other',
+      sourceName: null,
+      note: PRODUCT_FETCH_BLOCKED_HELP,
+      failureCode: 'BOT_CHALLENGE',
+    };
+  }
   if (isProductWaitingPage(html)) {
     return {
       name: '取得失敗', price: null, imageUrl: null, source: 'other', sourceName: null,

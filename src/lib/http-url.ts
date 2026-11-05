@@ -16,3 +16,7 @@ export function isStorableItemUrl(value: string): boolean {
 }
 
 export const ITEM_URL_ERROR = 'URLは http または https を指定してください';
+
+/** 広告経由の長い URL を受け付ける。保存前にトラッキングを落とす。 */
+export const ITEM_URL_MAX = 8192;
+export const ITEM_IMAGE_URL_MAX = 2048;

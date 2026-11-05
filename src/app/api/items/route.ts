@@ -10,7 +10,7 @@ import { isUnusableScrape, scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
 import { cleanedStoredItemUrlTaken, normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
-import { PRODUCT_FETCH_HELP } from '@/lib/public-page';
+import { scrapeFailedHelp } from '@/lib/public-page';
 import { annotateSpend, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
 
 async function handleGET() {
@@ -149,11 +149,11 @@ async function handlePOST(request: NextRequest) {
   assertGuestCapacity(user, 'items', db);
   const scraped = user.account_type === 'guest' ? await scrapeGuestUrl(storedUrl, user.id) : await scrapeUrl(storedUrl);
   if (isUnusableScrape(scraped)) {
-    return NextResponse.json({ error: scraped.failureCode ? (scraped.note ?? PRODUCT_FETCH_HELP) : PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' }, { status: 422 });
+    return NextResponse.json({ error: scrapeFailedHelp(scraped), code: 'SCRAPE_FAILED' }, { status: 422 });
   }
   const scrapedName = normalizeItemName(scraped.name);
   if (!scrapedName) {
-    return NextResponse.json({ error: PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' }, { status: 422 });
+    return NextResponse.json({ error: scrapeFailedHelp(scraped), code: 'SCRAPE_FAILED' }, { status: 422 });
   }
 
   return db.transaction(() => {

@@ -41,7 +41,7 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
     { manual: true, name: 'メモ', notes: 'n'.repeat(2001) },
     { manual: true, name: '日付', planned_purchase_date: '2026/10/01' },
     { manual: true, name: '長い画像', image_url: 'https://example.test/' + 'a'.repeat(2048) },
-    { manual: true, name: '長いURL', url: 'https://example.test/' + 'u'.repeat(2048) },
+    { manual: true, name: '長すぎるURL', url: 'https://example.test/' + 'u'.repeat(8192) },
   ];
   for (const body of rejected) {
     const response = await call(items, 'POST', '/api/items', body);
@@ -66,6 +66,8 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
   assert.equal(codeOf(huge.json), 'BODY_TOO_LARGE');
   assert.equal(itemCount(), 0);
 
+  const longUrl = `https://example.test/${'u'.repeat(8192 - 'https://example.test/'.length)}`;
+  assert.equal(longUrl.length, 8192);
   const created = await call(items, 'POST', '/api/items', {
     manual: true,
     name: 'x'.repeat(200),
@@ -75,7 +77,7 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
     notes: 'n'.repeat(2000),
     planned_purchase_date: '2026-10-23',
     image_url: '/uploads/1_1.png',
-    url: `https://example.test/${'u'.repeat(2027)}`,
+    url: longUrl,
     sort_order: 0,
   });
   assert.equal(created.status, 201, created.text);
@@ -85,7 +87,7 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
   assert.equal(saved.priority, 5);
   assert.equal(saved.image_url, '/uploads/1_1.png');
   assert.equal(saved.notes.length, 2000);
-  assert.equal(saved.url.length, 2048);
+  assert.equal(saved.url.length, 8192);
   assert.equal(itemCount(), 1);
 
   const httpsImage = await call(item, 'PATCH', `/api/items/${saved.id}`, {
@@ -106,7 +108,7 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
     current_price: number; url: string; image_url: string | null; quantity: number; priority: number; name: string;
   };
   assert.equal(stored.current_price, 10);
-  assert.equal(stored.url.length, 2048);
+  assert.equal(stored.url.length, 8192);
   assert.equal(stored.image_url, null);
   assert.equal(stored.quantity, 999);
   assert.equal(stored.priority, 5);
@@ -237,7 +239,7 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
   });
   assert.equal(savedHook.status, 200, savedHook.text);
 
-  const longList = `https://www.amazon.co.jp/hz/wishlist/ls/${'a'.repeat(2100)}`;
+  const longList = `https://www.amazon.co.jp/hz/wishlist/ls/${'a'.repeat(8200)}`;
   const rejectedList = await call(wishlist, 'POST', '/api/import-wishlist', { url: longList });
   assert.equal(rejectedList.status, 400);
   assert.equal(codeOf(rejectedList.json), 'INVALID_INPUT');

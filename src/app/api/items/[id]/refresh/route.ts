@@ -3,7 +3,7 @@ import { assertGuestCapacity, assertGuestSessionActive, GuestError } from '@/lib
 import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { scrapeUrl, deriveScrapeOutcome, ScrapedItem } from '@/lib/scraper';
+import { scrapeUrl, deriveScrapeOutcome, isUnusableScrape, ScrapedItem } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { excludesPagePriceCheck } from '@/lib/price-check-items';
 
@@ -70,35 +70,38 @@ async function handlePOST(
 
     // スクレイプ結果（成功/失敗）を導出（check-prices と共通ロジック）
     const outcome = deriveScrapeOutcome(scraped);
+    // ボット挑戦・待機ページなど使えない結果では、既存の商品名・価格・画像を残す。
+    const unusable = isUnusableScrape(scraped);
 
     // スクレイピング結果を更新（商品名、価格、画像）
     const updates: string[] = [];
     const values: unknown[] = [];
 
-    // 商品名が取得できた場合のみ更新（エラーメッセージでない場合）
-    if (scraped.name && !scraped.name.includes('取得できません') && !scraped.name.includes('不明な商品') && scraped.name !== '取得失敗' && scraped.name !== '無効なURL') {
-      updates.push('name = ?');
-      values.push(scraped.name);
-    }
-
-    // 価格が取得できた場合
-    if (scraped.price) {
-      updates.push('original_price = COALESCE(original_price, ?)');
-      values.push(scraped.price);
-      updates.push('current_price = ?');
-      values.push(scraped.price);
-
-      // 価格が変わった場合のみ履歴に追加
-      if (scraped.price !== current.current_price) {
-        assertGuestCapacity(user, 'price_history', db);
-        db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(id, scraped.price);
+    if (!unusable) {
+      if (scraped.name) {
+        updates.push('name = ?');
+        values.push(scraped.name);
       }
-    }
 
-    // 画像が取得できた場合
-    if (scraped.imageUrl) {
-      updates.push('image_url = ?');
-      values.push(scraped.imageUrl);
+      // 価格が取得できた場合
+      if (scraped.price) {
+        updates.push('original_price = COALESCE(original_price, ?)');
+        values.push(scraped.price);
+        updates.push('current_price = ?');
+        values.push(scraped.price);
+
+        // 価格が変わった場合のみ履歴に追加
+        if (scraped.price !== current.current_price) {
+          assertGuestCapacity(user, 'price_history', db);
+          db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(id, scraped.price);
+        }
+      }
+
+      // 画像が取得できた場合
+      if (scraped.imageUrl) {
+        updates.push('image_url = ?');
+        values.push(scraped.imageUrl);
+      }
     }
 
     // スクレイプ結果は成功/失敗にかかわらず常に記録する
