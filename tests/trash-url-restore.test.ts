@@ -254,3 +254,63 @@ test('agent add_item_by_url restores trashed single URL and rejects multi-store 
     installProductFetchPort(null);
   }
 }));
+
+test('agent add_item_by_url restores trash before scrape; scrape failure does not block restore', () => serial(async () => {
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  // fixture miss / 待機ページ相当。復元が scrape より先ならここに到達しない。
+  installProductFetchPort({ lookup: () => undefined });
+  try {
+    const member = await createMember('agent-restore-noscrape');
+    await setTestUser(member);
+    const database = await db();
+    const url = 'https://www.amazon.co.jp/dp/B0TRASHFAIL1';
+    const inserted = database.prepare(`
+      INSERT INTO items (user_id, name, url, notes, current_price, deleted_at)
+      VALUES (?, '取得できない本', ?, 'keep-me', 880, datetime('now'))
+    `).run(member.id, url);
+    const itemId = Number(inserted.lastInsertRowid);
+
+    const created = await call(
+      tokensPath,
+      'POST',
+      '/api/agent-tokens',
+      { name: 'restore-fail', scopes: ['write'], expiresInDays: 30 },
+      undefined,
+      sameOrigin,
+      `${sameOriginUrl}/api/agent-tokens`,
+    );
+    assert.equal(created.status, 201, created.text);
+    const token = (created.json as { token: string }).token;
+
+    const restored = await call(
+      byUrlPath,
+      'POST',
+      '/api/agent/v1/items/by-url',
+      { url },
+      undefined,
+      { Authorization: `Bearer ${token}` },
+    );
+    assert.equal(restored.status, 201, restored.text);
+    const data = (restored.json as {
+      data: {
+        item: { id: number; deleted_at: string | null; notes: string | null; current_price: number | null };
+        restored_from_trash: boolean;
+        media_fetched: boolean;
+        media_fetch_errors: unknown[];
+      };
+    }).data;
+    assert.equal(data.item.id, itemId);
+    assert.equal(data.item.deleted_at, null);
+    assert.equal(data.item.notes, 'keep-me');
+    assert.equal(data.item.current_price, 880);
+    assert.equal(data.restored_from_trash, true);
+    assert.equal(data.media_fetched, false);
+    assert.deepEqual(data.media_fetch_errors, []);
+    assert.equal(
+      (database.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id = ?').get(member.id) as { n: number }).n,
+      1,
+    );
+  } finally {
+    installProductFetchPort(null);
+  }
+}));

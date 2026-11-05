@@ -719,9 +719,25 @@ export async function addAgentItemByUrl(
     throw new GuestError(400, 'INVALID_INPUT', '商品名を入力してください');
   }
 
-  // 従来互換: URL 1本・既存指定なしはグループを作らない（ゴミ箱のみなら復元）
+  // 従来互換: URL 1本・既存指定なしはグループを作らない。
+  // ゴミ箱のみの一致は Web/拡張と同じく scrape より先に復元する（#365 / Bugbot）。
   if (urls.length === 1 && attachId === undefined) {
-    const prepared = await prepareStoreMedia(auth, urls[0], mediaOptions);
+    const singleUrl = urls[0];
+    const trashId = assertUrlAvailableOrThrow(db, auth.userId, singleUrl, true);
+    if (trashId != null) {
+      restoreTrashedItem(db, auth.userId, trashId);
+      const item = getAgentItem(auth.userId, trashId, db);
+      return {
+        item,
+        stores: item.stores,
+        media_fetched: false,
+        media_fetch_errors: [],
+        restored_from_trash: true,
+        restore_message: RESTORED_FROM_TRASH_MESSAGE,
+      };
+    }
+
+    const prepared = await prepareStoreMedia(auth, singleUrl, mediaOptions);
     const name = nameFromInput ?? prepared.scrapedName;
     if (!name) {
       throw new GuestError(
@@ -746,9 +762,6 @@ export async function addAgentItemByUrl(
       stores: inserted.item.stores,
       media_fetched: prepared.media.price != null || prepared.media.imageUrl != null,
       media_fetch_errors: mediaFetchErrors(prepared.url, prepared.media),
-      ...(inserted.restoredFromTrash
-        ? { restored_from_trash: true, restore_message: RESTORED_FROM_TRASH_MESSAGE }
-        : {}),
     };
   }
 
@@ -935,6 +948,22 @@ export async function addAgentItem(
     url = requireHttpUrl(body.url);
   }
 
+  // ゴミ箱のみの一致は scrape より先に復元する（#365 / Bugbot）
+  if (!url.startsWith('manual://')) {
+    const trashId = assertUrlAvailableOrThrow(db, auth.userId, url, true);
+    if (trashId != null) {
+      restoreTrashedItem(db, auth.userId, trashId);
+      const item = getAgentItem(auth.userId, trashId, db);
+      return {
+        item,
+        media_fetched: false,
+        media_fetch_errors: [],
+        restored_from_trash: true,
+        restore_message: RESTORED_FROM_TRASH_MESSAGE,
+      };
+    }
+  }
+
   let media: ServerItemMedia;
   let mediaFetched = false;
   if (url.startsWith('manual://')) {
@@ -973,9 +1002,6 @@ export async function addAgentItem(
     item: inserted.item,
     media_fetched: mediaFetched,
     media_fetch_errors: mediaFetchErrors(url, media),
-    ...(inserted.restoredFromTrash
-      ? { restored_from_trash: true, restore_message: RESTORED_FROM_TRASH_MESSAGE }
-      : {}),
   };
 }
 
