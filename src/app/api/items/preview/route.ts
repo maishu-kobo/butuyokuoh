@@ -5,7 +5,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isUnusableScrape, scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
-import { PRODUCT_FETCH_HELP } from '@/lib/public-page';
+import { scrapeFailedHelp } from '@/lib/public-page';
+import { sanitizeStoredItemUrl } from '@/lib/item-input';
 
 async function handlePOST(request: NextRequest) {
   try {
@@ -37,14 +38,15 @@ async function handlePOST(request: NextRequest) {
       );
     }
 
-    if (!isStorableItemUrl(url)) {
+    const cleaned = typeof url === 'string' ? sanitizeStoredItemUrl(url) : null;
+    if (!cleaned || !isStorableItemUrl(cleaned)) {
       return NextResponse.json({ error: ITEM_URL_ERROR }, { status: 400 });
     }
 
-    // スクレイピング
-    const result = user.account_type === 'guest' ? await scrapeGuestUrl(url, user.id) : await scrapeUrl(url);
+    // スクレイピング（保存時と同じくトラッキング除去後の URL）
+    const result = user.account_type === 'guest' ? await scrapeGuestUrl(cleaned, user.id) : await scrapeUrl(cleaned);
     if (isUnusableScrape(result)) {
-      return NextResponse.json({ error: result.failureCode ? (result.note ?? PRODUCT_FETCH_HELP) : PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' }, { status: 422 });
+      return NextResponse.json({ error: scrapeFailedHelp(result), code: 'SCRAPE_FAILED' }, { status: 422 });
     }
 
     return NextResponse.json({

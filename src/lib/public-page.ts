@@ -13,6 +13,35 @@ const invalidUrl = () => new PublicPageError(400, '公開されている商品�
 export const MAX_PAGE_BYTES = 2 * 1024 * 1024;
 export const MAX_AMAZON_PAGE_BYTES = 8 * 1024 * 1024;
 export const PRODUCT_FETCH_HELP = '商品情報を自動取得できませんでした。もう一度試すか、「手動で追加」で商品名を入力してください。入力したURLやメモはそのまま使えます。';
+export const PRODUCT_FETCH_BLOCKED_HELP =
+  'このサイトは自動での商品情報取得を制限しているようです。もう一度試すか、「手動で追加」で商品名を入力してください。入力したURLやメモはそのまま使えます。';
+
+/** ボット挑戦・アクセス拒否ページの典型的な断片。先頭だけ見れば足りる。 */
+export function isBotChallengedHtml(html: string): boolean {
+  if (!html) return false;
+  const sample = html.slice(0, 12_000);
+  return (
+    /_____tmd_____/i.test(sample) ||
+    /x5secdata/i.test(sample) ||
+    /sessionStorage\.x5referer/i.test(sample) ||
+    /cf-browser-verification|cf-challenge|just a moment\.\.\./i.test(sample) ||
+    /attention required!|access denied|pardon our interruption/i.test(sample) ||
+    /robot check|automated access|api-services-support@amazon\.com/i.test(sample)
+  );
+}
+
+/** 取得失敗時の画面向け文言。手動追加への導線は共通で残す。 */
+export function scrapeFailedHelp(
+  scraped?: { name?: string | null; note?: string | null; failureCode?: string | null } | null,
+): string {
+  const note = scraped?.note?.trim() || '';
+  // failureCode 付き（待機ページ / AliExpress 挑戦など）は note を優先する。
+  if (scraped?.failureCode === 'BOT_CHALLENGE') {
+    return note || PRODUCT_FETCH_BLOCKED_HELP;
+  }
+  if (note === PRODUCT_FETCH_BLOCKED_HELP || note === PRODUCT_FETCH_HELP) return note;
+  return PRODUCT_FETCH_HELP;
+}
 
 export function isPublicAddress(address: string): boolean {
   if (!ipaddr.isValid(address)) return false;
