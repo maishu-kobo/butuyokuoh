@@ -81,7 +81,7 @@ test('unreachable, redirected, invalid JSON and unexpected status responses fail
     () => new Response(secret, { status: 200 }),
     () => Response.json(null),
   ]) {
-    const result = await checkMcpPublicConfiguration(origin, { fetchImpl: response });
+    const result = await checkMcpPublicConfiguration(origin, { fetchImpl: async () => response() });
     assert.equal(result.ok, false);
     assert.equal(JSON.stringify(result).includes(secret), false);
   }
