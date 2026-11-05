@@ -323,6 +323,22 @@ async function scrapeUrlFromPage(url: string, deps?: ScrapeDeps): Promise<Scrape
   return scrapeGeneric(genericValidation.sanitizedUrl, deps);
 }
 
+export const AMAZON_BOT_NOTE =
+  'Amazonのボット対策により自動取得が制限されています。価格は手動で編集してください。';
+const AMAZON_BOT_NAME = 'Amazonのボット対策により価格を取得できませんでした';
+
+function amazonBotFallback(): ScrapedItem {
+  return {
+    name: AMAZON_BOT_NAME,
+    price: null,
+    imageUrl: null,
+    source: 'amazon',
+    sourceName: 'Amazon',
+    note: AMAZON_BOT_NOTE,
+    failureCode: 'BOT_CHALLENGE',
+  };
+}
+
 /**
  * Amazonのボット対策ページやエラーページを検出
  */
@@ -334,6 +350,17 @@ function isAmazonBlockedHtml(html: string): boolean {
     html.includes('automated access') ||
     !html.includes('productTitle')
   );
+}
+
+/** Puppeteer 結果に価格・画像・使える名前のいずれかがあれば採用する。 */
+function isUsableAmazonBrowserResult(scraped: ScrapedItem): boolean {
+  if (scraped.price != null || scraped.imageUrl) return true;
+  return !isUnusableScrape(scraped);
+}
+
+/** soft-404/403 は商品欠落ではなくボット制限のことが多い。 */
+function isAmazonSoftBlockStatus(status: number): boolean {
+  return status === 403 || status === 404;
 }
 
 // 価格の抽出に要らない。定期取得の待ちと転送を減らす。
@@ -443,14 +470,7 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
     // Amazonのボット対策ページやエラーページを検出
     if (isAmazonBlockedHtml(html)) {
       console.log('Amazon bot detection or error page detected');
-      fallbackResult = {
-        name: 'Amazonのボット対策により価格を取得できませんでした',
-        price: null,
-        imageUrl: null,
-        source: 'amazon',
-        sourceName: 'Amazon',
-        note: 'Amazonのボット対策により自動取得が制限されています。価格は手動で編集してください。',
-      };
+      fallbackResult = amazonBotFallback();
     } else {
       const { name, price, imageUrl } = extractAmazonProduct(html);
 
@@ -474,13 +494,17 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
     // fetchWithRetryのリトライが尽きた場合もPuppeteerフォールバックを試す
     console.error('Amazon scraping error:', error);
 
-    // 404/410等の恒久的な非リトライ4xx（429は除く）はPuppeteerを起動しても無駄なので即座に返す
-    if (
+    // soft-404/403 は本文を見ずに HttpError になるが、ボット制限の soft block が多い。
+    // Puppeteer を試してから BOT_CHALLENGE として返す（#368）。
+    if (error instanceof HttpError && isAmazonSoftBlockStatus(error.status)) {
+      fallbackResult = amazonBotFallback();
+    } else if (
       error instanceof HttpError &&
       error.status >= 400 &&
       error.status < 500 &&
       error.status !== 429
     ) {
+      // 410 など、ソフトブロック以外の恒久 4xx はブラウザを起動しない
       return {
         name: '取得失敗',
         price: null,
@@ -488,15 +512,15 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
         source: 'amazon',
         sourceName: 'Amazon',
       };
+    } else {
+      fallbackResult = {
+        name: '取得失敗',
+        price: null,
+        imageUrl: null,
+        source: 'amazon',
+        sourceName: 'Amazon',
+      };
     }
-
-    fallbackResult = {
-      name: '取得失敗',
-      price: null,
-      imageUrl: null,
-      source: 'amazon',
-      sourceName: 'Amazon',
-    };
   }
 
   // 注入した HTTP だけを見るときは、実ブラウザで店へ出ない。
@@ -507,7 +531,8 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
   console.log('Falling back to Puppeteer for Amazon scraping:', sanitizedUrl);
   try {
     const puppeteerResult = await scrapeAmazonWithPuppeteer(sanitizedUrl, deps);
-    if (puppeteerResult && puppeteerResult.price !== null) {
+    // 価格が無くても画像や商品名が取れた結果は捨てない（エージェント soft-save の No Image を減らす）
+    if (puppeteerResult && isUsableAmazonBrowserResult(puppeteerResult)) {
       return puppeteerResult;
     }
   } catch (error) {

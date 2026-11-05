@@ -338,6 +338,24 @@ test('fetchServerItemMedia prefers scraped price and image, and leaves both empt
   }
 });
 
+test('fetchServerItemMedia keeps a scraped image when the name is unusable', async () => {
+  const image = 'https://m.media-amazon.com/images/I/kept.jpg';
+  const html = `<img id="landingImage" src="${image}"><span id="productTitle">Amazonのボット対策により価格を取得できませんでした</span>`;
+  const kept = await fetchServerItemMedia(AMAZON_PRODUCT_URL, {
+    deps: {
+      maxRetries: 0,
+      baseDelayMs: 0,
+      timeoutMs: 1000,
+      resolve: async () => [{ address: '1.1.1.1', family: 4 as const }],
+      request: async () => ({ status: 200, body: Buffer.from(html), contentType: 'text/html' }),
+    },
+  });
+  assert.equal(kept.price, null);
+  assert.equal(kept.imageUrl, image);
+  assert.equal(kept.scraped?.failureCode, undefined);
+  assert.equal(kept.source, 'amazon');
+});
+
 test('extension-add stores server-fetched price and image, ignores client values, and sanitizes url/name', async () => {
   const port = await import('../src/lib/product-fetch-port');
   port.installProductFetchPort(regressionFetchPort());

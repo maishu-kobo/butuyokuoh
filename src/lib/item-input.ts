@@ -10,6 +10,8 @@ import { getSourceFromUrl, validateAndSanitizeUrl } from '@/lib/url-validator';
 
 export const ITEM_NAME_MAX = 200;
 export const SERVER_ITEM_MEDIA_TIMEOUT_MS = 20_000;
+/** Amazon は soft-404 後に Puppeteer（goto 最大30s）へ進むことがあるため余裕を見る（#368）。 */
+export const SERVER_ITEM_MEDIA_TIMEOUT_AMAZON_MS = 45_000;
 
 /** Amazon / 楽天向け。アフィリエイトとトラッキングを広く落とす。 */
 const STORE_TRACKING_EXACT = new Set([
@@ -378,7 +380,8 @@ function emptyMedia(url: string, scraped: ScrapedItem | null = null): ServerItem
   const source = validation.source || fallbackSource;
   const sourceName =
     source === 'amazon' ? 'Amazon' : source === 'rakuten' ? '楽天市場' : null;
-  return { price: null, imageUrl: null, source, sourceName, scraped };
+  // 名前が使えない失敗でも、取れた画像は捨てない（再取得失敗で既存画像を消さない方針と揃える）
+  return { price: null, imageUrl: scraped?.imageUrl || null, source, sourceName, scraped };
 }
 
 async function scrapeForAccount(
@@ -399,7 +402,11 @@ export async function fetchServerItemMedia(
   url: string,
   options: FetchServerItemMediaOptions = {},
 ): Promise<ServerItemMedia> {
-  const timeoutMs = options.timeoutMs ?? SERVER_ITEM_MEDIA_TIMEOUT_MS;
+  const defaultTimeout =
+    getSourceFromUrl(url) === 'amazon'
+      ? SERVER_ITEM_MEDIA_TIMEOUT_AMAZON_MS
+      : SERVER_ITEM_MEDIA_TIMEOUT_MS;
+  const timeoutMs = options.timeoutMs ?? defaultTimeout;
   try {
     const scraped = await new Promise<ScrapedItem>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('server item media timeout')), timeoutMs);
