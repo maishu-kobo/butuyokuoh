@@ -21,6 +21,16 @@
 
 Agent API の fixture テストは商品応答に加えて DNS もテスト内で固定する。実店舗や実 DNS の状態に依存させず、private IP・混在した DNS 応答の拒否も検証する。本番の URL 検査や SSRF 防御は変更しない。
 
+### MCPのログインから一覧取得まで
+
+```bash
+npx playwright test tests/e2e/agent-oauth-browser.spec.ts tests/e2e/agent-oauth.spec.ts tests/e2e/agent.spec.ts
+```
+
+`agent-oauth-browser.spec.ts` は既定のPlaywrightレーンで毎回実行する。新規ブラウザと一時DBを使い、未認証の401・discovery、画面での会員ログイン、同意、PKCE、MCPの初期化・ツール一覧・比較グループ一覧、refresh後の読み取りをつなぐ。`resource` 明示と省略を両方通し、他人のグループが見えないこと、read権限の書き込み拒否、同意拒否も確認する。ブラウザのログインCookieとMCPクライアントを分離し、Bearer認証だけで取得できることを検証する。
+
+ログインは固定のテスト利用者によるメール・パスワード方式。クライアントの戻り先だけをブラウザ内で受け取り、アプリの認証・同意・トークンAPIは置き換えない。本番のDB・資格情報、実店舗、実AIクライアントは使わない。Googleログイン、本番TLS・公開設定、AIごとの接続操作はこのE2Eの対象外なので、リリース時の実接続確認と分けて記録する。
+
 ### Blacksmith の予算判定と自動切り替え
 
 関連 Issue は #287、導入調査は #232。`main` への push では `deploy-main.yml` 経由の reusable `ci.yml` で `Select CI runner` が先に利用量を確認し、`ci / test, types, build` の実行先を選ぶ。履歴の対象ワークフローは `deploy-main.yml`（#319）。PR（同一リポジトリ・fork とも）、他ブランチ、再実行は GitHub 標準ランナーを使う。既存の検査内容、20分の制限、`contents: read` は維持する。audit、Playwright、CodeQL 等は GitHub のまま。
