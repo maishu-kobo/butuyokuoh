@@ -32,6 +32,7 @@ function AddPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [successTitle, setSuccessTitle] = useState('追加しました！');
 
   const [priority, setPriority] = useState(3);
   const [categoryId, setCategoryId] = useState('');
@@ -141,11 +142,20 @@ function AddPageContent() {
         }),
       });
 
+      const data = await res.json() as {
+        error?: string;
+        restoredFromTrash?: boolean;
+        restoreMessage?: string;
+      };
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || '追加に失敗しました');
       }
 
+      setSuccessTitle(
+        data.restoredFromTrash
+          ? (data.restoreMessage || 'ゴミ箱から復元しました')
+          : '追加しました！',
+      );
       setSuccess(true);
       
       // 2秒後にメインページへ
@@ -192,7 +202,7 @@ function AddPageContent() {
         <div className="bg-green-100 rounded-full p-4 mb-4">
           <Check className="text-green-600" size={48} />
         </div>
-        <h1 className="text-xl font-bold mb-2">追加しました！</h1>
+        <h1 className="text-xl font-bold mb-2">{successTitle}</h1>
         <p className="text-gray-600">リストに戻ります...</p>
       </div>
     );

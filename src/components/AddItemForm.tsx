@@ -189,8 +189,13 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
         throw new Error(data.error || '追加に失敗しました');
       }
 
-      // スクレイピング結果に注意メッセージがあれば表示
-      if (data.scrapeNote) {
+      // ゴミ箱からの復元、またはスクレイピング注意を表示
+      if (data.restoredFromTrash) {
+        setSuccessNote(typeof data.restoreMessage === 'string' && data.restoreMessage
+          ? data.restoreMessage
+          : 'ゴミ箱にあった同じURLの商品を復元しました');
+        setTimeout(() => setSuccessNote(''), 10000);
+      } else if (data.scrapeNote) {
         setSuccessNote(`商品を追加しました。${data.scrapeNote}`);
         // 10秒後に自動で消す
         setTimeout(() => setSuccessNote(''), 10000);

@@ -9,7 +9,12 @@ import {
 } from '@/lib/extension-auth';
 import { markItemAddedByAgent, recordAgentAudit } from '@/lib/agent-token';
 import { requireExtensionImportItems } from '@/lib/extension-item-input';
-import { cleanedStoredItemUrlTaken, normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
+import {
+  findCleanedStoredUrlRegistration,
+  normalizeItemName,
+  restoreTrashedItem,
+  sanitizeStoredItemUrl,
+} from '@/lib/item-input';
 
 // 一括 import はクライアントの価格・画像を保存しない（#276 / #267）。
 // 件数が多いとサーバ取得はタイムアウトしやすいので、価格・画像は空で登録する。
@@ -61,9 +66,16 @@ export async function POST(request: NextRequest) {
         // 価格・画像はクライアント値を渡さない（#267）。
         validateMemberInput({ url, name }, 'POST');
 
-        // 既存チェック（トラッキング付きの保存 URL もクリーン後で同じならスキップ）
-        if (cleanedStoredItemUrlTaken(db, userId, url)) {
+        // 既存チェック（トラッキング付きの保存 URL もクリーン後で同じならスキップ）。
+        // ゴミ箱のみなら復元して取り込み成功扱いにする（#365）。
+        const urlState = findCleanedStoredUrlRegistration(db, userId, url);
+        if (urlState.kind === 'active') {
           skipped++;
+          continue;
+        }
+        if (urlState.kind === 'trashed') {
+          restoreTrashedItem(db, userId, urlState.match.id);
+          imported++;
           continue;
         }
 

@@ -243,9 +243,14 @@ test('extension add and import keep ownership, source, and an already active url
   });
   assert.equal(imported.status, 200);
   const importedBody = imported.json as { imported: number; skipped: number };
-  assert.equal(importedBody.imported, 1);
-  assert.equal(importedBody.skipped, 1);
+  // ゴミ箱の同一 URL は復元して取り込み成功、新規 URL も追加（#365）
+  assert.equal(importedBody.imported, 2);
+  assert.equal(importedBody.skipped, 0);
   assert.equal((database.prepare('SELECT COUNT(*) AS n FROM items WHERE url = ?').get(fixtures.AMAZON_PRODUCT_URL) as { n: number }).n, 1);
+  assert.equal(
+    (database.prepare('SELECT deleted_at FROM items WHERE id = ?').get(amazonId) as { deleted_at: string | null }).deleted_at,
+    null,
+  );
 
   assert.equal((await call(extensionCategories, 'GET', '/api/extension-categories')).status, 401);
   const { NextRequest } = await import('next/server');

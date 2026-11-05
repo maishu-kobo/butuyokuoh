@@ -9,10 +9,14 @@ import { getDb } from '@/lib/db';
 import { GuestError } from '@/lib/guest';
 import { ITEM_URL_ERROR } from '@/lib/http-url';
 import {
-  cleanedStoredItemUrlTaken,
+  activeUrlConflictMessage,
   fetchServerItemMedia,
+  findCleanedStoredUrlRegistration,
   normalizeItemName,
+  restoreTrashedItem,
+  RESTORED_FROM_TRASH_MESSAGE,
   sanitizeStoredItemUrl,
+  URL_IN_TRASH_MESSAGE,
   type FetchServerItemMediaOptions,
   type ServerItemMedia,
 } from '@/lib/item-input';
@@ -497,6 +501,24 @@ export function getAgentItem(
   return rowToView(row, duplicateCleanedUrls(db, userId), db, userId);
 }
 
+function assertUrlAvailableOrThrow(
+  db: Database.Database,
+  userId: number,
+  url: string,
+  allowTrashRestore: boolean,
+  excludeItemId?: number,
+): number | null {
+  const state = findCleanedStoredUrlRegistration(db, userId, url, excludeItemId);
+  if (state.kind === 'free') return null;
+  if (state.kind === 'active') {
+    throw new GuestError(409, 'URL_TAKEN', activeUrlConflictMessage(state.location));
+  }
+  if (!allowTrashRestore) {
+    throw new GuestError(409, 'URL_IN_TRASH', URL_IN_TRASH_MESSAGE);
+  }
+  return state.match.id;
+}
+
 function insertAgentItem(
   auth: AgentAuthContext,
   input: {
@@ -511,9 +533,11 @@ function insertAgentItem(
     comparison_group_id: number | null;
   },
   db: Database.Database,
-): AgentItemView {
-  if (cleanedStoredItemUrlTaken(db, auth.userId, input.url)) {
-    throw new GuestError(409, 'URL_TAKEN', 'このURLは既に登録されています（ゴミ箱内を含む）');
+): { item: AgentItemView; restoredFromTrash: boolean } {
+  const trashId = assertUrlAvailableOrThrow(db, auth.userId, input.url, true);
+  if (trashId != null) {
+    restoreTrashedItem(db, auth.userId, trashId);
+    return { item: getAgentItem(auth.userId, trashId, db), restoredFromTrash: true };
   }
 
   assertOwnedRelations(db, auth.userId, {
@@ -554,7 +578,7 @@ function insertAgentItem(
     return itemId;
   }).immediate();
 
-  return getAgentItem(auth.userId, result, db);
+  return { item: getAgentItem(auth.userId, result, db), restoredFromTrash: false };
 }
 
 type PreparedStore = {
@@ -671,7 +695,14 @@ export async function addAgentItemByUrl(
   body: Record<string, unknown>,
   mediaOptions: FetchServerItemMediaOptions = {},
   db: Database.Database = getDb(),
-): Promise<{ item: AgentItemView; stores: AgentStoreView[]; media_fetched: boolean; media_fetch_errors: AgentMediaFetchError[] }> {
+): Promise<{
+  item: AgentItemView;
+  stores: AgentStoreView[];
+  media_fetched: boolean;
+  media_fetch_errors: AgentMediaFetchError[];
+  restored_from_trash?: boolean;
+  restore_message?: string;
+}> {
   rejectAgentClientMediaFields(body);
   const urls = parseAgentProductUrls(body);
   const attachId = body.item_id === undefined
@@ -688,9 +719,25 @@ export async function addAgentItemByUrl(
     throw new GuestError(400, 'INVALID_INPUT', '商品名を入力してください');
   }
 
-  // 従来互換: URL 1本・既存指定なしはグループを作らない
+  // 従来互換: URL 1本・既存指定なしはグループを作らない。
+  // ゴミ箱のみの一致は Web/拡張と同じく scrape より先に復元する（#365 / Bugbot）。
   if (urls.length === 1 && attachId === undefined) {
-    const prepared = await prepareStoreMedia(auth, urls[0], mediaOptions);
+    const singleUrl = urls[0];
+    const trashId = assertUrlAvailableOrThrow(db, auth.userId, singleUrl, true);
+    if (trashId != null) {
+      restoreTrashedItem(db, auth.userId, trashId);
+      const item = getAgentItem(auth.userId, trashId, db);
+      return {
+        item,
+        stores: item.stores,
+        media_fetched: false,
+        media_fetch_errors: [],
+        restored_from_trash: true,
+        restore_message: RESTORED_FROM_TRASH_MESSAGE,
+      };
+    }
+
+    const prepared = await prepareStoreMedia(auth, singleUrl, mediaOptions);
     const name = nameFromInput ?? prepared.scrapedName;
     if (!name) {
       throw new GuestError(
@@ -699,7 +746,7 @@ export async function addAgentItemByUrl(
         `${prepared.media.scraped?.note ? `${prepared.media.scraped.note} ` : ''}商品名を取得できませんでした。name を指定して再度追加してください`,
       );
     }
-    const item = insertAgentItem(auth, {
+    const inserted = insertAgentItem(auth, {
       name,
       url: prepared.url,
       media: prepared.media,
@@ -711,8 +758,8 @@ export async function addAgentItemByUrl(
       comparison_group_id: normalizeOptionalId(body.comparison_group_id, 'comparison_group_id') ?? null,
     }, db);
     return {
-      item,
-      stores: item.stores,
+      item: inserted.item,
+      stores: inserted.item.stores,
       media_fetched: prepared.media.price != null || prepared.media.imageUrl != null,
       media_fetch_errors: mediaFetchErrors(prepared.url, prepared.media),
     };
@@ -729,9 +776,8 @@ export async function addAgentItemByUrl(
 
   const preparedList: PreparedStore[] = [];
   for (const url of urls) {
-    if (cleanedStoredItemUrlTaken(db, auth.userId, url)) {
-      throw new GuestError(409, 'URL_TAKEN', 'このURLは既に登録されています（ゴミ箱内を含む）');
-    }
+    // 複数店・既存への店追加では自動復元しない（マージが曖昧なため）
+    assertUrlAvailableOrThrow(db, auth.userId, url, false);
     preparedList.push(await prepareStoreMedia(auth, url, mediaOptions));
   }
 
@@ -825,9 +871,7 @@ export async function addAgentItemByUrl(
     let sortOrder = nextSortOrder(db, auth.userId, targetGroupId);
     let firstNewId: number | null = null;
     for (const prepared of toInsert) {
-      if (cleanedStoredItemUrlTaken(db, auth.userId, prepared.url)) {
-        throw new GuestError(409, 'URL_TAKEN', 'このURLは既に登録されています（ゴミ箱内を含む）');
-      }
+      assertUrlAvailableOrThrow(db, auth.userId, prepared.url, false);
       const inserted = db.prepare(`
         INSERT INTO items (
           user_id, name, url, image_url, current_price, original_price,
@@ -884,7 +928,13 @@ export async function addAgentItem(
   body: Record<string, unknown>,
   mediaOptions: FetchServerItemMediaOptions = {},
   db: Database.Database = getDb(),
-): Promise<{ item: AgentItemView; media_fetched: boolean; media_fetch_errors: AgentMediaFetchError[] }> {
+): Promise<{
+  item: AgentItemView;
+  media_fetched: boolean;
+  media_fetch_errors: AgentMediaFetchError[];
+  restored_from_trash?: boolean;
+  restore_message?: string;
+}> {
   rejectAgentClientMediaFields(body);
   const name = typeof body.name === 'string' ? normalizeItemName(body.name) : null;
   if (!name) {
@@ -896,6 +946,22 @@ export async function addAgentItem(
     url = `manual://${randomUUID()}`;
   } else {
     url = requireHttpUrl(body.url);
+  }
+
+  // ゴミ箱のみの一致は scrape より先に復元する（#365 / Bugbot）
+  if (!url.startsWith('manual://')) {
+    const trashId = assertUrlAvailableOrThrow(db, auth.userId, url, true);
+    if (trashId != null) {
+      restoreTrashedItem(db, auth.userId, trashId);
+      const item = getAgentItem(auth.userId, trashId, db);
+      return {
+        item,
+        media_fetched: false,
+        media_fetch_errors: [],
+        restored_from_trash: true,
+        restore_message: RESTORED_FROM_TRASH_MESSAGE,
+      };
+    }
   }
 
   let media: ServerItemMedia;
@@ -920,7 +986,7 @@ export async function addAgentItem(
   }
 
   // クライアントの price / image_url は無視する
-  const item = insertAgentItem(auth, {
+  const inserted = insertAgentItem(auth, {
     name,
     url,
     media,
@@ -932,7 +998,11 @@ export async function addAgentItem(
     comparison_group_id: normalizeOptionalId(body.comparison_group_id, 'comparison_group_id') ?? null,
   }, db);
 
-  return { item, media_fetched: mediaFetched, media_fetch_errors: mediaFetchErrors(url, media) };
+  return {
+    item: inserted.item,
+    media_fetched: mediaFetched,
+    media_fetch_errors: mediaFetchErrors(url, media),
+  };
 }
 
 export function updateAgentItem(
@@ -996,8 +1066,9 @@ export function updateAgentItem(
       // 未変更。#275 と同じく整形しない
     } else {
       const cleaned = requireHttpUrl(body.url);
-      if (cleaned !== currentUrl && cleanedStoredItemUrlTaken(db, auth.userId, cleaned, itemId)) {
-        throw new GuestError(409, 'URL_TAKEN', 'このURLは既に登録されています（ゴミ箱内を含む）');
+      if (cleaned !== currentUrl) {
+        // 更新時は他品目のゴミ箱 URL も使えない（別品目を巻き込むため）
+        assertUrlAvailableOrThrow(db, auth.userId, cleaned, false, itemId);
       }
       updates.push('url = ?', 'source_item_code = NULL', 'price_fetched_at = NULL');
       values.push(cleaned);

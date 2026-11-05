@@ -59,8 +59,8 @@ test('manual add, edit, reorder, purchase, and previous price stay inside one ac
   assert.equal(duplicate.status, 409);
 
   const urlDuplicate = await call(items, 'POST', '/api/items', { url: 'manual://keyboard' });
-  assert.equal(urlDuplicate.status, 400);
-  assert.match(urlDuplicate.text, /既に登録/);
+  assert.equal(urlDuplicate.status, 409);
+  assert.match(urlDuplicate.text, /ほしいもの/);
 
   const noUrl = await call(items, 'POST', '/api/items', {});
   assert.equal(noUrl.status, 400);

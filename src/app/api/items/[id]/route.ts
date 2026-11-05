@@ -5,7 +5,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
-import { cleanedStoredItemUrlTaken, normalizeItemName, sanitizeStoredItemUrl } from '@/lib/item-input';
+import {
+  activeUrlConflictMessage,
+  findCleanedStoredUrlRegistration,
+  normalizeItemName,
+  sanitizeStoredItemUrl,
+  URL_IN_TRASH_MESSAGE,
+} from '@/lib/item-input';
 import { localCalendarDate } from '@/lib/local-date';
 
 async function handleGET(
@@ -102,8 +108,19 @@ async function handlePATCH(
   // 商品URLを変えたら、以前の検索APIの商品コードと取得時刻を引き継がない。
   if (body.url !== undefined && body.url !== item.url) {
     const itemId = Number(id);
-    if (cleanedStoredItemUrlTaken(db, user.id, body.url, Number.isFinite(itemId) ? itemId : undefined)) {
-      return NextResponse.json({ error: 'この商品はすでに登録されています' }, { status: 409 });
+    const excludeId = Number.isFinite(itemId) ? itemId : undefined;
+    const urlState = findCleanedStoredUrlRegistration(db, user.id, body.url, excludeId);
+    if (urlState.kind === 'active') {
+      return NextResponse.json(
+        { error: activeUrlConflictMessage(urlState.location), code: 'URL_TAKEN' },
+        { status: 409 },
+      );
+    }
+    if (urlState.kind === 'trashed') {
+      return NextResponse.json(
+        { error: URL_IN_TRASH_MESSAGE, code: 'URL_IN_TRASH' },
+        { status: 409 },
+      );
     }
     updates.push('source_item_code = NULL', 'price_fetched_at = NULL');
   }

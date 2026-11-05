@@ -41,19 +41,25 @@ test('stats money totals multiply price by quantity', async () => {
   assert.equal(JSON.stringify(body).includes('999'), false);
 });
 
-test('extension add treats a trashed url as a duplicate instead of failing', async () => {
+test('extension add restores a trashed url instead of rejecting', async () => {
   const member = await createMember('extension');
   const database = await db();
-  database.prepare(`
+  const inserted = database.prepare(`
     INSERT INTO items (user_id, name, url, deleted_at) VALUES (?, '古い本', 'https://www.amazon.co.jp/dp/B00TESTITEM', datetime('now'))
   `).run(member.id);
+  const itemId = Number(inserted.lastInsertRowid);
   const { generateToken } = await import('../src/lib/auth');
   const token = generateToken(member as never);
   const response = await call('../src/app/api/extension-add/route.ts', 'POST', '/api/extension-add', {
     token,
     item: { name: '古い本', url: 'https://www.amazon.co.jp/dp/B00TESTITEM', price: 100, imageUrl: null, priority: 3, categoryId: null },
   });
-  assert.equal(response.status, 409);
-  assert.match(response.text, /すでに登録/);
+  assert.equal(response.status, 200);
+  assert.equal((response.json as { restoredFromTrash: boolean }).restoredFromTrash, true);
+  assert.match(response.text, /ゴミ箱/);
+  assert.equal(
+    (database.prepare('SELECT deleted_at FROM items WHERE id = ?').get(itemId) as { deleted_at: string | null }).deleted_at,
+    null,
+  );
   assert.equal((database.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id = ?').get(member.id) as { n: number }).n, 1);
 });
