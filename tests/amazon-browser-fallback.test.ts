@@ -50,7 +50,7 @@ test('an Amazon price from fetch does not open a browser', async () => {
   assert.equal(launches, 0);
 });
 
-test('a blocked Amazon page still opens a browser, and a missing page does not', async () => {
+test('a blocked Amazon page still opens a browser, and soft-404 also tries the browser', async () => {
   let launches = 0;
   const browser = fakeBrowser(priced, () => {});
   const blocked = await scrapeUrl(productUrl, {
@@ -64,16 +64,45 @@ test('a blocked Amazon page still opens a browser, and a missing page does not',
   assert.equal(blocked.name, '届いた商品');
   assert.equal(launches, 1);
 
-  const missing = await scrapeUrl(productUrl, {
+  // soft-404（本文を見ない HttpError）でも Puppeteer を試し、画像だけの成功も採用する
+  const soft404ImageOnly = `<img id="landingImage" src="https://m.media-amazon.com/images/I/soft.jpg">
+    <span id="productTitle">画像だけの商品</span><div id="apex_desktop"></div>`;
+  const soft404 = await scrapeUrl(productUrl, {
     ...fetched('missing', 404),
+    launchBrowser: async () => {
+      launches += 1;
+      return fakeBrowser(soft404ImageOnly, () => {});
+    },
+  });
+  assert.equal(soft404.price, null);
+  assert.equal(soft404.name, '画像だけの商品');
+  assert.equal(soft404.imageUrl, 'https://m.media-amazon.com/images/I/soft.jpg');
+  assert.equal(launches, 2);
+
+  // ブラウザでも取れない soft-404 は BOT_CHALLENGE 付きで返す
+  const soft404Blocked = await scrapeUrl(productUrl, {
+    ...fetched('missing', 404),
+    launchBrowser: async () => {
+      launches += 1;
+      return fakeBrowser('<html>api-services-support@amazon.com</html>', () => {});
+    },
+  });
+  assert.equal(soft404Blocked.price, null);
+  assert.equal(soft404Blocked.imageUrl, null);
+  assert.equal(soft404Blocked.failureCode, 'BOT_CHALLENGE');
+  assert.match(soft404Blocked.note || '', /ボット対策/);
+  assert.equal(launches, 3);
+
+  // 410 など soft block 以外の恒久 4xx はブラウザを起動しない
+  const gone = await scrapeUrl(productUrl, {
+    ...fetched('gone', 410),
     launchBrowser: async () => {
       launches += 1;
       throw new Error('browser launched');
     },
   });
-  assert.equal(missing.price, null);
-  assert.equal(missing.name, '取得失敗');
-  assert.equal(launches, 1);
+  assert.equal(gone.name, '取得失敗');
+  assert.equal(launches, 3);
 
   const unavailable = await scrapeUrl(productUrl, {
     ...fetched('unavailable', 503),
@@ -83,7 +112,7 @@ test('a blocked Amazon page still opens a browser, and a missing page does not',
     },
   });
   assert.equal(unavailable.price, 3499);
-  assert.equal(launches, 2);
+  assert.equal(launches, 4);
 });
 
 test('Amazon browser fallback drops image, font, and media requests', async () => {

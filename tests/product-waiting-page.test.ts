@@ -7,7 +7,6 @@ import { call, createMember, db } from './regression-harness';
 import { parseProductHtml } from '../src/lib/product-html';
 import { deriveScrapeOutcome, scrapeUrl } from '../src/lib/scraper';
 import { installProductFetchPort } from '../src/lib/product-fetch-port';
-import { PRODUCT_FETCH_HELP } from '../src/lib/public-page';
 import type { AgentMediaFetchError } from '../src/lib/agent-items';
 import { BOT_URL, PITAKA_URL, regressionLookup } from '../src/lib/product-regression-fixtures';
 
@@ -67,7 +66,9 @@ test('Web rejects an Amazon bot page with guidance for an item that has not been
     ]) {
       const response = await call(module, 'POST', path, { url: BOT_URL });
       assert.equal(response.status, 422, response.text);
-      assert.deepEqual(response.json, { error: PRODUCT_FETCH_HELP, code: 'SCRAPE_FAILED' });
+      assert.equal((response.json as { code: string }).code, 'SCRAPE_FAILED');
+      // soft-404/ボット検知では汎用文面ではなく Amazon 向け note を返す（#368）
+      assert.match((response.json as { error: string }).error, /ボット対策|自動取得が制限/);
     }
     const database = await db();
     assert.equal((database.prepare('SELECT COUNT(*) AS count FROM items WHERE user_id = ?').get(owner.id) as { count: number }).count, 0);

@@ -13,6 +13,7 @@ import { rakutenPriceCaption } from '@/lib/capture/rakuten-price-note';
 import { Trash2, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Calendar, Flag, Upload, ImageIcon, Clock, AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { scrapeFailureCaption } from '@/lib/scrape-failure-caption';
 import { useAuth } from './AuthProvider';
 import PriceChart from './PriceChart';
 
@@ -408,7 +409,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   title={item.scrape_error || '価格の取得に失敗しました'}
                 >
                   <AlertTriangle size={12} />
-                  価格を更新できていません
+                  {scrapeFailureCaption(item.scrape_error, item.source)}
                 </span>
               )}
             </div>
