@@ -99,6 +99,8 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 
 始める前に、`git log`、開いている Issue と PR、`npm test` を確認する。同じ失敗を2回したら、再発を防ぐ1行をこのファイルに足す PR を開く。
 
+日付付きの決定・結果・残件は `docs/WORKLOG.md` に追記する（仕様の正本ではない）。
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know

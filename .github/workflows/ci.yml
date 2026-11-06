@@ -13,15 +13,11 @@
 # develop への push でも実行する。main への push は deploy-main.yml の reusable 呼び出しに寄せる。
 # マージ条件（必須ステータスチェック）はリポジトリ設定なので、このファイルではしない。
 # path フィルタは付けない。必須ジョブが skip になると、その SHA のチェックが pending のままマージを止める。
+# 実行先は GitHub-hosted の ubuntu-24.04 固定。外部ランナー判定や専用 CLI 呼び出しは行わない。
 name: CI
 
 on:
   workflow_call:
-    inputs:
-      github_hosted_only:
-        description: When true, skip Blacksmith and stay on GitHub-hosted runners
-        type: boolean
-        default: true
   pull_request:
     branches:
       - feature/photo-capture
@@ -41,55 +37,13 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  # Hold the main lock from selection until checks finish; PRs keep latest-run behavior.
+  # main では進行中の検査をキャンセルしない（配備の安全性）。PR は latest-run のまま。
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  select-runner:
-    name: Select CI runner
-    # The environment allows only main. PR jobs cannot access its organization token.
-    # reusable 呼び出しでは github.event_name が workflow_call になる。
-    if: >-
-      ${{ !inputs.github_hosted_only && github.ref == 'refs/heads/main' &&
-          (github.event_name == 'push' || github.event_name == 'workflow_call') &&
-          github.run_attempt == 1 && vars.BLACKSMITH_NO_CHARGE_CONFIRMED != '' &&
-          vars.BLACKSMITH_BUDGET != '' }}
-    permissions:
-      contents: read
-      actions: read
-    environment: blacksmith-budget
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 3
-    outputs:
-      runner: ${{ steps.budget.outcome == 'success' && steps.budget.outputs.runner || 'ubuntu-latest' }}
-    steps:
-      - name: Checkout trusted main
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Reserve free CI budget
-        id: budget
-        continue-on-error: true
-        timeout-minutes: 2
-        env:
-          BLACKSMITH_NO_CHARGE_CONFIRMED: ${{ vars.BLACKSMITH_NO_CHARGE_CONFIRMED }}
-          BLACKSMITH_BUDGET: ${{ vars.BLACKSMITH_BUDGET }}
-          BLACKSMITH_ORG_TOKEN: ${{ secrets.BLACKSMITH_ORG_TOKEN }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: bash scripts/blacksmith-cli.sh
-
   check:
     name: test, types, build
-    needs: select-runner
-    # A skipped/failed/timed-out selector must not skip the actual checks.
-    if: ${{ !cancelled() }}
-    # Re-runs can reuse an old selector output: re-check the attempt here as well.
-    runs-on: >-
-      ${{ !inputs.github_hosted_only && github.run_attempt == 1 &&
-          (github.event_name == 'push' || github.event_name == 'workflow_call') &&
-          github.ref == 'refs/heads/main' && needs.select-runner.result == 'success' &&
-          needs.select-runner.outputs.runner == 'blacksmith-4vcpu-ubuntu-2404' &&
-          'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-latest' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       NEXT_TELEMETRY_DISABLED: "1"
@@ -147,7 +101,7 @@ jobs:
 
   audit:
     name: npm audit
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout
