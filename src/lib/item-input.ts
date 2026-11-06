@@ -13,6 +13,26 @@ export const SERVER_ITEM_MEDIA_TIMEOUT_MS = 20_000;
 /** Amazon は soft-404 後に Puppeteer（goto 最大30s）へ進むことがあるため余裕を見る（#368）。 */
 export const SERVER_ITEM_MEDIA_TIMEOUT_AMAZON_MS = 45_000;
 
+/** scrapeUrl が展開する Amazon 短縮ホスト。getSourceFromUrl は 'other' のまま。 */
+const AMAZON_SHORT_MEDIA_HOSTS = new Set(['amzn.to', 'amzn.asia', 'a.co']);
+
+/**
+ * サーバ側 media 取得の既定タイムアウト。
+ * 正規 Amazon に加え短縮リンクも 45s（soft-404 + Puppeteer 用）。呼び出し側が
+ * SERVER_ITEM_MEDIA_TIMEOUT_MS を直書きすると短縮が 20s のままになるので使わない。
+ */
+export function serverItemMediaTimeoutMs(url: string): number {
+  if (getSourceFromUrl(url) === 'amazon') return SERVER_ITEM_MEDIA_TIMEOUT_AMAZON_MS;
+  try {
+    if (AMAZON_SHORT_MEDIA_HOSTS.has(new URL(url).hostname.toLowerCase())) {
+      return SERVER_ITEM_MEDIA_TIMEOUT_AMAZON_MS;
+    }
+  } catch {
+    /* 不正 URL は短い既定へ */
+  }
+  return SERVER_ITEM_MEDIA_TIMEOUT_MS;
+}
+
 /** Amazon / 楽天向け。アフィリエイトとトラッキングを広く落とす。 */
 const STORE_TRACKING_EXACT = new Set([
   'gclid',
@@ -402,11 +422,7 @@ export async function fetchServerItemMedia(
   url: string,
   options: FetchServerItemMediaOptions = {},
 ): Promise<ServerItemMedia> {
-  const defaultTimeout =
-    getSourceFromUrl(url) === 'amazon'
-      ? SERVER_ITEM_MEDIA_TIMEOUT_AMAZON_MS
-      : SERVER_ITEM_MEDIA_TIMEOUT_MS;
-  const timeoutMs = options.timeoutMs ?? defaultTimeout;
+  const timeoutMs = options.timeoutMs ?? serverItemMediaTimeoutMs(url);
   try {
     const scraped = await new Promise<ScrapedItem>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('server item media timeout')), timeoutMs);

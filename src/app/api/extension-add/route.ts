@@ -15,7 +15,6 @@ import {
   findCleanedStoredUrlRegistration,
   restoreTrashedItem,
   RESTORED_FROM_TRASH_MESSAGE,
-  SERVER_ITEM_MEDIA_TIMEOUT_MS,
 } from '@/lib/item-input';
 
 interface AddItemRequest {
@@ -117,10 +116,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(payload, { headers });
     }
 
+    // timeoutMs は渡さない。Amazon（短縮リンク含む）は serverItemMediaTimeoutMs の 45s 既定を使う（#368 / Bugbot）。
     const media = await fetchServerItemMedia(url, {
       userId,
       accountType: user.account_type,
-      timeoutMs: SERVER_ITEM_MEDIA_TIMEOUT_MS,
     });
 
     const result = db.prepare(`

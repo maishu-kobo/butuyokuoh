@@ -2,15 +2,24 @@ import './bugfix-harness';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fetchServerItemMedia, normalizeItemName, sanitizeStoredItemUrl } from '../src/lib/item-input';
+import {
+  fetchServerItemMedia,
+  normalizeItemName,
+  sanitizeStoredItemUrl,
+  SERVER_ITEM_MEDIA_TIMEOUT_AMAZON_MS,
+  SERVER_ITEM_MEDIA_TIMEOUT_MS,
+  serverItemMediaTimeoutMs,
+} from '../src/lib/item-input';
 import { displayableItemImageUrl, safeImgSrc } from '../src/lib/capture/image-hosts';
 import {
   AMAZON_IMAGE,
   AMAZON_NAME,
   AMAZON_PRICE,
   AMAZON_PRODUCT_URL,
+  AMAZON_SHORT_URL,
   regressionFetchPort,
 } from '../src/lib/product-regression-fixtures';
+import { getSourceFromUrl } from '../src/lib/url-validator';
 import { call, createMember, db } from './bugfix-harness';
 
 const extensionAdd = '../src/app/api/extension-add/route.ts';
@@ -354,6 +363,56 @@ test('fetchServerItemMedia keeps a scraped image when the name is unusable', asy
   assert.equal(kept.imageUrl, image);
   assert.equal(kept.scraped?.failureCode, undefined);
   assert.equal(kept.source, 'amazon');
+});
+
+test('Amazon media timeout covers short links; extension-add does not pin the 20s budget', () => {
+  // Bugbot Medium: getSourceFromUrl は短縮を amazon とみなさない
+  assert.equal(getSourceFromUrl(AMAZON_PRODUCT_URL), 'amazon');
+  assert.equal(serverItemMediaTimeoutMs(AMAZON_PRODUCT_URL), SERVER_ITEM_MEDIA_TIMEOUT_AMAZON_MS);
+
+  for (const url of [AMAZON_SHORT_URL, 'https://amzn.to/abc123', 'https://a.co/d/xyz']) {
+    assert.equal(getSourceFromUrl(url), 'other', url);
+    assert.equal(serverItemMediaTimeoutMs(url), SERVER_ITEM_MEDIA_TIMEOUT_AMAZON_MS, url);
+  }
+  assert.equal(
+    serverItemMediaTimeoutMs('https://item.rakuten.co.jp/shop/item'),
+    SERVER_ITEM_MEDIA_TIMEOUT_MS,
+  );
+
+  const extensionAddSrc = readFileSync('src/app/api/extension-add/route.ts', 'utf8');
+  assert.equal(
+    /timeoutMs:\s*SERVER_ITEM_MEDIA_TIMEOUT_MS/.test(extensionAddSrc),
+    false,
+    'extension-add must not hardcode the short default timeout over Amazon budget',
+  );
+  assert.match(extensionAddSrc, /fetchServerItemMedia\(\s*url\s*,/);
+});
+
+test('fetchServerItemMedia on short Amazon links keeps BOT_CHALLENGE without an explicit timeout', async () => {
+  // 明示 timeout 無し（既定の Amazon 45s）。短縮→展開→soft-404 で空 timeout 落ちにしない。
+  let productFetches = 0;
+  const result = await fetchServerItemMedia(AMAZON_SHORT_URL, {
+    deps: {
+      maxRetries: 0,
+      baseDelayMs: 0,
+      timeoutMs: 1000,
+      resolve: async () => [{ address: '1.1.1.1', family: 4 as const }],
+      request: async (url) => {
+        if (/amzn\.(asia|to)|a\.co/i.test(url.hostname)) {
+          return { status: 301, location: AMAZON_PRODUCT_URL, body: Buffer.alloc(0) };
+        }
+        productFetches += 1;
+        // 展開の最終応答は 2xx。その後の scrapeAmazon が soft-404。
+        if (productFetches === 1) {
+          return { status: 200, body: Buffer.from('<html>expand</html>'), contentType: 'text/html' };
+        }
+        return { status: 404, body: Buffer.from('soft'), contentType: 'text/html' };
+      },
+    },
+  });
+  assert.ok(productFetches >= 2);
+  assert.equal(result.price, null);
+  assert.equal(result.scraped?.failureCode, 'BOT_CHALLENGE');
 });
 
 test('extension-add stores server-fetched price and image, ignores client values, and sanitizes url/name', async () => {
