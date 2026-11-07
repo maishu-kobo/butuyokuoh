@@ -64,6 +64,8 @@ const html = (value: string): ProductFixture => ({
 });
 
 const fixtures = new Map<string, ProductFixture>([
+  ['https://shop.tsukumo.co.jp/goods/4981254057384/', { status: 503 }],
+  ['https://cdn.tsukumo.co.jp/image/item/4981254057384_1.jpg', { status: 200, contentType: 'image/jpeg' }],
   [PITAKA_URL, html(pitakaHtml)],
   [AMAZON_SHORT_URL, { status: 301, location: AMAZON_PRODUCT_URL, body: Buffer.alloc(0) }],
   [AMAZON_PRODUCT_URL, html(amazonHtml)],

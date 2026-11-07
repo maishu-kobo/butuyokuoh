@@ -1,3 +1,4 @@
+import { recoverTsukumoImage } from './tsukumo-image';
 import { getDb } from './db';
 import { consumeGuestRate, guestLimit, GuestError } from './guest';
 import {
@@ -29,7 +30,10 @@ export async function scrapeGuestUrl(url: string, userId: number) {
     if (isBotChallengedHtml(page.html)) {
       throw new GuestError(422, 'SCRAPE_FAILED', PRODUCT_FETCH_BLOCKED_HELP);
     }
-    const result = isAmazonProductPage(resolvedUrl) ? extractAmazonProduct(page.html) : parseProductHtml(page.html, page.url);
+    let result = isAmazonProductPage(resolvedUrl) ? extractAmazonProduct(page.html) : parseProductHtml(page.html, page.url);
+    if (!result.failureCode && !result.imageUrl) {
+      result = await recoverTsukumoImage(page.url, isUnusableScrape(result) ? undefined : result) ?? result;
+    }
     if (result.failureCode || !result.name || result.name === '不明な商品' || isUnusableScrape(result)) {
       throw new GuestError(422, 'SCRAPE_FAILED', scrapeFailedHelp(result));
     }
@@ -38,10 +42,16 @@ export async function scrapeGuestUrl(url: string, userId: number) {
     if (result.imageUrl) {
       try { result.imageUrl = publicPageUrl(result.imageUrl).href; } catch { result.imageUrl = null; }
     }
-    if (!result.price) result.note = '価格は取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
+    if (!result.price && !result.note) result.note = '価格は取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
     return result;
   } catch (error) {
-    if (error instanceof PublicPageError) throw new GuestError(error.status, 'SCRAPE_FAILED', error.message);
+    if (error instanceof PublicPageError) {
+      if (error.status >= 500) {
+        const recovered = await recoverTsukumoImage(url);
+        if (recovered) return recovered;
+      }
+      throw new GuestError(error.status, 'SCRAPE_FAILED', error.message);
+    }
     throw error;
   }
 }

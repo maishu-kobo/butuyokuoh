@@ -95,6 +95,26 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
     const denied = await call(preview, 'POST', '/api/items/preview', { url: 'http://127.0.0.1/secret' });
     assert.equal(denied.status, 400, denied.text);
 
+    const tsukumo = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+    const tsukumoImage = 'https://cdn.tsukumo.co.jp/image/item/4981254057384_1.jpg';
+    const imageOnly = await call(items, 'POST', '/api/items', { url: tsukumo });
+    assert.equal(imageOnly.status, 201, imageOnly.text);
+    const partial = bodyOf(imageOnly.json);
+    assert.equal(partial.image_url, tsukumoImage);
+    assert.equal(partial.url, tsukumo);
+    assert.equal(partial.current_price, null);
+    assert.match(String(partial.name), /4981254057384/);
+    database.prepare('UPDATE items SET name = ?, current_price = ?, image_url = NULL WHERE id = ?')
+      .run('CANVIO DESKTOP HD-TDA4U3-B', 24981, partial.id);
+    const photoRecovered = await call(refresh, 'POST', `/api/items/${partial.id}/refresh`, undefined, { id: String(partial.id) });
+    assert.equal(photoRecovered.status, 200, photoRecovered.text);
+    assert.equal(bodyOf(photoRecovered.json).image_url, tsukumoImage);
+    assert.equal(bodyOf(photoRecovered.json).name, 'CANVIO DESKTOP HD-TDA4U3-B');
+    assert.equal(bodyOf(photoRecovered.json).current_price, 24981);
+    // A missing CDN image never turns a failed page into a saved item.
+    const unavailable = await call(preview, 'POST', '/api/items/preview', { url: 'https://shop.tsukumo.co.jp/goods/0406621759011/' });
+    assert.ok(unavailable.status >= 400, unavailable.text);
+
     const pitaka = await call(preview, 'POST', '/api/items/preview', { url: fixtures.PITAKA_URL });
     assert.equal(pitaka.status, 200, pitaka.text);
     assert.deepEqual(bodyOf(pitaka.json), {
@@ -220,6 +240,10 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
     assert.equal(memberFail.status, 422, memberFail.text);
     assert.equal(bodyOf(memberFail.json).code, 'SCRAPE_FAILED');
     assert.equal(database.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(member.id, fixtures.EMPTY_URL), undefined);
+    const memberTsukumo = await call(preview, 'POST', '/api/items/preview', { url: tsukumo });
+    assert.equal(memberTsukumo.status, 200, memberTsukumo.text);
+    assert.equal(bodyOf(memberTsukumo.json).image_url, tsukumoImage);
+    assert.equal(bodyOf(memberTsukumo.json).price, null);
     const deadShort = 'https://amzn.asia/d/expand-fail';
     const deadPreview = await call(preview, 'POST', '/api/items/preview', { url: deadShort });
     assert.equal(deadPreview.status, 422, deadPreview.text);

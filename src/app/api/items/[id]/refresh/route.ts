@@ -12,6 +12,7 @@ interface DbItem {
   user_id: number;
   url: string;
   current_price: number | null;
+  image_url: string | null;
   comparison_group_id: number | null;
 }
 
@@ -78,7 +79,7 @@ async function handlePOST(
     const values: unknown[] = [];
 
     if (!unusable) {
-      if (scraped.name) {
+      if (scraped.name && !scraped.nameIsFallback) {
         updates.push('name = ?');
         values.push(scraped.name);
       }
@@ -98,7 +99,7 @@ async function handlePOST(
       }
 
       // 画像が取得できた場合
-      if (scraped.imageUrl) {
+      if (scraped.imageUrl && (!scraped.nameIsFallback || !current.image_url)) {
         updates.push('image_url = ?');
         values.push(scraped.imageUrl);
       }

@@ -7,6 +7,8 @@ import { canonicalRakutenAffiliateUrl, rakutenProductIdentity } from './capture/
 import { BlockedTargetError, fetchPublicMember, HttpError, resolvedPublicAddress, type MemberFetchDeps } from './member-fetch';
 import { productFetchDeps } from './product-fetch-port';
 
+import { recoverTsukumoImage } from './tsukumo-image';
+
 export { HttpError };
 export type FetchWithRetryOptions = MemberFetchDeps;
 
@@ -39,6 +41,7 @@ export type ScrapeDeps = MemberFetchDeps & {
 };
 
 export interface ScrapedItem {
+  nameIsFallback?: boolean;
   name: string;
   price: number | null;
   imageUrl: string | null;
@@ -661,11 +664,15 @@ async function scrapeGeneric(sanitizedUrl: string, deps?: MemberFetchDeps): Prom
     }, deps);
     const html = await readHtmlResponse(response);
 
-    return parseProductHtml(html, sanitizedUrl);
+    const item = parseProductHtml(html, sanitizedUrl);
+    if (item.failureCode || item.imageUrl) return item;
+    return await recoverTsukumoImage(sanitizedUrl, isUnusableScrape(item) ? undefined : item) ?? item;
   } catch (error) {
     if (error instanceof BlockedTargetError) {
       return { name: '無効なURL', price: null, imageUrl: null, source: 'other', sourceName: null };
     }
+    const recovered = await recoverTsukumoImage(sanitizedUrl);
+    if (recovered) return recovered;
     console.error('Generic scraping error:', error);
     return {
       name: '取得失敗',

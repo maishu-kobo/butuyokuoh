@@ -102,3 +102,21 @@ test('member fixture decodes the Rakuten name on add and refresh', async ({ page
     name: rakutenName, current_price: 107800, image_url: item.image_url,
   });
 });
+
+test('Tsukumo URL registration keeps the image on the card after a reload when only the official image is available', async ({ page }) => {
+  const url = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+  const imageUrl = 'https://cdn.tsukumo.co.jp/image/item/4981254057384_1.jpg';
+  // Keep browser decoding deterministic. The live lane loads the actual shop image.
+  await page.route(imageUrl, route => route.fulfill({ path: 'public/icons/icon-192.png', contentType: 'image/png' }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'ゲストで試す', exact: true }).click();
+  await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
+  await page.getByPlaceholder('https://www.amazon.co.jp/...').fill(url);
+  await page.getByRole('button', { name: '追加', exact: true }).click();
+  const image = page.getByRole('img', { name: 'ツクモの商品（4981254057384）', exact: true });
+  await expect(image).toBeVisible();
+  await page.reload();
+  await expect(image).toHaveAttribute('src', imageUrl);
+  await expect.poll(() => image.evaluate(el => (el as HTMLImageElement).naturalWidth)).toBe(192);
+  await expect(page.getByRole('link', { name: 'ツクモの商品（4981254057384）', exact: true })).toHaveAttribute('href', url);
+});
