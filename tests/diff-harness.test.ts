@@ -4,6 +4,12 @@ import { compareSnapshots, formatReport, loadApprovals, type Snapshot } from '..
 import { findAuthorize, google } from '../scripts/diff-harness/driver';
 
 const approvalsPath = new URL('../scripts/diff-harness/approved-changes.json', import.meta.url);
+const duplicateStep = 'items.create.duplicate';
+const legacyDuplicate = { status: 400, json: { error: 'このURLは既に登録されています' } };
+const wishlistDuplicate = {
+  status: 409,
+  json: { error: 'このURLはすでにほしいものリストに登録されています', code: 'URL_TAKEN' },
+};
 const HASH = `$2b$10$${ 'a'.repeat(53)}`;
 
 test('authorize is chosen by accepting the owner password and rejecting a wrong one', async () => {
@@ -148,6 +154,51 @@ const REQUIRED_APPROVALS = [
   'unverified-google-rejected',
 ];
 
+test('the active wishlist duplicate accepts only the documented response transition', () => {
+  const rules = loadApprovals(approvalsPath.pathname);
+  const baseline = baselineSnapshot();
+  const candidate = candidateSnapshot();
+  const report = compareSnapshots(baseline, candidate, rules);
+  assert.equal(report.ok, true, formatReport(report));
+  assert.equal(report.approvals.find((entry) => entry.id === 'active-wishlist-url-conflict')?.applied, 1);
+  const converged = compareSnapshots(candidate, candidate, rules);
+  assert.equal(converged.approvals.find((entry) => entry.id === 'active-wishlist-url-conflict')?.retained, true);
+
+  for (const response of [
+    legacyDuplicate,
+    { ...wishlistDuplicate, status: 201 },
+    { ...wishlistDuplicate, json: { ...wishlistDuplicate.json, code: 'OTHER' } },
+    { ...wishlistDuplicate, json: { ...wishlistDuplicate.json, error: '購入済みです' } },
+    { ...wishlistDuplicate, json: { ...wishlistDuplicate.json, extra: true } },
+    { ...wishlistDuplicate, json: { ...wishlistDuplicate.json, ['__proto__']: null } },
+    { ...wishlistDuplicate, json: unsignedJwt(wishlistDuplicate.json) },
+  ]) {
+    const invalid = candidateSnapshot();
+    invalid.steps[duplicateStep] = response;
+    assert.equal(compareSnapshots(baseline, invalid, rules).ok, false, JSON.stringify(response));
+  }
+  baseline.steps[duplicateStep] = { ...legacyDuplicate, status: 500 };
+  assert.equal(compareSnapshots(baseline, candidate, rules).ok, false);
+  baseline.steps[duplicateStep] = { ...legacyDuplicate, json: unsignedJwt(legacyDuplicate.json) };
+  assert.equal(compareSnapshots(baseline, candidate, rules).ok, false);
+  candidate.steps[duplicateStep] = { ...wishlistDuplicate, json: unsignedJwt(wishlistDuplicate.json) };
+  assert.equal(compareSnapshots(candidate, candidate, rules).ok, false);
+});
+
+test('approving the duplicate response preserves differences outside its status and JSON', () => {
+  const baseline = baselineSnapshot();
+  const candidate = candidateSnapshot();
+  baseline.steps['items.create.missing-url'] = legacyDuplicate;
+  candidate.steps['items.create.missing-url'] = wishlistDuplicate;
+  candidate.steps[duplicateStep].cacheControl = 'public';
+  candidate.db.rows.items = [{ url: 'https://example.test/unexpected' }];
+  const report = compareSnapshots(baseline, candidate, loadApprovals(approvalsPath.pathname));
+  const paths = report.unexpected.map((entry) => entry.path);
+  assert.ok(paths.includes('steps.items.create.duplicate.cacheControl'), formatReport(report));
+  assert.ok(paths.includes('steps.items.create.missing-url.status'), formatReport(report));
+  assert.ok(paths.includes('db.rows.items'), formatReport(report));
+});
+
 function unsignedJwt(payload: Record<string, unknown>): string {
   return `hdr.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.sig`;
 }
@@ -172,6 +223,7 @@ function baselineSnapshot(): Snapshot {
     side: 'baseline',
     sha: 'baseline',
     steps: {
+      [duplicateStep]: structuredClone(legacyDuplicate),
       'auth.login.success': {
         status: 200,
         json: { token },
@@ -215,6 +267,7 @@ function baselineSnapshot(): Snapshot {
 function candidateSnapshot(): Snapshot {
   const token = unsignedJwt({ userId: 1, email: 'owner@example.test', sessionGeneration: 0 });
   const snapshot = baselineSnapshot();
+  snapshot.steps[duplicateStep] = structuredClone(wishlistDuplicate);
   snapshot.side = 'candidate';
   snapshot.sha = 'candidate';
   snapshot.db.columns.users = [...snapshot.db.columns.users, 'session_generation'];
