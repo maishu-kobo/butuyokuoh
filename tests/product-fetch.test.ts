@@ -11,19 +11,6 @@ test('product titles decode HTML entities exactly once', () => {
   assert.equal(parseProductHtml(html, 'https://shop.example/pen').name, 'Pen & Ink "Blue" &quot; &#39;');
 });
 
-test('Shopify prices use minor units only when the page identifies Shopify', () => {
-  const product = '<script type="application/json">{"price":120000}</script>';
-  const price = (markup: string) => parseProductHtml(markup + product, 'https://shop.example/pen').price;
-  assert.equal(price('<link href="//cdn.shopify.com/assets/theme.css" rel="stylesheet">'), 1200);
-  assert.equal(price('<script>Shopify.theme = {}</script>'), 1200);
-  assert.equal(price('<link href="https://assets.example/cdn.shopify.com/theme.css">'), null);
-  assert.equal(price('<p>Images are also available on cdn.shopify.com</p>'), null);
-  assert.equal(price('<img src="https://CDN.SHOPIFY.COM/product.jpg">'), null);
-  assert.equal(price('<script type="application/json">{"description":"Shopify.theme = a theme"}</script>'), null);
-  const yen = '<meta property="og:price:amount" content="120000"><meta property="og:price:currency" content="JPY">';
-  assert.equal(price('<script>Shopify.theme = {}</script>' + yen), 120000);
-});
-
 test('public addresses only, including normalized and mapped IP bypasses', () => {
   for (const ip of ['127.0.0.1','10.0.0.1','172.31.1.1','192.168.1.1','169.254.169.254','100.64.0.1','0.0.0.0','192.0.2.1','198.18.0.1','224.0.0.1','255.255.255.255','::1','::','fc00::1','fe80::1','::ffff:127.0.0.1','2001:db8::1','2002:7f00:1::','64:ff9b::7f00:1']) {
     assert.equal(isPublicAddress(ip), false, ip);

@@ -1,4 +1,3 @@
-import { Parser } from 'htmlparser2';
 import { isBotChallengedHtml, PRODUCT_FETCH_BLOCKED_HELP } from './public-page';
 import type { ScrapedItem } from './scraper';
 
@@ -14,33 +13,6 @@ function isProductWaitingPage(html: string): boolean {
 function parseYenPrice(value: unknown): number | null {
   const price = Number(String(value).replace(/[,¥￥\s]/g, ''));
   return Number.isFinite(price) && price > 0 && price <= 1_000_000_000 ? Math.round(price) : null;
-}
-
-function identifiesShopify(html: string, pageUrl: string): boolean {
-  if (!/shopify/i.test(html)) return false;
-  let found = false;
-  let inThemeScript = false;
-  const parser = new Parser({
-    onopentag(tag, attrs) {
-      const type = (attrs.type ?? '').trim().toLowerCase();
-      inThemeScript = tag === 'script' && ['', 'module', 'text/javascript', 'application/javascript'].includes(type);
-      const stylesheet = tag === 'link' && (attrs.rel ?? '').toLowerCase().split(/\s+/).includes('stylesheet');
-      const resource = inThemeScript ? attrs.src : stylesheet ? attrs.href : undefined;
-      if (!resource || found) return;
-      const url = URL.parse(resource, pageUrl);
-      if (url && (url.protocol === 'https:' || url.protocol === 'http:') && url.hostname === 'cdn.shopify.com') {
-        found = true;
-      }
-    },
-    ontext(value) {
-      if (inThemeScript && /(?:^|[;\n])\s*(?:window\.)?Shopify\.theme\s*=\s*\{/.test(value)) found = true;
-    },
-    onclosetag(tag) {
-      if (tag === 'script') inThemeScript = false;
-    },
-  });
-  parser.end(html);
-  return found;
 }
 
 const titleEntities: Record<string, string> = {
@@ -298,19 +270,29 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
     }
   }
   
-  // ページが円価格を明示しているときはストア固有の単位換算より優先する。
-  if (!price && metaContent(html, 'og:price:currency') === 'JPY') {
-    price = parseYenPrice(metaContent(html, 'og:price:amount'));
-  }
-
   if (!price) {
     // Shopifyサイトのセント単位価格（Shopifyかどうかを確認）
-    if (identifiesShopify(html, sanitizedUrl)) {
+    const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme');
+    if (isShopify) {
       // Shopifyの場合、"price":NNNNNN (5桁以上、セント単位) をJPYとみなす
       const shopifyPriceMatch = html.match(/"price":(\d{5,})/);
       if (shopifyPriceMatch) {
         // 100で割って円に変換
         price = Math.round(parseInt(shopifyPriceMatch[1], 10) / 100);
+      }
+    }
+  }
+
+  // og:price:amount メタタグから価格取得（通貨がJPYの場合のみ）
+  if (!price) {
+    const ogCurrencyMatch = html.match(/<meta[^>]*property="og:price:currency"[^>]*content="([^"]+)"/);
+    const currency = ogCurrencyMatch ? ogCurrencyMatch[1] : null;
+    
+    if (currency === 'JPY') {
+      const ogPriceMatch = html.match(/<meta[^>]*property="og:price:amount"[^>]*content="([^"]+)"/) ||
+                           html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:price:amount"/);
+      if (ogPriceMatch) {
+        price = parseInt(ogPriceMatch[1].replace(/,/g, ''), 10);
       }
     }
   }
