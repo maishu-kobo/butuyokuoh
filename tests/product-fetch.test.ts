@@ -18,6 +18,10 @@ test('Shopify prices use minor units only when the page identifies Shopify', () 
   assert.equal(price('<script>Shopify.theme = {}</script>'), 1200);
   assert.equal(price('<link href="https://assets.example/cdn.shopify.com/theme.css">'), null);
   assert.equal(price('<p>Images are also available on cdn.shopify.com</p>'), null);
+  assert.equal(price('<img src="https://CDN.SHOPIFY.COM/product.jpg">'), null);
+  assert.equal(price('<script type="application/json">{"description":"Shopify.theme = a theme"}</script>'), null);
+  const yen = '<meta property="og:price:amount" content="120000"><meta property="og:price:currency" content="JPY">';
+  assert.equal(price('<script>Shopify.theme = {}</script>' + yen), 120000);
 });
 
 test('public addresses only, including normalized and mapped IP bypasses', () => {

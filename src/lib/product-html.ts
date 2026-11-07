@@ -19,11 +19,13 @@ function parseYenPrice(value: unknown): number | null {
 function identifiesShopify(html: string, pageUrl: string): boolean {
   if (!/shopify/i.test(html)) return false;
   let found = false;
-  let inScript = false;
+  let inThemeScript = false;
   const parser = new Parser({
     onopentag(tag, attrs) {
-      inScript = tag === 'script';
-      const resource = tag === 'link' ? attrs.href : attrs.src;
+      const type = (attrs.type ?? '').trim().toLowerCase();
+      inThemeScript = tag === 'script' && ['', 'module', 'text/javascript', 'application/javascript'].includes(type);
+      const stylesheet = tag === 'link' && (attrs.rel ?? '').toLowerCase().split(/\s+/).includes('stylesheet');
+      const resource = inThemeScript ? attrs.src : stylesheet ? attrs.href : undefined;
       if (!resource || found) return;
       const url = URL.parse(resource, pageUrl);
       if (url && (url.protocol === 'https:' || url.protocol === 'http:') && url.hostname === 'cdn.shopify.com') {
@@ -31,10 +33,10 @@ function identifiesShopify(html: string, pageUrl: string): boolean {
       }
     },
     ontext(value) {
-      if (inScript && value.includes('Shopify.theme')) found = true;
+      if (inThemeScript && /(?:^|[;\n])\s*(?:window\.)?Shopify\.theme\s*=\s*\{/.test(value)) found = true;
     },
     onclosetag(tag) {
-      if (tag === 'script') inScript = false;
+      if (tag === 'script') inThemeScript = false;
     },
   });
   parser.end(html);
@@ -296,6 +298,11 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
     }
   }
   
+  // ページが円価格を明示しているときはストア固有の単位換算より優先する。
+  if (!price && metaContent(html, 'og:price:currency') === 'JPY') {
+    price = parseYenPrice(metaContent(html, 'og:price:amount'));
+  }
+
   if (!price) {
     // Shopifyサイトのセント単位価格（Shopifyかどうかを確認）
     if (identifiesShopify(html, sanitizedUrl)) {
@@ -304,20 +311,6 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
       if (shopifyPriceMatch) {
         // 100で割って円に変換
         price = Math.round(parseInt(shopifyPriceMatch[1], 10) / 100);
-      }
-    }
-  }
-
-  // og:price:amount メタタグから価格取得（通貨がJPYの場合のみ）
-  if (!price) {
-    const ogCurrencyMatch = html.match(/<meta[^>]*property="og:price:currency"[^>]*content="([^"]+)"/);
-    const currency = ogCurrencyMatch ? ogCurrencyMatch[1] : null;
-    
-    if (currency === 'JPY') {
-      const ogPriceMatch = html.match(/<meta[^>]*property="og:price:amount"[^>]*content="([^"]+)"/) ||
-                           html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:price:amount"/);
-      if (ogPriceMatch) {
-        price = parseInt(ogPriceMatch[1].replace(/,/g, ''), 10);
       }
     }
   }
