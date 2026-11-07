@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import fc from 'fast-check';
 import { isPublicAddress, publicPageUrl, fetchPublicPage, requestPage, MAX_PAGE_BYTES, MAX_AMAZON_PAGE_BYTES, PRODUCT_FETCH_HELP } from '../src/lib/public-page';
 import { isAppleShopBuyPage, parseProductHtml } from '../src/lib/product-html';
 import { extractAmazonProduct, isAmazonProductPage } from '../src/lib/amazon-product';
@@ -12,6 +13,7 @@ test('Shopify theme initialization inside a conditional retains the variant pric
   assert.equal(parseProductHtml(html + product, 'https://shop.example/pen').price, 1200);
   const stylesheet = '<link href="//cdn.shopify.com/assets/theme.css" rel="stylesheet">';
   assert.equal(parseProductHtml(stylesheet + product, 'https://shop.example/pen').price, 1200);
+  assert.equal(parseProductHtml('<script src="https://cdn.shopify.com/theme.js"></script>' + product, 'https://shop.example/pen').price, 1200);
 });
 
 test('explicit JPY metadata takes priority regardless of HTML attribute syntax', () => {
@@ -34,9 +36,26 @@ test('references to Shopify in text, a product image or a JSON description do no
     '<link rel="stylesheet" href="https://assets.example/cdn.shopify.com/theme.css">',
     '<p>See cdn.shopify.com for images.</p>',
     '<script type="application/json">{"description":"Shopify.theme = {}"}</script>',
+    '<script type="application/json" src="https://cdn.shopify.com/data.json"></script>',
+    '<link rel="stylesheet" href="ftp://cdn.shopify.com/theme.css">',
   ]) {
     assert.equal(parseProductHtml(mention + product, 'https://shop.example/pen').price, null);
   }
+});
+
+test('localized OG prices in yen retain their whole-yen value', () => {
+  const price = (amount: string) => {
+    const meta = `<meta property="og:price:amount" content="${amount}"><meta property="og:price:currency" content="JPY">`;
+    const shop = '<script>Shopify.theme = {}</script><script type="application/json">{"price":123400}</script>';
+    return parseProductHtml(meta + shop, 'https://shop.example/pen').price;
+  };
+  assert.equal(price('1.234'), 1234);
+  assert.equal(price('1.234,00'), 1234);
+  assert.equal(price('2,45'), 1234);
+  fc.assert(fc.property(fc.integer({ min: 1, max: 999_999_999 }), fc.constantFrom('ja-JP', 'de-DE', 'fr-FR'), fc.boolean(), (yen, locale, decimal) => {
+    const format = new Intl.NumberFormat(locale, { minimumFractionDigits: decimal ? 2 : 0 });
+    assert.equal(price(format.format(yen)), yen);
+  }), { seed: 379, numRuns: 60 });
 });
 
 test('public addresses only, including normalized and mapped IP bypasses', () => {

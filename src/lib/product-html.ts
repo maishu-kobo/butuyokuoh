@@ -16,6 +16,17 @@ function parseYenPrice(value: unknown): number | null {
   return Number.isFinite(price) && price > 0 && price <= 1_000_000_000 ? Math.round(price) : null;
 }
 
+function parseOgYenAmount(content: string | undefined): number | null {
+  if (!content) return null;
+  const amount = content.replace(/^[¥￥]\s*/, '');
+  // 円は整数。表示用の .00 / ,00 を除いたあと、桁区切りは3桁ずつに限定する。
+  const whole = amount.replace(/[.,]0{1,2}$/, '');
+  if (/^\d+$/.test(whole)) return parseYenPrice(whole);
+  const grouped = whole.match(/^[1-9]\d{0,2}([., '\u2019\u00a0\u202f])\d{3}(?:\1\d{3})*$/);
+  if (!grouped || grouped[1] === amount[whole.length]) return null;
+  return parseYenPrice(whole.replace(/\D/g, ''));
+}
+
 // ページに明示された通貨・金額と、実際に読み込むテーマの手掛かりを一度に読む。
 function storePriceMetadata(html: string, pageUrl: string) {
   let currency: string | undefined;
@@ -310,7 +321,7 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
   
   if (!price && /og:price:|shopify/i.test(html)) {
     const { currency, amount, shopifyTheme } = storePriceMetadata(html, sanitizedUrl);
-    if (currency === 'JPY') price = parseYenPrice(amount);
+    if (currency === 'JPY') price = parseOgYenAmount(amount);
     if (!price && shopifyTheme && (!currency || currency === 'JPY')) {
       const minorUnits = html.match(/"price":(\d{5,})/);
       if (minorUnits) price = Math.round(Number(minorUnits[1]) / 100);
