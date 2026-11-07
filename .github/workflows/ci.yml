@@ -28,6 +28,7 @@ on:
       - feature/capture-existing-bugfixes
       - feature/auto-deploy
       - feature/agent-improvements
+      - feature/issue-followups-20261107
       - develop
       - main
   push:
@@ -147,7 +148,7 @@ jobs:
 
   audit:
     name: npm audit
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ${{ github.event_name == 'pull_request' && github.base_ref == 'feature/issue-followups-20261107' && 'ubuntu-24.04' || 'blacksmith-4vcpu-ubuntu-2404' }}
     timeout-minutes: 10
     steps:
       - name: Checkout

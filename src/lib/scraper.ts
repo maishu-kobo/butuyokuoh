@@ -165,9 +165,26 @@ function buildSafeShortUrl(url: string): string | null {
 }
 
 /**
+ * 短縮リンクの展開が 403/404 で終わったとき、通常の Amazon 取得へ進めてよい商品ページの URL。
+ * 転送先は member-fetch が接続前に公開アドレスへ解決済み。ここでは許可ドメインの商品ページで、
+ * 認証情報を含まないものだけを通す。
+ */
+function softBlockedAmazonProductUrl(value: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  if (parsed.username || parsed.password) return null;
+  return isAmazonProductUrl(parsed.href) ? parsed.href : null;
+}
+
+/**
  * 短縮リンクを展開してリダイレクト先のURLを取得
  * @param url 短縮リンクURL（事前にisAmazonShortUrlで検証済み）
- * @returns 展開後のURL（失敗した場合はnull）
+ * @returns 展開後のURL（失敗した場合はnull）。展開先の商品ページが 403/404 でも、
+ *          その URL を返して通常の Amazon 取得（ブラウザ再取得→BOT_CHALLENGE）に任せる
  */
 async function expandShortUrl(url: string, deps?: MemberFetchDeps): Promise<string | null> {
   // SSRF対策: ホワイトリストのドメインから安全なURLを構築
@@ -200,6 +217,15 @@ async function expandShortUrl(url: string, deps?: MemberFetchDeps): Promise<stri
     console.error('SSRF protection: Redirect destination is not Amazon:', finalUrl);
     return null;
   } catch (error) {
+    // 商品ページが soft-404/403 で終わった短縮リンクは、展開失敗ではなくボット制限として扱う（#367）。
+    // 403/404 以外（410 など）と、商品ページ以外・Amazon 以外・認証情報つきの転送先は従来どおり展開失敗。
+    if (error instanceof HttpError && isAmazonSoftBlockStatus(error.status)) {
+      const destination = softBlockedAmazonProductUrl(error.url);
+      if (destination) {
+        console.log('Short URL expanded to a soft-blocked Amazon product page:', destination);
+        return destination;
+      }
+    }
     console.error('Short URL expansion error:', error);
     return null;
   }
@@ -254,8 +280,9 @@ async function scrapeUrlFromPage(url: string, deps?: ScrapeDeps): Promise<Scrape
       if (isAmazonProductUrl(expandedUrl)) {
         // 展開成功 - 通常のAmazonスクレイピングを実行
         const result = await scrapeAmazon(expandedUrl, deps);
-        // 短縮リンクからの登録の場合、価格が取得できない可能性があることを伝える
-        if (!result.price) {
+        // 短縮リンクからの登録の場合、価格が取得できない可能性があることを伝える。
+        // ボット制限など具体的な note があればそれを残し、一般的な案内は note が無いときだけ補う（#367）。
+        if (!result.price && !result.note) {
           result.note = '短縮リンクからの登録のため価格を取得できませんでした。商品ページのフルURLで登録し直すと価格を取得できる場合があります。';
         }
         return result;
