@@ -598,6 +598,26 @@ function mediaFetchErrors(url: string, media: ServerItemMedia): AgentMediaFetchE
   }];
 }
 
+/**
+ * 取得中に同じ URL がゴミ箱へ入り、insertAgentItem が新規ではなく復元した場合の応答。
+ * 取得前の復元と同じ形にし、取得結果は保存しない（#364）。
+ */
+function restoredFromTrashResult(item: AgentItemView): {
+  item: AgentItemView;
+  media_fetched: boolean;
+  media_fetch_errors: AgentMediaFetchError[];
+  restored_from_trash: boolean;
+  restore_message: string;
+} {
+  return {
+    item,
+    media_fetched: false,
+    media_fetch_errors: [],
+    restored_from_trash: true,
+    restore_message: RESTORED_FROM_TRASH_MESSAGE,
+  };
+}
+
 function recordMediaFetchFailure(db: Database.Database, userId: number, itemId: number, url: string, media: ServerItemMedia) {
   const failure = mediaFetchErrors(url, media)[0];
   if (failure) {
@@ -757,6 +777,9 @@ export async function addAgentItemByUrl(
       category_id: normalizeOptionalId(body.category_id, 'category_id') ?? null,
       comparison_group_id: normalizeOptionalId(body.comparison_group_id, 'comparison_group_id') ?? null,
     }, db);
+    if (inserted.restoredFromTrash) {
+      return { ...restoredFromTrashResult(inserted.item), stores: inserted.item.stores };
+    }
     return {
       item: inserted.item,
       stores: inserted.item.stores,
@@ -998,6 +1021,9 @@ export async function addAgentItem(
     comparison_group_id: normalizeOptionalId(body.comparison_group_id, 'comparison_group_id') ?? null,
   }, db);
 
+  if (inserted.restoredFromTrash) {
+    return restoredFromTrashResult(inserted.item);
+  }
   return {
     item: inserted.item,
     media_fetched: mediaFetched,
