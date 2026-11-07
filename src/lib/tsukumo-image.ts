@@ -1,3 +1,4 @@
+import { request } from 'node:https';
 import type { ScrapedItem } from './scraper';
 import { productImageHeadFixture } from './product-fetch-port';
 
@@ -8,7 +9,29 @@ function tsukumoCatalogImage(value: string) {
   if (url.origin !== 'https://shop.tsukumo.co.jp' || url.username || url.password) return null;
   const productNumber = /^\/goods\/(\d{13})\/?$/.exec(url.pathname)?.[1];
   if (!productNumber) return null;
-  return { productNumber, imageUrl: `https://cdn.tsukumo.co.jp/image/item/${productNumber}_1.jpg` };
+  const path = `/image/item/${productNumber}_1.jpg`;
+  return { productNumber, path, imageUrl: `https://cdn.tsukumo.co.jp${path}` };
+}
+
+function checkCatalogImage(path: string): Promise<boolean> {
+  return new Promise(resolve => {
+    // 接続先は常に公式 CDN。入力から得た数字はパスだけに使う。転送は追わない。
+    const head = request({
+      hostname: 'cdn.tsukumo.co.jp',
+      method: 'HEAD',
+      path,
+      signal: AbortSignal.timeout(3000),
+    }, response => {
+      response.resume();
+      resolve(isJpeg(response.statusCode, response.headers['content-type'], response.headers['content-length']));
+    });
+    head.on('error', () => resolve(false));
+    head.end();
+  });
+}
+
+function isJpeg(status?: number, type?: string | null, length?: string | null): boolean {
+  return status === 200 && /^image\/jpeg(?:\s*;|$)/i.test(type ?? '') && length !== '0';
 }
 
 export async function recoverTsukumoImage(url: string, item?: ScrapedItem): Promise<ScrapedItem | null> {
@@ -16,14 +39,11 @@ export async function recoverTsukumoImage(url: string, item?: ScrapedItem): Prom
   const catalog = tsukumoCatalogImage(url);
   if (!catalog) return null;
 
-  // 既知の CDN の固定パスだけを照会する。別のページや代替画像への転送は使わない。
-  try {
-    const response = productImageHeadFixture(catalog.imageUrl) ?? await fetch(catalog.imageUrl, {
-      method: 'HEAD', redirect: 'error', credentials: 'omit', signal: AbortSignal.timeout(3000),
-    });
-    if (response.status !== 200 || !/^image\/jpeg(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '') ||
-        response.headers.get('content-length') === '0') return null;
-  } catch { return null; }
+  const fixture = productImageHeadFixture(catalog.imageUrl);
+  const available = fixture
+    ? isJpeg(fixture.status, fixture.headers.get('content-type'), fixture.headers.get('content-length'))
+    : await checkCatalogImage(catalog.path);
+  if (!available) return null;
 
   if (item) return { ...item, imageUrl: catalog.imageUrl };
   return {

@@ -280,3 +280,28 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
     installAuthTestHooks(null);
   }
 });
+
+test('Tsukumo photo recovery only accepts a JPEG from the matching official product path', async () => {
+  const { recoverTsukumoImage } = await import('../src/lib/tsukumo-image');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const url = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+  const image = 'https://cdn.tsukumo.co.jp/image/item/4981254057384_1.jpg';
+  const lookups: string[] = [];
+  let response = { status: 200, contentType: 'image/jpeg' };
+  installProductFetchPort({ lookup(candidate) { lookups.push(candidate.href); return response; } });
+  try {
+    const item = { name: 'CANVIO DESKTOP HD-TDA4U3-B', price: 24981, imageUrl: null, source: 'other', sourceName: 'ツクモ' };
+    for (const invalid of ['https://example.com/goods/4981254057384/', url + 'related/', url.replace('https:', 'http:')]) {
+      assert.equal(await recoverTsukumoImage(invalid), null);
+    }
+    assert.equal(await recoverTsukumoImage(url, { ...item, imageUrl: image }), null);
+    assert.deepEqual(lookups, []);
+    assert.deepEqual(await recoverTsukumoImage(url, item), { ...item, imageUrl: image });
+    for (response of [{ status: 200, contentType: 'text/html' }, { status: 302, contentType: 'image/jpeg' }, { status: 404, contentType: 'image/jpeg' }]) {
+      assert.equal(await recoverTsukumoImage(url), null);
+    }
+    assert.deepEqual([...new Set(lookups)], [image]);
+  } finally {
+    installProductFetchPort(null);
+  }
+});
