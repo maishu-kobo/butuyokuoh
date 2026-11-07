@@ -2,6 +2,19 @@
   "version": 1,
   "changes": [
     {
+      "id": "active-wishlist-url-conflict",
+      "required": true,
+      "reason": "ほしいものリストにある URL の再登録は、登録先が分かる 409 URL_TAKEN で拒否する（#364、PR #366）。",
+      "duplicateUrlConflict": {
+        "step": "items.create.duplicate",
+        "before": { "status": 400, "json": { "error": "このURLは既に登録されています" } },
+        "after": {
+          "status": 409,
+          "json": { "error": "このURLはすでにほしいものリストに登録されています", "code": "URL_TAKEN" }
+        }
+      }
+    },
+    {
       "id": "capture-tables",
       "reason": "写真取り込みの作業用テーブル。URL登録・一覧・価格再取得・ログインでは行を作らない。",
       "tablesAdded": ["captures", "capture_candidates", "capture_ai_usage"],
