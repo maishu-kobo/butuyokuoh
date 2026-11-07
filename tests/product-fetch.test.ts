@@ -6,6 +6,39 @@ import { isPublicAddress, publicPageUrl, fetchPublicPage, requestPage, MAX_PAGE_
 import { isAppleShopBuyPage, parseProductHtml } from '../src/lib/product-html';
 import { extractAmazonProduct, isAmazonProductPage } from '../src/lib/amazon-product';
 
+test('Shopify theme initialization inside a conditional retains the variant price', () => {
+  const html = '<script>if (window.Shopify) { window.Shopify.theme = {"id":1}; }</script>';
+  const product = '<script type="application/json">{"price":120000}</script>';
+  assert.equal(parseProductHtml(html + product, 'https://shop.example/pen').price, 1200);
+  const stylesheet = '<link href="//cdn.shopify.com/assets/theme.css" rel="stylesheet">';
+  assert.equal(parseProductHtml(stylesheet + product, 'https://shop.example/pen').price, 1200);
+});
+
+test('explicit JPY metadata takes priority regardless of HTML attribute syntax', () => {
+  const storefront = '<script>Shopify.theme = {}</script><script type="application/json">{"price":120000}</script>';
+  for (const meta of [
+    '<meta property="og:price:currency" content="JPY"><meta property="og:price:amount" content="120000">',
+    "<META content='120,000' property='og:price:amount'><meta content='JPY' property='og:price:currency'>",
+    '<meta content=JPY property=og:price:currency><meta content=120000 property=og:price:amount>',
+  ]) {
+    assert.equal(parseProductHtml(storefront + meta, 'https://shop.example/pen').price, 120000);
+  }
+  const usd = '<meta property="og:price:currency" content="USD"><meta property="og:price:amount" content="120000">';
+  assert.equal(parseProductHtml(storefront + usd, 'https://shop.example/pen').price, null);
+});
+
+test('references to Shopify in text, a product image or a JSON description do not change price units', () => {
+  const product = '<script type="application/json">{"price":120000}</script>';
+  for (const mention of [
+    '<img src="https://cdn.shopify.com/photo.jpg">',
+    '<link rel="stylesheet" href="https://assets.example/cdn.shopify.com/theme.css">',
+    '<p>See cdn.shopify.com for images.</p>',
+    '<script type="application/json">{"description":"Shopify.theme = {}"}</script>',
+  ]) {
+    assert.equal(parseProductHtml(mention + product, 'https://shop.example/pen').price, null);
+  }
+});
+
 test('public addresses only, including normalized and mapped IP bypasses', () => {
   for (const ip of ['127.0.0.1','10.0.0.1','172.31.1.1','192.168.1.1','169.254.169.254','100.64.0.1','0.0.0.0','192.0.2.1','198.18.0.1','224.0.0.1','255.255.255.255','::1','::','fc00::1','fe80::1','::ffff:127.0.0.1','2001:db8::1','2002:7f00:1::','64:ff9b::7f00:1']) {
     assert.equal(isPublicAddress(ip), false, ip);

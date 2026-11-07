@@ -1,3 +1,4 @@
+import { Parser } from 'htmlparser2';
 import { isBotChallengedHtml, PRODUCT_FETCH_BLOCKED_HELP } from './public-page';
 import type { ScrapedItem } from './scraper';
 
@@ -13,6 +14,43 @@ function isProductWaitingPage(html: string): boolean {
 function parseYenPrice(value: unknown): number | null {
   const price = Number(String(value).replace(/[,¥￥\s]/g, ''));
   return Number.isFinite(price) && price > 0 && price <= 1_000_000_000 ? Math.round(price) : null;
+}
+
+// ページに明示された通貨・金額と、実際に読み込むテーマの手掛かりを一度に読む。
+function storePriceMetadata(html: string, pageUrl: string) {
+  let currency: string | undefined;
+  let amount: string | undefined;
+  let shopifyTheme = false;
+  let inlineScript = false;
+  const parser = new Parser({
+    onopentag(tag, attrs) {
+      if (tag === 'meta') {
+        const key = (attrs.property || attrs.name || '').toLowerCase();
+        const content = attrs.content?.trim();
+        if (key === 'og:price:currency' && content) currency ??= content.toUpperCase();
+        if (key === 'og:price:amount' && content) amount ??= content;
+        return;
+      }
+      const type = (attrs.type ?? '').trim().toLowerCase();
+      const script = tag === 'script' && ['', 'module', 'text/javascript', 'application/javascript'].includes(type);
+      inlineScript = script && !attrs.src;
+      const stylesheet = tag === 'link' && (attrs.rel ?? '').toLowerCase().split(/\s+/).includes('stylesheet');
+      const resource = script ? attrs.src : stylesheet ? attrs.href : undefined;
+      if (!resource || shopifyTheme) return;
+      const url = URL.parse(resource, pageUrl);
+      if (url?.hostname === 'cdn.shopify.com' && (url.protocol === 'https:' || url.protocol === 'http:')) {
+        shopifyTheme = true;
+      }
+    },
+    ontext(text) {
+      if (inlineScript && /(?:^|[;{}\n])\s*(?:window\.)?Shopify\.theme\s*=(?!=|>)/.test(text)) shopifyTheme = true;
+    },
+    onclosetag(tag) {
+      if (tag === 'script') inlineScript = false;
+    },
+  });
+  parser.end(html);
+  return { currency, amount, shopifyTheme };
 }
 
 /**
@@ -270,30 +308,12 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
     }
   }
   
-  if (!price) {
-    // Shopifyサイトのセント単位価格（Shopifyかどうかを確認）
-    const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme');
-    if (isShopify) {
-      // Shopifyの場合、"price":NNNNNN (5桁以上、セント単位) をJPYとみなす
-      const shopifyPriceMatch = html.match(/"price":(\d{5,})/);
-      if (shopifyPriceMatch) {
-        // 100で割って円に変換
-        price = Math.round(parseInt(shopifyPriceMatch[1], 10) / 100);
-      }
-    }
-  }
-
-  // og:price:amount メタタグから価格取得（通貨がJPYの場合のみ）
-  if (!price) {
-    const ogCurrencyMatch = html.match(/<meta[^>]*property="og:price:currency"[^>]*content="([^"]+)"/);
-    const currency = ogCurrencyMatch ? ogCurrencyMatch[1] : null;
-    
-    if (currency === 'JPY') {
-      const ogPriceMatch = html.match(/<meta[^>]*property="og:price:amount"[^>]*content="([^"]+)"/) ||
-                           html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:price:amount"/);
-      if (ogPriceMatch) {
-        price = parseInt(ogPriceMatch[1].replace(/,/g, ''), 10);
-      }
+  if (!price && /og:price:|shopify/i.test(html)) {
+    const { currency, amount, shopifyTheme } = storePriceMetadata(html, sanitizedUrl);
+    if (currency === 'JPY') price = parseYenPrice(amount);
+    if (!price && shopifyTheme && (!currency || currency === 'JPY')) {
+      const minorUnits = html.match(/"price":(\d{5,})/);
+      if (minorUnits) price = Math.round(Number(minorUnits[1]) / 100);
     }
   }
 
