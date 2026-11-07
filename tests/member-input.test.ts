@@ -41,7 +41,7 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
     { manual: true, name: 'メモ', notes: 'n'.repeat(2001) },
     { manual: true, name: '日付', planned_purchase_date: '2026/10/01' },
     { manual: true, name: '長い画像', image_url: 'https://example.test/' + 'a'.repeat(2048) },
-    { manual: true, name: '長いURL', url: 'https://example.test/' + 'u'.repeat(2048) },
+    { manual: true, name: '長すぎるURL', url: 'https://example.test/' + 'u'.repeat(8192) },
   ];
   for (const body of rejected) {
     const response = await call(items, 'POST', '/api/items', body);
@@ -66,6 +66,8 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
   assert.equal(codeOf(huge.json), 'BODY_TOO_LARGE');
   assert.equal(itemCount(), 0);
 
+  const longUrl = `https://example.test/${'u'.repeat(8192 - 'https://example.test/'.length)}`;
+  assert.equal(longUrl.length, 8192);
   const created = await call(items, 'POST', '/api/items', {
     manual: true,
     name: 'x'.repeat(200),
@@ -75,7 +77,7 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
     notes: 'n'.repeat(2000),
     planned_purchase_date: '2026-10-23',
     image_url: '/uploads/1_1.png',
-    url: `https://example.test/${'u'.repeat(2027)}`,
+    url: longUrl,
     sort_order: 0,
   });
   assert.equal(created.status, 201, created.text);
@@ -85,7 +87,7 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
   assert.equal(saved.priority, 5);
   assert.equal(saved.image_url, '/uploads/1_1.png');
   assert.equal(saved.notes.length, 2000);
-  assert.equal(saved.url.length, 2048);
+  assert.equal(saved.url.length, 8192);
   assert.equal(itemCount(), 1);
 
   const httpsImage = await call(item, 'PATCH', `/api/items/${saved.id}`, {
@@ -106,7 +108,7 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
     current_price: number; url: string; image_url: string | null; quantity: number; priority: number; name: string;
   };
   assert.equal(stored.current_price, 10);
-  assert.equal(stored.url.length, 2048);
+  assert.equal(stored.url.length, 8192);
   assert.equal(stored.image_url, null);
   assert.equal(stored.quantity, 999);
   assert.equal(stored.priority, 5);
@@ -157,21 +159,40 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
 
   const { generateToken } = await import('../src/lib/auth');
   const token = generateToken(owner as never);
-  for (const extensionItem of [
-    { name: '悪い', url: 'https://example.test/neg', price: -1, imageUrl: null, priority: 3, categoryId: null },
-    { name: 'y'.repeat(201), url: 'https://example.test/long', price: 10, imageUrl: null, priority: 3, categoryId: null },
-    { name: '範囲', url: 'https://example.test/priority', price: 10, imageUrl: null, priority: 9, categoryId: null },
-    { name: '文字価格', url: 'https://example.test/string-price', price: '10', imageUrl: null, priority: 3, categoryId: null },
-  ]) {
-    const response = await call(extensionAdd, 'POST', '/api/extension-add', { token, item: extensionItem });
-    assert.equal(response.status, 400, JSON.stringify(extensionItem));
+  const port = await import('../src/lib/product-fetch-port');
+  // 店への実接続を避け、取得失敗を即返す。
+  port.installProductFetchPort({ lookup: () => undefined });
+  try {
+    // 価格・画像はサーバ取得のみなのでクライアント価格の不正は無視する。優先度の範囲外は従来どおり拒否。
+    const extensionBadPriority = await call(extensionAdd, 'POST', '/api/extension-add', {
+      token,
+      item: { name: '範囲', url: 'https://example.test/priority', price: 10, imageUrl: null, priority: 9, categoryId: null },
+    });
+    assert.equal(extensionBadPriority.status, 400);
+    assert.equal(itemCount(), 1);
+    const longName = await call(extensionAdd, 'POST', '/api/extension-add', {
+      token,
+      item: { name: 'y'.repeat(201), url: 'https://example.test/long', price: 10, imageUrl: null, priority: 3, categoryId: null },
+    });
+    assert.equal(longName.status, 200, longName.text);
+    assert.equal(
+      (database.prepare('SELECT name FROM items WHERE url = ?').get('https://example.test/long') as { name: string }).name.length,
+      200,
+    );
+    const extensionOk = await call(extensionAdd, 'POST', '/api/extension-add', {
+      token,
+      item: { name: '拡張', url: 'https://example.test/extension', price: 100, imageUrl: 'https://example.test/ext.png', priority: 3, categoryId: null },
+    });
+    assert.equal(extensionOk.status, 200, extensionOk.text);
+    const extensionRow = database.prepare('SELECT current_price, image_url FROM items WHERE url = ?').get('https://example.test/extension') as {
+      current_price: number | null;
+      image_url: string | null;
+    };
+    assert.equal(extensionRow.current_price, null);
+    assert.equal(extensionRow.image_url, null);
+  } finally {
+    port.installProductFetchPort(null);
   }
-  assert.equal(itemCount(), 1);
-  const extensionOk = await call(extensionAdd, 'POST', '/api/extension-add', {
-    token,
-    item: { name: '拡張', url: 'https://example.test/extension', price: 100, imageUrl: 'https://example.test/ext.png', priority: 3, categoryId: null },
-  });
-  assert.equal(extensionOk.status, 200, extensionOk.text);
 
   const imported = await call(extensionImport, 'POST', '/api/extension-import', {
     token,
@@ -183,13 +204,26 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
     ],
   });
   assert.equal(imported.status, 200, imported.text);
-  assert.equal((imported.json as { imported: number }).imported, 1);
+  // クライアント価格・画像は信用しないので不正価格も名前+URLで取り込む。長い品名は 200 文字に切り詰める。
+  assert.equal((imported.json as { imported: number }).imported, 3);
   const urls = (database.prepare('SELECT url FROM items WHERE user_id = ? ORDER BY url').all(owner.id) as { url: string }[]).map((row) => row.url);
   assert.deepEqual(urls, [
+    'https://example.test/bad-price',
     'https://example.test/extension',
     'https://example.test/keep',
+    'https://example.test/long',
+    'https://example.test/long-name',
     saved.url,
   ]);
+  assert.equal(
+    (database.prepare('SELECT name FROM items WHERE url = ?').get('https://example.test/long-name') as { name: string }).name.length,
+    200,
+  );
+  const keepRow = database.prepare(
+    'SELECT current_price, image_url FROM items WHERE url = ?',
+  ).get('https://example.test/keep') as { current_price: number | null; image_url: string | null };
+  assert.equal(keepRow.current_price, null);
+  assert.equal(keepRow.image_url, null);
 
   const longHook = `https://hooks.slack.com/services/${'a'.repeat(2100)}`;
   const rejectedHook = await call(notify, 'PUT', '/api/notification-settings', { slack_webhook: longHook, notify_on_price_drop: false });
@@ -205,7 +239,7 @@ test('member APIs reject invalid type, length, and range and keep valid writes',
   });
   assert.equal(savedHook.status, 200, savedHook.text);
 
-  const longList = `https://www.amazon.co.jp/hz/wishlist/ls/${'a'.repeat(2100)}`;
+  const longList = `https://www.amazon.co.jp/hz/wishlist/ls/${'a'.repeat(8200)}`;
   const rejectedList = await call(wishlist, 'POST', '/api/import-wishlist', { url: longList });
   assert.equal(rejectedList.status, 400);
   assert.equal(codeOf(rejectedList.json), 'INVALID_INPUT');

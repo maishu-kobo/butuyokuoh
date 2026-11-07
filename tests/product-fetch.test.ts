@@ -3,8 +3,13 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { isPublicAddress, publicPageUrl, fetchPublicPage, requestPage, MAX_PAGE_BYTES, MAX_AMAZON_PAGE_BYTES, PRODUCT_FETCH_HELP } from '../src/lib/public-page';
-import { parseProductHtml } from '../src/lib/product-html';
+import { isAppleShopBuyPage, parseProductHtml } from '../src/lib/product-html';
 import { extractAmazonProduct, isAmazonProductPage } from '../src/lib/amazon-product';
+
+test('product titles decode HTML entities exactly once', () => {
+  const html = '<title>Pen &amp; Ink &quot;Blue&quot; &amp;quot; &amp;#39;</title>';
+  assert.equal(parseProductHtml(html, 'https://shop.example/pen').name, 'Pen & Ink "Blue" &quot; &#39;');
+});
 
 test('public addresses only, including normalized and mapped IP bypasses', () => {
   for (const ip of ['127.0.0.1','10.0.0.1','172.31.1.1','192.168.1.1','169.254.169.254','100.64.0.1','0.0.0.0','192.0.2.1','198.18.0.1','224.0.0.1','255.255.255.255','::1','::','fc00::1','fe80::1','::ffff:127.0.0.1','2001:db8::1','2002:7f00:1::','64:ff9b::7f00:1']) {
@@ -90,6 +95,70 @@ test('PITAKA-style product metadata preserves decimal yen and HTTPS CDN images',
   const relative = parseProductHtml('<title>Product</title><meta property="og:image" content="//cdn.example.com/a.webp">','https://example.com/products/a');
   assert.equal(relative.imageUrl,'https://cdn.example.com/a.webp');
   assert.equal(parseProductHtml('<title>Product</title>','https://example.com').price,null);
+});
+
+test('empty og:image still finds product image on parent figure#mainimg (tsukumo-style)', () => {
+  // 再現: shop.tsukumo.co.jp は og:image が空で、商品画像は figure#mainimg 配下
+  const html = `<title>LG Electronics 34WR55QK-B モニター｜ツクモ公式通販サイト</title>
+    <meta property="og:image" content="">
+    <img src="https://cdn.tsukumo.co.jp/static/img/head/tsukumo_logo.png" alt="ツクモ"/>
+    <div id="mainimgblock" class="switchimgs goods-main-left">
+      <div class="img-main">
+        <figure id="mainimg">
+          <img src="https://cdn.tsukumo.co.jp/image/item/0406621759011_1.jpg" alt="34WR55QK-B"/>
+        </figure>
+      </div>
+    </div>
+    <p class="price"><strong id="calculated-price">60,419</strong></p>`;
+  const product = parseProductHtml(html, 'https://shop.tsukumo.co.jp/goods/0406621759011/');
+  assert.equal(product.imageUrl, 'https://cdn.tsukumo.co.jp/image/item/0406621759011_1.jpg');
+  assert.equal(product.price, 60419);
+  // タイトル末尾の「-B …｜サイト名」は既存のサイト名除去で落ちることがある
+  assert.match(product.name, /34WR55QK/);
+
+  // JSON-LD の image も og が空のときの候補になる
+  const fromLd = parseProductHtml(
+    `<title>商品</title><meta property="og:image" content="  ">
+     <script type="application/ld+json">{"@type":"Product","image":["https://cdn.example.com/p.webp"]}</script>`,
+    'https://shop.example/goods/1',
+  );
+  assert.equal(fromLd.imageUrl, 'https://cdn.example.com/p.webp');
+
+  // 画像が本当に無いページは空のまま（プレースホルダを捏造しない）
+  assert.equal(
+    parseProductHtml('<title>説明だけ</title><p>画像なし</p>', 'https://shop.example/goods/2').imageUrl,
+    null,
+  );
+});
+
+test('Apple shop buy pages and installment copy do not become a product price', () => {
+  assert.equal(isAppleShopBuyPage('https://www.apple.com/jp/shop/buy-mac/macbook-pro-proled-xdr'), true);
+  assert.equal(isAppleShopBuyPage('https://www.apple.com/jp/macbook-pro/'), false);
+  assert.equal(isAppleShopBuyPage('https://evil.example/shop/buy-mac/x'), false);
+
+  // 再現: 月額 9,366 / 最低購入 3,000 / AppleCare 修理 12,900 が先に出る構成ページ
+  const appleBuy = `<title>MacBook Airを購入 - Apple</title>
+    <meta property="og:description" content="新しいMacBook Airが分割払いで9,366円/月（税込）から。" />
+    <meta property="og:image" content="https://store.storeimages.cdn-apple.com/air.png" />
+    <p>最低購入金額は3,000円です。月々の支払い。</p>
+    <p>画面または外部筐体の損傷は12,900円（税込）、そのほかの損傷は37,100円のサービス料。</p>
+    <p>本体の参考表示 224,800円から（構成により異なります）。</p>`;
+  const air = parseProductHtml(appleBuy, 'https://www.apple.com/jp/shop/buy-mac/macbook-air');
+  assert.equal(air.price, null);
+  assert.match(air.name, /MacBook Air/);
+
+  const pro = parseProductHtml(
+    appleBuy.replace('MacBook Air', 'MacBook Pro'),
+    'https://www.apple.com/jp/shop/buy-mac/macbook-pro-proled-xdr',
+  );
+  assert.equal(pro.price, null);
+
+  // 通常の商品ページでは、分割の近傍だけ飛ばして本体価格を取る
+  const shop = parseProductHtml(
+    `<title>ノート - Shop</title><p>分割払い 9,366円/月</p><p>販売価格: 89,800円</p>`,
+    'https://shop.example/products/note',
+  );
+  assert.equal(shop.price, 89800);
 });
 
 const amazonProduct = `<img src="https://m.media-amazon.com/images/I/case.jpg" id="landingImage">

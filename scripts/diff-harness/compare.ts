@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { isDeepStrictEqual } from 'node:util';
 
 type Row = Record<string, unknown>;
 
@@ -35,6 +36,7 @@ export type Snapshot = {
 
 type ColumnRule = { table: string; column: string; value: unknown };
 type FieldRule = { field: string; equals: unknown };
+type JsonResponse = { status: number; json: Row };
 type RejectedUrl = { step: string; url: string; status: number; error: string };
 type PasswordRetired = { email: string; generation: number };
 type RejectedUnverifiedGoogle = { step: string; email: string; googleId: string };
@@ -49,6 +51,7 @@ type ChangeRule = {
   columnsAdded?: ColumnRule[];
   indexesAdded?: string[];
   responseFieldsAdded?: FieldRule[];
+  duplicateUrlConflict?: { step: string; before: JsonResponse; after: JsonResponse };
   rejectedUrls?: RejectedUrl[];
   passwordRetired?: PasswordRetired[];
   rejectedUnverifiedGoogle?: RejectedUnverifiedGoogle[];
@@ -60,6 +63,7 @@ export type Approval = {
   id: string;
   reason: string;
   applied: number;
+  retained?: boolean;
   detail: string;
 };
 
@@ -92,18 +96,30 @@ export function loadApprovals(file: string): ChangeRule[] {
 }
 
 export function compareSnapshots(baseline: Snapshot, candidate: Snapshot, rules: ChangeRule[]): Report {
-  const left = normalize(structuredClone(baseline));
-  const right = normalize(structuredClone(candidate));
+  const left = normalize(baseline, rules);
+  const right = normalize(candidate, rules);
+  // 承認適用はスナップショットを加工するため、不変条件は加工前に検査する。
+  const retained = new Set(rules.filter((rule) => rule.required
+    && requiredBehaviorPresent(left, rule, rules)
+    && requiredBehaviorPresent(right, rule, rules)).map((rule) => rule.id));
+  const validCandidate = new Set(rules.filter((rule) => rule.required
+    && requiredBehaviorPresent(right, rule, rules)).map((rule) => rule.id));
   const approvals = applyApprovals(left, right, rules);
   const unexpected: Difference[] = [];
   collect(left, right, '', unexpected);
   for (const approval of approvals) {
     const rule = rules.find((item) => item.id === approval.id);
-    if (!rule?.required || approval.applied > 0) continue;
+    if (!rule?.required) continue;
+    if (validCandidate.has(rule.id) && approval.applied > 0) continue;
+    if (retained.has(rule.id)) {
+      approval.retained = true;
+      approval.detail = 'baseline と candidate の両方で必須の安全な動作を確認した';
+      continue;
+    }
     unexpected.push({
       path: `approvals.${approval.id}.required`,
       kind: 'removed',
-      baseline: 'この差分は候補に残っている必要がある',
+      baseline: '必須の安全な動作が候補で確認できる必要がある',
     });
   }
   const noise = new Set(['side', 'sha']);
@@ -125,7 +141,7 @@ export function formatReport(report: Report): string {
     `承認 ${report.approvals.length} 件`,
   ];
   for (const approval of report.approvals) {
-    lines.push(`- [${approval.applied > 0 ? '適用' : '該当なし'}] ${approval.id} (${approval.applied})`);
+    lines.push(`- [${approval.applied > 0 ? '適用' : approval.retained ? '維持' : '該当なし'}] ${approval.id} (${approval.applied})`);
     lines.push(`  理由: ${approval.reason}`);
     lines.push(`  内容: ${approval.detail}`);
   }
@@ -141,7 +157,61 @@ export function formatReport(report: Report): string {
   return lines.join('\n');
 }
 
-function normalize(snapshot: Snapshot): Snapshot {
+// required は差分の有無ではなく、driver の固定シナリオの結果を保証する。
+// 未対応の必須ルールは通さない。追加時はその不変条件と回帰テストも追加する。
+function requiredBehaviorPresent(snapshot: Snapshot, rule: ChangeRule, rules: ChangeRule[]): boolean {
+  const users = snapshot.db.rows.users || [];
+  const rejected = (step: string) => snapshot.steps[step]?.allowed === false
+    && snapshot.steps[step]?.assignedUserId === null;
+  switch (rule.id) {
+    case 'active-wishlist-url-conflict': {
+      const conflict = rule.duplicateUrlConflict;
+      return !!conflict && matchesResponse(snapshot.steps[conflict.step], conflict.after);
+    }
+    case 'verified-link-retires-password':
+      return Boolean(rule.passwordRetired?.length) && rule.passwordRetired!.every((entry) => {
+        const user = onlyUser(users, entry.email);
+        return user?.password_hash === null && user.session_generation === entry.generation;
+      });
+    case 'unverified-existing-rejected':
+      return Boolean(rule.rejectedUnverifiedExisting?.length) && rule.rejectedUnverifiedExisting!.every((entry) => {
+        const user = onlyUser(users, entry.email);
+        return rejected(entry.step) && user?.google_id === null
+          && user.password_hash === PASSWORD_HASH && user.session_generation === 0;
+      });
+    case 'session-generation-column': {
+      const retired = rules.flatMap((entry) => entry.passwordRetired || []);
+      return Boolean(rule.columnsAdded?.length) && rule.columnsAdded!.every((entry) =>
+        entry.table === 'users' && entry.column === 'session_generation'
+        && snapshot.db.columns.users?.includes(entry.column) && users.length > 0
+        && users.every((user) => user[entry.column] ===
+          (retired.find((linked) => linked.email === user.email)?.generation ?? entry.value)));
+    }
+    case 'credentials-session-generation':
+      return Boolean(rule.credentialsGeneration?.length) && rule.credentialsGeneration!.every((entry) => {
+        const step = snapshot.steps[entry.step];
+        return step?.available === true && step.user?.sessionGeneration === entry.generation;
+      });
+    case 'session-generation-token': {
+      const step = snapshot.steps['auth.login.success'];
+      const token = isPlain(step?.json) ? step.json.token : null;
+      const cookies = Array.isArray(step?.cookies)
+        ? step.cookies.filter((cookie) => isPlain(cookie) && cookie.op === 'set' && cookie.name === 'butuyokuoh_token') : [];
+      return step?.status === 200 && isPlain(token) && cookies.length === 1
+        && isPlain(cookies[0].value) && Boolean(rule.responseFieldsAdded?.length)
+        && rule.responseFieldsAdded!.every((field) => same(token[field.field], field.equals)
+          && same(cookies[0].value[field.field], field.equals));
+    }
+    case 'unverified-google-rejected':
+      return Boolean(rule.rejectedUnverifiedGoogle?.length) && rule.rejectedUnverifiedGoogle!.every((entry) =>
+        rejected(entry.step) && !users.some((user) => user.email === entry.email || user.google_id === entry.googleId));
+    default:
+      return false;
+  }
+}
+
+function normalize(original: Snapshot, rules: ChangeRule[]): Snapshot {
+  const snapshot = structuredClone(original);
   rewriteJwt(snapshot);
   const users = new Map<number, string>();
   for (const row of snapshot.db.rows.users || []) {
@@ -157,6 +227,14 @@ function normalize(snapshot: Snapshot): Snapshot {
   snapshot.db.rows = mapValues(snapshot.db.rows, (rows) => rows.map((row) => rewriteIds(row, users, items) as Row));
   snapshot.steps = rewriteIds(snapshot.steps, users, items) as Snapshot['steps'];
   replaceScalars(snapshot);
+  // このエラー本文は型と値まで API の仕様。JWT 等の正規化を適用せず、受信した JSON を比べる。
+  for (const { duplicateUrlConflict } of rules) {
+    if (!duplicateUrlConflict) continue;
+    const { step } = duplicateUrlConflict;
+    if (original.steps[step]?.json !== undefined) {
+      snapshot.steps[step].json = structuredClone(original.steps[step].json);
+    }
+  }
   for (const [table, rows] of Object.entries(snapshot.db.rows)) {
     snapshot.db.rows[table] = rows.sort((a, b) => stable(sortKey(table, a)).localeCompare(stable(sortKey(table, b))));
   }
@@ -277,6 +355,16 @@ function applyApprovals(baseline: Snapshot, candidate: Snapshot, rules: ChangeRu
   return rules.map((rule) => {
     let applied = 0;
     const details: string[] = [];
+    const conflict = rule.duplicateUrlConflict;
+    if (conflict) {
+      const base = baseline.steps[conflict.step];
+      if (matchesResponse(base, conflict.before) && matchesResponse(candidate.steps[conflict.step], conflict.after)) {
+        base.status = conflict.after.status;
+        base.json = structuredClone(conflict.after.json);
+        applied += 1;
+        details.push(conflict.step);
+      }
+    }
     for (const table of rule.tablesAdded || []) {
       const rows = candidate.db.rows[table];
       if (rows && !(table in baseline.db.rows) && (!rule.requireEmpty || rows.length === 0)) {
@@ -324,6 +412,10 @@ function applyApprovals(baseline: Snapshot, candidate: Snapshot, rules: ChangeRu
 }
 
 const PASSWORD_HASH = '<password-hash>';
+
+function matchesResponse(step: Step | undefined, expected: JsonResponse): boolean {
+  return step?.status === expected.status && isDeepStrictEqual(step.json, expected.json);
+}
 
 function approvePasswordRetired(baseline: Snapshot, candidate: Snapshot, rules: PasswordRetired[], details: string[]): number {
   let applied = 0;

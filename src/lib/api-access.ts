@@ -3,9 +3,10 @@ import type Database from 'better-sqlite3';
 import { getCurrentUser } from './auth';
 import { GuestError, consumeGuestRate, guestLimit } from './guest';
 import { DEMO_IMAGE } from './demo-data';
+import { ITEM_IMAGE_URL_MAX, ITEM_URL_MAX } from './http-url';
 
-export function requireSameOrigin(request: NextRequest) {
-  const configured = process.env.AUTH_URL || process.env.NEXTAUTH_URL;
+export function requireSameOrigin(request: NextRequest, configuredOrigin?: string) {
+  const configured = configuredOrigin || process.env.AUTH_URL || process.env.NEXTAUTH_URL;
   if (!configured && process.env.NODE_ENV === 'production') {
     throw new Error('AUTH_URL is required for guest mode in production');
   }
@@ -66,14 +67,29 @@ export function validateMemberInput(body: Record<string, unknown>, method?: stri
 export function validateGuestInput(body: Record<string, unknown>, method?: string, rules?: { allowImages?: boolean; checkUrlScheme?: boolean }) {
   const invalid = () => { throw new GuestError(400, 'INVALID_INPUT', '入力内容・文字数・数値を確認してください'); };
   if (!body || typeof body !== 'object' || Array.isArray(body)) invalid();
-  const lengths: Record<string, number> = { name: 200, notes: 2000, url: 2048, image_url: 2048, color: 7, icon: 32, planned_purchase_date: 10, purchased_at: 32, target_currency: 3 };
+  const defaultStringMax = 2048;
+  const lengths: Record<string, number> = {
+    name: 200,
+    notes: 2000,
+    url: ITEM_URL_MAX,
+    image_url: ITEM_IMAGE_URL_MAX,
+    color: 7,
+    icon: 32,
+    planned_purchase_date: 10,
+    purchased_at: 32,
+    target_currency: 3,
+  };
   for (const [key, value] of Object.entries(body)) {
     if (value === null) {
       if (['name', 'priority', 'quantity', 'sort_order', 'is_purchased', 'manual', 'color'].includes(key)) invalid();
       continue;
     }
-    if (typeof value === 'object' || (typeof value === 'string' && value.length > 2048)) invalid();
-    if (key in lengths && (typeof value !== 'string' || value.length > lengths[key])) invalid();
+    if (typeof value === 'object') invalid();
+    if (typeof value === 'string') {
+      const max = key in lengths ? lengths[key] : defaultStringMax;
+      if (value.length > max) invalid();
+    }
+    if (key in lengths && typeof value !== 'string') invalid();
     if (['price', 'current_price', 'target_price'].includes(key) && (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1_000_000_000)) invalid();
     if (['category_id', 'comparison_group_id', 'quantity', 'priority', 'sort_order'].includes(key)) {
       if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < (key === 'sort_order' ? 0 : 1) || value > (key === 'priority' ? 5 : key === 'quantity' ? 999 : 2_147_483_647)) invalid();

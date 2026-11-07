@@ -155,7 +155,9 @@ test('a closed photo group keeps shop facts in the info area, on the same card a
   assert.equal(html.includes('牛乳A'), false);
   assert.equal(html.includes('牛乳B'), false);
   assert.equal(html.includes('牛乳C'), false);
-  assert.equal(html.includes('商品ページ'), false);
+  // 閉じた写真カードではショップ一覧の「商品ページ」リンクを出さない（店名ボタンは顔アイテム用）
+  assert.equal(html.includes('>商品ページ<'), false);
+  assert.equal(html.includes('photo-shop-list'), false);
 
   const url = urlMarkup();
   assert.equal(url.includes('photo-group-low'), false);

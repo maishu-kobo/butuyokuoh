@@ -365,13 +365,14 @@ test('yahoo search does not read the environment or the secrets loader', () => {
   assert.equal(/process\.env/.test(source), false);
   assert.equal(/YAHOO_SHOPPING_APP_ID/.test(source), false);
   assert.equal(/capture-secrets/.test(source), false);
-  assert.equal(source.includes('https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch'), true);
 });
 
 test('a keyword with reserved characters stays inside the query parameter', async () => {
   const { calls, search } = harness();
   await search.search({ name: 'a&b=c\nペン', brand: null, model: null, jan: null });
   const url = new URL(calls[0].url);
+  assert.equal(url.origin, 'https://shopping.yahooapis.jp');
+  assert.equal(url.pathname, '/ShoppingWebService/V3/itemSearch');
   assert.equal(url.hostname, 'shopping.yahooapis.jp');
   assert.equal(url.searchParams.get('query'), 'a&b=c\nペン');
   assert.deepEqual([...url.searchParams.keys()], ['appid', 'results', 'query']);
@@ -485,4 +486,10 @@ test('yahoo stops even when fetch ignores the abort signal', async () => {
     assert.equal(result.status, 504);
     assert.equal(result.error.error, TIMEOUT);
   }
+});
+
+test('Yahoo keeps the single-digit token that Rakuten joins to the previous word', async () => {
+  const { calls, search } = harness();
+  await search.search({ name: 'Google Pixel 7 Pro グレー スマートフォン', brand: null, model: null, jan: null });
+  assert.equal(new URL(calls[0].url).searchParams.get('query'), 'Google Pixel 7 Pro グレー スマートフォン');
 });

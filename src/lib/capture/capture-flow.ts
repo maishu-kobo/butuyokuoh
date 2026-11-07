@@ -9,7 +9,7 @@ export const FLOW_STATUS = {
   sending: '写真を送っています',
   identifying: '商品を推定しています',
   searching: '候補を探しています',
-  choose: '商品名を選んでください',
+  choose: '写真だけでは商品を特定できませんでした。商品名を確認し、ブランド名や品番を補って探してください',
 } as const;
 
 export const NOT_FOUND_MESSAGE = '見つかりませんでした';

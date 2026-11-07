@@ -1,0 +1,70 @@
+name: main validation and deployment
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+    # PR でも workflow 自体は起動する（deploy の条件は従来どおり PR を拒否）。
+    # 検査本体は単体ワークフロー側に寄せ、下の jobs は push / workflow_dispatch だけ実行する。
+    # CodeQL の設定本体は codeql.yml。main push ではこの security 呼び出し、main 向け PR では
+    # codeql.yml の pull_request 起動が同じ設定を使う。
+    branches: [feature/auto-deploy, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: main-deployment-${{ github.ref }}
+  # main では進行中の配備・検査をキャンセルしない。PR は latest-run のまま。
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  ci:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+  browser:
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/playwright.yml
+  secrets-scan:
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/gitleaks.yml
+  quarantine:
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/quarantine.yml
+  security:
+    if: github.event_name != 'pull_request'
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/codeql.yml
+  deploy:
+    needs: [ci, browser, secrets-scan, quarantine, security]
+    if: >-
+      github.repository == 'maishu-kobo/butuyokuoh' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      vars.AUTO_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment:
+      name: production
+      url: https://butsuyokuoh.exe.xyz/
+    concurrency:
+      group: butuyokuoh-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Deploy checked main SHA and verify completion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXE_DEPLOY_HOST: ${{ vars.EXE_DEPLOY_HOST }}
+          EXE_DEPLOY_USER: exedev
+          EXE_DEPLOY_SSH_KEY: ${{ secrets.EXE_DEPLOY_SSH_KEY }}
+          EXE_DEPLOY_KNOWN_HOSTS: ${{ secrets.EXE_DEPLOY_KNOWN_HOSTS }}
+        run: python3 scripts/deploy/client.py

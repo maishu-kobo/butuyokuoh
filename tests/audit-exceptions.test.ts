@@ -56,17 +56,21 @@ test('the tree does not vendor braces or depend on it directly', () => {
     engines: { node: string };
     dependencies: Record<string, string>;
     devDependencies: Record<string, string>;
-    overrides?: Record<string, string>;
+    overrides?: Record<string, unknown>;
   };
   assert.equal(packageJson.engines.node, '>=22.12.0');
   assert.equal(packageJson.dependencies.braces, undefined);
   assert.equal(packageJson.devDependencies.braces, undefined);
-  assert.equal(packageJson.overrides, undefined);
+  // #297 permits only this registry release for the parser's modern API.
+  // Keep rejecting braces/vendor substitutions and broad minimatch overrides.
+  assert.deepEqual(packageJson.overrides, {
+    '@typescript-eslint/typescript-estree': { minimatch: '11.0.3' },
+  });
 
   const deployment = readFileSync(join(root, 'docs', 'deployment.md'), 'utf8');
   assert.match(deployment, /22\.12 以上/);
-  assert.match(deployment, /develop にマージする前に/);
-  assert.match(deployment, /本番環境、本番データベース、秘密情報はいじらない/);
+  assert.match(deployment, /上げる作業はこのリポジトリの外で行う/);
+  assert.match(deployment, /Node\.js 20 では価格チェックのブラウザが起動しない/);
 });
 
 test('an exception needs a reason and a real expiry', () => {

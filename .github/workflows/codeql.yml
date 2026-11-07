@@ -8,11 +8,16 @@
 name: CodeQL
 
 on:
+  workflow_call:
   pull_request:
     branches:
       - feature/photo-capture
       - feature/capture-existing-bugfixes
+      - feature/auto-deploy
+      - feature/agent-improvements
+      - feature/issue-followups-20261107
       - develop
+      - main
 
 permissions:
   contents: read
@@ -24,7 +29,7 @@ concurrency:
 jobs:
   analyze:
     name: analyze
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       actions: read

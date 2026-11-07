@@ -1,0 +1,58 @@
+# Default setup の代わりに、週次と手動だけ既定クエリを回す。
+# PR / main push の解析は codeql.yml（拡張クエリ + high 判定）に一本化した。
+# Default setup は無効のまま。
+name: CodeQL main
+
+on:
+  schedule:
+    - cron: '17 4 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-main-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-main:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: javascript-typescript
+          # Omit queries to retain the default security suite.
+
+      - name: Analyze and ingest results
+        id: codeql-analyze
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          upload: always
+          wait-for-processing: true
+          upload-database: false
+
+      - name: Verify CodeQL ingestion completed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SARIF_ID: ${{ steps.codeql-analyze.outputs.sarif-id }}
+        run: |
+          if [ -z "$SARIF_ID" ]; then
+            echo "::error::CodeQL did not return a SARIF upload ID."
+            exit 1
+          fi
+          status="$(gh api "repos/$GITHUB_REPOSITORY/code-scanning/sarifs/$SARIF_ID" --jq '.processing_status')"
+          if [ "$status" != "complete" ]; then
+            echo "::error::CodeQL ingestion has not completed successfully."
+            exit 1
+          fi
+          echo "CodeQL ingestion confirmed complete."

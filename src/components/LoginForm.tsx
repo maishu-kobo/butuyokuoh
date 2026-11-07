@@ -1,12 +1,19 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useAuth } from './AuthProvider';
 import { signIn } from 'next-auth/react';
 import { Crown, Mail, Lock, User, Loader2 } from 'lucide-react';
 import LegalLinks from './LegalLinks';
 
-export default function LoginForm() {
+export default function LoginForm({
+  callbackUrl = '/',
+  hideGuest = false,
+}: {
+  callbackUrl?: string;
+  hideGuest?: boolean;
+} = {}) {
   const { login, register, startGuest, guestEnabled, ttlHours, googleLogin } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -14,6 +21,7 @@ export default function LoginForm() {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const showGuest = guestEnabled && !hideGuest;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,6 +34,9 @@ export default function LoginForm() {
       } else {
         await register(email, password, name);
       }
+      if (callbackUrl && callbackUrl !== '/' && typeof window !== 'undefined') {
+        window.location.assign(callbackUrl);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'エラーが発生しました');
     } finally {
@@ -37,8 +48,8 @@ export default function LoginForm() {
     setError('');
     setLoading(true);
     try {
-      await signIn('google', { callbackUrl: '/' });
-    } catch (err) {
+      await signIn('google', { callbackUrl });
+    } catch {
       setError('Googleログインに失敗しました');
       setLoading(false);
     }
@@ -60,13 +71,13 @@ export default function LoginForm() {
 
         {/* フォーム */}
         <div className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
-          {guestEnabled && <div className="mb-6">
+          {showGuest && <div className="mb-6">
             <button disabled={loading} onClick={async () => {
               setLoading(true); setError('');
               try { await startGuest(); } catch (err) { setError(err instanceof Error ? err.message : '体験を開始できませんでした'); }
               finally { setLoading(false); }
             }} className="w-full rounded-md bg-amber-600 text-white font-bold py-3 disabled:opacity-50">{loading ? '処理中...' : 'ゲストで試す'}</button>
-            <p className="text-xs text-gray-500 dark:text-gray-300 mt-2">登録不要で{ttlHours}時間体験。データは期限・体験終了後に削除され、ログイン後には引き継がれません。</p>
+            <p className="text-xs text-gray-500 dark:text-gray-300 mt-2">登録不要で{ttlHours}時間体験。データは期限・体験終了後に削除され、ログイン後には引き継がれません。始めると<Link href="/privacy" className="underline underline-offset-2" target="_blank">プライバシーポリシー</Link>と<Link href="/terms" className="underline underline-offset-2" target="_blank">利用規約</Link>に同意したものとみなします。</p>
           </div>}
           {error && <p role="alert" className="text-red-600 mb-4">{error}</p>}
           {googleLogin && <>
@@ -96,6 +107,10 @@ export default function LoginForm() {
             </svg>
             <span className="text-gray-700 font-medium">Googleでログイン</span>
           </button>
+
+          <p className="text-xs text-center text-gray-500 dark:text-gray-400 -mt-3 mb-6">
+            続けると<Link href="/privacy" className="underline underline-offset-2" target="_blank">プライバシーポリシー</Link>と<Link href="/terms" className="underline underline-offset-2" target="_blank">利用規約</Link>に同意したものとみなします。
+          </p>
 
           <div className="relative mb-6">
             <div className="absolute inset-0 flex items-center">
@@ -186,7 +201,21 @@ export default function LoginForm() {
               </div>
             </div>
 
-
+            {!isLogin && (
+              <label className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
+                <input type="checkbox" required className="mt-1 shrink-0" />
+                <span>
+                  <Link href="/privacy" className="underline underline-offset-2" target="_blank">
+                    プライバシーポリシー
+                  </Link>
+                  と
+                  <Link href="/terms" className="underline underline-offset-2" target="_blank">
+                    利用規約
+                  </Link>
+                  に同意します
+                </span>
+              </label>
+            )}
 
             <button
               type="submit"

@@ -199,6 +199,7 @@ function initDb(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_items_priority ON items(priority);
     CREATE INDEX IF NOT EXISTS idx_items_planned_date ON items(planned_purchase_date);
     CREATE INDEX IF NOT EXISTS idx_price_history_item ON price_history(item_id, recorded_at);
+    CREATE INDEX IF NOT EXISTS idx_price_history_item_recorded_id ON price_history(item_id, recorded_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS idx_comparison_groups_user ON comparison_groups(user_id);
     CREATE INDEX IF NOT EXISTS idx_categories_user ON categories(user_id);
     CREATE INDEX IF NOT EXISTS idx_items_user_status ON items(user_id, is_purchased, deleted_at);
@@ -242,6 +243,9 @@ function migrateDb(db: Database.Database) {
   normalizeUserEmails(db);
   // LOWER(email) 照合の全表走査を解消する関数インデックス
   db.prepare('CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email))').run();
+  // 一覧の前回価格は表示中の商品だけを recorded_at DESC, id DESC で読む。
+  // 既存ファイルにも同じ索引を足す。列や行は消さない。
+  db.exec('CREATE INDEX IF NOT EXISTS idx_price_history_item_recorded_id ON price_history(item_id, recorded_at DESC, id DESC)');
 
   // 写真から登録。足すだけで、既存の列や表は消さない。
   // budget_item_id は出費予定で選んだ候補の items.id。NULL は未選択。
@@ -262,6 +266,125 @@ function migrateDb(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_member_uploads_user ON member_uploads(user_id);
   `);
+
+  // エージェント用トークン（#268）。平文は保存せず、ハッシュと識別用プレフィックスだけ残す。
+  // 失効は revoked_at。品目の「エージェント追加」印はトークン失効後も辿れるよう列を残す。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      token_prefix TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      scopes TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      revoked_at TEXT,
+      last_used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_tokens_user ON agent_tokens(user_id);
+    -- token_hash は UNIQUE で自動索引が付くので、別インデックスは作らない。
+
+    CREATE TABLE IF NOT EXISTS agent_audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      action TEXT NOT NULL,
+      meta TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (token_id) REFERENCES agent_tokens(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_audit_token ON agent_audit_log(token_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_agent_audit_user ON agent_audit_log(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_agent_audit_created ON agent_audit_log(created_at);
+
+    CREATE TABLE IF NOT EXISTS agent_rate_limits (
+      bucket TEXT PRIMARY KEY,
+      count INTEGER NOT NULL,
+      resets_at INTEGER NOT NULL
+    );
+  `);
+  addColumnIfNotExists(db, 'items', 'added_by_agent_token_id', 'INTEGER');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_items_added_by_agent ON items(user_id, added_by_agent_token_id)');
+
+  // エージェント向け OAuth 2.1（#272）。アクセス・トークン本体は agent_tokens（byoagt_）を再利用する。
+  addColumnIfNotExists(db, 'agent_tokens', 'oauth_client_id', 'TEXT');
+  addColumnIfNotExists(db, 'agent_tokens', 'oauth_resource', 'TEXT');
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_oauth_clients (
+      client_id TEXT PRIMARY KEY,
+      client_secret_hash TEXT,
+      client_name TEXT NOT NULL,
+      redirect_uris TEXT NOT NULL,
+      grant_types TEXT NOT NULL,
+      response_types TEXT NOT NULL,
+      token_endpoint_auth_method TEXT NOT NULL,
+      registration_type TEXT NOT NULL,
+      metadata_url TEXT,
+      metadata_json TEXT,
+      metadata_fetched_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      revoked_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_oauth_pending (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      redirect_uri TEXT NOT NULL,
+      scopes TEXT NOT NULL,
+      code_challenge TEXT NOT NULL,
+      code_challenge_method TEXT NOT NULL,
+      resource TEXT NOT NULL,
+      state TEXT,
+      state_hash TEXT,
+      csrf_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      consumed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_oauth_pending_state
+      ON agent_oauth_pending(client_id, state_hash);
+
+    CREATE TABLE IF NOT EXISTS agent_oauth_auth_codes (
+      code_hash TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      redirect_uri TEXT NOT NULL,
+      scopes TEXT NOT NULL,
+      code_challenge TEXT NOT NULL,
+      code_challenge_method TEXT NOT NULL,
+      resource TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      consumed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_oauth_codes_client
+      ON agent_oauth_auth_codes(client_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS agent_oauth_refresh_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT NOT NULL UNIQUE,
+      agent_token_id INTEGER NOT NULL,
+      client_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      resource TEXT NOT NULL,
+      scopes TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      revoked_at TEXT,
+      replaced_by_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (agent_token_id) REFERENCES agent_tokens(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_oauth_refresh_user
+      ON agent_oauth_refresh_tokens(user_id, revoked_at);
+    CREATE INDEX IF NOT EXISTS idx_agent_oauth_refresh_token
+      ON agent_oauth_refresh_tokens(agent_token_id);
+  `);
+
   recordSchemaVersion(db);
 }
 

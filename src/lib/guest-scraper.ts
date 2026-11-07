@@ -1,8 +1,17 @@
 import { getDb } from './db';
 import { consumeGuestRate, guestLimit, GuestError } from './guest';
-import { fetchPublicPage, publicPageUrl, PublicPageError, PRODUCT_FETCH_HELP } from './public-page';
+import {
+  fetchPublicPage,
+  isBotChallengedHtml,
+  publicPageUrl,
+  PublicPageError,
+  PRODUCT_FETCH_BLOCKED_HELP,
+  scrapeFailedHelp,
+} from './public-page';
+import { productFetchGuestDeps } from './product-fetch-port';
 import { parseProductHtml } from './product-html';
 import { extractAmazonProduct, isAmazonHost, isAmazonProductPage } from './amazon-product';
+import { isUnusableScrape } from './scraper';
 
 export async function scrapeGuestUrl(url: string, userId: number) {
   const db = getDb();
@@ -12,14 +21,17 @@ export async function scrapeGuestUrl(url: string, userId: number) {
     consumeGuestRate('scrape:global', guestLimit('GLOBAL_SCRAPES_PER_MINUTE', 30), db);
   }).immediate();
   try {
-    const page = await fetchPublicPage(url);
+    const page = await fetchPublicPage(url, productFetchGuestDeps() ?? {});
     const resolvedUrl = new URL(page.url);
     if (isAmazonHost(resolvedUrl.hostname) && !isAmazonProductPage(resolvedUrl)) {
       throw new GuestError(422, 'SCRAPE_FAILED', 'Amazonの商品ページを確認できませんでした。商品ページをブラウザで開き、そのURLを貼り直してください。');
     }
+    if (isBotChallengedHtml(page.html)) {
+      throw new GuestError(422, 'SCRAPE_FAILED', PRODUCT_FETCH_BLOCKED_HELP);
+    }
     const result = isAmazonProductPage(resolvedUrl) ? extractAmazonProduct(page.html) : parseProductHtml(page.html, page.url);
-    if (!result.name || result.name === '不明な商品') {
-      throw new GuestError(422, 'SCRAPE_FAILED', PRODUCT_FETCH_HELP);
+    if (result.failureCode || !result.name || result.name === '不明な商品' || isUnusableScrape(result)) {
+      throw new GuestError(422, 'SCRAPE_FAILED', scrapeFailedHelp(result));
     }
     result.name = result.name.slice(0, 200);
     if (result.price !== null && (!Number.isFinite(result.price) || result.price < 0 || result.price > 1_000_000_000)) result.price = null;

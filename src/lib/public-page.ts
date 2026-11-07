@@ -13,6 +13,35 @@ const invalidUrl = () => new PublicPageError(400, '公開されている商品�
 export const MAX_PAGE_BYTES = 2 * 1024 * 1024;
 export const MAX_AMAZON_PAGE_BYTES = 8 * 1024 * 1024;
 export const PRODUCT_FETCH_HELP = '商品情報を自動取得できませんでした。もう一度試すか、「手動で追加」で商品名を入力してください。入力したURLやメモはそのまま使えます。';
+export const PRODUCT_FETCH_BLOCKED_HELP =
+  'このサイトは自動での商品情報取得を制限しているようです。もう一度試すか、「手動で追加」で商品名を入力してください。入力したURLやメモはそのまま使えます。';
+
+/** ボット挑戦・アクセス拒否ページの典型的な断片。先頭だけ見れば足りる。 */
+export function isBotChallengedHtml(html: string): boolean {
+  if (!html) return false;
+  const sample = html.slice(0, 12_000);
+  return (
+    /_____tmd_____/i.test(sample) ||
+    /x5secdata/i.test(sample) ||
+    /sessionStorage\.x5referer/i.test(sample) ||
+    /cf-browser-verification|cf-challenge|just a moment\.\.\./i.test(sample) ||
+    /attention required!|access denied|pardon our interruption/i.test(sample) ||
+    /robot check|automated access|api-services-support@amazon\.com/i.test(sample)
+  );
+}
+
+/** 取得失敗時の画面向け文言。手動追加への導線は共通で残す。 */
+export function scrapeFailedHelp(
+  scraped?: { name?: string | null; note?: string | null; failureCode?: string | null } | null,
+): string {
+  const note = scraped?.note?.trim() || '';
+  // failureCode 付き（待機ページ / AliExpress 挑戦など）は note を優先する。
+  if (scraped?.failureCode === 'BOT_CHALLENGE') {
+    return note || PRODUCT_FETCH_BLOCKED_HELP;
+  }
+  if (note === PRODUCT_FETCH_BLOCKED_HELP || note === PRODUCT_FETCH_HELP) return note;
+  return PRODUCT_FETCH_HELP;
+}
 
 export function isPublicAddress(address: string): boolean {
   if (!ipaddr.isValid(address)) return false;
@@ -48,17 +77,27 @@ export const requestPage = (url: URL, address: { address: string; family: number
   new Promise<{ status: number; location?: string; html: string; truncated?: boolean }>((resolve, reject) => {
     const amazon = isAmazonProductPage(url);
     const maxBytes = amazon ? MAX_AMAZON_PAGE_BYTES : MAX_PAGE_BYTES;
-    const options: RequestOptions = {
-      agent: false, family: address.family, signal, maxHeaderSize: 16_384,
-      lookup: (_host, _options, callback) => callback(null, address.address, address.family),
+    const options: RequestOptions & { servername?: string } = {
+      agent: false,
+      protocol: url.protocol,
+      host: address.address,
+      family: address.family,
+      servername: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: `${url.pathname}${url.search}`,
+      method: 'GET',
+      signal,
+      maxHeaderSize: 16_384,
       headers: {
+        Host: url.host,
         'User-Agent': 'Mozilla/5.0 (compatible; Butuyokuoh/1.0)',
         'Accept': 'text/html,application/xhtml+xml', 'Accept-Encoding': 'identity',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
         'Cookie': amazon ? 'i18n-prefs=JPY; lc-acbjp=ja_JP' : 'localization=JP; cart_currency=JPY',
       },
     };
-    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, options, response => {
+    // codeql[js/request-forgery] — 接続先は publicAddress 済みの公開 IP のみ。Host/SNI に元ホストを使う。
+    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(options, response => {
       const status = response.statusCode || 502;
       response.on('error', reject);
       if ([301, 302, 303, 307, 308].includes(status)) {

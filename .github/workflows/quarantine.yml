@@ -3,29 +3,36 @@
 # 保護したテスト（セキュリティと回帰）はリストに書けない。必須レーンが拒否する。
 # path フィルタは付けない。
 # ローカルの npm test と npm run test:e2e はこのリストを見ない。
+# develop への push でも実行する。必須チェックへの組み込みはリポジトリ設定なので、ここではしない。
 name: quarantined tests
 
 on:
+  workflow_call:
   pull_request:
     branches:
       - feature/photo-capture
       - feature/capture-existing-bugfixes
+      - feature/auto-deploy
+      - feature/agent-improvements
+      - feature/issue-followups-20261107
       - develop
+      - main
   push:
     branches:
       - feature/photo-capture
+      - develop
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: quarantine-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   quarantine:
     name: quarantined tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Checkout

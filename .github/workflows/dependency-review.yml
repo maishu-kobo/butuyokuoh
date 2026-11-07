@@ -6,7 +6,11 @@ on:
     branches:
       - feature/photo-capture
       - feature/capture-existing-bugfixes
+      - feature/auto-deploy
+      - feature/agent-improvements
+      - feature/issue-followups-20261107
       - develop
+      - main
 
 permissions:
   contents: read
@@ -18,7 +22,7 @@ concurrency:
 jobs:
   review:
     name: dependency review
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout

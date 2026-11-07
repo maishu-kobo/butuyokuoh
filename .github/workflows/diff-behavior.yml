@@ -9,6 +9,7 @@ on:
     branches:
       - feature/photo-capture
       - develop
+      - main
     paths:
       - src/lib/db.ts
       - src/auth.ts
@@ -43,7 +44,7 @@ concurrency:
 jobs:
   diff:
     name: develop diff
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       NEXT_TELEMETRY_DISABLED: "1"

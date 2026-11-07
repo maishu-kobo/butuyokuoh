@@ -14,11 +14,14 @@ export class BlockedTargetError extends Error {
 
 export class HttpError extends Error {
   status: number;
+  /** 最後に接続した URL。転送のたびに公開アドレスへ解決してから接続した先で、未接続の location ではない。 */
+  url: string;
 
   constructor(status: number, url: string) {
     super(`HTTP error ${status}: ${url}`);
     this.name = 'HttpError';
     this.status = status;
+    this.url = url;
   }
 }
 
@@ -65,16 +68,26 @@ export function requestPinned(
   signal: AbortSignal,
 ): Promise<PinnedResponse> {
   return new Promise((resolve, reject) => {
-    const options: RequestOptions = {
+    // URL オブジェクトを http.request の第1引数に渡さない。
+    // 接続先は解決済みの公開アドレスのみ（SSRF）。Host/SNI に元ホストを残す。
+    const requestHeaders: Record<string, string> = { ...headers };
+    if (!Object.keys(requestHeaders).some((key) => key.toLowerCase() === 'host')) {
+      requestHeaders.Host = url.host;
+    }
+    const options: RequestOptions & { servername?: string } = {
       agent: false,
+      protocol: url.protocol,
+      host: address.address,
       family: address.family,
+      servername: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: `${url.pathname}${url.search}`,
+      method: 'GET',
       signal,
-      headers,
-      lookup: (_host, _options, callback) => {
-        callback(null, address.address, address.family);
-      },
+      headers: requestHeaders,
     };
-    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, options, (response) => {
+    // codeql[js/request-forgery] — 接続先は resolvedPublicAddress 済みの公開 IP のみ。Host/SNI に元ホストを使う。
+    const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(options, (response) => {
       const status = response.statusCode || 502;
       response.on('error', reject);
       if (status >= 300 && status < 400) {
@@ -167,7 +180,7 @@ export async function fetchPublicMember(
       if (!retryable || attempt === maxRetries) throw lastError;
       const multiplier = RETRY_DELAY_MULTIPLIERS[Math.min(attempt, RETRY_DELAY_MULTIPLIERS.length - 1)];
       const delayMs = baseDelayMs * multiplier;
-      console.log(`Fetch failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delayMs}ms: ${url}`);
+      console.log(`Fetch failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delayMs}ms`);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }

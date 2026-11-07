@@ -3,6 +3,7 @@
 import { apiFetch } from '@/lib/api-fetch';
 import { photoGroupSaveWrites } from '@/lib/capture/photo-group-actions';
 import { sourceBadgeClass } from '@/lib/capture/photo-card-view';
+import { displayableItemImageUrl, safeImgSrc } from '@/lib/capture/image-hosts';
 import { linkableHttpUrl } from '@/lib/http-url';
 
 import { useId, useState, useRef, type ReactNode } from 'react';
@@ -12,6 +13,7 @@ import { rakutenPriceCaption } from '@/lib/capture/rakuten-price-note';
 import { Trash2, RefreshCw, ExternalLink, TrendingDown, TrendingUp, Calendar, Flag, Upload, ImageIcon, Clock, AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { scrapeFailureCaption } from '@/lib/scrape-failure-caption';
 import { useAuth } from './AuthProvider';
 import PriceChart from './PriceChart';
 
@@ -44,6 +46,9 @@ interface ItemCardProps {
 
 const SEVERAL_SHOPS_PURCHASE = 'ショップが複数あります。ショップ一覧から購入したショップを選んで購入済みにしてください';
 
+// アクションバー（light: gray-50 / dark: slate-700）の上で、通常・hover・focus が 4.5:1 を超える一色ずつ。
+const auxiliaryActionClass = 'text-gray-600 hover:text-blue-700 focus:text-blue-700 dark:text-gray-300 dark:hover:text-blue-300 dark:focus:text-blue-300';
+
 export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, info, displayImageUrl, groupMemberIds, offerPriceRefresh = true, shopCount, shopTags }: ItemCardProps) {
   const { isGuest } = useAuth();
   const [showChart, setShowChart] = useState(false);
@@ -70,6 +75,8 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   const [saveError, setSaveError] = useState('');
   const [showImageEdit, setShowImageEdit] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // 編集プレビューはアップロード API の戻りだけ（入力欄の文字列は img に載せない）。
+  const [uploadPreviewSrc, setUploadPreviewSrc] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const purchaseLocked = shopCount != null && shopCount >= 2;
   const purchaseHintId = useId();
@@ -109,6 +116,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
       if (res.ok) {
         const { url } = await res.json();
         setEditData({ ...editData, image_url: url });
+        setUploadPreviewSrc(safeImgSrc(typeof url === 'string' ? url : null));
       }
     } finally {
       setUploading(false);
@@ -121,9 +129,11 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     setSaving(true);
     setSaveError('');
     try {
+      const nextUrl = editData.url || item.url;
       const payload = {
         name: editData.name || item.name,
-        url: editData.url || item.url,
+        // 未変更の URL は送らない（サーバ側でも無視するが、誤整形を避ける）
+        ...(nextUrl !== item.url ? { url: nextUrl } : {}),
         priority: editData.priority,
         planned_purchase_date: editData.planned_purchase_date || null,
         notes: editData.notes || null,
@@ -221,27 +231,51 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
     yahoo: 'Yahoo!ショッピング',
     other: 'その他',
   };
-  const shownImage = displayImageUrl !== undefined ? displayImageUrl : item.image_url;
+  const productUrl = linkableHttpUrl(item.url);
+  const storeLabel = item.source_name || sourceNames[item.source] || 'その他';
+  const openStoreLabel =
+    !productUrl
+      ? null
+      : item.source === 'other' && !item.source_name
+        ? '商品ページを開く'
+        : `${storeLabel}で開く`;
+  const productTitle = heading || item.name;
+  const shownImage = displayableItemImageUrl(
+    displayImageUrl !== undefined ? displayImageUrl : item.image_url,
+  );
+  const imageBody = shownImage ? (
+    <img
+      src={shownImage}
+      alt={productTitle}
+      loading="lazy"
+      decoding="async"
+      className="w-full h-full object-contain"
+    />
+  ) : (
+    <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
+      No Image
+    </div>
+  );
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
       <div className="flex">
-        {/* 画像 */}
-        <div className="w-32 h-32 flex-shrink-0 bg-gray-100 dark:bg-slate-700">
-          {shownImage ? (
-            <img
-              src={shownImage}
-              alt={heading || item.name}
-              loading="lazy"
-              decoding="async"
-              className="w-full h-full object-contain"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
-              No Image
-            </div>
-          )}
-        </div>
+        {/* 画像（商品URLがあるときだけリンク。ドラッグハンドル・操作バーとは別領域） */}
+        {productUrl ? (
+          <a
+            href={productUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={openStoreLabel || `${productTitle}を開く`}
+            className="w-32 h-32 flex-shrink-0 bg-gray-100 dark:bg-slate-700 block focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset"
+          >
+            {imageBody}
+          </a>
+        ) : (
+          <div className="w-32 h-32 flex-shrink-0 bg-gray-100 dark:bg-slate-700">
+            {imageBody}
+          </div>
+        )}
 
         {/* 情報 */}
         <div className="flex-1 p-4">
@@ -254,7 +288,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   </span>
                 )) : (
                   <span className={`text-xs px-2 py-0.5 rounded ${sourceColors[item.source] || sourceColors.other}`}>
-                    {item.source_name || sourceNames[item.source] || 'その他'}
+                    {storeLabel}
                   </span>
                 )}
                 {item.category_name && item.category_color && (
@@ -283,16 +317,46 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                 </div>
               </div>
               {Boolean(item.is_demo_sample) && <span className="text-xs text-amber-700 dark:text-amber-300">デモ商品・参考価格</span>}
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">{heading || item.name}</h3>
+              {item.added_by_agent_token_id != null && (
+                <span className="text-xs text-sky-700 dark:text-sky-300">エージェントが追加</span>
+              )}
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 line-clamp-2">
+                {productUrl ? (
+                  <a
+                    href={productUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline focus:underline focus:outline-none"
+                  >
+                    {productTitle}
+                  </a>
+                ) : (
+                  productTitle
+                )}
+              </h3>
+              {openStoreLabel && productUrl && (
+                <a
+                  href={productUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 min-h-[44px] px-3 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-slate-500 rounded hover:bg-gray-100 dark:hover:bg-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  <ExternalLink size={16} aria-hidden="true" />
+                  {openStoreLabel}
+                </a>
+              )}
             </div>
-              {linkableHttpUrl(item.url) && <a
-              href={linkableHttpUrl(item.url)!}
+              {productUrl && (
+              <a
+              href={productUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-400 dark:text-gray-500 hover:text-blue-500 ml-2"
+              aria-label={openStoreLabel || `${productTitle}を開く`}
+              className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] text-gray-400 dark:text-gray-500 hover:text-blue-500 ml-2"
             >
-              <ExternalLink size={18} />
-            </a>}
+              <ExternalLink size={18} aria-hidden="true" />
+            </a>
+              )}
           </div>
 
           <div className="mt-2 flex items-baseline gap-2 flex-wrap">
@@ -345,13 +409,13 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   title={item.scrape_error || '価格の取得に失敗しました'}
                 >
                   <AlertTriangle size={12} />
-                  価格を更新できていません
+                  {scrapeFailureCaption(item.scrape_error, item.source)}
                 </span>
               )}
             </div>
           )}
 
-          <div className="mt-1 flex flex-wrap gap-3 text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
+          <div className="mt-1 flex flex-wrap gap-3 text-sm text-gray-600 dark:text-gray-300">
             {item.planned_purchase_date && (
               <span className="flex items-center gap-1">
                 <Calendar size={14} />
@@ -378,23 +442,33 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           {offerPriceRefresh && (
             <button
               onClick={handleRefresh}
-              disabled={refreshing || !linkableHttpUrl(item.url)}
+              disabled={refreshing || !productUrl}
               aria-label="価格を更新"
-              title={linkableHttpUrl(item.url) ? "商品名・価格・画像をURLから更新" : "商品URLを登録すると更新できます"}
-              className="text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500 disabled:opacity-50"
+              title={productUrl ? "商品名・価格・画像をURLから更新" : "商品URLを登録すると更新できます"}
+              className={`${auxiliaryActionClass} disabled:opacity-50`}
             >
               <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
             </button>
           )}
           <button
             onClick={() => setShowChart(!showChart)}
-            className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500"
+            className={`text-sm ${auxiliaryActionClass}`}
           >
             価格推移
           </button>
           <button
-            onClick={() => { setSaveError(''); if (!editing) setEditData(initialEditData()); setEditing(!editing); }}
-            className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-blue-500"
+            onClick={() => {
+              setSaveError('');
+              if (!editing) {
+                setEditData(initialEditData());
+                // 編集開始時は保存済み画像だけをプレビュー（入力欄の文字列は img に載せない）
+                setUploadPreviewSrc(safeImgSrc(item.image_url));
+              } else {
+                setUploadPreviewSrc(null);
+              }
+              setEditing(!editing);
+            }}
+            className={`text-sm ${auxiliaryActionClass}`}
           >
             編集
           </button>
@@ -611,7 +685,10 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                     type="text"
                     disabled={isGuest}
                     value={editData.image_url}
-                    onChange={(e) => setEditData({ ...editData, image_url: e.target.value })}
+                    onChange={(e) => {
+                      setEditData({ ...editData, image_url: e.target.value });
+                      setUploadPreviewSrc(null);
+                    }}
                     placeholder="画像URL"
                     className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white focus:outline-none focus:border-orange-500"
                   />
@@ -633,8 +710,8 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                     <Upload size={16} className="text-gray-400" />
                   </button>
                 </div>
-                {editData.image_url && (
-                  <img src={editData.image_url} alt="プレビュー" className="h-12 w-12 object-cover rounded" />
+                {uploadPreviewSrc && (
+                  <img src={uploadPreviewSrc} alt="プレビュー" className="h-12 w-12 object-cover rounded" />
                 )}
               </div>
             </details>
@@ -647,7 +724,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
             {/* ボタン */}
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
-                onClick={() => { setSaveError(''); setEditing(false); }}
+                onClick={() => { setSaveError(''); setUploadPreviewSrc(null); setEditing(false); }}
                 className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 キャンセル

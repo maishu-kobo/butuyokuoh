@@ -1,6 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/lib/api-fetch';
+import { displayableItemImageUrl } from '@/lib/capture/image-hosts';
 import { linkableHttpUrl } from '@/lib/http-url';
 
 import { useEffect, useState } from 'react';
@@ -109,13 +110,15 @@ export default function TrashView() {
         </div>
       ) : (
         <div className="space-y-3">
-          {items.map((item) => (
+          {items.map((item) => {
+            const image = displayableItemImageUrl(item.image_url);
+            return (
             <div key={item.id} className="bg-white dark:bg-slate-800 rounded-lg shadow p-4 flex items-center gap-4">
               {/* 画像 */}
               <div className="w-16 h-16 flex-shrink-0 bg-slate-100 dark:bg-slate-700 rounded">
-                {item.image_url ? (
+                {image ? (
                   <img
-                    src={item.image_url}
+                    src={image}
                     alt={item.name}
                     loading="lazy"
                     decoding="async"
@@ -179,7 +182,8 @@ export default function TrashView() {
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

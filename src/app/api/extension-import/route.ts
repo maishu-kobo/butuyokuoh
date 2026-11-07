@@ -1,91 +1,91 @@
-import { validateMemberInput } from '@/lib/api-access';
+import { validateMemberInput, guestErrorResponse } from '@/lib/api-access';
 import { GuestError } from '@/lib/guest';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getUserIdFromToken } from '@/lib/auth';
-import { isStorableItemUrl } from '@/lib/http-url';
+import {
+  applyExtensionAuthHeaders,
+  extensionCorsHeaders,
+  resolveExtensionAuth,
+} from '@/lib/extension-auth';
+import { markItemAddedByAgent, recordAgentAudit } from '@/lib/agent-token';
+import { requireExtensionImportItems } from '@/lib/extension-item-input';
+import {
+  findCleanedStoredUrlRegistration,
+  normalizeItemName,
+  restoreTrashedItem,
+  sanitizeStoredItemUrl,
+} from '@/lib/item-input';
 
-interface ImportItem {
-  name: string;
-  url: string;
-  price: number | null;
-  imageUrl: string | null;
-}
+// 一括 import はクライアントの価格・画像を保存しない（#276 / #267）。
+// 件数が多いとサーバ取得はタイムアウトしやすいので、価格・画像は空で登録する。
+// 価格は既存の定期 check-prices が埋める。画像は check-prices では更新されないので、
+// 手動の再取得（/api/items/[id]/refresh）まで空のまま（#267 の取得失敗時と同じ）。
+
+const corsHeaders = extensionCorsHeaders('POST, OPTIONS');
 
 export async function POST(request: NextRequest) {
-  // CORSヘッダー
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  };
-
   try {
     const body = await request.json();
-    const { source, items, token } = body as { source: string; items: ImportItem[]; token?: string };
+    const { source, items, token } = body as { source: string; items: unknown; token?: string };
 
-    // トークンからユーザーIDを取得
-    if (!token) {
-      return NextResponse.json(
-        { error: '認証トークンが必要です' },
-        { status: 401, headers }
-      );
-    }
-
-    const userId = getUserIdFromToken(token);
+    // 認証を先に通す（偽造トークンは 401）。
+    const auth = resolveExtensionAuth(request, {
+      bodyToken: token,
+      rate: ['add', 'add_day'],
+    });
+    const userId = auth.userId;
     if (!userId) {
       return NextResponse.json(
         { error: '無効なトークンです' },
-        { status: 401, headers }
+        { status: 401, headers: corsHeaders }
       );
     }
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return NextResponse.json(
-        { error: 'インポートするアイテムがありません' },
-        { status: 400, headers }
-      );
-    }
+    const importItems = requireExtensionImportItems(items);
 
     const db = getDb();
     const insertStmt = db.prepare(`
       INSERT OR IGNORE INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    const priceHistoryStmt = db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)');
 
     let imported = 0;
     let skipped = 0;
 
     const sourceName = source === 'amazon' ? 'Amazon' : source === 'rakuten' ? '楽天市場' : source;
 
-    for (const item of items) {
+    for (const item of importItems) {
       try {
-        if (!item.url || !isStorableItemUrl(item.url)) {
+        const url = typeof item.url === 'string' ? sanitizeStoredItemUrl(item.url) : null;
+        const name = typeof item.name === 'string' ? normalizeItemName(item.name) : null;
+        if (!url || !name) {
           skipped++;
           continue;
         }
 
-        const fields: Record<string, unknown> = { url: item.url };
-        if (item.name !== undefined) fields.name = item.name;
-        if (item.price !== undefined) fields.price = item.price;
-        if (item.imageUrl !== undefined) fields.image_url = item.imageUrl;
-        validateMemberInput(fields, 'POST');
+        // 価格・画像はクライアント値を渡さない（#267）。
+        validateMemberInput({ url, name }, 'POST');
 
-        // 既存チェック
-        const existing = db.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(userId, item.url);
-        if (existing) {
+        // 既存チェック（トラッキング付きの保存 URL もクリーン後で同じならスキップ）。
+        // ゴミ箱のみなら復元して取り込み成功扱いにする（#365）。
+        const urlState = findCleanedStoredUrlRegistration(db, userId, url);
+        if (urlState.kind === 'active') {
           skipped++;
+          continue;
+        }
+        if (urlState.kind === 'trashed') {
+          restoreTrashedItem(db, userId, urlState.match.id);
+          imported++;
           continue;
         }
 
         const result = insertStmt.run(
           userId,
-          item.name,
-          item.url,
-          item.imageUrl,
-          item.price,
-          item.price,
+          name,
+          url,
+          null,
+          null,
+          null,
           source,
           sourceName,
           3 // デフォルト優先度
@@ -93,8 +93,8 @@ export async function POST(request: NextRequest) {
 
         if (result.changes > 0) {
           imported++;
-          if (item.price) {
-            priceHistoryStmt.run(result.lastInsertRowid, item.price);
+          if (auth.agent) {
+            markItemAddedByAgent(Number(result.lastInsertRowid), auth.agent.token.id, userId, db);
           }
         }
       } catch (e) {
@@ -106,20 +106,36 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(
-      {
-        success: true,
-        total: items.length,
+    const headers = { ...corsHeaders };
+    applyExtensionAuthHeaders(headers, auth);
+    const payload: Record<string, unknown> = {
+      success: true,
+      total: importItems.length,
+      imported,
+      skipped,
+    };
+    if (auth.legacyDeprecated) {
+      payload.auth_warning = 'legacy_jwt_deprecated';
+    }
+    if (auth.agent && imported > 0) {
+      recordAgentAudit(auth.agent.token.id, userId, 'extension.import', {
+        scope: 'extension',
         imported,
         skipped,
-      },
-      { headers }
-    );
+      }, db);
+    }
+
+    return NextResponse.json(payload, { headers });
   } catch (error) {
+    if (error instanceof GuestError) {
+      const response = guestErrorResponse(error);
+      for (const [key, value] of Object.entries(corsHeaders)) response.headers.set(key, value);
+      return response;
+    }
     console.error('Extension import error:', error);
     return NextResponse.json(
       { error: 'インポートに失敗しました' },
-      { status: 500, headers }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
@@ -127,10 +143,6 @@ export async function POST(request: NextRequest) {
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    },
+    headers: corsHeaders,
   });
 }

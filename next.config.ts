@@ -18,7 +18,37 @@ const nextConfig: NextConfig = {
   // heic-decode は wasm を node_modules から読む。バンドルすると経路が壊れる。
   serverExternalPackages: ['heic-decode', 'libheif-js'],
   async headers() {
-    return securityHeaderRules(process.env.NODE_ENV);
+    const base = securityHeaderRules(process.env.NODE_ENV);
+    // 同意画面は CSP を強制（Issue #272: frame-ancestors 'none'）
+    const oauthCsp = [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "form-action 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https:",
+      "connect-src 'self'",
+      "font-src 'self'",
+    ].join('; ');
+    return [
+      ...base,
+      {
+        source: '/oauth/authorize/:path*',
+        headers: [
+          { key: 'Content-Security-Policy', value: oauthCsp },
+          { key: 'X-Frame-Options', value: 'DENY' },
+        ],
+      },
+      {
+        source: '/oauth/authorize',
+        headers: [
+          { key: 'Content-Security-Policy', value: oauthCsp },
+          { key: 'X-Frame-Options', value: 'DENY' },
+        ],
+      },
+    ];
   },
   ...(allowedDevOrigins ? { allowedDevOrigins } : {}),
 };
