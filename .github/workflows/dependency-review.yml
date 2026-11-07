@@ -22,7 +22,7 @@ concurrency:
 jobs:
   review:
     name: dependency review
-    runs-on: ${{ github.event_name == 'pull_request' && github.base_ref == 'feature/issue-followups-20261107' && 'ubuntu-24.04' || 'blacksmith-4vcpu-ubuntu-2404' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout
