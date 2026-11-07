@@ -34,10 +34,10 @@ function assignsShopifyTheme(script: string): boolean {
   try {
     const tokens = tokenizer(script, { ecmaVersion: 'latest' });
     for (const token of tokens) {
-      if (token.type !== tokTypes.name || token.value !== 'Shopify') continue;
+      if (token.type !== tokTypes.name || script.slice(token.start, token.end) !== 'Shopify') continue;
       if (tokens.getToken().type !== tokTypes.dot) continue;
       const property = tokens.getToken();
-      if (property.type === tokTypes.name && property.value === 'theme' && tokens.getToken().type === tokTypes.eq) {
+      if (property.type === tokTypes.name && script.slice(property.start, property.end) === 'theme' && tokens.getToken().type === tokTypes.eq) {
         return true;
       }
     }
