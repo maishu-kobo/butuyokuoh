@@ -221,11 +221,11 @@ async function expandShortUrl(url: string, deps?: MemberFetchDeps): Promise<stri
     if (error instanceof HttpError && isAmazonSoftBlockStatus(error.status)) {
       const destination = softBlockedAmazonProductUrl(error.url);
       if (destination) {
-        console.log('Amazon product page returned HTTP', error.status);
+        console.log('Amazon product page blocked the short-link request');
         return destination;
       }
     }
-    console.error('Short URL expansion failed', error instanceof HttpError ? error.status : 'request failed');
+    console.error('Short URL expansion failed');
     return null;
   }
 }
@@ -515,7 +515,7 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
       return { name: '無効なURL', price: null, imageUrl: null, source: 'amazon', sourceName: 'Amazon' };
     }
     // fetchWithRetryのリトライが尽きた場合もPuppeteerフォールバックを試す
-    console.error('Amazon product fetch failed', error instanceof HttpError ? error.status : 'request failed');
+    console.error('Amazon product fetch failed');
 
     // soft-404/403 は本文を見ずに HttpError になるが、ボット制限の soft block が多い。
     // Puppeteer を試してから BOT_CHALLENGE として返す（#368）。
@@ -616,7 +616,7 @@ async function scrapeRakuten(sanitizedUrl: string, deps?: MemberFetchDeps): Prom
     if (error instanceof BlockedTargetError) {
       return { name: '無効なURL', price: null, imageUrl: null, source: 'rakuten', sourceName: '楽天市場' };
     }
-    console.error('Rakuten scraping error:', error);
+    console.error('Rakuten product fetch failed');
     return {
       name: '取得失敗',
       price: null,
@@ -662,7 +662,7 @@ async function scrapeGeneric(sanitizedUrl: string, deps?: MemberFetchDeps): Prom
     if (error instanceof BlockedTargetError) {
       return { name: '無効なURL', price: null, imageUrl: null, source: 'other', sourceName: null };
     }
-    console.error('Generic scraping error:', error);
+    console.error('Generic product fetch failed');
     return {
       name: '取得失敗',
       price: null,

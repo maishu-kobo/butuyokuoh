@@ -1,3 +1,4 @@
+import { Parser } from 'htmlparser2';
 import { isBotChallengedHtml, PRODUCT_FETCH_BLOCKED_HELP } from './public-page';
 import type { ScrapedItem } from './scraper';
 
@@ -14,6 +15,35 @@ function parseYenPrice(value: unknown): number | null {
   const price = Number(String(value).replace(/[,¥￥\s]/g, ''));
   return Number.isFinite(price) && price > 0 && price <= 1_000_000_000 ? Math.round(price) : null;
 }
+
+function identifiesShopify(html: string, pageUrl: string): boolean {
+  if (!/shopify/i.test(html)) return false;
+  let found = false;
+  let inScript = false;
+  const parser = new Parser({
+    onopentag(tag, attrs) {
+      inScript = tag === 'script';
+      const resource = tag === 'link' ? attrs.href : attrs.src;
+      if (!resource || found) return;
+      const url = URL.parse(resource, pageUrl);
+      if (url && (url.protocol === 'https:' || url.protocol === 'http:') && url.hostname === 'cdn.shopify.com') {
+        found = true;
+      }
+    },
+    ontext(value) {
+      if (inScript && value.includes('Shopify.theme')) found = true;
+    },
+    onclosetag(tag) {
+      if (tag === 'script') inScript = false;
+    },
+  });
+  parser.end(html);
+  return found;
+}
+
+const titleEntities: Record<string, string> = {
+  '&ndash;': '-', '&mdash;': '-', '&amp;': '&', '&quot;': '"', '&#39;': "'",
+};
 
 /**
  * Apple Store の構成（buy-）ページ。モデル未選択で単一価格が無い。
@@ -200,11 +230,7 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
   // タイトルのクリーンアップ: 改行、HTMLエンティティ、サイト名の区切り文字などを除去
   name = name
     .replace(/\n/g, ' ')                    // 改行をスペースに
-    .replace(/&ndash;/g, '-')               // &ndash; を - に
-    .replace(/&mdash;/g, '-')               // &mdash; を - に
-    .replace(/&amp;/g, '&')                 // &amp; を & に
-    .replace(/&quot;/g, '"')                // &quot; を " に
-    .replace(/&#39;/g, "'")                 // &#39; を ' に
+    .replace(/&(?:ndash|mdash|amp|quot|#39);/g, entity => titleEntities[entity])
     .replace(/\s*[-|–—]\s*[^-|–—]+$/g, '')  // 末尾のサイト名部分を除去 ("- SITE_NAME" など)
     .replace(/\s+/g, ' ')                   // 連続スペースを単一に
     .trim();
@@ -272,8 +298,7 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
   
   if (!price) {
     // Shopifyサイトのセント単位価格（Shopifyかどうかを確認）
-    const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme');
-    if (isShopify) {
+    if (identifiesShopify(html, sanitizedUrl)) {
       // Shopifyの場合、"price":NNNNNN (5桁以上、セント単位) をJPYとみなす
       const shopifyPriceMatch = html.match(/"price":(\d{5,})/);
       if (shopifyPriceMatch) {
