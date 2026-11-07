@@ -180,7 +180,7 @@ export async function fetchPublicMember(
       if (!retryable || attempt === maxRetries) throw lastError;
       const multiplier = RETRY_DELAY_MULTIPLIERS[Math.min(attempt, RETRY_DELAY_MULTIPLIERS.length - 1)];
       const delayMs = baseDelayMs * multiplier;
-      console.log(`Fetch failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delayMs}ms: ${url}`);
+      console.log(`Fetch failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delayMs}ms`);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }

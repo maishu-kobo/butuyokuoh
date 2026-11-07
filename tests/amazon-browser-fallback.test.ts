@@ -201,6 +201,20 @@ test('a short link whose product page soft-404s still reaches the browser and ke
   }
 });
 
+test('short-link diagnostics omit sharing identifiers on product retry', async (t) => {
+  const output: string[] = [];
+  for (const method of ['log', 'error'] as const) {
+    t.mock.method(console, method, (...args: unknown[]) => output.push(args.map(String).join(' ')));
+  }
+  const target = productUrl + '?share=fixture-share-id#fixture-fragment';
+  const result = await scrapeUrl(shortUrl + '?ref=fixture-short-id', {
+    ...shortLink(404, 'missing', target).deps,
+    launchBrowser: async () => fakeBrowser(priced, () => {}),
+  });
+  assert.equal(result.price, 3499);
+  assert.doesNotMatch(output.join('\n'), /fixture-share-id|fixture-fragment|fixture-short-id/);
+});
+
 test('a short link blocked in the browser too returns BOT_CHALLENGE with the Amazon note and closes the browser', async () => {
   const blockedBrowser = fakeBrowser('<html>api-services-support@amazon.com</html>', () => {});
   const blocked = await scrapeUrl(shortUrl, {
@@ -292,6 +306,8 @@ test('a short-link soft-404 never grants browser access to a non-product, non-Am
     throw new Error('browser launched');
   };
   const targets = [
+    'https://www.amazon.co.jp/dp/',
+    'https://www.amazon.co.jp/gp/product/short',
     'https://www.amazon.co.jp/s?k=case', // Amazon だが商品ページでない
     'https://www.amazon.co.jp/', // トップページ
     'https://evil.example/dp/B0HCNJW81Q', // Amazon 以外
@@ -355,9 +371,8 @@ test('property: a soft-404 short link reaches the browser only for an allowed Am
   const amazonHosts = ['www.amazon.co.jp', 'www.amazon.jp', 'www.amazon.com', 'amazon.co.jp', 'amazon.jp', 'amazon.com'];
   const otherHosts = ['www.amazon.co.jp.evil.example', 'evil.example', 'amazon.co.jp.example', 'wwwamazon.co.jp', 'm.media-amazon.com', 'www.amazon.de'];
   const productPaths = ['/dp/B0HCNJW81Q', '/gp/product/B0HCNJW81Q', '/gp/aw/d/B0HCNJW81Q', '/title/dp/B0HCNJW81Q/ref=sr_1'];
-  const otherPaths = ['/', '/s', '/gp/cart/view.html', '/dpx/B0HCNJW81Q', '/gp/products/B0HCNJW81Q'];
-  const isProductPath = (path: string) =>
-    path.includes('/dp/') || path.includes('/gp/product/') || path.includes('/gp/aw/d/');
+  const otherPaths = ['/', '/s', '/gp/cart/view.html', '/dpx/B0HCNJW81Q', '/gp/products/B0HCNJW81Q',
+    '/dp/', '/gp/product/short'];
 
   await fc.assert(
     fc.asyncProperty(
@@ -378,7 +393,7 @@ test('property: a soft-404 short link reaches the browser only for an allowed Am
             throw new Error('browser launched');
           },
         });
-        const accepted = amazonHosts.includes(host) && isProductPath(path) && userinfo === '';
+        const accepted = amazonHosts.includes(host) && productPaths.includes(path) && userinfo === '';
         assert.equal(launches, accepted ? 1 : 0, target);
         // 受け付けたときだけ商品ページを再取得してからブラウザへ。それ以外は展開の 2 接続で止まる。
         assert.equal(link.hosts.length, accepted ? 3 : 2, target);

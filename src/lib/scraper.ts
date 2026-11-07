@@ -1,4 +1,4 @@
-import { extractAmazonProduct } from './amazon-product';
+import { extractAmazonProduct, isAmazonProductPage } from './amazon-product';
 import { isAppleShopBuyPage, parseProductHtml } from './product-html';
 import { readHtmlResponse } from './html-encoding';
 import { launchPageBrowser } from './page-browser';
@@ -177,7 +177,7 @@ function softBlockedAmazonProductUrl(value: string): string | null {
     return null;
   }
   if (parsed.username || parsed.password) return null;
-  return isAmazonProductUrl(parsed.href) ? parsed.href : null;
+  return isAmazonProductPage(parsed) ? parsed.href : null;
 }
 
 /**
@@ -190,7 +190,7 @@ async function expandShortUrl(url: string, deps?: MemberFetchDeps): Promise<stri
   // SSRF対策: ホワイトリストのドメインから安全なURLを構築
   const safeUrl = buildSafeShortUrl(url);
   if (!safeUrl) {
-    console.error('SSRF protection: URL is not an Amazon short URL:', url);
+    console.error('URL is not an Amazon short URL');
     return null;
   }
   
@@ -207,14 +207,13 @@ async function expandShortUrl(url: string, deps?: MemberFetchDeps): Promise<stri
     
     // 最終的なリダイレクト先URLを取得
     const finalUrl = response.url;
-    console.log('Final URL after redirect:', finalUrl);
     
     // SSRF対策: リダイレクト先がAmazonドメインのみ許可
     if (isAmazonUrl(finalUrl)) {
       return finalUrl;
     }
     
-    console.error('SSRF protection: Redirect destination is not Amazon:', finalUrl);
+    console.error('Redirect destination is not Amazon');
     return null;
   } catch (error) {
     // 商品ページが soft-404/403 で終わった短縮リンクは、展開失敗ではなくボット制限として扱う（#367）。
@@ -222,11 +221,11 @@ async function expandShortUrl(url: string, deps?: MemberFetchDeps): Promise<stri
     if (error instanceof HttpError && isAmazonSoftBlockStatus(error.status)) {
       const destination = softBlockedAmazonProductUrl(error.url);
       if (destination) {
-        console.log('Short URL expanded to a soft-blocked Amazon product page:', destination);
+        console.log('Amazon product page returned HTTP', error.status);
         return destination;
       }
     }
-    console.error('Short URL expansion error:', error);
+    console.error('Short URL expansion failed', error instanceof HttpError ? error.status : 'request failed');
     return null;
   }
 }
@@ -270,12 +269,9 @@ export async function scrapeUrl(url: string, deps?: ScrapeDeps): Promise<Scraped
 async function scrapeUrlFromPage(url: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
   // Amazonの短縮リンクの場合、展開を試みる
   if (isAmazonShortUrl(url)) {
-    console.log('Detected Amazon short URL, attempting to expand:', url);
     const expandedUrl = await expandShortUrl(url, deps);
     
     if (expandedUrl) {
-      console.log('Expanded to:', expandedUrl);
-      
       // 展開後のURLが商品ページかチェック
       if (isAmazonProductUrl(expandedUrl)) {
         // 展開成功 - 通常のAmazonスクレイピングを実行
@@ -288,7 +284,7 @@ async function scrapeUrlFromPage(url: string, deps?: ScrapeDeps): Promise<Scrape
         return result;
       } else {
         // 商品ページではない（トップページや検索ページにリダイレクトされた）
-        console.log('Expanded URL is not a product page:', expandedUrl);
+        console.log('Expanded URL is not a product page');
         return {
           name: '短縮リンクの展開に失敗しました。リンクが期限切れか無効な可能性があります。',
           price: null,
@@ -519,7 +515,7 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
       return { name: '無効なURL', price: null, imageUrl: null, source: 'amazon', sourceName: 'Amazon' };
     }
     // fetchWithRetryのリトライが尽きた場合もPuppeteerフォールバックを試す
-    console.error('Amazon scraping error:', error);
+    console.error('Amazon product fetch failed', error instanceof HttpError ? error.status : 'request failed');
 
     // soft-404/403 は本文を見ずに HttpError になるが、ボット制限の soft block が多い。
     // Puppeteer を試してから BOT_CHALLENGE として返す（#368）。
@@ -555,15 +551,15 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
   if (deps?.request && !deps.launchBrowser) return fallbackResult;
 
   // Puppeteerフォールバック: ボット検知か、再試行しても取れなかった HTTP 失敗で起動する。
-  console.log('Falling back to Puppeteer for Amazon scraping:', sanitizedUrl);
+  console.log('Falling back to Puppeteer for Amazon product');
   try {
     const puppeteerResult = await scrapeAmazonWithPuppeteer(sanitizedUrl, deps);
     // 価格が無くても画像や商品名が取れた結果は捨てない（エージェント soft-save の No Image を減らす）
     if (puppeteerResult && isUsableAmazonBrowserResult(puppeteerResult)) {
       return puppeteerResult;
     }
-  } catch (error) {
-    console.error('Amazon Puppeteer fallback error:', error);
+  } catch {
+    console.error('Amazon browser fallback failed');
   }
 
   // Puppeteerでも取得できなかった場合は従来どおりの結果（price: null）を返す

@@ -93,7 +93,20 @@ export async function POST(request: NextRequest) {
 
     // ゴミ箱の行も UNIQUE(user_id, url) に残る。汚い保存 URL もクリーン後で見る。
     // ゴミ箱のみの一致は復元する（#365）。
-    const urlState = findCleanedStoredUrlRegistration(db, userId, url);
+    const urlState = db.transaction(() => {
+      const state = findCleanedStoredUrlRegistration(db, userId, url);
+      if (state.kind === 'trashed') {
+        restoreTrashedItem(db, userId, state.match.id);
+        if (auth.agent) {
+          recordAgentAudit(auth.agent.token.id, userId, 'extension.add', {
+            scope: 'extension',
+            item_id: state.match.id,
+            restored_from_trash: true,
+          }, db);
+        }
+      }
+      return state;
+    }).immediate();
     if (urlState.kind === 'active') {
       return NextResponse.json(
         { error: activeUrlConflictMessage(urlState.location), code: 'URL_TAKEN' },
@@ -101,15 +114,6 @@ export async function POST(request: NextRequest) {
       );
     }
     if (urlState.kind === 'trashed') {
-      restoreTrashedItem(db, userId, urlState.match.id);
-      if (auth.agent) {
-        // 復元も書き込みなので、新規追加と同じ操作ログを残す（追加者の印は元のまま）。
-        recordAgentAudit(auth.agent.token.id, userId, 'extension.add', {
-          scope: 'extension',
-          item_id: urlState.match.id,
-          restored_from_trash: true,
-        }, db);
-      }
       const headers = { ...corsHeaders };
       applyExtensionAuthHeaders(headers, auth);
       const payload: Record<string, unknown> = {

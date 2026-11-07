@@ -344,7 +344,7 @@ test('extension-add with an extension-scope agent token audits the restore like 
     assert.equal(created.status, 201, created.text);
     const { token, record } = created.json as { token: string; record: { id: number } };
 
-    const response = await call(extensionPath, 'POST', '/api/extension-add', {
+    const restore = () => call(extensionPath, 'POST', '/api/extension-add', {
       item: {
         name: '拡張で捨てた',
         url: AMAZON_PRODUCT_URL,
@@ -354,6 +354,16 @@ test('extension-add with an extension-scope agent token audits the restore like 
         categoryId: null,
       },
     }, undefined, { Authorization: `Bearer ${token}` });
+    database.exec(`CREATE TEMP TRIGGER fail_restore_audit BEFORE INSERT ON agent_audit_log
+      WHEN NEW.action = 'extension.add' BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END`);
+    try {
+      assert.equal((await restore()).status, 500);
+      const trashed = database.prepare('SELECT deleted_at FROM items WHERE id = ?').get(itemId) as { deleted_at: string | null };
+      assert.ok(trashed.deleted_at, 'an audit failure leaves the item in the trash');
+    } finally {
+      database.exec('DROP TRIGGER fail_restore_audit');
+    }
+    const response = await restore();
     assert.equal(response.status, 200, response.text);
     const body = response.json as { success: boolean; id: number; restoredFromTrash: boolean; message: string };
     assert.equal(body.success, true);
