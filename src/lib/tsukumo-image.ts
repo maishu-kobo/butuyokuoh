@@ -1,17 +1,7 @@
 import { request } from 'node:https';
 import type { ScrapedItem } from './scraper';
 import { productImageHeadFixture } from './product-fetch-port';
-
-/** ツクモ公式の商品番号と、その番号に対応する主画像の固定パス。 */
-function tsukumoCatalogImage(value: string) {
-  let url: URL;
-  try { url = new URL(value); } catch { return null; }
-  if (url.origin !== 'https://shop.tsukumo.co.jp' || url.username || url.password) return null;
-  const productNumber = /^\/goods\/(\d{13})\/?$/.exec(url.pathname)?.[1];
-  if (!productNumber) return null;
-  const path = `/image/item/${productNumber}_1.jpg`;
-  return { productNumber, path, imageUrl: `https://cdn.tsukumo.co.jp${path}` };
-}
+import { tsukumoCatalogImage } from './tsukumo-catalog';
 
 function checkCatalogImage(path: string): Promise<boolean> {
   return new Promise(resolve => {

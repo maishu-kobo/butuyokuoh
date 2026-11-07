@@ -119,4 +119,19 @@ test('Tsukumo URL registration keeps the image on the card after a reload when o
   await expect(image).toHaveAttribute('src', imageUrl);
   await expect.poll(() => image.evaluate(el => (el as HTMLImageElement).naturalWidth)).toBe(192);
   await expect(page.getByRole('link', { name: 'ツクモの商品（4981254057384）', exact: true })).toHaveAttribute('href', url);
+
+  // Previously saved cards may still have no image URL in the database.
+  const items = await (await page.request.get('/api/items')).json();
+  const item = items.find((row: { url: string }) => row.url === url);
+  const cleared = await page.request.patch(`/api/items/${item.id}`, {
+    headers: { Origin: origin }, data: { image_url: null },
+  });
+  expect(cleared.ok()).toBe(true);
+  expect((await cleared.json()).image_url).toBeNull();
+  await page.reload();
+  await expect.poll(() => image.evaluate(el => (el as HTMLImageElement).naturalWidth)).toBe(192);
+  await page.unroute(imageUrl);
+  await page.route(imageUrl, route => route.fulfill({ status: 404, body: '' }));
+  await page.reload();
+  await expect(page.locator('a[href="' + url + '"]').getByText('No Image')).toBeVisible();
 });
