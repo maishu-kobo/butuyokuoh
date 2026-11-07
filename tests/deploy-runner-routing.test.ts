@@ -1,39 +1,82 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import { test } from 'node:test';
 
-// These two workflow expressions use only boolean/string operators, shared by
-// GitHub expressions and JavaScript. Evaluate the actual configuration, including
-// a stale successful selector output, instead of duplicating the routing logic.
-const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
-const selector = workflow.match(/  select-runner:[\s\S]*?    if: >-\n([\s\S]*?)\n    permissions:/)?.[1];
-const runner = workflow.match(/  check:[\s\S]*?    runs-on: >-\n([\s\S]*?)\n    timeout-minutes:/)?.[1];
-function evaluate(expression: string | undefined, hostedOnly: boolean, event = 'push', attempt = 1) {
-  assert.ok(expression);
-  return runInNewContext(expression.trim().replace(/^\$\{\{/, '').replace(/\}\}$/, '')
-    .replaceAll('needs.select-runner', "needs['select-runner']"), {
-    inputs: { github_hosted_only: hostedOnly },
-    github: { event_name: event, ref: 'refs/heads/main', run_attempt: attempt },
-    vars: { BLACKSMITH_NO_CHARGE_CONFIRMED: 'configured', BLACKSMITH_BUDGET: 'configured' },
-    needs: { 'select-runner': { result: 'success', outputs: { runner: 'blacksmith-4vcpu-ubuntu-2404' } } },
-  }, { timeout: 100 });
+const require = createRequire(import.meta.url);
+const { load } = createRequire(require.resolve('@eslint/eslintrc'))('js-yaml');
+
+const workflowDir = '.github/workflows';
+const workflowFiles = readdirSync(workflowDir).filter((name) => name.endsWith('.yml'));
+const workflows = Object.fromEntries(
+  workflowFiles.map((name) => [name, load(readFileSync(join(workflowDir, name), 'utf8'))]),
+);
+
+function collectRunsOn(node: unknown, out: string[] = []): string[] {
+  if (Array.isArray(node)) {
+    for (const item of node) collectRunsOn(item, out);
+    return out;
+  }
+  if (node && typeof node === 'object') {
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      if (key === 'runs-on') {
+        if (typeof value === 'string') out.push(value);
+        else out.push(JSON.stringify(value));
+      } else {
+        collectRunsOn(value, out);
+      }
+    }
+  }
+  return out;
 }
 
-test('deploy-main CI enables Blacksmith selection on the reusable main path', () => {
-  assert.equal(evaluate(selector, true), false);
-  assert.equal(evaluate(runner, true), 'ubuntu-latest');
-  const caller = readFileSync('.github/workflows/deploy-main.yml', 'utf8');
-  assert.match(caller, /ci:\n[\s\S]*?with:\n[\s\S]*?github_hosted_only: false\n/);
-  assert.equal(evaluate(selector, false, 'workflow_call'), true);
-  assert.equal(evaluate(runner, false, 'workflow_call'), 'blacksmith-4vcpu-ubuntu-2404');
+function stripYamlComments(source: string): string {
+  return source
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trimStart();
+      if (trimmed.startsWith('#')) return '';
+      const inSingle = (line.match(/'/g) || []).length % 2 === 1;
+      const inDouble = (line.match(/"/g) || []).length % 2 === 1;
+      if (inSingle || inDouble) return line;
+      const hash = line.indexOf(' #');
+      return hash === -1 ? line : line.slice(0, hash);
+    })
+    .join('\n');
+}
+
+test('every executable workflow job uses GitHub-hosted ubuntu-24.04 only', () => {
+  for (const [name, workflow] of Object.entries(workflows)) {
+    const executable = stripYamlComments(readFileSync(join(workflowDir, name), 'utf8'));
+    assert.doesNotMatch(executable, /blacksmith/i, `${name} must not use Blacksmith in executable YAML`);
+    assert.doesNotMatch(executable, /BLACKSMITH_/, `${name} must not reference Blacksmith vars/secrets`);
+    assert.doesNotMatch(executable, /blacksmith-cli\.sh/, `${name} must not call Blacksmith CLI`);
+    assert.doesNotMatch(executable, /github_hosted_only/, `${name} must not keep runner-selection input`);
+    assert.doesNotMatch(executable, /select-runner|Select CI runner/, `${name} must not keep runner selection`);
+    for (const runsOn of collectRunsOn(workflow)) {
+      assert.equal(runsOn, 'ubuntu-24.04', `${name} runs-on=${runsOn}`);
+    }
+  }
 });
 
-test('normal main CI retains its existing guarded routing and retry fallback', () => {
-  assert.equal(evaluate(selector, false), true);
-  assert.equal(evaluate(runner, false), 'blacksmith-4vcpu-ubuntu-2404');
-  for (const [event, attempt] of [['pull_request', 1], ['push', 2]] as const) {
-    assert.equal(evaluate(selector, false, event, attempt), false);
-    assert.equal(evaluate(runner, false, event, attempt), 'ubuntu-latest');
-  }
+test('deploy-main reusable CI path stays GitHub-hosted without runner selection', () => {
+  const deploy = workflows['deploy-main.yml'] as {
+    jobs: { ci: { permissions?: Record<string, string>; with?: unknown; uses: string } };
+  };
+  assert.equal(deploy.jobs.ci.uses, './.github/workflows/ci.yml');
+  assert.equal(deploy.jobs.ci.with, undefined);
+  assert.deepEqual(deploy.jobs.ci.permissions, { contents: 'read' });
+
+  const ci = workflows['ci.yml'] as {
+    on: { workflow_call?: { inputs?: unknown } };
+    jobs: Record<string, { name?: string; 'runs-on'?: string; needs?: unknown }>;
+  };
+  assert.equal(ci.on.workflow_call?.inputs, undefined);
+  assert.equal(ci.jobs['select-runner'], undefined);
+  assert.equal(ci.jobs.check.name, 'test, types, build');
+  assert.equal(ci.jobs.check['runs-on'], 'ubuntu-24.04');
+  assert.equal(ci.jobs.check.needs, undefined);
+  assert.equal(ci.jobs.audit.name, 'npm audit');
+  assert.equal(ci.jobs.audit['runs-on'], 'ubuntu-24.04');
 });

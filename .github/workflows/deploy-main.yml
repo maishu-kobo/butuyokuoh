@@ -16,8 +16,7 @@ permissions:
 
 concurrency:
   group: main-deployment-${{ github.ref }}
-  # main では Blacksmith 予算モデルの排他のためキャンセルしない（ci.yml と同じ）。
-  # PR は latest-run のまま。
+  # main では進行中の配備・検査をキャンセルしない。PR は latest-run のまま。
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -25,12 +24,7 @@ jobs:
     if: github.event_name != 'pull_request'
     permissions:
       contents: read
-      actions: read
     uses: ./.github/workflows/ci.yml
-    with:
-      # main push の単体 CI をこちらに寄せたので、Select CI runner（Blacksmith）を有効にする。
-      # Blacksmith の組織トークンは select-runner の environment 経由。配備シークレットは渡さない。
-      github_hosted_only: false
   browser:
     if: github.event_name != 'pull_request'
     uses: ./.github/workflows/playwright.yml
@@ -54,7 +48,7 @@ jobs:
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       vars.AUTO_DEPLOY_ENABLED == 'true'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment:
       name: production
