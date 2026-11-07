@@ -8,6 +8,7 @@ import {
   AMAZON_PRODUCT_URL,
   regressionFetchPort,
 } from '../src/lib/product-regression-fixtures';
+import { installFrozenClock } from './trash-restore-clock';
 
 const itemsPath = '../src/app/api/items/route.ts';
 const trashItemPath = '../src/app/api/trash/[id]/route.ts';
@@ -18,10 +19,14 @@ const byUrlPath = '../src/app/api/agent/v1/items/by-url/route.ts';
 const sameOrigin = { origin: 'http://localhost' } as const;
 const sameOriginUrl = 'http://localhost';
 
-before(() => {
+let releaseClock: (() => void) | null = null;
+before(async () => {
   mock.method(dns, 'lookup', async () => [{ address: '8.8.8.8', family: 4 }]);
+  // JS の Date とこの一時 DB の datetime('now') を同じ時刻に固定する（createMember より先）。
+  releaseClock = installFrozenClock(await db());
 });
 after(() => {
+  releaseClock?.();
   mock.restoreAll();
 });
 
@@ -313,4 +318,113 @@ test('agent add_item_by_url restores trash before scrape; scrape failure does no
   } finally {
     installProductFetchPort(null);
   }
+}));
+
+test('extension-add with an extension-scope agent token audits the restore like an add', () => serial(async () => {
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  installProductFetchPort(regressionFetchPort());
+  try {
+    const member = await createMember('ext-agent-restore');
+    await setTestUser(member);
+    const database = await db();
+    const itemId = Number(database.prepare(`
+      INSERT INTO items (user_id, name, url, notes, deleted_at)
+      VALUES (?, '拡張で捨てた', ?, 'ext-note', datetime('now', '-1 day'))
+    `).run(member.id, AMAZON_PRODUCT_URL).lastInsertRowid);
+
+    const created = await call(
+      tokensPath,
+      'POST',
+      '/api/agent-tokens',
+      { name: 'ext', scopes: ['extension'], expiresInDays: 30 },
+      undefined,
+      sameOrigin,
+      `${sameOriginUrl}/api/agent-tokens`,
+    );
+    assert.equal(created.status, 201, created.text);
+    const { token, record } = created.json as { token: string; record: { id: number } };
+
+    const restore = () => call(extensionPath, 'POST', '/api/extension-add', {
+      item: {
+        name: '拡張で捨てた',
+        url: AMAZON_PRODUCT_URL,
+        price: 100,
+        imageUrl: null,
+        priority: 3,
+        categoryId: null,
+      },
+    }, undefined, { Authorization: `Bearer ${token}` });
+    database.exec(`CREATE TEMP TRIGGER fail_restore_audit BEFORE INSERT ON agent_audit_log
+      WHEN NEW.action = 'extension.add' BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END`);
+    try {
+      assert.equal((await restore()).status, 500);
+      const trashed = database.prepare('SELECT deleted_at FROM items WHERE id = ?').get(itemId) as { deleted_at: string | null };
+      assert.ok(trashed.deleted_at, 'an audit failure leaves the item in the trash');
+    } finally {
+      database.exec('DROP TRIGGER fail_restore_audit');
+    }
+    const response = await restore();
+    assert.equal(response.status, 200, response.text);
+    const body = response.json as { success: boolean; id: number; restoredFromTrash: boolean; message: string };
+    assert.equal(body.success, true);
+    assert.equal(body.id, itemId);
+    assert.equal(body.restoredFromTrash, true);
+    assert.match(body.message, /ゴミ箱/);
+
+    const row = database.prepare(
+      'SELECT deleted_at, notes, added_by_agent_token_id FROM items WHERE id = ?',
+    ).get(itemId) as { deleted_at: string | null; notes: string | null; added_by_agent_token_id: number | null };
+    assert.equal(row.deleted_at, null);
+    assert.equal(row.notes, 'ext-note');
+    assert.equal(row.added_by_agent_token_id, null, 'restore keeps the original (web) provenance');
+    assert.equal(
+      (database.prepare('SELECT COUNT(*) AS n FROM items WHERE user_id = ?').get(member.id) as { n: number }).n,
+      1,
+    );
+
+    // エージェント用トークンによる書き込みは、新規追加と同じく操作ログに残る。
+    const audits = database.prepare(
+      'SELECT action, meta FROM agent_audit_log WHERE token_id = ? ORDER BY id',
+    ).all(record.id) as { action: string; meta: string | null }[];
+    const adds = audits.filter((entry) => entry.action === 'extension.add');
+    assert.equal(adds.length, 1, `restore through an agent token must be audited: ${JSON.stringify(audits)}`);
+    const meta = JSON.parse(adds[0].meta ?? '{}') as { scope?: string; item_id?: number; restored_from_trash?: boolean };
+    assert.equal(meta.scope, 'extension');
+    assert.equal(meta.item_id, itemId);
+    assert.equal(meta.restored_from_trash, true);
+  } finally {
+    installProductFetchPort(null);
+  }
+}));
+
+test('PATCH /api/items/[id] cannot move an active item onto a trashed URL', () => serial(async () => {
+  const itemIdPath = '../src/app/api/items/[id]/route.ts';
+  const member = await createMember('web-patch-trash-twin');
+  await setTestUser(member);
+  const database = await db();
+  database.prepare(`
+    INSERT INTO items (user_id, name, url, notes, deleted_at)
+    VALUES (?, '捨てた双子', 'https://example.test/trashed-twin', 'twin', datetime('now', '-1 day'))
+  `).run(member.id);
+  const activeId = Number(database.prepare(`
+    INSERT INTO items (user_id, name, url, notes)
+    VALUES (?, '動かす品目', 'https://example.test/active-row', 'active')
+  `).run(member.id).lastInsertRowid);
+  const rowsBefore = database.prepare('SELECT * FROM items WHERE user_id = ? ORDER BY id').all(member.id);
+
+  const response = await call(
+    itemIdPath,
+    'PATCH',
+    `/api/items/${activeId}`,
+    { url: 'https://example.test/trashed-twin?utm_source=move', notes: 'should-not-apply' },
+    { id: String(activeId) },
+  );
+  assert.equal(response.status, 409, response.text);
+  assert.equal((response.json as { code: string }).code, 'URL_IN_TRASH');
+  assert.match(String((response.json as { error: string }).error), /ゴミ箱/);
+  assert.deepEqual(
+    database.prepare('SELECT * FROM items WHERE user_id = ? ORDER BY id').all(member.id),
+    rowsBefore,
+    'neither the trashed twin nor the active item changes',
+  );
 }));

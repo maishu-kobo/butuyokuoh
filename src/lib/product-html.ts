@@ -15,6 +15,10 @@ function parseYenPrice(value: unknown): number | null {
   return Number.isFinite(price) && price > 0 && price <= 1_000_000_000 ? Math.round(price) : null;
 }
 
+const titleEntities: Record<string, string> = {
+  '&ndash;': '-', '&mdash;': '-', '&amp;': '&', '&quot;': '"', '&#39;': "'",
+};
+
 /**
  * Apple Store の構成（buy-）ページ。モデル未選択で単一価格が無い。
  * ページ内の「月額」「最低購入金額」「修理サービス料」などを商品価格と誤認しやすい。
@@ -200,11 +204,7 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
   // タイトルのクリーンアップ: 改行、HTMLエンティティ、サイト名の区切り文字などを除去
   name = name
     .replace(/\n/g, ' ')                    // 改行をスペースに
-    .replace(/&ndash;/g, '-')               // &ndash; を - に
-    .replace(/&mdash;/g, '-')               // &mdash; を - に
-    .replace(/&amp;/g, '&')                 // &amp; を & に
-    .replace(/&quot;/g, '"')                // &quot; を " に
-    .replace(/&#39;/g, "'")                 // &#39; を ' に
+    .replace(/&(?:ndash|mdash|amp|quot|#39);/g, entity => titleEntities[entity])
     .replace(/\s*[-|–—]\s*[^-|–—]+$/g, '')  // 末尾のサイト名部分を除去 ("- SITE_NAME" など)
     .replace(/\s+/g, ' ')                   // 連続スペースを単一に
     .trim();

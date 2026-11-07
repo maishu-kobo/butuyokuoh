@@ -1,4 +1,4 @@
-import { extractAmazonProduct } from './amazon-product';
+import { extractAmazonProduct, isAmazonProductPage } from './amazon-product';
 import { isAppleShopBuyPage, parseProductHtml } from './product-html';
 import { readHtmlResponse } from './html-encoding';
 import { launchPageBrowser } from './page-browser';
@@ -165,15 +165,32 @@ function buildSafeShortUrl(url: string): string | null {
 }
 
 /**
+ * 短縮リンクの展開が 403/404 で終わったとき、通常の Amazon 取得へ進めてよい商品ページの URL。
+ * 転送先は member-fetch が接続前に公開アドレスへ解決済み。ここでは許可ドメインの商品ページで、
+ * 認証情報を含まないものだけを通す。
+ */
+function softBlockedAmazonProductUrl(value: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  if (parsed.username || parsed.password) return null;
+  return isAmazonProductPage(parsed) ? parsed.href : null;
+}
+
+/**
  * 短縮リンクを展開してリダイレクト先のURLを取得
  * @param url 短縮リンクURL（事前にisAmazonShortUrlで検証済み）
- * @returns 展開後のURL（失敗した場合はnull）
+ * @returns 展開後のURL（失敗した場合はnull）。展開先の商品ページが 403/404 でも、
+ *          その URL を返して通常の Amazon 取得（ブラウザ再取得→BOT_CHALLENGE）に任せる
  */
 async function expandShortUrl(url: string, deps?: MemberFetchDeps): Promise<string | null> {
   // SSRF対策: ホワイトリストのドメインから安全なURLを構築
   const safeUrl = buildSafeShortUrl(url);
   if (!safeUrl) {
-    console.error('SSRF protection: URL is not an Amazon short URL:', url);
+    console.error('URL is not an Amazon short URL');
     return null;
   }
   
@@ -190,17 +207,25 @@ async function expandShortUrl(url: string, deps?: MemberFetchDeps): Promise<stri
     
     // 最終的なリダイレクト先URLを取得
     const finalUrl = response.url;
-    console.log('Final URL after redirect:', finalUrl);
     
     // SSRF対策: リダイレクト先がAmazonドメインのみ許可
     if (isAmazonUrl(finalUrl)) {
       return finalUrl;
     }
     
-    console.error('SSRF protection: Redirect destination is not Amazon:', finalUrl);
+    console.error('Redirect destination is not Amazon');
     return null;
   } catch (error) {
-    console.error('Short URL expansion error:', error);
+    // 商品ページが soft-404/403 で終わった短縮リンクは、展開失敗ではなくボット制限として扱う（#367）。
+    // 403/404 以外（410 など）と、商品ページ以外・Amazon 以外・認証情報つきの転送先は従来どおり展開失敗。
+    if (error instanceof HttpError && isAmazonSoftBlockStatus(error.status)) {
+      const destination = softBlockedAmazonProductUrl(error.url);
+      if (destination) {
+        console.log('Amazon product page blocked the short-link request');
+        return destination;
+      }
+    }
+    console.error('Short URL expansion failed');
     return null;
   }
 }
@@ -244,24 +269,22 @@ export async function scrapeUrl(url: string, deps?: ScrapeDeps): Promise<Scraped
 async function scrapeUrlFromPage(url: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
   // Amazonの短縮リンクの場合、展開を試みる
   if (isAmazonShortUrl(url)) {
-    console.log('Detected Amazon short URL, attempting to expand:', url);
     const expandedUrl = await expandShortUrl(url, deps);
     
     if (expandedUrl) {
-      console.log('Expanded to:', expandedUrl);
-      
       // 展開後のURLが商品ページかチェック
       if (isAmazonProductUrl(expandedUrl)) {
         // 展開成功 - 通常のAmazonスクレイピングを実行
         const result = await scrapeAmazon(expandedUrl, deps);
-        // 短縮リンクからの登録の場合、価格が取得できない可能性があることを伝える
-        if (!result.price) {
+        // 短縮リンクからの登録の場合、価格が取得できない可能性があることを伝える。
+        // ボット制限など具体的な note があればそれを残し、一般的な案内は note が無いときだけ補う（#367）。
+        if (!result.price && !result.note) {
           result.note = '短縮リンクからの登録のため価格を取得できませんでした。商品ページのフルURLで登録し直すと価格を取得できる場合があります。';
         }
         return result;
       } else {
         // 商品ページではない（トップページや検索ページにリダイレクトされた）
-        console.log('Expanded URL is not a product page:', expandedUrl);
+        console.log('Expanded URL is not a product page');
         return {
           name: '短縮リンクの展開に失敗しました。リンクが期限切れか無効な可能性があります。',
           price: null,
@@ -492,7 +515,7 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
       return { name: '無効なURL', price: null, imageUrl: null, source: 'amazon', sourceName: 'Amazon' };
     }
     // fetchWithRetryのリトライが尽きた場合もPuppeteerフォールバックを試す
-    console.error('Amazon scraping error:', error);
+    console.error('Amazon product fetch failed');
 
     // soft-404/403 は本文を見ずに HttpError になるが、ボット制限の soft block が多い。
     // Puppeteer を試してから BOT_CHALLENGE として返す（#368）。
@@ -528,15 +551,15 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
   if (deps?.request && !deps.launchBrowser) return fallbackResult;
 
   // Puppeteerフォールバック: ボット検知か、再試行しても取れなかった HTTP 失敗で起動する。
-  console.log('Falling back to Puppeteer for Amazon scraping:', sanitizedUrl);
+  console.log('Falling back to Puppeteer for Amazon product');
   try {
     const puppeteerResult = await scrapeAmazonWithPuppeteer(sanitizedUrl, deps);
     // 価格が無くても画像や商品名が取れた結果は捨てない（エージェント soft-save の No Image を減らす）
     if (puppeteerResult && isUsableAmazonBrowserResult(puppeteerResult)) {
       return puppeteerResult;
     }
-  } catch (error) {
-    console.error('Amazon Puppeteer fallback error:', error);
+  } catch {
+    console.error('Amazon browser fallback failed');
   }
 
   // Puppeteerでも取得できなかった場合は従来どおりの結果（price: null）を返す
@@ -593,7 +616,7 @@ async function scrapeRakuten(sanitizedUrl: string, deps?: MemberFetchDeps): Prom
     if (error instanceof BlockedTargetError) {
       return { name: '無効なURL', price: null, imageUrl: null, source: 'rakuten', sourceName: '楽天市場' };
     }
-    console.error('Rakuten scraping error:', error);
+    console.error('Rakuten product fetch failed');
     return {
       name: '取得失敗',
       price: null,
@@ -639,7 +662,7 @@ async function scrapeGeneric(sanitizedUrl: string, deps?: MemberFetchDeps): Prom
     if (error instanceof BlockedTargetError) {
       return { name: '無効なURL', price: null, imageUrl: null, source: 'other', sourceName: null };
     }
-    console.error('Generic scraping error:', error);
+    console.error('Generic product fetch failed');
     return {
       name: '取得失敗',
       price: null,

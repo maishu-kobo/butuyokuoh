@@ -14,11 +14,14 @@ export class BlockedTargetError extends Error {
 
 export class HttpError extends Error {
   status: number;
+  /** 最後に接続した URL。転送のたびに公開アドレスへ解決してから接続した先で、未接続の location ではない。 */
+  url: string;
 
   constructor(status: number, url: string) {
     super(`HTTP error ${status}: ${url}`);
     this.name = 'HttpError';
     this.status = status;
+    this.url = url;
   }
 }
 
@@ -177,7 +180,7 @@ export async function fetchPublicMember(
       if (!retryable || attempt === maxRetries) throw lastError;
       const multiplier = RETRY_DELAY_MULTIPLIERS[Math.min(attempt, RETRY_DELAY_MULTIPLIERS.length - 1)];
       const delayMs = baseDelayMs * multiplier;
-      console.log(`Fetch failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delayMs}ms: ${url}`);
+      console.log(`Fetch failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delayMs}ms`);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }

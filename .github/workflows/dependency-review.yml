@@ -8,6 +8,7 @@ on:
       - feature/capture-existing-bugfixes
       - feature/auto-deploy
       - feature/agent-improvements
+      - feature/issue-followups-20261107
       - develop
       - main
 

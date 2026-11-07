@@ -6,6 +6,11 @@ import { isPublicAddress, publicPageUrl, fetchPublicPage, requestPage, MAX_PAGE_
 import { isAppleShopBuyPage, parseProductHtml } from '../src/lib/product-html';
 import { extractAmazonProduct, isAmazonProductPage } from '../src/lib/amazon-product';
 
+test('product titles decode HTML entities exactly once', () => {
+  const html = '<title>Pen &amp; Ink &quot;Blue&quot; &amp;quot; &amp;#39;</title>';
+  assert.equal(parseProductHtml(html, 'https://shop.example/pen').name, 'Pen & Ink "Blue" &quot; &#39;');
+});
+
 test('public addresses only, including normalized and mapped IP bypasses', () => {
   for (const ip of ['127.0.0.1','10.0.0.1','172.31.1.1','192.168.1.1','169.254.169.254','100.64.0.1','0.0.0.0','192.0.2.1','198.18.0.1','224.0.0.1','255.255.255.255','::1','::','fc00::1','fe80::1','::ffff:127.0.0.1','2001:db8::1','2002:7f00:1::','64:ff9b::7f00:1']) {
     assert.equal(isPublicAddress(ip), false, ip);

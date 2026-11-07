@@ -526,7 +526,7 @@ test('a Rakuten timeout or failure still returns the other site, and Amazon stay
   assert.equal(amazon.searchParams.get('tag'), 'test-tag-22');
   assert.deepEqual([...amazon.searchParams.keys()].sort(), ['k', 'tag']);
   assert.equal(amazon.username, '');
-  assert.equal(yahooDown.value.amazonUrl.includes('amazon.com'), false);
+  assert.equal(amazon.origin, 'https://www.amazon.co.jp');
 
   const untagged = await searchWithPorts(
     { name: 'ペン', brand: null, model: null, jan: null },

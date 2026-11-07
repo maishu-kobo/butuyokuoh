@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { isDeepStrictEqual } from 'node:util';
 
 type Row = Record<string, unknown>;
 
@@ -35,6 +36,7 @@ export type Snapshot = {
 
 type ColumnRule = { table: string; column: string; value: unknown };
 type FieldRule = { field: string; equals: unknown };
+type JsonResponse = { status: number; json: Row };
 type RejectedUrl = { step: string; url: string; status: number; error: string };
 type PasswordRetired = { email: string; generation: number };
 type RejectedUnverifiedGoogle = { step: string; email: string; googleId: string };
@@ -49,6 +51,7 @@ type ChangeRule = {
   columnsAdded?: ColumnRule[];
   indexesAdded?: string[];
   responseFieldsAdded?: FieldRule[];
+  duplicateUrlConflict?: { step: string; before: JsonResponse; after: JsonResponse };
   rejectedUrls?: RejectedUrl[];
   passwordRetired?: PasswordRetired[];
   rejectedUnverifiedGoogle?: RejectedUnverifiedGoogle[];
@@ -93,8 +96,8 @@ export function loadApprovals(file: string): ChangeRule[] {
 }
 
 export function compareSnapshots(baseline: Snapshot, candidate: Snapshot, rules: ChangeRule[]): Report {
-  const left = normalize(structuredClone(baseline));
-  const right = normalize(structuredClone(candidate));
+  const left = normalize(baseline, rules);
+  const right = normalize(candidate, rules);
   // 承認適用はスナップショットを加工するため、不変条件は加工前に検査する。
   const retained = new Set(rules.filter((rule) => rule.required
     && requiredBehaviorPresent(left, rule, rules)
@@ -161,6 +164,10 @@ function requiredBehaviorPresent(snapshot: Snapshot, rule: ChangeRule, rules: Ch
   const rejected = (step: string) => snapshot.steps[step]?.allowed === false
     && snapshot.steps[step]?.assignedUserId === null;
   switch (rule.id) {
+    case 'active-wishlist-url-conflict': {
+      const conflict = rule.duplicateUrlConflict;
+      return !!conflict && matchesResponse(snapshot.steps[conflict.step], conflict.after);
+    }
     case 'verified-link-retires-password':
       return Boolean(rule.passwordRetired?.length) && rule.passwordRetired!.every((entry) => {
         const user = onlyUser(users, entry.email);
@@ -203,7 +210,8 @@ function requiredBehaviorPresent(snapshot: Snapshot, rule: ChangeRule, rules: Ch
   }
 }
 
-function normalize(snapshot: Snapshot): Snapshot {
+function normalize(original: Snapshot, rules: ChangeRule[]): Snapshot {
+  const snapshot = structuredClone(original);
   rewriteJwt(snapshot);
   const users = new Map<number, string>();
   for (const row of snapshot.db.rows.users || []) {
@@ -219,6 +227,14 @@ function normalize(snapshot: Snapshot): Snapshot {
   snapshot.db.rows = mapValues(snapshot.db.rows, (rows) => rows.map((row) => rewriteIds(row, users, items) as Row));
   snapshot.steps = rewriteIds(snapshot.steps, users, items) as Snapshot['steps'];
   replaceScalars(snapshot);
+  // このエラー本文は型と値まで API の仕様。JWT 等の正規化を適用せず、受信した JSON を比べる。
+  for (const { duplicateUrlConflict } of rules) {
+    if (!duplicateUrlConflict) continue;
+    const { step } = duplicateUrlConflict;
+    if (original.steps[step]?.json !== undefined) {
+      snapshot.steps[step].json = structuredClone(original.steps[step].json);
+    }
+  }
   for (const [table, rows] of Object.entries(snapshot.db.rows)) {
     snapshot.db.rows[table] = rows.sort((a, b) => stable(sortKey(table, a)).localeCompare(stable(sortKey(table, b))));
   }
@@ -339,6 +355,16 @@ function applyApprovals(baseline: Snapshot, candidate: Snapshot, rules: ChangeRu
   return rules.map((rule) => {
     let applied = 0;
     const details: string[] = [];
+    const conflict = rule.duplicateUrlConflict;
+    if (conflict) {
+      const base = baseline.steps[conflict.step];
+      if (matchesResponse(base, conflict.before) && matchesResponse(candidate.steps[conflict.step], conflict.after)) {
+        base.status = conflict.after.status;
+        base.json = structuredClone(conflict.after.json);
+        applied += 1;
+        details.push(conflict.step);
+      }
+    }
     for (const table of rule.tablesAdded || []) {
       const rows = candidate.db.rows[table];
       if (rows && !(table in baseline.db.rows) && (!rule.requireEmpty || rows.length === 0)) {
@@ -386,6 +412,10 @@ function applyApprovals(baseline: Snapshot, candidate: Snapshot, rules: ChangeRu
 }
 
 const PASSWORD_HASH = '<password-hash>';
+
+function matchesResponse(step: Step | undefined, expected: JsonResponse): boolean {
+  return step?.status === expected.status && isDeepStrictEqual(step.json, expected.json);
+}
 
 function approvePasswordRetired(baseline: Snapshot, candidate: Snapshot, rules: PasswordRetired[], details: string[]): number {
   let applied = 0;
