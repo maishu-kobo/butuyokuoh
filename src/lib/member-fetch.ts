@@ -14,11 +14,14 @@ export class BlockedTargetError extends Error {
 
 export class HttpError extends Error {
   status: number;
+  /** 最後に接続した URL。転送のたびに公開アドレスへ解決してから接続した先で、未接続の location ではない。 */
+  url: string;
 
   constructor(status: number, url: string) {
     super(`HTTP error ${status}: ${url}`);
     this.name = 'HttpError';
     this.status = status;
+    this.url = url;
   }
 }
 
