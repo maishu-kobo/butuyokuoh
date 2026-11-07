@@ -1,3 +1,4 @@
+import { tokenizer, tokTypes } from 'acorn';
 import { Parser } from 'htmlparser2';
 import { isBotChallengedHtml, PRODUCT_FETCH_BLOCKED_HELP } from './public-page';
 import type { ScrapedItem } from './scraper';
@@ -27,6 +28,25 @@ function parseOgYenAmount(content: string | undefined): number | null {
   return parseYenPrice(whole.replace(/\D/g, ''));
 }
 
+// JavaScript は実行せず、文字列やコメントを除いた Shopify.theme への代入を読む。
+function assignsShopifyTheme(script: string): boolean {
+  if (!script.includes('Shopify')) return false;
+  try {
+    const tokens = tokenizer(script, { ecmaVersion: 'latest' });
+    for (const token of tokens) {
+      if (token.type !== tokTypes.name || token.value !== 'Shopify') continue;
+      if (tokens.getToken().type !== tokTypes.dot) continue;
+      const property = tokens.getToken();
+      if (property.type === tokTypes.name && property.value === 'theme' && tokens.getToken().type === tokTypes.eq) {
+        return true;
+      }
+    }
+  } catch {
+    // 読めないスクリプトは店舗判定の根拠にしない。
+  }
+  return false;
+}
+
 // ページに明示された通貨・金額と、実際に読み込むテーマの手掛かりを一度に読む。
 function storePriceMetadata(html: string, pageUrl: string) {
   let currency: string | undefined;
@@ -54,7 +74,7 @@ function storePriceMetadata(html: string, pageUrl: string) {
       }
     },
     ontext(text) {
-      if (inlineScript && /(?:^|[;{}\n])\s*(?:window\.)?Shopify\.theme\s*=(?!=|>)/.test(text)) shopifyTheme = true;
+      if (inlineScript && !shopifyTheme && assignsShopifyTheme(text)) shopifyTheme = true;
     },
     onclosetag(tag) {
       if (tag === 'script') inlineScript = false;

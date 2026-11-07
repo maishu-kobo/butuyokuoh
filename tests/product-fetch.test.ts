@@ -11,6 +11,12 @@ test('Shopify theme initialization inside a conditional retains the variant pric
   const html = '<script>if (window.Shopify) { window.Shopify.theme = {"id":1}; }</script>';
   const product = '<script type="application/json">{"price":120000}</script>';
   assert.equal(parseProductHtml(html + product, 'https://shop.example/pen').price, 1200);
+  for (const script of [
+    'if (window.Shopify) window.Shopify.theme = {};',
+    'window.Shopify = {}, window.Shopify.theme = {};',
+  ]) {
+    assert.equal(parseProductHtml(`<script>${script}</script>` + product, 'https://shop.example/pen').price, 1200);
+  }
   const stylesheet = '<link href="//cdn.shopify.com/assets/theme.css" rel="stylesheet">';
   assert.equal(parseProductHtml(stylesheet + product, 'https://shop.example/pen').price, 1200);
   assert.equal(parseProductHtml('<script src="https://cdn.shopify.com/theme.js"></script>' + product, 'https://shop.example/pen').price, 1200);
@@ -36,6 +42,8 @@ test('references to Shopify in text, a product image or a JSON description do no
     '<link rel="stylesheet" href="https://assets.example/cdn.shopify.com/theme.css">',
     '<p>See cdn.shopify.com for images.</p>',
     '<script type="application/json">{"description":"Shopify.theme = {}"}</script>',
+    '<script>const help = "example; Shopify.theme = {}";</script>',
+    '<script>/* Shopify.theme = {} */</script>',
     '<script type="application/json" src="https://cdn.shopify.com/data.json"></script>',
     '<link rel="stylesheet" href="ftp://cdn.shopify.com/theme.css">',
   ]) {
