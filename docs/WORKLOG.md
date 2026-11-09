@@ -16,6 +16,7 @@
 - 追加: `purgeAgentItem`、MCP `purge_item`、REST `DELETE /api/agent/v1/items/{id}/trash`。`tests/trash-url-restore-mcp.test.ts`・`tests/agent-api.test.ts`・`tests/trash-url-restore.test.ts` に挙動テスト。完全削除後の同一 URL は `restored_from_trash` にならず再取得で新規 INSERT になることを固定。
 - 文面: `/help/agents`・`/terms`・`/privacy`・接続カードの例・MCP initialize の instructions（日英）・`llms.txt`・OpenAPI から「完全削除はできない」を外し、「ゴミ箱の自分の品目を1件ずつだけ」に直した。`LEGAL_REVISED_DATE` を 2026年11月9日 にした。
 - レビュー対応: `purge_item` の引数は宣言どおり `item_id` だけ（別名 `id`・混在・余分なキー・型違いは 400。他ツールの `id` 別名は維持）。MCP / REST とも、認可 → 検査 → 実行の順にし、`items.purge` の操作ログは実際に消えたときだけ検査済みの `item_id` 付きで書く（拒否は記録しない）。Web と REST の完全削除 `DELETE` のパス id は `parseDecimalRouteId`（10進の数字だけ。`Number("0x1f")` のように別の行を指す表記は 404）。
+- レビュー対応 2: 削除と `items.purge` の記録を `purgeAgentItem` の中で同じ接続の 1 つの immediate トランザクションにした（`purgeTrashedItemRows` を呼び出し側トランザクション前提に分け、Web は `purgeTrashedItem` で自前に包む）。記録に失敗すると削除も戻り 500 `PURGE_FAILED`（品目と子レコードは残る）。MCP の引数検査は 1 回だけになり、`executeAgentTool` を直接呼んでも同じ記録が残る。`items.purge` の INSERT だけを拒む TEMP トリガで MCP / REST の巻き戻しと再試行をテストした。
 
 ### 残るもの
 

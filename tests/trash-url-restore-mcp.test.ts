@@ -905,3 +905,66 @@ test('mcp tools/list: purge_item is a write-only destructive tool for one item, 
   const readTools = (await mcpToolsList(read.token)).map((tool) => tool.name);
   assert.equal(readTools.includes('purge_item'), false, 'read-only tokens must not see purge_item');
 }));
+
+test('mcp purge_item: deletion and its audit row are one transaction; an audit failure rolls the purge back and a retry works', () => serial(async () => {
+  const owner = await createMember('mcp-purge-atomic');
+  const token = await createToken(['read', 'write'], 'purge-atomic');
+  const database = await db();
+  const seedTrashed = (name: string, url: string) => {
+    const id = Number(database.prepare(`
+      INSERT INTO items (user_id, name, url, deleted_at) VALUES (?, ?, ?, datetime('now', '-1 day'))
+    `).run(owner.id, name, url).lastInsertRowid);
+    database.prepare('INSERT INTO price_history (item_id, price) VALUES (?, 777)').run(id);
+    database.prepare('INSERT INTO notification_settings (item_id, target_price) VALUES (?, 700)').run(id);
+    return id;
+  };
+  const itemId = seedTrashed('記録できない削除', 'https://example.com/products/atomic-purge');
+  const purgeAudits = () => database.prepare(
+    "SELECT meta FROM agent_audit_log WHERE token_id = ? AND action = 'items.purge' ORDER BY id",
+  ).all(token.record.id) as { meta: string | null }[];
+
+  // items.purge の INSERT だけを失敗させる一時トリガ。削除と記録が同じトランザクションなら削除も戻る。
+  database.exec(`CREATE TEMP TRIGGER fail_purge_audit BEFORE INSERT ON agent_audit_log
+    WHEN NEW.action = 'items.purge' BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END`);
+  try {
+    const failed = await mcpTool(token.token, 'purge_item', { item_id: itemId });
+    assert.equal(failed.status, 200, failed.text);
+    assert.equal(failed.body.result, undefined, 'a rolled-back purge is a JSON-RPC error, not a tool result');
+    assert.equal(failed.body.error?.code, -32603, failed.text);
+    assert.equal(failed.body.error?.data?.httpStatus, 500);
+    assert.equal(failed.body.error?.data?.code, 'PURGE_FAILED');
+
+    const row = findItemRow(database, itemId);
+    assert.ok(row, 'the item must survive when its audit row cannot be written');
+    assert.ok(row.deleted_at, 'the item is still in the trash');
+    assert.deepEqual(countChildren(database, itemId), { history: 1, notifications: 1 }, 'both child types survive');
+    assert.equal(purgeAudits().length, 0);
+  } finally {
+    database.exec('DROP TRIGGER fail_purge_audit');
+  }
+
+  // トリガを外せば同じ呼び出しがそのまま通る
+  const retried = await mcpTool(token.token, 'purge_item', { item_id: itemId });
+  assert.equal(retried.status, 200, retried.text);
+  assert.equal(retried.body.result?.isError, false, retried.text);
+  assert.equal((retried.body.result?.structuredContent?.data as unknown as PurgeData).item.id, itemId);
+  assert.equal(findItemRow(database, itemId), undefined);
+  assert.deepEqual(countChildren(database, itemId), { history: 0, notifications: 0 });
+  const afterRetry = purgeAudits();
+  assert.equal(afterRetry.length, 1);
+  assert.deepEqual(JSON.parse(afterRetry[0].meta ?? '{}'), { scope: 'write', tool: 'purge_item', item_id: itemId });
+
+  // executeAgentTool を直接呼ぶ経路（tools/call を経ない）でも同じ記録が残る
+  const { executeAgentTool } = await import('../src/lib/agent-tools');
+  const { findAgentTokenByPlaintext } = await import('../src/lib/agent-token');
+  const auth = findAgentTokenByPlaintext(token.token);
+  assert.ok(auth, 'the token must resolve to an auth context');
+  const directId = seedTrashed('直接実行', 'https://example.com/products/atomic-purge-direct');
+  const direct = await executeAgentTool('purge_item', { item_id: directId }, auth) as { data: PurgeData };
+  assert.equal(direct.data.purged, true);
+  assert.equal(findItemRow(database, directId), undefined);
+  assert.deepEqual(countChildren(database, directId), { history: 0, notifications: 0 });
+  const afterDirect = purgeAudits();
+  assert.equal(afterDirect.length, 2, 'the direct executor is audited exactly like tools/call');
+  assert.deepEqual(JSON.parse(afterDirect[1].meta ?? '{}'), { scope: 'write', tool: 'purge_item', item_id: directId });
+}));

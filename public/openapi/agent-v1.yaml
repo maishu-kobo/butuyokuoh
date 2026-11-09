@@ -220,7 +220,7 @@ paths:
         他人の ID・存在しない ID は 404 `ITEM_NOT_FOUND`。2 回目も行が無いので 404。
         ゴミ箱全件を空にする操作は提供しない。
         完全削除後に同じ URL を `POST /api/agent/v1/items/by-url` すると、復元（`restored_from_trash`）ではなく新規登録（再取得）になる。
-        操作ログに `items.purge` と `item_id` を記録する。
+        操作ログ `items.purge`（`item_id` 付き）は削除と同じトランザクションで書く。記録できなければ削除も取り消し、500 `PURGE_FAILED` を返す（品目はゴミ箱に残る）。
       operationId: purgeAgentItem
       responses:
         '200':
@@ -237,6 +237,15 @@ paths:
           $ref: '#/components/responses/Error'
         '409':
           $ref: '#/components/responses/Error'
+        '500':
+          description: 操作ログを書けず削除を取り消した（`PURGE_FAILED`）。品目はゴミ箱に残る
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  code: { type: string, enum: [PURGE_FAILED] }
   /api/agent/v1/items/{id}/price-history:
     parameters:
       - $ref: '#/components/parameters/ItemId'

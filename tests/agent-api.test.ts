@@ -593,6 +593,48 @@ test('agent api: DELETE /items/:id/trash purges one owned trashed item with its 
   }
 }));
 
+test('agent api: DELETE /items/:id/trash rolls the purge back when the audit row cannot be written, and a retry works', () => serial(async () => {
+  const owner = await createMember('agent-purge-atomic');
+  const token = await createToken(['read', 'write'], 'purge-atomic-rest');
+  const database = await db();
+  const itemId = Number(database.prepare(`
+    INSERT INTO items (user_id, name, url, deleted_at) VALUES (?, '記録できない削除', 'https://example.com/products/atomic-rest', datetime('now', '-1 day'))
+  `).run(owner.id).lastInsertRowid);
+  database.prepare('INSERT INTO price_history (item_id, price) VALUES (?, 777)').run(itemId);
+  database.prepare('INSERT INTO notification_settings (item_id, target_price) VALUES (?, 700)').run(itemId);
+  const children = () => ({
+    history: (database.prepare('SELECT COUNT(*) AS n FROM price_history WHERE item_id = ?').get(itemId) as { n: number }).n,
+    notifications: (database.prepare('SELECT COUNT(*) AS n FROM notification_settings WHERE item_id = ?').get(itemId) as { n: number }).n,
+  });
+  const purge = () => call(trashPath, 'DELETE', `/api/agent/v1/items/${itemId}/trash`, undefined, { id: String(itemId) }, bearer(token.token));
+  const purgeAudits = () => database.prepare(
+    "SELECT meta FROM agent_audit_log WHERE token_id = ? AND action = 'items.purge'",
+  ).all(token.record.id) as { meta: string | null }[];
+
+  database.exec(`CREATE TEMP TRIGGER fail_rest_purge_audit BEFORE INSERT ON agent_audit_log
+    WHEN NEW.action = 'items.purge' BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END`);
+  try {
+    const failed = await purge();
+    assert.equal(failed.status, 500, failed.text);
+    assert.equal((failed.json as { code: string }).code, 'PURGE_FAILED');
+    const row = database.prepare('SELECT deleted_at FROM items WHERE id = ?').get(itemId) as { deleted_at: string | null } | undefined;
+    assert.ok(row?.deleted_at, 'the item must survive, still in the trash, when its audit row cannot be written');
+    assert.deepEqual(children(), { history: 1, notifications: 1 }, 'both child types survive');
+    assert.equal(purgeAudits().length, 0);
+  } finally {
+    database.exec('DROP TRIGGER fail_rest_purge_audit');
+  }
+
+  const retried = await purge();
+  assert.equal(retried.status, 200, retried.text);
+  assert.equal((retried.json as { data: { purged: boolean; item: { id: number } } }).data.item.id, itemId);
+  assert.equal(database.prepare('SELECT id FROM items WHERE id = ?').get(itemId), undefined);
+  assert.deepEqual(children(), { history: 0, notifications: 0 });
+  const audited = purgeAudits();
+  assert.equal(audited.length, 1);
+  assert.deepEqual(JSON.parse(audited[0].meta ?? '{}'), { scope: 'write', item_id: itemId });
+}));
+
 test('agent api: trash duplicate visibility via has_url_duplicate', () => serial(async () => {
   await createMember('agent-dupe');
   const token = await createToken(['read', 'write'], 'dupe');
