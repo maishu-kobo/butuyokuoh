@@ -7,6 +7,7 @@
 ### Added
 
 - エージェント MCP の `update_item` と REST `PATCH /api/agent/v1/items/:id` で、null のままの価格（`current_price`、上限 1,000 億円）と画像 URL（`image_url`、`https://` で始まる絶対 URL を正規形で保存）を一度だけ埋められるようにする。判定は各フィールドが null かどうかだけで、値がある側は 409 `MEDIA_ALREADY_SET` で守り、新規登録ではこれまでどおりクライアントの価格・画像を受け付けない。`get_item` / `list_items` と `stores` に `scrape_status` / `scrape_error_code` / `scrape_error`（利用者向けの定型文だけ）を足し、埋めた価格は `price_history` に 1 行残って `get_budget_summary` に数量掛けで入る（#382）。
+- エージェント MCP / REST に、ゴミ箱内の自分の品目を1件だけ完全削除する `purge_item`（REST は `DELETE /api/agent/v1/items/{id}/trash`）を追加する。ほしいもの・購入済みは 409 で拒否し、ゴミ箱を空にする操作は提供しない。完全削除後に同じ URL を `add_item_by_url` すると復元ではなく新規登録（再取得）になる。Web のゴミ箱の完全削除と同じ関数で子レコードも消す（#381）。
 - MCP から手作業比較グループを作成・一覧取得し、既存品目をまとめられるようにする（#335）。
 - 新規登録でプライバシーポリシーと利用規約への同意を必須にし、アプリ画面のフッターに両ページへのリンクを置く（#314）。
 - エージェント連携ヘルプに iPhone の Siri・ショートカットから使う手順を載せる（#317）。
@@ -23,6 +24,7 @@
 
 ### Changed
 
+- `/privacy`・`/terms`・エージェント連携ヘルプで、エージェントにできる操作に「ゴミ箱に移した品目を1件ずつ完全に削除する」を足し、「完全に削除することはできません」を外す。改定日を 2026年11月9日 にする（#381）。
 - トップのエージェント接続カードとヘルプに、AIごと（Claude / Claude Code / ChatGPT / Cursor / Grok Bot）のつなぎ方を載せ、OAuth なら手動トークン不要・トークンが要る場合を分けて書く（#325）。
 - Chrome 拡張の認証を拡張用トークンへ移す。移行期間中は古いログイン用 JWT も受け付け、拡張に案内を出す。終了日は `EXTENSION_LEGACY_JWT_UNTIL`（既定 2026-11-30 UTC）。拡張 manifest を 1.2.0 にする（#271）。
 

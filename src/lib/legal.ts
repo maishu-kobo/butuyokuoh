@@ -12,7 +12,7 @@ export const CLOUDFLARE_PRIVACY_POLICY_URL = 'https://www.cloudflare.com/privacy
 export const LEGAL_ENACTED_DATE = '2026年10月30日';
 
 /** 最新の改定日。文面を変えたらここを更新する。 */
-export const LEGAL_REVISED_DATE = '2026年10月31日';
+export const LEGAL_REVISED_DATE = '2026年11月9日';
 
 /** 現行の効力発生日（最新の改定日と同じ）。 */
 export const LEGAL_EFFECTIVE_DATE = LEGAL_REVISED_DATE;
