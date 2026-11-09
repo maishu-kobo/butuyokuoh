@@ -459,6 +459,182 @@ test('agent mcp: initialize, tools/list, tools/call with scope filter', () => se
   }
 }));
 
+test('agent api: DELETE /items/:id/trash purges one owned trashed item with its children and frees the URL (#381)', () => serial(async () => {
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  installProductFetchPort(regressionFetchPort());
+  try {
+    const owner = await createMember('agent-purge-owner');
+    const both = await createToken(['read', 'write'], 'purge-both');
+    const read = await createToken(['read'], 'purge-read');
+    const database = await db();
+
+    const children = (itemId: number) => ({
+      history: (database.prepare('SELECT COUNT(*) AS n FROM price_history WHERE item_id = ?').get(itemId) as { n: number }).n,
+      notifications: (database.prepare('SELECT COUNT(*) AS n FROM notification_settings WHERE item_id = ?').get(itemId) as { n: number }).n,
+    });
+    const row = (itemId: number) => database.prepare('SELECT id, deleted_at FROM items WHERE id = ?').get(itemId) as
+      | { id: number; deleted_at: string | null }
+      | undefined;
+    const purgeRaw = (token: string, rawId: string) => call(
+      trashPath,
+      'DELETE',
+      `/api/agent/v1/items/${encodeURIComponent(rawId)}/trash`,
+      undefined,
+      { id: rawId },
+      bearer(token),
+    );
+    const purge = (token: string, itemId: number) => purgeRaw(token, String(itemId));
+    const purgeAudits = (tokenId: number) => database.prepare(
+      "SELECT meta FROM agent_audit_log WHERE token_id = ? AND action = 'items.purge'",
+    ).all(tokenId) as { meta: string | null }[];
+
+    const added = await call(byUrlPath, 'POST', '/api/agent/v1/items/by-url', {
+      url: AMAZON_PRODUCT_URL,
+    }, undefined, bearer(both.token));
+    assert.equal(added.status, 201, added.text);
+    const itemId = (added.json as { data: { item: { id: number } } }).data.item.id;
+    database.prepare('INSERT INTO notification_settings (item_id, target_price) VALUES (?, 2000)').run(itemId);
+    assert.deepEqual(children(itemId), { history: 1, notifications: 1 });
+
+    // ほしいもの（未ゴミ箱）は 409。行も子レコードも残る。
+    const active = await purge(both.token, itemId);
+    assert.equal(active.status, 409, active.text);
+    assert.equal((active.json as { code: string }).code, 'ITEM_NOT_TRASHED');
+    assert.match((active.json as { error: string }).error, /ゴミ箱/);
+    assert.deepEqual(row(itemId), { id: itemId, deleted_at: null });
+    assert.deepEqual(children(itemId), { history: 1, notifications: 1 });
+
+    // 購入済みも 409
+    database.prepare("UPDATE items SET is_purchased = 1, purchased_at = '2026-11-01' WHERE id = ?").run(itemId);
+    const purchased = await purge(both.token, itemId);
+    assert.equal(purchased.status, 409, purchased.text);
+    assert.equal((purchased.json as { code: string }).code, 'ITEM_NOT_TRASHED');
+    assert.deepEqual(row(itemId), { id: itemId, deleted_at: null });
+
+    // 既存の POST（ソフトデリート）はそのまま
+    const trashed = await call(trashPath, 'POST', `/api/agent/v1/items/${itemId}/trash`, undefined, { id: String(itemId) }, bearer(both.token));
+    assert.equal(trashed.status, 200, trashed.text);
+    assert.ok(row(itemId)?.deleted_at);
+
+    // read スコープは 403、行は残る
+    const denied = await purge(read.token, itemId);
+    assert.equal(denied.status, 403, denied.text);
+    assert.ok(row(itemId)?.deleted_at);
+
+    // 他人は 404、行は残る
+    await createMember('agent-purge-stranger');
+    const strangerToken = await createToken(['read', 'write'], 'purge-stranger');
+    const foreign = await purge(strangerToken.token, itemId);
+    assert.equal(foreign.status, 404, foreign.text);
+    assert.equal((foreign.json as { code: string }).code, 'ITEM_NOT_FOUND');
+    assert.ok(row(itemId)?.deleted_at);
+    assert.deepEqual(children(itemId), { history: 1, notifications: 1 });
+    await setTestUser(owner);
+
+    // パスの id は10進の数字だけ。16進・指数・小数・空白・符号・末尾ゴミは、同じ行を指す値でも 404 で、行も子も残る。
+    const hex = `0x${itemId.toString(16)}`;
+    assert.equal(Number(hex), itemId, 'the fixture must be a hex spelling of the same id');
+    for (const rawId of [hex, `${itemId}e0`, `${itemId}.0`, ` ${itemId}`, `${itemId} `, `+${itemId}`, `-${itemId}`, `${itemId}abc`, '0b1', 'Infinity', 'NaN', '']) {
+      const refused = await purgeRaw(both.token, rawId);
+      assert.equal(refused.status, 404, `${JSON.stringify(rawId)}: ${refused.text}`);
+      assert.equal((refused.json as { code: string }).code, 'ITEM_NOT_FOUND', JSON.stringify(rawId));
+      assert.ok(row(itemId)?.deleted_at, `${JSON.stringify(rawId)} must not delete the addressed row`);
+      assert.deepEqual(children(itemId), { history: 1, notifications: 1 }, JSON.stringify(rawId));
+    }
+
+    // 拒否された呼び出し（409 / 403 / 404）は items.purge を記録しない
+    assert.equal(purgeAudits(both.record.id).length, 0, 'refused purges must not be audited as items.purge');
+    assert.equal(purgeAudits(read.record.id).length, 0);
+    assert.equal(purgeAudits(strangerToken.record.id).length, 0);
+
+    // 所有者はゴミ箱の品目を完全削除できる。子レコードも残らない。
+    const purged = await purge(both.token, itemId);
+    assert.equal(purged.status, 200, purged.text);
+    const purgedBody = purged.json as {
+      notice: { ja: string; en: string };
+      data: { purged: boolean; item: { id: number; url: string; name: string } };
+    };
+    assert.ok(purgedBody.notice.ja.includes('データ'));
+    assert.equal(purgedBody.data.purged, true);
+    assert.equal(purgedBody.data.item.id, itemId);
+    assert.equal(purgedBody.data.item.url, AMAZON_PRODUCT_URL);
+    assert.equal(row(itemId), undefined);
+    assert.deepEqual(children(itemId), { history: 0, notifications: 0 });
+    const audited = purgeAudits(both.record.id);
+    assert.equal(audited.length, 1, 'the successful purge is audited exactly once');
+    assert.equal(JSON.parse(audited[0].meta ?? '{}').item_id, itemId);
+
+    // 2回目は 404（冪等成功にしない）
+    const again = await purge(both.token, itemId);
+    assert.equal(again.status, 404, again.text);
+    assert.equal((again.json as { code: string }).code, 'ITEM_NOT_FOUND');
+
+    // 同じ URL は復元ではなく新規登録（再取得）
+    const readded = await call(byUrlPath, 'POST', '/api/agent/v1/items/by-url', {
+      url: AMAZON_PRODUCT_URL,
+    }, undefined, bearer(both.token));
+    assert.equal(readded.status, 201, readded.text);
+    const readdedBody = readded.json as {
+      data: { item: { id: number; name: string; current_price: number | null }; media_fetched: boolean; restored_from_trash?: boolean };
+    };
+    assert.equal(readdedBody.data.restored_from_trash, undefined);
+    assert.notEqual(readdedBody.data.item.id, itemId);
+    assert.equal(readdedBody.data.item.name, AMAZON_NAME);
+    assert.equal(readdedBody.data.item.current_price, AMAZON_PRICE);
+    assert.equal(readdedBody.data.media_fetched, true);
+
+    // 完全削除はゴミ箱 1 件向けの DELETE だけ。品目一覧・品目本体への DELETE（一括・直接削除）は無い。
+    const itemsModule = await import(itemsPath) as Record<string, unknown>;
+    assert.equal(itemsModule.DELETE, undefined, 'no bulk delete on the items collection');
+    const itemModule = await import(itemIdPath) as Record<string, unknown>;
+    assert.equal(itemModule.DELETE, undefined, 'no hard delete on a non-trashed item');
+  } finally {
+    installProductFetchPort(null);
+  }
+}));
+
+test('agent api: DELETE /items/:id/trash rolls the purge back when the audit row cannot be written, and a retry works', () => serial(async () => {
+  const owner = await createMember('agent-purge-atomic');
+  const token = await createToken(['read', 'write'], 'purge-atomic-rest');
+  const database = await db();
+  const itemId = Number(database.prepare(`
+    INSERT INTO items (user_id, name, url, deleted_at) VALUES (?, '記録できない削除', 'https://example.com/products/atomic-rest', datetime('now', '-1 day'))
+  `).run(owner.id).lastInsertRowid);
+  database.prepare('INSERT INTO price_history (item_id, price) VALUES (?, 777)').run(itemId);
+  database.prepare('INSERT INTO notification_settings (item_id, target_price) VALUES (?, 700)').run(itemId);
+  const children = () => ({
+    history: (database.prepare('SELECT COUNT(*) AS n FROM price_history WHERE item_id = ?').get(itemId) as { n: number }).n,
+    notifications: (database.prepare('SELECT COUNT(*) AS n FROM notification_settings WHERE item_id = ?').get(itemId) as { n: number }).n,
+  });
+  const purge = () => call(trashPath, 'DELETE', `/api/agent/v1/items/${itemId}/trash`, undefined, { id: String(itemId) }, bearer(token.token));
+  const purgeAudits = () => database.prepare(
+    "SELECT meta FROM agent_audit_log WHERE token_id = ? AND action = 'items.purge'",
+  ).all(token.record.id) as { meta: string | null }[];
+
+  database.exec(`CREATE TEMP TRIGGER fail_rest_purge_audit BEFORE INSERT ON agent_audit_log
+    WHEN NEW.action = 'items.purge' BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END`);
+  try {
+    const failed = await purge();
+    assert.equal(failed.status, 500, failed.text);
+    assert.equal((failed.json as { code: string }).code, 'PURGE_FAILED');
+    const row = database.prepare('SELECT deleted_at FROM items WHERE id = ?').get(itemId) as { deleted_at: string | null } | undefined;
+    assert.ok(row?.deleted_at, 'the item must survive, still in the trash, when its audit row cannot be written');
+    assert.deepEqual(children(), { history: 1, notifications: 1 }, 'both child types survive');
+    assert.equal(purgeAudits().length, 0);
+  } finally {
+    database.exec('DROP TRIGGER fail_rest_purge_audit');
+  }
+
+  const retried = await purge();
+  assert.equal(retried.status, 200, retried.text);
+  assert.equal((retried.json as { data: { purged: boolean; item: { id: number } } }).data.item.id, itemId);
+  assert.equal(database.prepare('SELECT id FROM items WHERE id = ?').get(itemId), undefined);
+  assert.deepEqual(children(), { history: 0, notifications: 0 });
+  const audited = purgeAudits();
+  assert.equal(audited.length, 1);
+  assert.deepEqual(JSON.parse(audited[0].meta ?? '{}'), { scope: 'write', item_id: itemId });
+}));
+
 test('agent api: trash duplicate visibility via has_url_duplicate', () => serial(async () => {
   await createMember('agent-dupe');
   const token = await createToken(['read', 'write'], 'dupe');

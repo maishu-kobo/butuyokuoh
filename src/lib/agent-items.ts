@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { AGENT_RATE_LIMITS } from '@/lib/agent-access-limits';
 import { assertOwnedRelations } from '@/lib/api-access';
-import { markItemAddedByAgent, type AgentAuthContext } from '@/lib/agent-token';
+import { markItemAddedByAgent, recordAgentAudit, type AgentAuthContext } from '@/lib/agent-token';
 import { getDb } from '@/lib/db';
 import { GuestError } from '@/lib/guest';
 import { ITEM_URL_ERROR } from '@/lib/http-url';
@@ -13,6 +13,7 @@ import {
   fetchServerItemMedia,
   findCleanedStoredUrlRegistration,
   normalizeItemName,
+  purgeTrashedItemRows,
   restoreTrashedItem,
   RESTORED_FROM_TRASH_MESSAGE,
   sanitizeStoredItemUrl,
@@ -1162,6 +1163,68 @@ export function trashAgentItem(
     throw new GuestError(404, 'ITEM_NOT_FOUND', '品目が見つかりません');
   }
   return getAgentItem(auth.userId, itemId, db);
+}
+
+export type AgentPurgeResult = {
+  purged: true;
+  item: { id: number; name: string; url: string };
+};
+
+/**
+ * ゴミ箱内の自分の品目 1 件を完全削除する（#381）。Web の DELETE /api/trash/[id] と同じ
+ * purgeTrashedItemRows を使い、所有者確認・ゴミ箱判定・削除・操作ログ（items.purge）の
+ * INSERT を同じ接続の 1 つの immediate トランザクションで行う。操作ログを書けなければ
+ * 削除も戻し、500 PURGE_FAILED にする（品目と子レコードは残る）。
+ * - 他人の ID・存在しない ID: 404 ITEM_NOT_FOUND（既存ツールと同じ）
+ * - ほしいもの・購入済み（deleted_at が空）: 409 ITEM_NOT_TRASHED。何も消さない
+ * - 2 回目: 行が無いので 404（trash_item のような冪等成功にはしない）
+ * 拒否（404 / 409）は items.purge を記録しない。ゴミ箱全件を空にする操作はエージェントに提供しない。
+ * auditMeta は scope と item_id に足す追加情報（MCP は tool 名）。
+ */
+export function purgeAgentItem(
+  auth: AgentAuthContext,
+  itemId: number,
+  auditMeta: Record<string, unknown> = {},
+  db: Database.Database = getDb(),
+): AgentPurgeResult {
+  if (!Number.isSafeInteger(itemId) || itemId <= 0) {
+    throw new GuestError(404, 'ITEM_NOT_FOUND', '品目が見つかりません');
+  }
+  try {
+    return db.transaction((): AgentPurgeResult => {
+      const result = purgeTrashedItemRows(db, auth.userId, itemId);
+      if (result.kind === 'not_found') {
+        throw new GuestError(404, 'ITEM_NOT_FOUND', '品目が見つかりません');
+      }
+      if (result.kind === 'not_trashed') {
+        throw new GuestError(
+          409,
+          'ITEM_NOT_TRASHED',
+          '完全削除できるのはゴミ箱の品目だけです。先に trash_item してください',
+        );
+      }
+      recordAgentAudit(
+        auth.token.id,
+        auth.userId,
+        'items.purge',
+        { scope: 'write', ...auditMeta, item_id: itemId },
+        db,
+      );
+      return {
+        purged: true,
+        item: { id: result.item.id, name: result.item.name, url: result.item.url },
+      };
+    }).immediate();
+  } catch (error) {
+    if (error instanceof GuestError) throw error;
+    // トランザクションは戻っている。削除されていないことを呼び出し側に伝える。
+    console.error('purge_item rolled back:', error);
+    throw new GuestError(
+      500,
+      'PURGE_FAILED',
+      '完全削除を操作ログに記録できなかったため取り消しました。品目はゴミ箱に残っています。時間をおいて再試行してください',
+    );
+  }
 }
 
 export function listAgentCategories(userId: number, db: Database.Database = getDb()) {

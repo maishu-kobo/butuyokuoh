@@ -14,6 +14,7 @@ import {
   listAgentCategories,
   listAgentItems,
   purchaseAgentItem,
+  purgeAgentItem,
   trashAgentItem,
   updateAgentItem,
   type AgentItemStatus,
@@ -42,7 +43,8 @@ export type AgentToolName =
   | 'add_item'
   | 'update_item'
   | 'mark_item_purchased'
-  | 'trash_item';
+  | 'trash_item'
+  | 'purge_item';
 
 export type AgentToolDef = {
   name: AgentToolName;
@@ -286,7 +288,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
     name: 'update_item',
     title: 'Update item fields',
     description:
-      '自分の品目の名前・メモ・優先度・数量・予定日・カテゴリ・比較グループ・URL を更新。価格と画像は変更不可。完全削除は不可。',
+      '自分の品目の名前・メモ・優先度・数量・予定日・カテゴリ・比較グループ・URL を更新。価格と画像は変更不可。このツールでは完全削除しない（ゴミ箱の品目の完全削除は purge_item）。',
     scope: 'write',
     auditAction: 'items.update',
     annotations: {
@@ -310,7 +312,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   {
     name: 'mark_item_purchased',
     title: 'Mark item purchased',
-    description: '自分の品目を購入済みにする。完全削除はしない。',
+    description: '自分の品目を購入済みにする。このツールでは完全削除しない。',
     scope: 'write',
     auditAction: 'items.purchase',
     annotations: {
@@ -336,13 +338,33 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   {
     name: 'trash_item',
     title: 'Move item to trash',
-    description: '自分の品目をゴミ箱へ移す（ソフトデリート）。完全削除はできない。',
+    description: '自分の品目をゴミ箱へ移す（ソフトデリート）。このツールでは完全削除しない。ゴミ箱の品目を完全削除するには purge_item。',
     scope: 'write',
     auditAction: 'items.trash',
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
       idempotentHint: true,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['item_id'],
+      properties: { item_id: itemIdProp },
+    },
+  },
+  {
+    name: 'purge_item',
+    title: 'Permanently delete one trashed item',
+    description:
+      'ゴミ箱内の自分の品目を1件だけ完全削除する（価格履歴・通知設定も消え、元に戻せない）。引数は item_id（正の整数）だけで、別名 id や他のキーは 400。ほしいもの・購入済みの品目は ITEM_NOT_TRASHED（409）で拒否するので、先に trash_item する。他人の ID と存在しない ID は 404。2回目も 404。ゴミ箱を空にする操作ではない。完全削除後に同じ URL を add_item_by_url すると、復元ではなく新規登録（価格・画像の再取得）になる。',
+    scope: 'write',
+    auditAction: 'items.purge',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
       openWorldHint: false,
     },
     inputSchema: {
@@ -377,6 +399,30 @@ function requireItemId(args: Record<string, unknown>): number {
     throw new GuestError(400, 'INVALID_INPUT', 'item_id は正の整数です');
   }
   return raw;
+}
+
+/**
+ * purge_item 専用。元に戻せない操作なので、宣言どおり item_id（正の安全な整数）だけを受け、
+ * 別名 id・混在・余分なキー・型違いは、有効なゴミ箱行を指していても 400 にする。
+ * 既存ツールの requireItemId（id 別名を許す）は変えない。
+ */
+function requirePurgeItemId(args: Record<string, unknown>): number {
+  const keys = Object.keys(args);
+  const value = args.item_id;
+  if (
+    keys.length !== 1
+    || keys[0] !== 'item_id'
+    || typeof value !== 'number'
+    || !Number.isSafeInteger(value)
+    || value <= 0
+  ) {
+    throw new GuestError(
+      400,
+      'INVALID_INPUT',
+      'purge_item の引数は item_id（正の整数）だけです。別名 id や他のキーは受け付けません',
+    );
+  }
+  return value;
 }
 
 export async function executeAgentTool(
@@ -435,6 +481,9 @@ export async function executeAgentTool(
       return withAgentNotice(purchaseAgentItem(auth, requireItemId(input), input));
     case 'trash_item':
       return withAgentNotice({ item: trashAgentItem(auth, requireItemId(input)) });
+    case 'purge_item':
+      // 削除と items.purge の記録は purgeAgentItem の中で 1 トランザクション。直接呼んでも同じ記録が残る。
+      return withAgentNotice(purgeAgentItem(auth, requirePurgeItemId(input), { tool: tool.name }));
     default:
       throw new GuestError(404, 'TOOL_NOT_FOUND', `未知のツールです: ${name}`);
   }
@@ -474,6 +523,15 @@ export async function callAgentToolFromRequest(
   // 日付・価格の不正はレート消費より前に拒否する
   if (tool.name === 'add_item' || tool.name === 'update_item' || tool.name === 'mark_item_purchased') {
     assertAgentWriteFields(input);
+  }
+
+  // purge_item は元に戻せないので、認可 → 宣言どおりの引数検査 → 実行の順。
+  // 引数検査と items.purge の記録は executeAgentTool → purgeAgentItem の中で 1 回だけ行い、
+  // 削除と同じトランザクションに入れる。拒否（400 / 404 / 409）は成功を装う記録を残さない。
+  // scope 拒否は requireAgentToken が記録する。
+  if (tool.name === 'purge_item') {
+    const auth = await requireAgentToken(request, tool.scope);
+    return executeAgentTool(tool.name, input, auth);
   }
 
   const auth = await requireAgentToken(request, tool.scope, {
