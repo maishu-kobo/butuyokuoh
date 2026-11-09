@@ -165,7 +165,8 @@ paths:
         は取得失敗の参考情報にすぎない。URL なしの手動品目（`manual://`）も、価格だけ取れて画像が
         空といった一部取得の品目も、null 側のフィールドだけ埋められる。
         片方だけでも、両方でもよい。既に値がある側へ送ると 409 `MEDIA_ALREADY_SET` でボディ全体を
-        適用しない。null や空文字で消すことはできない（400）。`price` / `original_price` /
+        適用しない。ゴミ箱の品目は 409 `ITEM_TRASHED`。これらの検査は画像ホストの名前解決より先に
+        行うので、ホストが解決できなくても 409 が返る。null や空文字で消すことはできない（400）。`price` / `original_price` /
         `target_price` / `imageUrl` の別名は 400。埋めた価格は `price_history` に 1 行残り、
         `/api/agent/v1/budget` に数量掛けで入る。画像 URL はホスト小文字・フラグメント無しの正規形で
         保存され、応答の `image_url` がその保存値。DB の状態に依存する検査（ゴミ箱、媒体が空か、
@@ -381,17 +382,15 @@ components:
         current_price: { type: number, nullable: true }
         image_url: { type: string, nullable: true }
         scrape_status:
-          type: string
-          nullable: true
-          description: 直近のサーバー取得の結果（`failed` など）。未取得なら null。
+          type: [string, 'null']
+          enum: [success, failed, null]
+          description: 直近のサーバー取得の結果。未取得なら null。
         scrape_error_code:
-          type: string
-          nullable: true
+          type: [string, 'null']
           enum: [BOT_CHALLENGE, FETCH_FAILED, null]
           description: 失敗の種別。`scrape_status` が `failed` のときだけ入る。
         scrape_error:
-          type: string
-          nullable: true
+          type: [string, 'null']
           description: 取得失敗の理由（利用者向けの定型文だけ。内部の例外文は出さない）。成功・未取得なら null。
     AgentItem:
       type: object
@@ -409,19 +408,19 @@ components:
         has_url_duplicate: { type: boolean }
         comparison_group_id: { type: integer, nullable: true }
         scrape_status:
-          type: string
-          nullable: true
+          type: [string, 'null']
+          enum: [success, failed, null]
           description: |
-            直近のサーバー取得の結果（`failed` など）。参考情報。PATCH で `current_price` / `image_url`
+            直近のサーバー取得の結果。参考情報。PATCH で `current_price` / `image_url`
             を埋められるかは、この値ではなく各フィールドが null かどうかだけで決まる。
         scrape_error_code:
-          type: string
-          nullable: true
+          type: [string, 'null']
           enum: [BOT_CHALLENGE, FETCH_FAILED, null]
-          description: 失敗の種別。`scrape_status` が `failed` のときだけ入る。
+          description: |
+            失敗の種別。`scrape_status` が `failed` のときだけ入る。ボット対策・待機ページ・Amazon の
+            ボット判定は `BOT_CHALLENGE`、それ以外は `FETCH_FAILED`。
         scrape_error:
-          type: string
-          nullable: true
+          type: [string, 'null']
           description: |
             取得失敗の理由。利用者向けの定型文だけで、内部の例外文（接続エラーや URL）は出さない。
             成功・未取得なら null。
@@ -564,12 +563,13 @@ components:
         image_url:
           type: string
           format: uri
-          pattern: '^https://'
+          pattern: '^[Hh][Tt][Tt][Pp][Ss]://'
           maxLength: 2000
           description: |
-            `https://` で始まる公開画像の絶対 URL。`https:cdn.example/a.png` や `https:/cdn.example/a.png`
-            のような省略形はブラウザが基底 URL によって別の場所と解釈するので 400。保存はホスト小文字・
-            フラグメント無しの正規形。`image_url` が null の品目にだけ設定できる（`scrape_status` は判定に使わない）。
+            `https://` で始まる公開画像の絶対 URL（スキームの大文字小文字は問わない）。`https:cdn.example/a.png` や
+            `https:/cdn.example/a.png` のような省略形はブラウザが基底 URL によって別の場所と解釈するので 400。
+            保存はスキーム・ホスト小文字、フラグメント無しの正規形。`image_url` が null の品目にだけ設定できる
+            （`scrape_status` は判定に使わない）。
             既に画像がある品目は 409 `MEDIA_ALREADY_SET`。http・data・javascript スキーム、認証情報やポート付き、
             内部アドレスへ解決するホストは 400。`imageUrl` の別名は受け付けない。
     TrashResponse:

@@ -44,8 +44,8 @@ export type AgentStoreView = {
   source: string;
   current_price: number | null;
   image_url: string | null;
-  /** 直近のサーバ取得の結果（'failed' など）。未取得なら null */
-  scrape_status: string | null;
+  /** 直近のサーバ取得の結果。未取得なら null */
+  scrape_status: AgentScrapeStatus | null;
   /** 失敗の種別。scrape_status が failed のときだけ入る */
   scrape_error_code: AgentMediaFetchError['code'] | null;
   /** 失敗の理由（利用者向けの定型文だけ。内部の例外文は出さない）。成功・未取得なら null */
@@ -84,7 +84,7 @@ export type AgentItemView = {
    * 価格・画像を埋められるかは scrape_status ではなく各フィールドが null かどうかだけで決まる（#382）。
    * scrape_error は利用者向けの定型文だけ（内部の例外文は出さない）。
    */
-  scrape_status: string | null;
+  scrape_status: AgentScrapeStatus | null;
   scrape_error_code: AgentMediaFetchError['code'] | null;
   scrape_error: string | null;
   /** 1商品としての店一覧（写真グループなら複数。単独は1件） */
@@ -227,31 +227,45 @@ function normalizeManualImageUrl(raw: unknown): string {
 /** 取得失敗時の既定文（media_fetch_errors と view の scrape_error で共有）。 */
 const AGENT_FETCH_FAILED_MESSAGE = '価格と画像を取得できませんでした。時間をおいて再試行するか、別の店のURLを使ってください。';
 
-/** そのまま出してよい定型の失敗文。これ以外の文字列は内部の例外文の可能性があるので出さない。 */
-const KNOWN_FAILURE_MESSAGES: ReadonlySet<string> = new Set([
-  PRODUCT_WAITING_HELP,
-  PRODUCT_FETCH_BLOCKED_HELP,
-  PRODUCT_FETCH_HELP,
-  AMAZON_BOT_NOTE,
-  AGENT_FETCH_FAILED_MESSAGE,
+/**
+ * そのまま出してよい定型の失敗文と、それを出す側が付けている実際の種別。
+ * BOT_CHALLENGE: product-html の isBotChallengedHtml（PRODUCT_FETCH_BLOCKED_HELP）と待機ページ
+ * （PRODUCT_WAITING_HELP）、scraper の Amazon ボット判定（AMAZON_BOT_NOTE）。
+ * これ以外の文字列は内部の例外文の可能性があるので、そのままは出さない。
+ */
+const KNOWN_FAILURE_MESSAGES: ReadonlyMap<string, AgentMediaFetchError['code']> = new Map([
+  [PRODUCT_WAITING_HELP, 'BOT_CHALLENGE'],
+  [PRODUCT_FETCH_BLOCKED_HELP, 'BOT_CHALLENGE'],
+  [AMAZON_BOT_NOTE, 'BOT_CHALLENGE'],
+  [PRODUCT_FETCH_HELP, 'FETCH_FAILED'],
+  [AGENT_FETCH_FAILED_MESSAGE, 'FETCH_FAILED'],
 ]);
+
+/** view に出す scrape_status。コードが書く値は success / failed だけで、それ以外は出さない。 */
+export type AgentScrapeStatus = 'success' | 'failed';
+
+function agentScrapeStatus(status: unknown): AgentScrapeStatus | null {
+  return status === 'success' || status === 'failed' ? status : null;
+}
 
 /**
  * view 用に scrape_status / scrape_error を利用者向けの形にする。
- * 定期の価格チェックや Web の再取得は内部の例外文（接続エラーや URL）を scrape_error に残すことがあるので、
- * 定型文だけ通し、それ以外はボット制限か一般失敗かに分類した定型文に置き換える。失敗以外は null。
+ * 定型文はその出し手の種別のまま通す。定期の価格チェックや Web の再取得は内部の例外文
+ * （接続エラーや URL）を scrape_error に残すことがあるので、それ以外の文字列はボット制限か
+ * 一般失敗かに分類した定型文に置き換える。失敗以外は null。
  */
 export function agentScrapeFailure(
   status: unknown,
   rawError: unknown,
 ): { code: AgentMediaFetchError['code']; message: string } | null {
-  if (status !== 'failed') return null;
+  if (agentScrapeStatus(status) !== 'failed') return null;
   const raw = typeof rawError === 'string' ? rawError : '';
-  const bot = /ボット|待機ページ|自動取得が制限|BOT_CHALLENGE/i.test(raw);
-  const message = KNOWN_FAILURE_MESSAGES.has(raw)
-    ? raw
-    : bot ? PRODUCT_FETCH_BLOCKED_HELP : AGENT_FETCH_FAILED_MESSAGE;
-  return { code: bot ? 'BOT_CHALLENGE' : 'FETCH_FAILED', message };
+  const known = KNOWN_FAILURE_MESSAGES.get(raw);
+  if (known) return { code: known, message: raw };
+  const bot = /ボット|待機ページ|自動取得が制限|取得を制限|BOT_CHALLENGE/i.test(raw);
+  return bot
+    ? { code: 'BOT_CHALLENGE', message: PRODUCT_FETCH_BLOCKED_HELP }
+    : { code: 'FETCH_FAILED', message: AGENT_FETCH_FAILED_MESSAGE };
 }
 
 /** update_item / PATCH の current_price / image_url を構文だけ検査する（ネットワークは使わない）。 */
@@ -438,7 +452,7 @@ function toStoreView(row: Record<string, unknown>): AgentStoreView {
     source: String(row.source ?? 'other'),
     current_price: (row.current_price as number | null) ?? null,
     image_url: (row.image_url as string | null) ?? null,
-    scrape_status: (row.scrape_status as string | null) ?? null,
+    scrape_status: agentScrapeStatus(row.scrape_status),
     scrape_error_code: failure?.code ?? null,
     scrape_error: failure?.message ?? null,
   };
@@ -546,7 +560,7 @@ function rowToView(
     created_at: String(row.created_at ?? ''),
     updated_at: String(row.updated_at ?? ''),
     has_url_duplicate: duplicateUrls.has(cleaned),
-    scrape_status: (row.scrape_status as string | null) ?? null,
+    scrape_status: agentScrapeStatus(row.scrape_status),
     scrape_error_code: failure?.code ?? null,
     scrape_error: failure?.message ?? null,
     stores: storesForItemRow(db, userId, row),
@@ -1229,10 +1243,16 @@ export async function updateAgentItem(
   rejectAgentMediaAliases(body);
   const manual = parseAgentManualMedia(body);
 
-  // 所有だけ先に見る。他人の品目 ID で画像ホストの名前解決をさせない。状態の検査は下で読み直す。
-  getOwnedItemOrThrow(auth.userId, itemId, db);
+  // 名前解決の前に、安い検査で確実に失敗するものを先に返す（他人の品目は 404、ゴミ箱は 409、
+  // 埋めようとした価格・画像に値があれば 409）。外部ホストが解決できなくても、この順序は変わらない。
+  // 同じ検査は下の書き込みトランザクションでも繰り返し、名前解決の間の競合を防ぐ。
+  const existing = getOwnedItemOrThrow(auth.userId, itemId, db);
+  if (existing.deleted_at) {
+    throw new GuestError(409, 'ITEM_TRASHED', ITEM_TRASHED_UPDATE_MESSAGE);
+  }
+  assertManualMediaFillable(existing, manual);
 
-  // 名前解決はここだけ。認証・スコープ・媒体の構文検査を通ったあとに行う。
+  // 名前解決はここだけ。認証・スコープ・媒体の構文検査・上の状態検査を通ったあとに行う。
   if (manual.imageUrl !== undefined) {
     await assertAgentPublicUrl(manual.imageUrl, options.deps, PUBLIC_IMAGE_HELP);
   }
