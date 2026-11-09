@@ -315,10 +315,11 @@ export const AGENT_TOOLS: AgentToolDef[] = [
         image_url: {
           type: 'string',
           format: 'uri',
-          pattern: '^https://',
+          // スキームの大文字小文字は問わない（実装の /^https:\/\//i と同じ）。JSON Schema の pattern にフラグは無い。
+          pattern: '^[Hh][Tt][Tt][Pp][Ss]://',
           maxLength: 2000,
           description:
-            '「https://」で始まる公開画像の絶対 URL（https:cdn.example/… のような省略形は不可）。image_url が null の品目にだけ設定できる。値がある品目は 409。保存はホスト小文字・フラグメント無しの正規形',
+            '「https://」で始まる公開画像の絶対 URL（スキームの大文字小文字は問わない。https:cdn.example/… のような省略形は不可）。image_url が null の品目にだけ設定できる。値がある品目は 409。保存はスキーム・ホスト小文字、フラグメント無しの正規形',
         },
         ...sharedWriteProps,
       },

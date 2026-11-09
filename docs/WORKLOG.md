@@ -60,3 +60,9 @@
 - view の `scrape_error` は定型文（待機ページ・ボット制限・一般失敗）だけを出し、定期チェックや Web 再取得が残した内部の例外文は出さない。種別は `scrape_error_code`（`BOT_CHALLENGE` / `FETCH_FAILED`）で残す。
 - 文書（MCP 説明、initialize の日英 instructions、llms.txt、OpenAPI、ヘルプ、接続カード）は「判定は各フィールドが null かどうかだけで、scrape_status は見ない。手動品目や一部取得の品目も同じ」に揃えた。
 - `update_item` は画像ホストの名前解決で外部 DNS に触れるため `openWorldHint: true`。入力スキーマ（`additionalProperties: false`、`required: ['item_id']`）は変えていない。
+
+### 2 回目のレビュー後の修正（同日）
+
+- 名前解決の前に、所有（404）・ゴミ箱（409 `ITEM_TRASHED`）・埋めようとした価格や画像に値がある（409 `MEDIA_ALREADY_SET`）を先に返す。外部ホストが解決できなくても順序は同じ。同じ検査は書き込みトランザクションの中でも繰り返す（競合対策はそのまま）。`tests/e2e/agent.spec.ts` の「値がある品目へ `.example` の画像 URL で 409」と同じ形を、DNS 呼び出しゼロの確認つきでユニットテストに足した。
+- 定型の失敗文は、それを出す側の実際の種別で分類する。`PRODUCT_FETCH_BLOCKED_HELP`（product-html の isBotChallengedHtml）と `AMAZON_BOT_NOTE`（scraper）は `BOT_CHALLENGE`、`PRODUCT_FETCH_HELP` は `FETCH_FAILED`。add の `media_fetch_errors`、`get_item`、`list_items` で同じ分類になることをボット対策ページの fixture で確認。
+- OpenAPI 3.1 の新しい null 許容プロパティ（`scrape_status` / `scrape_error_code` / `scrape_error`、root と stores）は `nullable` ではなく `type: [string, 'null']` と null を含む `enum` で書いた。view の `scrape_status` も `success` / `failed` / null 以外は出さない。`image_url` の pattern は実装（スキームの大文字小文字を問わない）に合わせて `^[Hh][Tt][Tt][Pp][Ss]://` にし、MCP スキーマと OpenAPI で同じ値にした。

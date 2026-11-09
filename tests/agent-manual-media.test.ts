@@ -16,7 +16,8 @@ import {
 import type { AgentItemView } from '../src/lib/agent-items';
 import { AGENT_MANUAL_PRICE_MAX } from '../src/lib/agent-items';
 import { PRODUCT_WAITING_HELP } from '../src/lib/product-html';
-import { PRODUCT_FETCH_BLOCKED_HELP } from '../src/lib/public-page';
+import { PRODUCT_FETCH_BLOCKED_HELP, PRODUCT_FETCH_HELP } from '../src/lib/public-page';
+import { AMAZON_BOT_NOTE } from '../src/lib/scraper';
 
 const tokensPath = '../src/app/api/agent-tokens/route.ts';
 const itemsPath = '../src/app/api/agent/v1/items/route.ts';
@@ -35,15 +36,23 @@ const PATAGONIA_IMAGE = 'https://www.patagonia.jp/dw/image/v2/48814.jpg?sw=800';
 const MANUAL_PRICE = 14850;
 const BOT_MESSAGE = /待機ページ|ボット対策/;
 const PRIVATE_IMAGE_HOST = 'private-cdn.example';
+const UNRESOLVABLE_IMAGE_HOST = 'unresolvable.example';
+/** ボット対策ページ（Cloudflare 風）を返す店。product-html は PRODUCT_FETCH_BLOCKED_HELP + BOT_CHALLENGE にする。 */
+const BLOCKED_SHOP_URL = 'https://blocked.example.com/products/challenge';
 
 const waitingHtml = readFileSync(new URL('./fixtures/patagonia-waiting.html', import.meta.url), 'utf8');
+const challengeHtml = '<html><head><title>Attention Required! | Cloudflare</title></head><body>Checking your browser</body></html>';
 
-// DNS は固定。private-cdn.example だけ私設アドレスへ解決し、どのホストを引いたかを記録する。
+// DNS は固定。private-cdn.example だけ私設アドレスへ解決し、unresolvable.example は解決に失敗する。
+// どのホストを引いたかを記録する。
 const resolvedHosts: string[] = [];
 before(() => {
   mock.method(dns, 'lookup', async (host: string) => {
     resolvedHosts.push(host);
     if (host === PRIVATE_IMAGE_HOST) return [{ address: '10.0.0.1', family: 4 }];
+    if (host === UNRESOLVABLE_IMAGE_HOST) {
+      throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${host}`), { code: 'ENOTFOUND' });
+    }
     return [{ address: '8.8.8.8', family: 4 }];
   });
 });
@@ -64,7 +73,9 @@ async function withWaitingPageFixture<T>(run: () => Promise<T>): Promise<T> {
   installProductFetchPort({
     lookup: (candidate: URL) => candidate.hostname === 'www.patagonia.jp'
       ? { status: 200, body: Buffer.from(waitingHtml), contentType: 'text/html' }
-      : regressionLookup(candidate),
+      : candidate.hostname === 'blocked.example.com'
+        ? { status: 200, body: Buffer.from(challengeHtml), contentType: 'text/html' }
+        : regressionLookup(candidate),
     timeoutMs: 400,
   });
   try {
@@ -342,6 +353,13 @@ test('MCP: update_item fills price and image field by field, quantity multiplies
     });
     assert.equal(updateTool.inputSchema.additionalProperties, false);
     assert.deepEqual(updateTool.inputSchema.required, ['item_id']);
+    // スキームの大文字小文字を問わない実装と同じ pattern を、MCP スキーマと OpenAPI の両方に書く
+    const imagePattern = (updateTool.inputSchema.properties.image_url as { pattern?: string }).pattern;
+    assert.equal(imagePattern, '^[Hh][Tt][Tt][Pp][Ss]://');
+    assert.ok(new RegExp(imagePattern as string).test('HTTPS://cdn.example/a.png'));
+    assert.equal(new RegExp(imagePattern as string).test('https:cdn.example/a.png'), false);
+    const openapi = readFileSync(new URL('../public/openapi/agent-v1.yaml', import.meta.url), 'utf8');
+    assert.ok(openapi.includes(`pattern: '${imagePattern}'`), 'OpenAPI uses the same image_url pattern');
     // 「価格と画像は変更不可」という一律の説明ではなく、空のときだけ埋められる条件付きの説明になっている
     assert.equal(updateTool.description.includes('価格と画像は変更不可'), false, updateTool.description);
     assert.match(updateTool.description, /current_price/);
@@ -369,10 +387,11 @@ test('a manual item (no URL, scrape_status null) can be priced by the agent; fra
   const budget = await restBudget(token.token, '2026-12');
   assert.equal(budget.months['2026-12'].total, 2469);
 
-  // 画像は「https://」で始まる絶対 URL だけ受け付け、保存するのは正規形（ホスト小文字、フラグメント無し）。
+  // 画像は「https://」で始まる絶対 URL だけ受け付け（スキームの大文字小文字は問わない）、
+  // 保存するのは正規形（スキーム・ホスト小文字、フラグメント無し）。
   const imaged = mcpData<AgentItemView>(await mcpTool(token.token, 'update_item', {
     item_id: added.item.id,
-    image_url: 'https://CDN.Example/Path/Photo.png?x=1#frag',
+    image_url: 'HTTPS://CDN.Example/Path/Photo.png?x=1#frag',
   }));
   assert.equal(imaged.image_url, 'https://cdn.example/Path/Photo.png?x=1');
   assert.equal(itemRow(database, added.item.id).image_url, 'https://cdn.example/Path/Photo.png?x=1');
@@ -422,13 +441,34 @@ test('scrape_error in item and store views is a fixed user-facing message with a
   const internalId = Number(insert.run(owner.id, '内部エラー', 'manual://scrape-internal', 'failed', rawInternal).lastInsertRowid);
   const botId = Number(insert.run(owner.id, 'ボット', 'manual://scrape-bot', 'failed', rawBot).lastInsertRowid);
   const waitingId = Number(insert.run(owner.id, '待機ページ', 'manual://scrape-waiting', 'failed', PRODUCT_WAITING_HELP).lastInsertRowid);
+  const blockedId = Number(insert.run(owner.id, 'ボット対策', 'manual://scrape-blocked', 'failed', PRODUCT_FETCH_BLOCKED_HELP).lastInsertRowid);
+  const amazonBotId = Number(insert.run(owner.id, 'Amazon ボット', 'manual://scrape-amazon-bot', 'failed', AMAZON_BOT_NOTE).lastInsertRowid);
+  const genericId = Number(insert.run(owner.id, '一般失敗', 'manual://scrape-generic', 'failed', PRODUCT_FETCH_HELP).lastInsertRowid);
   const staleId = Number(insert.run(owner.id, '成功後', 'manual://scrape-stale', 'success', rawInternal).lastInsertRowid);
   const nullId = Number(insert.run(owner.id, '未取得', 'manual://scrape-null', null, null).lastInsertRowid);
+  const oddId = Number(insert.run(owner.id, '未知の状態', 'manual://scrape-odd', 'retrying', rawInternal).lastInsertRowid);
 
   const views = new Map<number, AgentItemView>();
-  for (const id of [internalId, botId, waitingId, staleId, nullId]) {
+  for (const id of [internalId, botId, waitingId, blockedId, amazonBotId, genericId, staleId, nullId, oddId]) {
     views.set(id, await restGet(token.token, id));
   }
+
+  // 定型文は、それを出す側が付けている実際の種別のまま（product-html / scraper の failureCode と一致）
+  const blocked = views.get(blockedId)!;
+  assert.equal(blocked.scrape_error_code, 'BOT_CHALLENGE', 'PRODUCT_FETCH_BLOCKED_HELP is emitted with BOT_CHALLENGE');
+  assert.equal(blocked.scrape_error, PRODUCT_FETCH_BLOCKED_HELP);
+  assert.equal(blocked.stores[0].scrape_error_code, 'BOT_CHALLENGE');
+  const amazonBot = views.get(amazonBotId)!;
+  assert.equal(amazonBot.scrape_error_code, 'BOT_CHALLENGE');
+  assert.equal(amazonBot.scrape_error, AMAZON_BOT_NOTE);
+  const generic = views.get(genericId)!;
+  assert.equal(generic.scrape_error_code, 'FETCH_FAILED');
+  assert.equal(generic.scrape_error, PRODUCT_FETCH_HELP);
+  // OpenAPI の enum に無い状態値は出さない
+  const odd = views.get(oddId)!;
+  assert.equal(odd.scrape_status, null);
+  assert.equal(odd.scrape_error, null);
+  assert.equal(odd.scrape_error_code, null);
   const internal = views.get(internalId)!;
   assert.equal(internal.scrape_status, 'failed');
   assert.equal(internal.scrape_error_code, 'FETCH_FAILED');
@@ -480,6 +520,111 @@ test('scrape_error in item and store views is a fixed user-facing message with a
   assert.equal(grouped.stores[0].scrape_error?.includes('ECONNRESET'), false);
   assert.equal(grouped.stores[1].scrape_error, null);
   assert.equal(grouped.stores[1].scrape_error_code, null);
+
+  // 公開 OpenAPI 3.1: 新しい null 許容プロパティは nullable ではなく型の和（null を含む）で書き、種別は enum で縛る
+  const openapi = readFileSync(new URL('../public/openapi/agent-v1.yaml', import.meta.url), 'utf8');
+  const lines = openapi.split('\n');
+  const blocksOf = (property: string) => lines
+    .map((line, index) => (line.trim() === `${property}:` ? index : -1))
+    .filter((index) => index >= 0)
+    .map((index) => lines.slice(index + 1, index + 5).join('\n'));
+  for (const property of ['scrape_status', 'scrape_error_code', 'scrape_error']) {
+    const blocks = blocksOf(property);
+    assert.equal(blocks.length, 2, `${property} is documented on AgentStore and AgentItem`);
+    for (const block of blocks) {
+      assert.ok(block.includes("type: [string, 'null']"), `${property}: ${block}`);
+      assert.equal(block.includes('nullable'), false, `${property} must not use OpenAPI 3.0 nullable`);
+    }
+  }
+  for (const block of blocksOf('scrape_error_code')) {
+    assert.ok(block.includes('enum: [BOT_CHALLENGE, FETCH_FAILED, null]'), block);
+  }
+  for (const block of blocksOf('scrape_status')) {
+    assert.ok(block.includes('enum: [success, failed, null]'), block);
+  }
+}));
+
+test('a bot-protection page keeps BOT_CHALLENGE with PRODUCT_FETCH_BLOCKED_HELP across add, get_item and list_items', () => serial(async () => {
+  await withWaitingPageFixture(async () => {
+    await createMember('manual-media-blocked');
+    const token = await createToken(['read', 'write'], 'manual-media-blocked');
+
+    const added = mcpData<AddData>(await mcpTool(token.token, 'add_item', { name: 'ボット対策の店', url: BLOCKED_SHOP_URL }));
+    assert.equal(added.media_fetched, false);
+    assert.deepEqual(added.media_fetch_errors, [{ url: BLOCKED_SHOP_URL, code: 'BOT_CHALLENGE', message: PRODUCT_FETCH_BLOCKED_HELP }]);
+    assert.equal(added.item.scrape_status, 'failed');
+    assert.equal(added.item.scrape_error_code, 'BOT_CHALLENGE');
+    assert.equal(added.item.scrape_error, PRODUCT_FETCH_BLOCKED_HELP);
+
+    const fetched = mcpData<AgentItemView>(await mcpTool(token.token, 'get_item', { item_id: added.item.id }));
+    assert.equal(fetched.scrape_error_code, 'BOT_CHALLENGE');
+    assert.equal(fetched.scrape_error, PRODUCT_FETCH_BLOCKED_HELP);
+    assert.equal(fetched.stores[0].scrape_error_code, 'BOT_CHALLENGE');
+    assert.equal(fetched.stores[0].scrape_error, PRODUCT_FETCH_BLOCKED_HELP);
+
+    const listed = mcpData<{ items: AgentItemView[] }>(await mcpTool(token.token, 'list_items', { q: 'blocked.example.com' }));
+    const row = listed.items.find((item) => item.id === added.item.id);
+    assert.ok(row);
+    assert.equal(row.scrape_error_code, 'BOT_CHALLENGE');
+    assert.equal(row.scrape_error, PRODUCT_FETCH_BLOCKED_HELP);
+  });
+}));
+
+test('trashed items and already-set fields answer 409 before any DNS lookup, even for a host that does not resolve', () => serial(async () => {
+  const owner = await createMember('manual-media-precedence');
+  const token = await createToken(['read', 'write'], 'manual-media-precedence');
+  const database = await db();
+  const populatedId = Number(database.prepare(
+    "INSERT INTO items (user_id, name, url, source, current_price, notes) VALUES (?, '価格あり', 'https://shop.example.com/populated', 'other', 3499, 'keep')",
+  ).run(owner.id).lastInsertRowid);
+  const trashedId = Number(database.prepare(
+    "INSERT INTO items (user_id, name, url, source, deleted_at) VALUES (?, 'ゴミ箱', 'manual://precedence-trashed', 'other', datetime('now'))",
+  ).run(owner.id).lastInsertRowid);
+  const emptyId = Number(database.prepare(
+    "INSERT INTO items (user_id, name, url, source) VALUES (?, '空', 'manual://precedence-empty', 'other')",
+  ).run(owner.id).lastInsertRowid);
+  const stranger = await createMember('manual-media-stranger');
+  const strangerToken = await createToken(['read', 'write'], 'manual-media-stranger');
+  void stranger;
+
+  const host = 'precedence-cdn.example';
+  const lookupsBefore = resolvedHosts.length;
+
+  // 値がある側へ送ると 409（e2e の agent.spec.ts と同じ形）。メモも変わらず、名前解決はしない。
+  const populated = await restPatch(token.token, populatedId, { notes: 'changed', current_price: 1, image_url: `https://${host}/x.png` });
+  assert.equal(populated.status, 409, populated.text);
+  assert.equal((populated.json as ErrorBody).code, 'MEDIA_ALREADY_SET');
+  const populatedUnresolvable = await restPatch(token.token, populatedId, { current_price: 1, image_url: `https://${UNRESOLVABLE_IMAGE_HOST}/x.png` });
+  assert.equal(populatedUnresolvable.status, 409, populatedUnresolvable.text);
+  assert.equal((populatedUnresolvable.json as ErrorBody).code, 'MEDIA_ALREADY_SET');
+  const populatedMcp = await mcpTool(token.token, 'update_item', { item_id: populatedId, current_price: 1, image_url: `https://${host}/mcp.png` });
+  mcpError(populatedMcp, 'MEDIA_ALREADY_SET', 409);
+
+  const trashed = await restPatch(token.token, trashedId, { image_url: `https://${host}/trash.png` });
+  assert.equal(trashed.status, 409, trashed.text);
+  assert.equal((trashed.json as ErrorBody).code, 'ITEM_TRASHED');
+  const trashedUnresolvable = await restPatch(token.token, trashedId, { image_url: `https://${UNRESOLVABLE_IMAGE_HOST}/trash.png` });
+  assert.equal(trashedUnresolvable.status, 409, trashedUnresolvable.text);
+  assert.equal((trashedUnresolvable.json as ErrorBody).code, 'ITEM_TRASHED');
+
+  const foreign = await restPatch(strangerToken.token, emptyId, { image_url: `https://${host}/foreign.png` });
+  assert.equal(foreign.status, 404, foreign.text);
+
+  assert.equal(resolvedHosts.length, lookupsBefore, 'no DNS lookup for any of the rejected requests');
+  assert.equal(resolvedHosts.includes(host), false);
+  assert.equal(resolvedHosts.includes(UNRESOLVABLE_IMAGE_HOST), false);
+  const populatedRow = itemRow(database, populatedId);
+  assert.equal(populatedRow.current_price, 3499);
+  assert.equal(populatedRow.image_url, null);
+  assert.equal(populatedRow.notes, 'keep');
+  assert.ok(itemRow(database, trashedId).deleted_at);
+
+  // 空のフィールドへ送ったときだけ名前解決に進み、解決できないホストは 400 URL_BLOCKED
+  const unresolvable = await restPatch(token.token, emptyId, { image_url: `https://${UNRESOLVABLE_IMAGE_HOST}/x.png` });
+  assert.equal(unresolvable.status, 400, unresolvable.text);
+  assert.equal((unresolvable.json as ErrorBody).code, 'URL_BLOCKED');
+  assert.ok(resolvedHosts.includes(UNRESOLVABLE_IMAGE_HOST), 'the empty item did reach DNS');
+  assert.equal(itemRow(database, emptyId).image_url, null);
 }));
 
 test('fetched price and image are never overwritten, add paths still reject client media, and aliases stay closed', () => serial(async () => {
