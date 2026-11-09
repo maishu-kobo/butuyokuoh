@@ -482,7 +482,8 @@ export async function executeAgentTool(
     case 'trash_item':
       return withAgentNotice({ item: trashAgentItem(auth, requireItemId(input)) });
     case 'purge_item':
-      return withAgentNotice(purgeAgentItem(auth, requirePurgeItemId(input)));
+      // 削除と items.purge の記録は purgeAgentItem の中で 1 トランザクション。直接呼んでも同じ記録が残る。
+      return withAgentNotice(purgeAgentItem(auth, requirePurgeItemId(input), { tool: tool.name }));
     default:
       throw new GuestError(404, 'TOOL_NOT_FOUND', `未知のツールです: ${name}`);
   }
@@ -524,21 +525,13 @@ export async function callAgentToolFromRequest(
     assertAgentWriteFields(input);
   }
 
-  // purge_item は元に戻せないので、認可 → 宣言どおりの引数検査 → 実行の順にし、
-  // 実際に消えたときだけ items.purge を検査済みの item_id 付きで操作ログに書く。
-  // 拒否（400 / 404 / 409）は成功を装う記録を残さない。scope 拒否は requireAgentToken が記録する。
+  // purge_item は元に戻せないので、認可 → 宣言どおりの引数検査 → 実行の順。
+  // 引数検査と items.purge の記録は executeAgentTool → purgeAgentItem の中で 1 回だけ行い、
+  // 削除と同じトランザクションに入れる。拒否（400 / 404 / 409）は成功を装う記録を残さない。
+  // scope 拒否は requireAgentToken が記録する。
   if (tool.name === 'purge_item') {
     const auth = await requireAgentToken(request, tool.scope);
-    const itemId = requirePurgeItemId(input);
-    const data = await executeAgentTool(tool.name, { item_id: itemId }, auth);
-    if (tool.auditAction) {
-      recordAgentAudit(auth.token.id, auth.userId, tool.auditAction, {
-        scope: tool.scope,
-        tool: tool.name,
-        item_id: itemId,
-      });
-    }
-    return data;
+    return executeAgentTool(tool.name, input, auth);
   }
 
   const auth = await requireAgentToken(request, tool.scope, {

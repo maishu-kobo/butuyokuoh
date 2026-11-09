@@ -372,31 +372,43 @@ export type PurgeTrashedItemResult =
   | { kind: 'not_found' };
 
 /**
- * ゴミ箱の品目 1 件を子レコードごと完全削除する。Web の DELETE /api/trash/[id] と
+ * ゴミ箱の品目 1 件を子レコードごと完全削除する本体。Web の DELETE /api/trash/[id] と
  * エージェントの purge_item（#381）が共有する唯一の削除経路。
- * 所有者確認とゴミ箱判定は同じトランザクションの中で行い、ほしいもの・購入済み
+ * 呼び出し側が張ったトランザクションの中で使う（エージェントは操作ログの INSERT と同じ
+ * トランザクションに入れるため）。所有者確認とゴミ箱判定もその中で行い、ほしいもの・購入済み
  * （deleted_at が空）の行は触らない。消し順は price_history → notification_settings → items。
  * 戻り値の振り分け（404 / 409）は呼び出し側で決める。ゴミ箱全件の削除はここでは扱わない。
  */
+export function purgeTrashedItemRows(
+  db: Database.Database,
+  userId: number,
+  itemId: number,
+): PurgeTrashedItemResult {
+  if (!Number.isSafeInteger(itemId) || itemId <= 0) return { kind: 'not_found' };
+  if (!db.inTransaction) {
+    throw new Error('purgeTrashedItemRows must run inside a transaction');
+  }
+  const item = db.prepare(`
+    SELECT id, url, name, deleted_at, is_purchased
+    FROM items
+    WHERE id = ? AND user_id = ?
+  `).get(itemId, userId) as StoredUrlMatch | undefined;
+  if (!item) return { kind: 'not_found' };
+  if (!item.deleted_at) return { kind: 'not_trashed', item };
+  db.prepare('DELETE FROM price_history WHERE item_id = ?').run(itemId);
+  db.prepare('DELETE FROM notification_settings WHERE item_id = ?').run(itemId);
+  db.prepare('DELETE FROM items WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL').run(itemId, userId);
+  return { kind: 'purged', item };
+}
+
+/** Web 用。purgeTrashedItemRows を自前の immediate トランザクションで包む（操作ログは無い）。 */
 export function purgeTrashedItem(
   db: Database.Database,
   userId: number,
   itemId: number,
 ): PurgeTrashedItemResult {
   if (!Number.isSafeInteger(itemId) || itemId <= 0) return { kind: 'not_found' };
-  return db.transaction((): PurgeTrashedItemResult => {
-    const item = db.prepare(`
-      SELECT id, url, name, deleted_at, is_purchased
-      FROM items
-      WHERE id = ? AND user_id = ?
-    `).get(itemId, userId) as StoredUrlMatch | undefined;
-    if (!item) return { kind: 'not_found' };
-    if (!item.deleted_at) return { kind: 'not_trashed', item };
-    db.prepare('DELETE FROM price_history WHERE item_id = ?').run(itemId);
-    db.prepare('DELETE FROM notification_settings WHERE item_id = ?').run(itemId);
-    db.prepare('DELETE FROM items WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL').run(itemId, userId);
-    return { kind: 'purged', item };
-  }).immediate();
+  return db.transaction(() => purgeTrashedItemRows(db, userId, itemId)).immediate();
 }
 
 /**
