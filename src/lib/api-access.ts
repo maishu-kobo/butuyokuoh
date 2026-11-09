@@ -26,6 +26,17 @@ export function requireSameOrigin(request: NextRequest, configuredOrigin?: strin
   }
 }
 
+/**
+ * 完全削除など取り消せない経路のパス id。10進の数字だけ（先頭ゼロは可）を正の安全な整数として受け、
+ * 16進・2進・指数・小数・符号・空白・末尾ゴミは null にする。`Number()` は "0x1f" を 31 に
+ * してしまい、別の行を指せるため使わない。
+ */
+export function parseDecimalRouteId(raw: unknown): number | null {
+  if (typeof raw !== 'string' || !/^\d{1,16}$/.test(raw)) return null;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
 export function guestErrorResponse(error: GuestError) {
   return NextResponse.json({ error: error.message, code: error.code }, {
     status: error.status,

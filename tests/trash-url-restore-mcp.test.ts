@@ -739,8 +739,11 @@ test('mcp purge_item: hard-deletes one trashed item with its children, then the 
     const audited = database.prepare(
       "SELECT meta FROM agent_audit_log WHERE token_id = ? AND action = 'items.purge'",
     ).all(token.record.id) as { meta: string | null }[];
-    assert.equal(audited.length, 1, 'purge is written to the audit log');
-    assert.equal(JSON.parse(audited[0].meta ?? '{}').item_id, itemId);
+    assert.equal(audited.length, 1, 'purge is written to the audit log once, after it succeeded');
+    const auditMeta = JSON.parse(audited[0].meta ?? '{}') as { item_id?: number; tool?: string; scope?: string };
+    assert.equal(auditMeta.item_id, itemId);
+    assert.equal(auditMeta.tool, 'purge_item');
+    assert.equal(auditMeta.scope, 'write');
 
     // 2回目は行が無いので 404（trash_item のような冪等成功にはしない）
     const again = await mcpTool(token.token, 'purge_item', { item_id: itemId });
@@ -820,13 +823,36 @@ test('mcp purge_item: refuses list, purchased, foreign, missing, read-only, and 
     assert.equal(denied.body.error?.code, -32003);
     assert.equal(denied.body.error?.data?.code, 'AGENT_SCOPE_DENIED');
 
-    // item_id 無し・不正は 400
-    for (const args of [{}, { item_id: '12' }, { item_id: 0 }]) {
+    // 引数は宣言どおり item_id（正の整数）だけ。別名 id・混在・余分なキー・型違いは、
+    // 有効なゴミ箱行を指していても 400 で拒否し、何も消さない。
+    const malformed: Record<string, unknown>[] = [
+      {},
+      { id: trashedId },
+      { item_id: trashedId, id: trashedId },
+      { item_id: trashedId, extra: true },
+      { item_id: trashedId, item: trashedId },
+      { item_id: String(trashedId) },
+      { item_id: trashedId + 0.5 },
+      { item_id: 0 },
+      { item_id: -trashedId },
+      { item_id: Number.MAX_SAFE_INTEGER + 2 },
+      { item_id: null },
+      { item_id: [trashedId] },
+      { item_id: { id: trashedId } },
+    ];
+    for (const args of malformed) {
       const invalid = await mcpTool(token.token, 'purge_item', args);
+      assert.equal(invalid.status, 200, invalid.text);
       assert.equal(invalid.body.result?.isError, true, JSON.stringify(args));
       assert.equal(invalid.body.result?._meta?.code, 'INVALID_INPUT', JSON.stringify(args));
       assert.equal(invalid.body.result?._meta?.httpStatus, 400, JSON.stringify(args));
+      assert.match(invalid.body.result?.content?.[0]?.text ?? '', /item_id/, JSON.stringify(args));
     }
+
+    // 既存ツールの互換: 別名 id は purge_item 以外では今までどおり通る
+    const aliasRead = await mcpTool(token.token, 'get_item', { id: trashedId });
+    assert.equal(aliasRead.body.result?.isError, false, aliasRead.text);
+    assert.equal((aliasRead.body.result?.structuredContent?.data as { id: number }).id, trashedId);
 
     for (const [id, row] of before) {
       assert.deepEqual(itemRow(database, id), row, `item ${id} must be untouched`);
@@ -835,6 +861,18 @@ test('mcp purge_item: refuses list, purchased, foreign, missing, read-only, and 
     assert.equal(countItems(database, owner.id), 3);
     assert.equal(countItems(database, stranger.id), 0);
     assert.deepEqual(fetched, []);
+
+    // 拒否された呼び出し（409 / 404 / 403 / 400）は、成功を装う items.purge を操作ログに残さない
+    for (const record of [token.record, readOnly.record, strangerToken.record]) {
+      const purgeAudits = (database.prepare(
+        "SELECT COUNT(*) AS n FROM agent_audit_log WHERE token_id = ? AND action = 'items.purge'",
+      ).get(record.id) as { n: number }).n;
+      assert.equal(purgeAudits, 0, `token ${record.id} must have no items.purge audit entry`);
+    }
+    const scopeDenied = (database.prepare(
+      "SELECT COUNT(*) AS n FROM agent_audit_log WHERE token_id = ? AND action = 'auth.scope_denied'",
+    ).get(readOnly.record.id) as { n: number }).n;
+    assert.equal(scopeDenied, 1, 'the scope denial itself is still audited');
   });
 }));
 

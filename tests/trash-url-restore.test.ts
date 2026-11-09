@@ -163,13 +163,24 @@ test('DELETE /api/trash/:id keeps 404 outside the trash and removes child rows f
   const activeId = seed('リストの本', 'https://example.test/web-purge-active', false);
   const trashedId = seed('捨てた本', 'https://example.test/web-purge-trashed', true);
   const foreignTrashedId = seed('他人が消そうとする本', 'https://example.test/web-purge-foreign', true);
-  const purge = (id: number) => call(trashItemPath, 'DELETE', `/api/trash/${id}`, undefined, { id: String(id) });
+  const purgeRaw = (rawId: string) => call(trashItemPath, 'DELETE', `/api/trash/${encodeURIComponent(rawId)}`, undefined, { id: rawId });
+  const purge = (id: number) => purgeRaw(String(id));
 
   // ゴミ箱に無い品目は Web でも 404 のまま。子レコードも消えない。
   const notTrashed = await purge(activeId);
   assert.equal(notTrashed.status, 404, notTrashed.text);
   assert.ok(database.prepare('SELECT id FROM items WHERE id = ?').get(activeId));
   assert.deepEqual(children(activeId), { history: 1, notifications: 1 });
+
+  // パスの id は10進の数字だけ。同じ行を指す16進・指数・小数・空白・符号・末尾ゴミは 404 で、行も子も残る。
+  const hex = `0x${trashedId.toString(16)}`;
+  assert.equal(Number(hex), trashedId, 'the fixture must be a hex spelling of the same id');
+  for (const rawId of [hex, `${trashedId}e0`, `${trashedId}.0`, ` ${trashedId}`, `${trashedId} `, `+${trashedId}`, `-${trashedId}`, `${trashedId}abc`, '0b1', 'Infinity', '']) {
+    const refused = await purgeRaw(rawId);
+    assert.equal(refused.status, 404, `${JSON.stringify(rawId)}: ${refused.text}`);
+    assert.ok(database.prepare('SELECT id FROM items WHERE id = ?').get(trashedId), `${JSON.stringify(rawId)} must not delete the addressed row`);
+    assert.deepEqual(children(trashedId), { history: 1, notifications: 1 }, JSON.stringify(rawId));
+  }
 
   // 他人のゴミ箱行は 404 で残る
   const other = await createMember('web-purge-other');
@@ -180,8 +191,8 @@ test('DELETE /api/trash/:id keeps 404 outside the trash and removes child rows f
   assert.deepEqual(children(foreignTrashedId), { history: 1, notifications: 1 });
   await setTestUser(member);
 
-  // 自分のゴミ箱行は本体と子レコードが消える
-  const purged = await purge(trashedId);
+  // 自分のゴミ箱行は本体と子レコードが消える（先頭ゼロ付きの10進は従来どおり同じ行）
+  const purged = await purgeRaw(`0${trashedId}`);
   assert.equal(purged.status, 200, purged.text);
   assert.equal((purged.json as { success: boolean }).success, true);
   assert.equal(database.prepare('SELECT id FROM items WHERE id = ?').get(trashedId), undefined);

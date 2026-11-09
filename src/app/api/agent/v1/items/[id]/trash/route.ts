@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { guestErrorResponse } from '@/lib/api-access';
+import { guestErrorResponse, parseDecimalRouteId } from '@/lib/api-access';
 import { purgeAgentItem, trashAgentItem } from '@/lib/agent-items';
 import { withAgentNotice } from '@/lib/agent-response';
-import { requireAgentToken } from '@/lib/agent-token';
+import { recordAgentAudit, requireAgentToken } from '@/lib/agent-token';
 import { GuestError } from '@/lib/guest';
 
 export const runtime = 'nodejs';
@@ -33,22 +33,21 @@ export async function POST(
 
 // ゴミ箱内の品目 1 件を完全削除（#381）。MCP の purge_item と同じ関数。
 // ゴミ箱に無い品目は 409 ITEM_NOT_TRASHED で、何も消さない。ゴミ箱全件の削除は無い。
+// パスの id は10進の数字だけ。items.purge の操作ログは、実際に消えたときだけ書く。
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const auth = await requireAgentToken(request, 'write');
     const { id: raw } = await params;
-    const id = Number(raw);
-    const validId = Number.isSafeInteger(id) && id > 0;
-    const auth = await requireAgentToken(request, 'write', {
-      auditAction: 'items.purge',
-      auditMeta: validId ? { item_id: id } : undefined,
-    });
-    if (!validId) {
+    const id = parseDecimalRouteId(raw);
+    if (id == null) {
       throw new GuestError(404, 'ITEM_NOT_FOUND', '品目が見つかりません');
     }
-    return NextResponse.json(withAgentNotice(purgeAgentItem(auth, id)), {
+    const result = purgeAgentItem(auth, id);
+    recordAgentAudit(auth.token.id, auth.userId, 'items.purge', { scope: 'write', item_id: id });
+    return NextResponse.json(withAgentNotice(result), {
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch (error) {

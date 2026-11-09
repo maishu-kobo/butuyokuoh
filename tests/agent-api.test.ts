@@ -475,14 +475,18 @@ test('agent api: DELETE /items/:id/trash purges one owned trashed item with its 
     const row = (itemId: number) => database.prepare('SELECT id, deleted_at FROM items WHERE id = ?').get(itemId) as
       | { id: number; deleted_at: string | null }
       | undefined;
-    const purge = (token: string, itemId: number) => call(
+    const purgeRaw = (token: string, rawId: string) => call(
       trashPath,
       'DELETE',
-      `/api/agent/v1/items/${itemId}/trash`,
+      `/api/agent/v1/items/${encodeURIComponent(rawId)}/trash`,
       undefined,
-      { id: String(itemId) },
+      { id: rawId },
       bearer(token),
     );
+    const purge = (token: string, itemId: number) => purgeRaw(token, String(itemId));
+    const purgeAudits = (tokenId: number) => database.prepare(
+      "SELECT meta FROM agent_audit_log WHERE token_id = ? AND action = 'items.purge'",
+    ).all(tokenId) as { meta: string | null }[];
 
     const added = await call(byUrlPath, 'POST', '/api/agent/v1/items/by-url', {
       url: AMAZON_PRODUCT_URL,
@@ -527,6 +531,22 @@ test('agent api: DELETE /items/:id/trash purges one owned trashed item with its 
     assert.deepEqual(children(itemId), { history: 1, notifications: 1 });
     await setTestUser(owner);
 
+    // パスの id は10進の数字だけ。16進・指数・小数・空白・符号・末尾ゴミは、同じ行を指す値でも 404 で、行も子も残る。
+    const hex = `0x${itemId.toString(16)}`;
+    assert.equal(Number(hex), itemId, 'the fixture must be a hex spelling of the same id');
+    for (const rawId of [hex, `${itemId}e0`, `${itemId}.0`, ` ${itemId}`, `${itemId} `, `+${itemId}`, `-${itemId}`, `${itemId}abc`, '0b1', 'Infinity', 'NaN', '']) {
+      const refused = await purgeRaw(both.token, rawId);
+      assert.equal(refused.status, 404, `${JSON.stringify(rawId)}: ${refused.text}`);
+      assert.equal((refused.json as { code: string }).code, 'ITEM_NOT_FOUND', JSON.stringify(rawId));
+      assert.ok(row(itemId)?.deleted_at, `${JSON.stringify(rawId)} must not delete the addressed row`);
+      assert.deepEqual(children(itemId), { history: 1, notifications: 1 }, JSON.stringify(rawId));
+    }
+
+    // 拒否された呼び出し（409 / 403 / 404）は items.purge を記録しない
+    assert.equal(purgeAudits(both.record.id).length, 0, 'refused purges must not be audited as items.purge');
+    assert.equal(purgeAudits(read.record.id).length, 0);
+    assert.equal(purgeAudits(strangerToken.record.id).length, 0);
+
     // 所有者はゴミ箱の品目を完全削除できる。子レコードも残らない。
     const purged = await purge(both.token, itemId);
     assert.equal(purged.status, 200, purged.text);
@@ -540,11 +560,9 @@ test('agent api: DELETE /items/:id/trash purges one owned trashed item with its 
     assert.equal(purgedBody.data.item.url, AMAZON_PRODUCT_URL);
     assert.equal(row(itemId), undefined);
     assert.deepEqual(children(itemId), { history: 0, notifications: 0 });
-    const audited = database.prepare(
-      "SELECT meta FROM agent_audit_log WHERE token_id = ? AND action = 'items.purge'",
-    ).all(both.record.id) as { meta: string | null }[];
-    assert.ok(audited.length >= 1, 'purge is audited');
-    assert.ok(audited.some((entry) => JSON.parse(entry.meta ?? '{}').item_id === itemId));
+    const audited = purgeAudits(both.record.id);
+    assert.equal(audited.length, 1, 'the successful purge is audited exactly once');
+    assert.equal(JSON.parse(audited[0].meta ?? '{}').item_id, itemId);
 
     // 2回目は 404（冪等成功にしない）
     const again = await purge(both.token, itemId);

@@ -65,7 +65,7 @@ Connect to `POST /api/mcp` with the same Bearer token. Compatible with MCP proto
 | update_item | write | idempotentHint |
 | mark_item_purchased | write | idempotentHint |
 | trash_item | write | destructiveHint (soft delete only) |
-| purge_item | write | destructiveHint; hard-deletes one trashed item (409 for list/purchased; not idempotent) |
+| purge_item | write | destructiveHint; hard-deletes one trashed item (409 for list/purchased; not idempotent). Arguments: exactly `item_id` (positive integer); the `id` alias and extra keys are 400 |
 
 ### Re-register a URL whose first fetch failed (purge_item)
 

@@ -1,4 +1,4 @@
-import { withAccess } from '@/lib/api-access';
+import { parseDecimalRouteId, withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
@@ -37,9 +37,11 @@ async function handleDELETE(
   }
 
   const { id } = await params;
-  const result = purgeTrashedItem(getDb(), user.id, Number(id));
+  // 10進の数字だけを id として受ける。"0x1f" のような表記で別の行を指させない。
+  const itemId = parseDecimalRouteId(id);
+  const result = itemId == null ? { kind: 'not_found' as const } : purgeTrashedItem(getDb(), user.id, itemId);
   if (result.kind !== 'purged') {
-    // 存在しない・他人・ゴミ箱に無い行は、従来どおりまとめて 404
+    // 不正な id・存在しない・他人・ゴミ箱に無い行は、従来どおりまとめて 404
     return NextResponse.json({ error: 'アイテムが見つかりません' }, { status: 404 });
   }
   return NextResponse.json({ success: true });
