@@ -1,10 +1,13 @@
-// エージェント REST / MCP 共通の品目操作。価格・画像は item-input のサーバ取得だけを使う。
+// エージェント REST / MCP 共通の品目操作。
+// 新規登録の価格・画像は item-input のサーバ取得だけを使う。取得に失敗して空のままの
+// current_price / image_url は、update_item / PATCH で一度だけ埋められる（#382）。
 
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { AGENT_RATE_LIMITS } from '@/lib/agent-access-limits';
 import { assertOwnedRelations } from '@/lib/api-access';
 import { markItemAddedByAgent, recordAgentAudit, type AgentAuthContext } from '@/lib/agent-token';
+import { displayableItemImageUrl } from '@/lib/capture/image-hosts';
 import { getDb } from '@/lib/db';
 import { GuestError } from '@/lib/guest';
 import { ITEM_URL_ERROR } from '@/lib/http-url';
@@ -24,7 +27,9 @@ import {
 import { isCalendarDate, localCalendarDate } from '@/lib/local-date';
 import { BlockedTargetError, resolvedPublicAddress, type MemberFetchDeps } from '@/lib/member-fetch';
 import { annotateSpend, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
-import { publicPageUrl } from '@/lib/public-page';
+import { PRODUCT_WAITING_HELP } from '@/lib/product-html';
+import { PRODUCT_FETCH_BLOCKED_HELP, PRODUCT_FETCH_HELP, publicPageUrl } from '@/lib/public-page';
+import { AMAZON_BOT_NOTE } from '@/lib/scraper';
 import type { Item } from '@/types';
 
 export const AGENT_NOTES_MAX = 2000;
@@ -39,6 +44,12 @@ export type AgentStoreView = {
   source: string;
   current_price: number | null;
   image_url: string | null;
+  /** 直近のサーバ取得の結果。未取得なら null */
+  scrape_status: AgentScrapeStatus | null;
+  /** 失敗の種別。scrape_status が failed のときだけ入る */
+  scrape_error_code: AgentMediaFetchError['code'] | null;
+  /** 失敗の理由（利用者向けの定型文だけ。内部の例外文は出さない）。成功・未取得なら null */
+  scrape_error: string | null;
 };
 
 export type AgentItemView = {
@@ -68,6 +79,14 @@ export type AgentItemView = {
   updated_at: string;
   /** 同じクリーン後 URL がゴミ箱や別ステータスにもあるとき true */
   has_url_duplicate: boolean;
+  /**
+   * 直近のサーバ取得の結果（'failed' など）と理由。参考情報であり、update_item / PATCH で
+   * 価格・画像を埋められるかは scrape_status ではなく各フィールドが null かどうかだけで決まる（#382）。
+   * scrape_error は利用者向けの定型文だけ（内部の例外文は出さない）。
+   */
+  scrape_status: AgentScrapeStatus | null;
+  scrape_error_code: AgentMediaFetchError['code'] | null;
+  scrape_error: string | null;
   /** 1商品としての店一覧（写真グループなら複数。単独は1件） */
   stores: AgentStoreView[];
 };
@@ -120,20 +139,160 @@ function normalizeOptionalDate(raw: unknown, field: string): string | null | und
   return raw;
 }
 
-/** 価格・画像はサーバ取得のみ。エージェントが値を付けてきたら分かりやすく拒否する。 */
+/** 新規登録の価格・画像はサーバ取得のみ。エージェントが値を付けてきたら分かりやすく拒否する。 */
 function rejectAgentClientMediaFields(body: Record<string, unknown>): void {
   if (
     body.current_price !== undefined
-    || body.price !== undefined
+    || body.image_url !== undefined
+  ) {
+    throw new GuestError(
+      400,
+      'INVALID_INPUT',
+      '価格と画像はサーバー取得のみです。エージェントからは指定できません',
+    );
+  }
+  rejectAgentMediaAliases(body);
+}
+
+/**
+ * 価格・画像の別名（price / original_price / target_price / imageUrl）は、新規・更新のどちらでも受け付けない。
+ * 更新で埋められる公式名は current_price と image_url だけ（#382）。
+ */
+function rejectAgentMediaAliases(body: Record<string, unknown>): void {
+  if (
+    body.price !== undefined
     || body.original_price !== undefined
     || body.target_price !== undefined
-    || body.image_url !== undefined
     || body.imageUrl !== undefined
   ) {
     throw new GuestError(
       400,
       'INVALID_INPUT',
       '価格と画像はサーバー取得のみです。エージェントからは指定できません',
+    );
+  }
+}
+
+/**
+ * エージェントが埋める価格の上限（円）。1,000 億円。
+ * 数量の上限 999 を掛けても安全な整数に収まり、予算合計が JSON で null（Infinity）にならない。
+ */
+export const AGENT_MANUAL_PRICE_MAX = 100_000_000_000;
+
+const MANUAL_PRICE_HELP = `current_price は 0 より大きく ${AGENT_MANUAL_PRICE_MAX.toLocaleString('en-US')} 以下の数（円）です。取得済みの価格は変更できず、null で消すこともできません`;
+const MANUAL_IMAGE_HELP = 'image_url は「https://」で始まる公開画像の絶対 URL です。取得済みの画像は変更できず、空にすることもできません';
+
+/** 取得に失敗して空の品目へエージェントが埋める値。どちらも undefined なら媒体の更新なし。 */
+export type AgentManualMedia = {
+  price?: number;
+  imageUrl?: string;
+};
+
+function normalizeManualPrice(raw: unknown): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0 || raw > AGENT_MANUAL_PRICE_MAX) {
+    throw new GuestError(400, 'INVALID_INPUT', MANUAL_PRICE_HELP);
+  }
+  return raw;
+}
+
+/**
+ * 「https://」で始まる絶対 URL だけを受け付け、正規形（new URL の href。ホスト小文字、フラグメント無し）で返す。
+ * `https:cdn.example/a.png` や `https:/cdn.example/a.png` はブラウザが基底 URL によって別の場所と解釈するので拒否する。
+ * 画面の画像表示（displayableItemImageUrl）と同じ安全性に加え、公開ホスト（publicPageUrl）だけ通す。
+ * data: / javascript: / http: / 認証情報・ポート付き / localhost や .local 等は 400。
+ * 名前解決（私設アドレスの拒否）はここではせず、認証後に assertAgentPublicUrl で行う。
+ */
+function normalizeManualImageUrl(raw: unknown): string {
+  if (typeof raw !== 'string') {
+    throw new GuestError(400, 'INVALID_INPUT', MANUAL_IMAGE_HELP);
+  }
+  const value = raw.trim();
+  if (!/^https:\/\/[^/\\]/i.test(value) || displayableItemImageUrl(value) !== value) {
+    throw new GuestError(400, 'INVALID_INPUT', MANUAL_IMAGE_HELP);
+  }
+  let canonical: string;
+  try {
+    const parsed = publicPageUrl(value);
+    if (parsed.protocol !== 'https:') throw new Error('not https');
+    canonical = parsed.href;
+  } catch {
+    throw new GuestError(400, 'INVALID_INPUT', MANUAL_IMAGE_HELP);
+  }
+  if (displayableItemImageUrl(canonical) !== canonical) {
+    throw new GuestError(400, 'INVALID_INPUT', MANUAL_IMAGE_HELP);
+  }
+  return canonical;
+}
+
+/** 取得失敗時の既定文（media_fetch_errors と view の scrape_error で共有）。 */
+const AGENT_FETCH_FAILED_MESSAGE = '価格と画像を取得できませんでした。時間をおいて再試行するか、別の店のURLを使ってください。';
+
+/**
+ * そのまま出してよい定型の失敗文と、それを出す側が付けている実際の種別。
+ * BOT_CHALLENGE: product-html の isBotChallengedHtml（PRODUCT_FETCH_BLOCKED_HELP）と待機ページ
+ * （PRODUCT_WAITING_HELP）、scraper の Amazon ボット判定（AMAZON_BOT_NOTE）。
+ * これ以外の文字列は内部の例外文の可能性があるので、そのままは出さない。
+ */
+const KNOWN_FAILURE_MESSAGES: ReadonlyMap<string, AgentMediaFetchError['code']> = new Map([
+  [PRODUCT_WAITING_HELP, 'BOT_CHALLENGE'],
+  [PRODUCT_FETCH_BLOCKED_HELP, 'BOT_CHALLENGE'],
+  [AMAZON_BOT_NOTE, 'BOT_CHALLENGE'],
+  [PRODUCT_FETCH_HELP, 'FETCH_FAILED'],
+  [AGENT_FETCH_FAILED_MESSAGE, 'FETCH_FAILED'],
+]);
+
+/** view に出す scrape_status。コードが書く値は success / failed だけで、それ以外は出さない。 */
+export type AgentScrapeStatus = 'success' | 'failed';
+
+function agentScrapeStatus(status: unknown): AgentScrapeStatus | null {
+  return status === 'success' || status === 'failed' ? status : null;
+}
+
+/**
+ * view 用に scrape_status / scrape_error を利用者向けの形にする。
+ * 定型文はその出し手の種別のまま通す。定期の価格チェックや Web の再取得は内部の例外文
+ * （接続エラーや URL）を scrape_error に残すことがあるので、それ以外の文字列はボット制限か
+ * 一般失敗かに分類した定型文に置き換える。失敗以外は null。
+ */
+export function agentScrapeFailure(
+  status: unknown,
+  rawError: unknown,
+): { code: AgentMediaFetchError['code']; message: string } | null {
+  if (agentScrapeStatus(status) !== 'failed') return null;
+  const raw = typeof rawError === 'string' ? rawError : '';
+  const known = KNOWN_FAILURE_MESSAGES.get(raw);
+  if (known) return { code: known, message: raw };
+  const bot = /ボット|待機ページ|自動取得が制限|取得を制限|BOT_CHALLENGE/i.test(raw);
+  return bot
+    ? { code: 'BOT_CHALLENGE', message: PRODUCT_FETCH_BLOCKED_HELP }
+    : { code: 'FETCH_FAILED', message: AGENT_FETCH_FAILED_MESSAGE };
+}
+
+/** update_item / PATCH の current_price / image_url を構文だけ検査する（ネットワークは使わない）。 */
+function parseAgentManualMedia(body: Record<string, unknown>): AgentManualMedia {
+  const manual: AgentManualMedia = {};
+  if (body.current_price !== undefined) {
+    manual.price = normalizeManualPrice(body.current_price);
+  }
+  if (body.image_url !== undefined) {
+    manual.imageUrl = normalizeManualImageUrl(body.image_url);
+  }
+  return manual;
+}
+
+/**
+ * 空のフィールドだけ埋められる。取得済み（または既に埋めた）値は 409 で守る。
+ * 混在ボディ（メモ + 価格など）も、ここで拒否されれば何も書かない。
+ */
+function assertManualMediaFillable(row: Record<string, unknown>, manual: AgentManualMedia): void {
+  const blocked: string[] = [];
+  if (manual.price !== undefined && row.current_price != null) blocked.push('価格（current_price）');
+  if (manual.imageUrl !== undefined && row.image_url != null) blocked.push('画像（image_url）');
+  if (blocked.length > 0) {
+    throw new GuestError(
+      409,
+      'MEDIA_ALREADY_SET',
+      `${blocked.join('と')}は既に入っているため変更できません。空のときだけ埋められます`,
     );
   }
 }
@@ -198,11 +357,20 @@ export function parseAgentProductUrls(body: Record<string, unknown>): string[] {
 }
 
 /**
- * 書き込みボディの共通検査（価格・画像の拒否、日付の暦日チェック）。
- * レート消費より前に呼ぶ。
+ * 書き込みボディの共通検査（価格・画像の拒否または構文検査、日付の暦日チェック）。
+ * レート消費・監査より前に呼ぶ。ネットワークは使わない。
+ * allowManualMedia（update_item）では current_price / image_url の構文だけ見て、別名は拒否する。
  */
-export function assertAgentWriteFields(body: Record<string, unknown>): void {
-  rejectAgentClientMediaFields(body);
+export function assertAgentWriteFields(
+  body: Record<string, unknown>,
+  options: { allowManualMedia?: boolean } = {},
+): void {
+  if (options.allowManualMedia) {
+    rejectAgentMediaAliases(body);
+    parseAgentManualMedia(body);
+  } else {
+    rejectAgentClientMediaFields(body);
+  }
   if (body.planned_purchase_date !== undefined) {
     normalizeOptionalDate(body.planned_purchase_date, 'planned_purchase_date');
   }
@@ -276,6 +444,7 @@ function storeLabel(source: string, sourceName: string | null | undefined): stri
 }
 
 function toStoreView(row: Record<string, unknown>): AgentStoreView {
+  const failure = agentScrapeFailure(row.scrape_status, row.scrape_error);
   return {
     item_id: Number(row.id),
     url: String(row.url ?? ''),
@@ -283,6 +452,9 @@ function toStoreView(row: Record<string, unknown>): AgentStoreView {
     source: String(row.source ?? 'other'),
     current_price: (row.current_price as number | null) ?? null,
     image_url: (row.image_url as string | null) ?? null,
+    scrape_status: agentScrapeStatus(row.scrape_status),
+    scrape_error_code: failure?.code ?? null,
+    scrape_error: failure?.message ?? null,
   };
 }
 
@@ -292,7 +464,7 @@ function photoGroupStores(
   groupId: number,
 ): AgentStoreView[] {
   const rows = db.prepare(`
-    SELECT id, url, source, source_name, current_price, image_url
+    SELECT id, url, source, source_name, current_price, image_url, scrape_status, scrape_error
     FROM items
     WHERE user_id = ? AND comparison_group_id = ? AND deleted_at IS NULL
     ORDER BY sort_order ASC, id ASC
@@ -319,25 +491,30 @@ function storesForItemRow(
 }
 
 const PUBLIC_URL_HELP = '公開されている商品ページのHTTP(S) URLを指定してください';
+const PUBLIC_IMAGE_HELP = '公開されている画像の https URL を指定してください。内部アドレスへ解決するホストは使えません';
 
-/** 保存前に SSRF ガード（publicPageUrl + 名前解決）。fetchPublicMember と同じ公開判定。 */
+/**
+ * 保存前に SSRF ガード（publicPageUrl + 名前解決）。fetchPublicMember と同じ公開判定。
+ * 名前解決を伴うので、認証・スコープ検査のあとに呼ぶ。
+ */
 export async function assertAgentPublicUrl(
   url: string,
   deps?: Pick<MemberFetchDeps, 'resolve'>,
+  help: string = PUBLIC_URL_HELP,
 ): Promise<void> {
   let parsed: URL;
   try {
     parsed = publicPageUrl(url);
   } catch {
-    throw new GuestError(400, 'URL_BLOCKED', PUBLIC_URL_HELP);
+    throw new GuestError(400, 'URL_BLOCKED', help);
   }
   try {
     await resolvedPublicAddress(parsed, deps?.resolve);
   } catch (error) {
     if (error instanceof BlockedTargetError) {
-      throw new GuestError(400, 'URL_BLOCKED', PUBLIC_URL_HELP);
+      throw new GuestError(400, 'URL_BLOCKED', help);
     }
-    throw new GuestError(400, 'URL_BLOCKED', PUBLIC_URL_HELP);
+    throw new GuestError(400, 'URL_BLOCKED', help);
   }
 }
 
@@ -356,6 +533,7 @@ function rowToView(
 ): AgentItemView {
   const url = String(row.url ?? '');
   const cleaned = sanitizeStoredItemUrl(url) ?? url;
+  const failure = agentScrapeFailure(row.scrape_status, row.scrape_error);
   return {
     id: Number(row.id),
     name: String(row.name ?? ''),
@@ -382,6 +560,9 @@ function rowToView(
     created_at: String(row.created_at ?? ''),
     updated_at: String(row.updated_at ?? ''),
     has_url_duplicate: duplicateUrls.has(cleaned),
+    scrape_status: agentScrapeStatus(row.scrape_status),
+    scrape_error_code: failure?.code ?? null,
+    scrape_error: failure?.message ?? null,
     stores: storesForItemRow(db, userId, row),
   };
 }
@@ -595,7 +776,7 @@ function mediaFetchErrors(url: string, media: ServerItemMedia): AgentMediaFetchE
   return [{
     url,
     code: media.scraped?.failureCode ?? 'FETCH_FAILED',
-    message: media.scraped?.note ?? '価格と画像を取得できませんでした。時間をおいて再試行するか、別の店のURLを使ってください。',
+    message: media.scraped?.note ?? AGENT_FETCH_FAILED_MESSAGE,
   }];
 }
 
@@ -1032,91 +1213,152 @@ export async function addAgentItem(
   };
 }
 
-export function updateAgentItem(
+export type UpdateAgentItemOptions = {
+  /** 画像ホストの名前解決の差し替え（テスト用）。省略時は dns.lookup */
+  deps?: Pick<MemberFetchDeps, 'resolve'>;
+};
+
+const ITEM_TRASHED_UPDATE_MESSAGE = 'ゴミ箱の品目は更新できません。先に復元してください';
+
+/**
+ * 名前・メモ・優先度・数量・予定日・カテゴリ・比較グループ・URL に加え、
+ * 空のままの current_price / image_url を一度だけ埋める（#382）。埋められるかは各フィールドが
+ * null かどうかだけで決まり、scrape_status は見ない。
+ *
+ * 順序: 別名の拒否と媒体の構文検査（400）→ 所有（404。他人の品目のために名前解決しない）
+ * → 画像ホストの名前解決（認証後。400 URL_BLOCKED）→ 書き込みトランザクション。
+ * DB の状態に依存する検査（ゴミ箱、媒体が空か、カテゴリ・比較グループの所有と存在、URL の重複）は
+ * すべてトランザクションの中で行い、同じロックのまま UPDATE する。名前解決の間にゴミ箱へ入る、
+ * 別の書き手が価格を入れる、カテゴリが消える、といった競合は、ここで通常の 400 / 409 になり、部分書き込みも
+ * 外部キー違反の 500 も起きない。
+ */
+export async function updateAgentItem(
   auth: AgentAuthContext,
   itemId: number,
   body: Record<string, unknown>,
   db: Database.Database = getDb(),
-): AgentItemView {
+  options: UpdateAgentItemOptions = {},
+): Promise<AgentItemView> {
+  // 別名（price / original_price / target_price / imageUrl）は常に拒否。公式名は構文だけ先に見る。
+  rejectAgentMediaAliases(body);
+  const manual = parseAgentManualMedia(body);
+
+  // 名前解決の前に、安い検査で確実に失敗するものを先に返す（他人の品目は 404、ゴミ箱は 409、
+  // 埋めようとした価格・画像に値があれば 409）。外部ホストが解決できなくても、この順序は変わらない。
+  // 同じ検査は下の書き込みトランザクションでも繰り返し、名前解決の間の競合を防ぐ。
   const existing = getOwnedItemOrThrow(auth.userId, itemId, db);
   if (existing.deleted_at) {
-    throw new GuestError(409, 'ITEM_TRASHED', 'ゴミ箱の品目は更新できません。先に復元してください');
+    throw new GuestError(409, 'ITEM_TRASHED', ITEM_TRASHED_UPDATE_MESSAGE);
+  }
+  assertManualMediaFillable(existing, manual);
+
+  // 名前解決はここだけ。認証・スコープ・媒体の構文検査・上の状態検査を通ったあとに行う。
+  if (manual.imageUrl !== undefined) {
+    await assertAgentPublicUrl(manual.imageUrl, options.deps, PUBLIC_IMAGE_HELP);
   }
 
-  const updates: string[] = [];
-  const values: unknown[] = [];
-
-  if (body.name !== undefined) {
-    const name = typeof body.name === 'string' ? normalizeItemName(body.name) : null;
-    if (!name) throw new GuestError(400, 'INVALID_INPUT', '商品名を入力してください');
-    updates.push('name = ?');
-    values.push(name);
-  }
-
-  if (body.notes !== undefined) {
-    updates.push('notes = ?');
-    values.push(normalizeNotes(body.notes));
-  }
-
-  if (body.priority !== undefined) {
-    updates.push('priority = ?');
-    values.push(normalizePriority(body.priority, Number(existing.priority) || 3));
-  }
-
-  if (body.quantity !== undefined) {
-    updates.push('quantity = ?');
-    values.push(normalizeQuantity(body.quantity, Number(existing.quantity) || 1));
-  }
-
-  if (body.planned_purchase_date !== undefined) {
-    updates.push('planned_purchase_date = ?');
-    values.push(normalizeOptionalDate(body.planned_purchase_date, 'planned_purchase_date') ?? null);
-  }
-
-  if (body.category_id !== undefined) {
-    const categoryId = normalizeOptionalId(body.category_id, 'category_id') ?? null;
-    assertOwnedRelations(db, auth.userId, { category_id: categoryId });
-    updates.push('category_id = ?');
-    values.push(categoryId);
-  }
-
-  if (body.comparison_group_id !== undefined) {
-    const groupId = normalizeOptionalId(body.comparison_group_id, 'comparison_group_id') ?? null;
-    assertOwnedRelations(db, auth.userId, { comparison_group_id: groupId });
-    updates.push('comparison_group_id = ?');
-    values.push(groupId);
-  }
-
-  if (body.url !== undefined) {
-    const currentUrl = String(existing.url);
-    if (typeof body.url === 'string' && body.url === currentUrl) {
-      // 未変更。#275 と同じく整形しない
-    } else {
-      const cleaned = requireHttpUrl(body.url);
-      if (cleaned !== currentUrl) {
-        // 更新時は他品目のゴミ箱 URL も使えない（別品目を巻き込むため）
-        assertUrlAvailableOrThrow(db, auth.userId, cleaned, false, itemId);
-      }
-      updates.push('url = ?', 'source_item_code = NULL', 'price_fetched_at = NULL');
-      values.push(cleaned);
+  db.transaction(() => {
+    const row = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(itemId, auth.userId) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) {
+      throw new GuestError(404, 'ITEM_NOT_FOUND', '品目が見つかりません');
     }
-  }
+    if (row.deleted_at) {
+      throw new GuestError(409, 'ITEM_TRASHED', ITEM_TRASHED_UPDATE_MESSAGE);
+    }
 
-  // 価格・画像はエージェントから直接書き換えさせない
-  rejectAgentClientMediaFields(body);
+    const updates: string[] = [];
+    const values: unknown[] = [];
 
-  if (updates.length === 0) {
-    throw new GuestError(400, 'INVALID_INPUT', '更新する項目がありません');
-  }
+    if (body.name !== undefined) {
+      const name = typeof body.name === 'string' ? normalizeItemName(body.name) : null;
+      if (!name) throw new GuestError(400, 'INVALID_INPUT', '商品名を入力してください');
+      updates.push('name = ?');
+      values.push(name);
+    }
 
-  updates.push("updated_at = datetime('now')");
-  values.push(itemId, auth.userId);
-  const changed = db.prepare(
-    `UPDATE items SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
-  ).run(...values).changes;
-  if (!changed) {
-    throw new GuestError(404, 'ITEM_NOT_FOUND', '品目が見つかりません');
-  }
+    if (body.notes !== undefined) {
+      updates.push('notes = ?');
+      values.push(normalizeNotes(body.notes));
+    }
+
+    if (body.priority !== undefined) {
+      updates.push('priority = ?');
+      values.push(normalizePriority(body.priority, Number(row.priority) || 3));
+    }
+
+    if (body.quantity !== undefined) {
+      updates.push('quantity = ?');
+      values.push(normalizeQuantity(body.quantity, Number(row.quantity) || 1));
+    }
+
+    if (body.planned_purchase_date !== undefined) {
+      updates.push('planned_purchase_date = ?');
+      values.push(normalizeOptionalDate(body.planned_purchase_date, 'planned_purchase_date') ?? null);
+    }
+
+    // カテゴリ・比較グループは、所有と存在をこのロックの中で確かめてから書く（消えていれば 400）。
+    if (body.category_id !== undefined) {
+      const categoryId = normalizeOptionalId(body.category_id, 'category_id') ?? null;
+      assertOwnedRelations(db, auth.userId, { category_id: categoryId });
+      updates.push('category_id = ?');
+      values.push(categoryId);
+    }
+
+    if (body.comparison_group_id !== undefined) {
+      const groupId = normalizeOptionalId(body.comparison_group_id, 'comparison_group_id') ?? null;
+      assertOwnedRelations(db, auth.userId, { comparison_group_id: groupId });
+      updates.push('comparison_group_id = ?');
+      values.push(groupId);
+    }
+
+    if (body.url !== undefined) {
+      const currentUrl = String(row.url);
+      if (typeof body.url === 'string' && body.url === currentUrl) {
+        // 未変更。#275 と同じく整形しない
+      } else {
+        const cleaned = requireHttpUrl(body.url);
+        if (cleaned !== currentUrl) {
+          // 更新時は他品目のゴミ箱 URL も使えない（別品目を巻き込むため）
+          assertUrlAvailableOrThrow(db, auth.userId, cleaned, false, itemId);
+        }
+        updates.push('url = ?', 'source_item_code = NULL', 'price_fetched_at = NULL');
+        values.push(cleaned);
+      }
+    }
+
+    // 価格・画像は null のフィールドだけ埋める。取得済みの値はクライアント値で壊さない（#336 / #382）。
+    assertManualMediaFillable(row, manual);
+    const guards: string[] = [];
+    if (manual.price !== undefined) {
+      updates.push('current_price = ?');
+      values.push(manual.price);
+      guards.push('current_price IS NULL');
+    }
+    if (manual.imageUrl !== undefined) {
+      updates.push('image_url = ?');
+      values.push(manual.imageUrl);
+      guards.push('image_url IS NULL');
+    }
+
+    if (updates.length === 0) {
+      throw new GuestError(400, 'INVALID_INPUT', '更新する項目がありません');
+    }
+
+    updates.push("updated_at = datetime('now')");
+    const where = ['id = ?', 'user_id = ?', 'deleted_at IS NULL', ...guards].join(' AND ');
+    const changed = db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE ${where}`)
+      .run(...values, itemId, auth.userId).changes;
+    if (!changed) {
+      // 同じロックの中で読み直した直後なので通常は来ない。来たら何も書かずに止める。
+      throw new GuestError(409, 'MEDIA_ALREADY_SET', '品目の状態が変わったため更新しませんでした。取り直してから再度お試しください');
+    }
+    if (manual.price !== undefined) {
+      db.prepare('INSERT INTO price_history (item_id, price) VALUES (?, ?)').run(itemId, manual.price);
+    }
+  }).immediate();
+
   return getAgentItem(auth.userId, itemId, db);
 }
 

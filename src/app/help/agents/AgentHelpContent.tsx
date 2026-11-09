@@ -121,8 +121,8 @@ export default function AgentHelpContent({ mcpUrl }: { mcpUrl: string }) {
         <h2 className="text-lg font-semibold pt-2">できる操作</h2>
         <ul className="list-disc pl-6 space-y-2">
           <li>リストを読む</li>
-          <li>品目を追加する</li>
-          <li>品目を更新する</li>
+          <li>品目を追加する（価格と画像はサーバが商品ページから取ります）</li>
+          <li>品目を更新する（価格や画像が空のままの品目に限り、空の側だけを補えます。URL なしで足した品目や、価格だけ取れて画像が空の品目も同じです。入っている値は変えられません）</li>
           <li>購入済みにする</li>
           <li>ゴミ箱に移す</li>
           <li>ゴミ箱に移した品目を1件ずつ完全に削除する（ゴミ箱を空にする操作はありません）</li>
