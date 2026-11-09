@@ -459,6 +459,122 @@ test('agent mcp: initialize, tools/list, tools/call with scope filter', () => se
   }
 }));
 
+test('agent api: DELETE /items/:id/trash purges one owned trashed item with its children and frees the URL (#381)', () => serial(async () => {
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  installProductFetchPort(regressionFetchPort());
+  try {
+    const owner = await createMember('agent-purge-owner');
+    const both = await createToken(['read', 'write'], 'purge-both');
+    const read = await createToken(['read'], 'purge-read');
+    const database = await db();
+
+    const children = (itemId: number) => ({
+      history: (database.prepare('SELECT COUNT(*) AS n FROM price_history WHERE item_id = ?').get(itemId) as { n: number }).n,
+      notifications: (database.prepare('SELECT COUNT(*) AS n FROM notification_settings WHERE item_id = ?').get(itemId) as { n: number }).n,
+    });
+    const row = (itemId: number) => database.prepare('SELECT id, deleted_at FROM items WHERE id = ?').get(itemId) as
+      | { id: number; deleted_at: string | null }
+      | undefined;
+    const purge = (token: string, itemId: number) => call(
+      trashPath,
+      'DELETE',
+      `/api/agent/v1/items/${itemId}/trash`,
+      undefined,
+      { id: String(itemId) },
+      bearer(token),
+    );
+
+    const added = await call(byUrlPath, 'POST', '/api/agent/v1/items/by-url', {
+      url: AMAZON_PRODUCT_URL,
+    }, undefined, bearer(both.token));
+    assert.equal(added.status, 201, added.text);
+    const itemId = (added.json as { data: { item: { id: number } } }).data.item.id;
+    database.prepare('INSERT INTO notification_settings (item_id, target_price) VALUES (?, 2000)').run(itemId);
+    assert.deepEqual(children(itemId), { history: 1, notifications: 1 });
+
+    // ほしいもの（未ゴミ箱）は 409。行も子レコードも残る。
+    const active = await purge(both.token, itemId);
+    assert.equal(active.status, 409, active.text);
+    assert.equal((active.json as { code: string }).code, 'ITEM_NOT_TRASHED');
+    assert.match((active.json as { error: string }).error, /ゴミ箱/);
+    assert.deepEqual(row(itemId), { id: itemId, deleted_at: null });
+    assert.deepEqual(children(itemId), { history: 1, notifications: 1 });
+
+    // 購入済みも 409
+    database.prepare("UPDATE items SET is_purchased = 1, purchased_at = '2026-11-01' WHERE id = ?").run(itemId);
+    const purchased = await purge(both.token, itemId);
+    assert.equal(purchased.status, 409, purchased.text);
+    assert.equal((purchased.json as { code: string }).code, 'ITEM_NOT_TRASHED');
+    assert.deepEqual(row(itemId), { id: itemId, deleted_at: null });
+
+    // 既存の POST（ソフトデリート）はそのまま
+    const trashed = await call(trashPath, 'POST', `/api/agent/v1/items/${itemId}/trash`, undefined, { id: String(itemId) }, bearer(both.token));
+    assert.equal(trashed.status, 200, trashed.text);
+    assert.ok(row(itemId)?.deleted_at);
+
+    // read スコープは 403、行は残る
+    const denied = await purge(read.token, itemId);
+    assert.equal(denied.status, 403, denied.text);
+    assert.ok(row(itemId)?.deleted_at);
+
+    // 他人は 404、行は残る
+    await createMember('agent-purge-stranger');
+    const strangerToken = await createToken(['read', 'write'], 'purge-stranger');
+    const foreign = await purge(strangerToken.token, itemId);
+    assert.equal(foreign.status, 404, foreign.text);
+    assert.equal((foreign.json as { code: string }).code, 'ITEM_NOT_FOUND');
+    assert.ok(row(itemId)?.deleted_at);
+    assert.deepEqual(children(itemId), { history: 1, notifications: 1 });
+    await setTestUser(owner);
+
+    // 所有者はゴミ箱の品目を完全削除できる。子レコードも残らない。
+    const purged = await purge(both.token, itemId);
+    assert.equal(purged.status, 200, purged.text);
+    const purgedBody = purged.json as {
+      notice: { ja: string; en: string };
+      data: { purged: boolean; item: { id: number; url: string; name: string } };
+    };
+    assert.ok(purgedBody.notice.ja.includes('データ'));
+    assert.equal(purgedBody.data.purged, true);
+    assert.equal(purgedBody.data.item.id, itemId);
+    assert.equal(purgedBody.data.item.url, AMAZON_PRODUCT_URL);
+    assert.equal(row(itemId), undefined);
+    assert.deepEqual(children(itemId), { history: 0, notifications: 0 });
+    const audited = database.prepare(
+      "SELECT meta FROM agent_audit_log WHERE token_id = ? AND action = 'items.purge'",
+    ).all(both.record.id) as { meta: string | null }[];
+    assert.ok(audited.length >= 1, 'purge is audited');
+    assert.ok(audited.some((entry) => JSON.parse(entry.meta ?? '{}').item_id === itemId));
+
+    // 2回目は 404（冪等成功にしない）
+    const again = await purge(both.token, itemId);
+    assert.equal(again.status, 404, again.text);
+    assert.equal((again.json as { code: string }).code, 'ITEM_NOT_FOUND');
+
+    // 同じ URL は復元ではなく新規登録（再取得）
+    const readded = await call(byUrlPath, 'POST', '/api/agent/v1/items/by-url', {
+      url: AMAZON_PRODUCT_URL,
+    }, undefined, bearer(both.token));
+    assert.equal(readded.status, 201, readded.text);
+    const readdedBody = readded.json as {
+      data: { item: { id: number; name: string; current_price: number | null }; media_fetched: boolean; restored_from_trash?: boolean };
+    };
+    assert.equal(readdedBody.data.restored_from_trash, undefined);
+    assert.notEqual(readdedBody.data.item.id, itemId);
+    assert.equal(readdedBody.data.item.name, AMAZON_NAME);
+    assert.equal(readdedBody.data.item.current_price, AMAZON_PRICE);
+    assert.equal(readdedBody.data.media_fetched, true);
+
+    // 完全削除はゴミ箱 1 件向けの DELETE だけ。品目一覧・品目本体への DELETE（一括・直接削除）は無い。
+    const itemsModule = await import(itemsPath) as Record<string, unknown>;
+    assert.equal(itemsModule.DELETE, undefined, 'no bulk delete on the items collection');
+    const itemModule = await import(itemIdPath) as Record<string, unknown>;
+    assert.equal(itemModule.DELETE, undefined, 'no hard delete on a non-trashed item');
+  } finally {
+    installProductFetchPort(null);
+  }
+}));
+
 test('agent api: trash duplicate visibility via has_url_duplicate', () => serial(async () => {
   await createMember('agent-dupe');
   const token = await createToken(['read', 'write'], 'dupe');

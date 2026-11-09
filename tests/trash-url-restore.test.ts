@@ -143,6 +143,54 @@ test('hard-deleted trash URL can be added again', () => serial(async () => {
   }
 }));
 
+test('DELETE /api/trash/:id keeps 404 outside the trash and removes child rows for a trashed item (#381 shared purge)', () => serial(async () => {
+  const member = await createMember('web-purge');
+  await setTestUser(member);
+  const database = await db();
+  const children = (itemId: number) => ({
+    history: (database.prepare('SELECT COUNT(*) AS n FROM price_history WHERE item_id = ?').get(itemId) as { n: number }).n,
+    notifications: (database.prepare('SELECT COUNT(*) AS n FROM notification_settings WHERE item_id = ?').get(itemId) as { n: number }).n,
+  });
+  const seed = (name: string, url: string, trashed: boolean) => {
+    const id = Number(database.prepare(`
+      INSERT INTO items (user_id, name, url, deleted_at)
+      VALUES (?, ?, ?, ${trashed ? "datetime('now')" : 'NULL'})
+    `).run(member.id, name, url).lastInsertRowid);
+    database.prepare('INSERT INTO price_history (item_id, price) VALUES (?, 500)').run(id);
+    database.prepare('INSERT INTO notification_settings (item_id, target_price) VALUES (?, 400)').run(id);
+    return id;
+  };
+  const activeId = seed('リストの本', 'https://example.test/web-purge-active', false);
+  const trashedId = seed('捨てた本', 'https://example.test/web-purge-trashed', true);
+  const foreignTrashedId = seed('他人が消そうとする本', 'https://example.test/web-purge-foreign', true);
+  const purge = (id: number) => call(trashItemPath, 'DELETE', `/api/trash/${id}`, undefined, { id: String(id) });
+
+  // ゴミ箱に無い品目は Web でも 404 のまま。子レコードも消えない。
+  const notTrashed = await purge(activeId);
+  assert.equal(notTrashed.status, 404, notTrashed.text);
+  assert.ok(database.prepare('SELECT id FROM items WHERE id = ?').get(activeId));
+  assert.deepEqual(children(activeId), { history: 1, notifications: 1 });
+
+  // 他人のゴミ箱行は 404 で残る
+  const other = await createMember('web-purge-other');
+  await setTestUser(other);
+  const foreign = await purge(foreignTrashedId);
+  assert.equal(foreign.status, 404, foreign.text);
+  assert.ok(database.prepare('SELECT id FROM items WHERE id = ?').get(foreignTrashedId));
+  assert.deepEqual(children(foreignTrashedId), { history: 1, notifications: 1 });
+  await setTestUser(member);
+
+  // 自分のゴミ箱行は本体と子レコードが消える
+  const purged = await purge(trashedId);
+  assert.equal(purged.status, 200, purged.text);
+  assert.equal((purged.json as { success: boolean }).success, true);
+  assert.equal(database.prepare('SELECT id FROM items WHERE id = ?').get(trashedId), undefined);
+  assert.deepEqual(children(trashedId), { history: 0, notifications: 0 });
+
+  const again = await purge(trashedId);
+  assert.equal(again.status, 404, again.text);
+}));
+
 test('extension-add restores trashed URL', () => serial(async () => {
   const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
   installProductFetchPort(regressionFetchPort());

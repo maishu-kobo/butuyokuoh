@@ -671,3 +671,199 @@ test('mcp add_item (name + url): a same-URL row trashed while the page is fetche
     assert.equal(priceHistory(database, state.injectedId as number).length, 0);
   });
 }));
+
+// ---- purge_item（#381）: ゴミ箱内の自分の品目 1 件だけを完全削除し、同じ URL を再取得で登録し直せる ----
+
+type PurgeData = { purged: boolean; item: { id: number; name: string; url: string } };
+
+type ToolDescriptor = {
+  name: string;
+  description: string;
+  annotations: { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint?: boolean; openWorldHint: boolean };
+  inputSchema: { required?: string[]; properties?: Record<string, unknown>; additionalProperties?: boolean };
+};
+
+function findItemRow(database: Awaited<ReturnType<typeof db>>, id: number): ItemRow | undefined {
+  return database.prepare('SELECT * FROM items WHERE id = ?').get(id) as ItemRow | undefined;
+}
+
+function countChildren(database: Awaited<ReturnType<typeof db>>, itemId: number) {
+  const history = (database.prepare('SELECT COUNT(*) AS n FROM price_history WHERE item_id = ?').get(itemId) as { n: number }).n;
+  const notifications = (database.prepare(
+    'SELECT COUNT(*) AS n FROM notification_settings WHERE item_id = ?',
+  ).get(itemId) as { n: number }).n;
+  return { history, notifications };
+}
+
+async function mcpToolsList(token: string): Promise<ToolDescriptor[]> {
+  const response = await call(mcpPath, 'POST', '/api/mcp', {
+    jsonrpc: '2.0',
+    id: ++rpcId,
+    method: 'tools/list',
+  }, undefined, {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/json, text/event-stream',
+  });
+  assert.equal(response.status, 200, response.text);
+  return (response.json as { result: { tools: ToolDescriptor[] } }).result.tools;
+}
+
+test('mcp purge_item: hard-deletes one trashed item with its children, then the same URL is a fresh insert that fetches again', () => serial(async () => {
+  const { fetched, port } = recordingPort();
+  await withPort(port, async () => {
+    const owner = await createMember('mcp-purge');
+    const token = await createToken(['read', 'write'], 'purge-agent');
+    const database = await db();
+
+    const added = restoreData((await mcpAddByUrl(token.token, { url: AMAZON_PRODUCT_URL, notes: 'stale-fetch' })).body);
+    const itemId = added.item.id;
+    database.prepare('INSERT INTO notification_settings (item_id, target_price) VALUES (?, 1000)').run(itemId);
+    assert.deepEqual(countChildren(database, itemId), { history: 1, notifications: 1 });
+
+    await mcpTrash(token.token, itemId);
+    fetched.length = 0;
+
+    const purged = await mcpTool(token.token, 'purge_item', { item_id: itemId });
+    assert.equal(purged.status, 200, purged.text);
+    assert.equal(purged.body.result?.isError, false, purged.text);
+    const data = purged.body.result?.structuredContent?.data as unknown as PurgeData;
+    assert.equal(data.purged, true);
+    assert.equal(data.item.id, itemId);
+    assert.equal(data.item.url, AMAZON_PRODUCT_URL);
+    assert.equal(data.item.name, AMAZON_NAME);
+    assert.equal(findItemRow(database, itemId), undefined, 'the items row must be gone');
+    assert.deepEqual(countChildren(database, itemId), { history: 0, notifications: 0 }, 'child rows must not be orphaned');
+    assert.equal(countItems(database, owner.id), 0);
+    assert.deepEqual(fetched, [], 'purge never fetches the product page');
+
+    const audited = database.prepare(
+      "SELECT meta FROM agent_audit_log WHERE token_id = ? AND action = 'items.purge'",
+    ).all(token.record.id) as { meta: string | null }[];
+    assert.equal(audited.length, 1, 'purge is written to the audit log');
+    assert.equal(JSON.parse(audited[0].meta ?? '{}').item_id, itemId);
+
+    // 2回目は行が無いので 404（trash_item のような冪等成功にはしない）
+    const again = await mcpTool(token.token, 'purge_item', { item_id: itemId });
+    assert.equal(again.status, 200, again.text);
+    assert.equal(again.body.result?.isError, true);
+    assert.equal(again.body.result?._meta?.code, 'ITEM_NOT_FOUND');
+    assert.equal(again.body.result?._meta?.httpStatus, 404);
+
+    // 同じ URL は復元ではなく新規 INSERT。取得が走り、古いメモは戻らない。
+    const readded = restoreData((await mcpAddByUrl(token.token, { url: `${AMAZON_PRODUCT_URL}?utm_source=retry` })).body);
+    assert.equal(readded.restored_from_trash, undefined);
+    assert.equal(readded.restore_message, undefined);
+    assert.notEqual(readded.item.id, itemId);
+    assert.equal(readded.item.name, AMAZON_NAME);
+    assert.equal(readded.item.current_price, AMAZON_PRICE);
+    assert.equal(readded.item.notes, null);
+    assert.equal(readded.item.deleted_at, null);
+    assert.equal(readded.media_fetched, true);
+    assert.deepEqual(fetched, [AMAZON_PRODUCT_URL], 're-add after purge fetches the page again');
+    assert.equal(countItems(database, owner.id), 1);
+    assert.equal(priceHistory(database, readded.item.id).length, 1);
+  });
+}));
+
+test('mcp purge_item: refuses list, purchased, foreign, missing, read-only, and malformed calls without touching any row', () => serial(async () => {
+  const { fetched, port } = recordingPort();
+  await withPort(port, async () => {
+    const owner = await createMember('mcp-purge-refuse');
+    const token = await createToken(['read', 'write'], 'purge-refuse');
+    const readOnly = await createToken(['read'], 'purge-read-only');
+    const stranger = await createMember('mcp-purge-stranger');
+    const strangerToken = await createToken(['read', 'write'], 'purge-stranger');
+    const database = await db();
+
+    const activeId = Number(database.prepare(`
+      INSERT INTO items (user_id, name, url, notes) VALUES (?, 'ほしいもの', 'https://example.com/products/active-keep', 'keep')
+    `).run(owner.id).lastInsertRowid);
+    const purchasedId = Number(database.prepare(`
+      INSERT INTO items (user_id, name, url, is_purchased, purchased_at)
+      VALUES (?, '購入済み', 'https://example.com/products/purchased-keep', 1, '2026-10-01 00:00:00')
+    `).run(owner.id).lastInsertRowid);
+    const trashedId = Number(database.prepare(`
+      INSERT INTO items (user_id, name, url, deleted_at)
+      VALUES (?, 'ゴミ箱', ?, datetime('now', '-1 day'))
+    `).run(owner.id, AMAZON_PRODUCT_URL).lastInsertRowid);
+    for (const id of [activeId, purchasedId, trashedId]) {
+      database.prepare('INSERT INTO price_history (item_id, price) VALUES (?, 1234)').run(id);
+      database.prepare('INSERT INTO notification_settings (item_id, target_price) VALUES (?, 1000)').run(id);
+    }
+    const before = new Map([activeId, purchasedId, trashedId].map((id) => [id, itemRow(database, id)]));
+
+    for (const [id, label] of [[activeId, 'list'], [purchasedId, 'purchased']] as const) {
+      const response = await mcpTool(token.token, 'purge_item', { item_id: id });
+      assert.equal(response.status, 200, response.text);
+      assert.equal(response.body.result?.isError, true, `${label}: ${response.text}`);
+      assert.equal(response.body.result?._meta?.code, 'ITEM_NOT_TRASHED', label);
+      assert.equal(response.body.result?._meta?.httpStatus, 409, label);
+      const text = response.body.result?.content?.[0]?.text ?? '';
+      assert.match(text, /ゴミ箱/, label);
+      assert.match(text, /trash_item/, label);
+    }
+
+    // 他人のゴミ箱行と存在しない ID は 404（存在を教えない）
+    const foreign = await mcpTool(strangerToken.token, 'purge_item', { item_id: trashedId });
+    assert.equal(foreign.body.result?.isError, true, foreign.text);
+    assert.equal(foreign.body.result?._meta?.code, 'ITEM_NOT_FOUND');
+    assert.equal(foreign.body.result?._meta?.httpStatus, 404);
+
+    const missing = await mcpTool(token.token, 'purge_item', { item_id: 987_654_321 });
+    assert.equal(missing.body.result?.isError, true, missing.text);
+    assert.equal(missing.body.result?._meta?.code, 'ITEM_NOT_FOUND');
+
+    // read だけのトークンは scope 拒否（JSON-RPC エラー）
+    const denied = await mcpTool(readOnly.token, 'purge_item', { item_id: trashedId });
+    assert.equal(denied.status, 200, denied.text);
+    assert.equal(denied.body.result, undefined, 'scope denial is a JSON-RPC error, not a tool result');
+    assert.equal(denied.body.error?.code, -32003);
+    assert.equal(denied.body.error?.data?.code, 'AGENT_SCOPE_DENIED');
+
+    // item_id 無し・不正は 400
+    for (const args of [{}, { item_id: '12' }, { item_id: 0 }]) {
+      const invalid = await mcpTool(token.token, 'purge_item', args);
+      assert.equal(invalid.body.result?.isError, true, JSON.stringify(args));
+      assert.equal(invalid.body.result?._meta?.code, 'INVALID_INPUT', JSON.stringify(args));
+      assert.equal(invalid.body.result?._meta?.httpStatus, 400, JSON.stringify(args));
+    }
+
+    for (const [id, row] of before) {
+      assert.deepEqual(itemRow(database, id), row, `item ${id} must be untouched`);
+      assert.deepEqual(countChildren(database, id), { history: 1, notifications: 1 }, `children of ${id} must be untouched`);
+    }
+    assert.equal(countItems(database, owner.id), 3);
+    assert.equal(countItems(database, stranger.id), 0);
+    assert.deepEqual(fetched, []);
+  });
+}));
+
+test('mcp tools/list: purge_item is a write-only destructive tool for one item, and no empty-trash tool exists', () => serial(async () => {
+  await createMember('mcp-purge-list');
+  const write = await createToken(['read', 'write'], 'purge-list-write');
+  const read = await createToken(['read'], 'purge-list-read');
+
+  const tools = await mcpToolsList(write.token);
+  const purge = tools.find((tool) => tool.name === 'purge_item');
+  assert.ok(purge, 'purge_item must be listed for a write token');
+  assert.deepEqual(purge.annotations, {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: false,
+  });
+  assert.deepEqual(purge.inputSchema.required, ['item_id']);
+  assert.deepEqual(Object.keys(purge.inputSchema.properties ?? {}), ['item_id']);
+  assert.equal(purge.inputSchema.additionalProperties, false);
+  assert.match(purge.description, /ゴミ箱/);
+  assert.match(purge.description, /1件/);
+
+  // 破壊的なツールは trash_item と purge_item だけ。ゴミ箱全件や複数件を消すツールは無い。
+  const destructive = tools.filter((tool) => tool.annotations.destructiveHint).map((tool) => tool.name).sort();
+  assert.deepEqual(destructive, ['purge_item', 'trash_item']);
+  const trashLike = tools.map((tool) => tool.name).filter((name) => /trash|purge|delete|empty|clear/i.test(name)).sort();
+  assert.deepEqual(trashLike, ['purge_item', 'trash_item']);
+
+  const readTools = (await mcpToolsList(read.token)).map((tool) => tool.name);
+  assert.equal(readTools.includes('purge_item'), false, 'read-only tokens must not see purge_item');
+}));
