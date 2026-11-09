@@ -161,9 +161,12 @@ test('settings token lifecycle, REST wishlist ops, undo, and audit log', async (
   expect(purchased.status()).toBe(200);
   expect((await purchased.json()).data.is_purchased).toBe(true);
 
-  // 完全削除はできない（ルート無し）。行は残る。
+  // 品目本体への DELETE は無い。完全削除はゴミ箱内の品目への DELETE …/trash（purge_item）だけで、
+  // ゴミ箱に無い品目は 409 で拒否される（#381）。どちらも行は残る。
   const hardDelete = await api.delete(`/api/agent/v1/items/${itemId}`, { headers: bearer(token) });
   expect([404, 405]).toContain(hardDelete.status());
+  const purgeNotTrashed = await api.delete(`/api/agent/v1/items/${itemId}/trash`, { headers: bearer(token) });
+  expect(purgeNotTrashed.status()).toBe(409);
   const connection = db();
   expect(connection.prepare('SELECT id, deleted_at FROM items WHERE id = ?').get(itemId)).toMatchObject({
     id: itemId,

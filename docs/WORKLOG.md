@@ -2,6 +2,25 @@
 
 エージェント／作業者向けの進行ログ。仕様の正本ではない。使い方の索引は [README.md](./README.md)。
 
+## 2026-11-09 — エージェントからゴミ箱の品目を1件だけ完全削除（#381）
+
+### 決定
+
+- 削除ロジックは新しく書かず、Web の `DELETE /api/trash/[id]` と MCP / REST で `purgeTrashedItem`（`src/lib/item-input.ts`）を共有する。所有者確認とゴミ箱判定は同じ `immediate` トランザクションの中で行い、消し順は Web と同じ `price_history` → `notification_settings` → `items`。
+- 戻り値は `purged` / `not_trashed` / `not_found` に分け、Web は従来どおりまとめて 404、エージェントは `not_trashed` を 409 `ITEM_NOT_TRASHED`、`not_found` を 404 `ITEM_NOT_FOUND` にする。2 回目は 404（`trash_item` のような冪等成功にしない）。
+- ツール名は `purge_item`。`scope: write`、`auditAction: items.purge`、`destructiveHint: true` / `idempotentHint: false`。操作ログには `item_id` も残す（元に戻せないため）。
+- ゴミ箱全件を空にする操作（Web の `DELETE /api/trash`）はエージェントに公開しない。テストで「破壊的ツールは `trash_item` と `purge_item` だけ」「品目一覧・品目本体に `DELETE` が無い」を固定した。
+
+### 結果
+
+- 追加: `purgeAgentItem`、MCP `purge_item`、REST `DELETE /api/agent/v1/items/{id}/trash`。`tests/trash-url-restore-mcp.test.ts`・`tests/agent-api.test.ts`・`tests/trash-url-restore.test.ts` に挙動テスト。完全削除後の同一 URL は `restored_from_trash` にならず再取得で新規 INSERT になることを固定。
+- 文面: `/help/agents`・`/terms`・`/privacy`・接続カードの例・MCP initialize の instructions（日英）・`llms.txt`・OpenAPI から「完全削除はできない」を外し、「ゴミ箱の自分の品目を1件ずつだけ」に直した。
+
+### 残るもの
+
+- #382（取得失敗時の価格・画像の手動設定）は別作業。本 PR では触れない。
+- e2e（`tests/e2e/agent.spec.ts`）はブラウザ無しで未実行。追加した 409 の確認は CI か手元の Playwright で見る。
+
 ## 2026-11-06 — CI を Blacksmith から GitHub-hosted へ緊急移行
 
 ### 決定

@@ -366,6 +366,39 @@ export function restoreTrashedItem(
   return { ...item, deleted_at: null };
 }
 
+export type PurgeTrashedItemResult =
+  | { kind: 'purged'; item: StoredUrlMatch }
+  | { kind: 'not_trashed'; item: StoredUrlMatch }
+  | { kind: 'not_found' };
+
+/**
+ * ゴミ箱の品目 1 件を子レコードごと完全削除する。Web の DELETE /api/trash/[id] と
+ * エージェントの purge_item（#381）が共有する唯一の削除経路。
+ * 所有者確認とゴミ箱判定は同じトランザクションの中で行い、ほしいもの・購入済み
+ * （deleted_at が空）の行は触らない。消し順は price_history → notification_settings → items。
+ * 戻り値の振り分け（404 / 409）は呼び出し側で決める。ゴミ箱全件の削除はここでは扱わない。
+ */
+export function purgeTrashedItem(
+  db: Database.Database,
+  userId: number,
+  itemId: number,
+): PurgeTrashedItemResult {
+  if (!Number.isSafeInteger(itemId) || itemId <= 0) return { kind: 'not_found' };
+  return db.transaction((): PurgeTrashedItemResult => {
+    const item = db.prepare(`
+      SELECT id, url, name, deleted_at, is_purchased
+      FROM items
+      WHERE id = ? AND user_id = ?
+    `).get(itemId, userId) as StoredUrlMatch | undefined;
+    if (!item) return { kind: 'not_found' };
+    if (!item.deleted_at) return { kind: 'not_trashed', item };
+    db.prepare('DELETE FROM price_history WHERE item_id = ?').run(itemId);
+    db.prepare('DELETE FROM notification_settings WHERE item_id = ?').run(itemId);
+    db.prepare('DELETE FROM items WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL').run(itemId, userId);
+    return { kind: 'purged', item };
+  }).immediate();
+}
+
 /**
  * クリーン後の URL が、保存済みの生 URL（トラッキング付き含む）と一致するか。
  * 厳密一致に加え、各行を sanitize して比較する。楽天 identity も見る。

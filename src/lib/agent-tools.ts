@@ -14,6 +14,7 @@ import {
   listAgentCategories,
   listAgentItems,
   purchaseAgentItem,
+  purgeAgentItem,
   trashAgentItem,
   updateAgentItem,
   type AgentItemStatus,
@@ -42,7 +43,8 @@ export type AgentToolName =
   | 'add_item'
   | 'update_item'
   | 'mark_item_purchased'
-  | 'trash_item';
+  | 'trash_item'
+  | 'purge_item';
 
 export type AgentToolDef = {
   name: AgentToolName;
@@ -286,7 +288,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
     name: 'update_item',
     title: 'Update item fields',
     description:
-      '自分の品目の名前・メモ・優先度・数量・予定日・カテゴリ・比較グループ・URL を更新。価格と画像は変更不可。完全削除は不可。',
+      '自分の品目の名前・メモ・優先度・数量・予定日・カテゴリ・比較グループ・URL を更新。価格と画像は変更不可。このツールでは完全削除しない（ゴミ箱の品目の完全削除は purge_item）。',
     scope: 'write',
     auditAction: 'items.update',
     annotations: {
@@ -310,7 +312,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   {
     name: 'mark_item_purchased',
     title: 'Mark item purchased',
-    description: '自分の品目を購入済みにする。完全削除はしない。',
+    description: '自分の品目を購入済みにする。このツールでは完全削除しない。',
     scope: 'write',
     auditAction: 'items.purchase',
     annotations: {
@@ -336,13 +338,33 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   {
     name: 'trash_item',
     title: 'Move item to trash',
-    description: '自分の品目をゴミ箱へ移す（ソフトデリート）。完全削除はできない。',
+    description: '自分の品目をゴミ箱へ移す（ソフトデリート）。このツールでは完全削除しない。ゴミ箱の品目を完全削除するには purge_item。',
     scope: 'write',
     auditAction: 'items.trash',
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
       idempotentHint: true,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['item_id'],
+      properties: { item_id: itemIdProp },
+    },
+  },
+  {
+    name: 'purge_item',
+    title: 'Permanently delete one trashed item',
+    description:
+      'ゴミ箱内の自分の品目を1件だけ完全削除する（価格履歴・通知設定も消え、元に戻せない）。ほしいもの・購入済みの品目は ITEM_NOT_TRASHED（409）で拒否するので、先に trash_item する。他人の ID と存在しない ID は 404。2回目も 404。ゴミ箱を空にする操作ではない。完全削除後に同じ URL を add_item_by_url すると、復元ではなく新規登録（価格・画像の再取得）になる。',
+    scope: 'write',
+    auditAction: 'items.purge',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
       openWorldHint: false,
     },
     inputSchema: {
@@ -435,6 +457,8 @@ export async function executeAgentTool(
       return withAgentNotice(purchaseAgentItem(auth, requireItemId(input), input));
     case 'trash_item':
       return withAgentNotice({ item: trashAgentItem(auth, requireItemId(input)) });
+    case 'purge_item':
+      return withAgentNotice(purgeAgentItem(auth, requireItemId(input)));
     default:
       throw new GuestError(404, 'TOOL_NOT_FOUND', `未知のツールです: ${name}`);
   }
@@ -476,10 +500,21 @@ export async function callAgentToolFromRequest(
     assertAgentWriteFields(input);
   }
 
+  // 完全削除は元に戻せないので、どの品目かを操作ログに残す（他ツールは tool 名だけ）。
+  const auditMeta: Record<string, unknown> = { tool: tool.name };
+  if (
+    tool.name === 'purge_item'
+    && typeof input.item_id === 'number'
+    && Number.isSafeInteger(input.item_id)
+    && input.item_id > 0
+  ) {
+    auditMeta.item_id = input.item_id;
+  }
+
   const auth = await requireAgentToken(request, tool.scope, {
     rate: tool.rate,
     auditAction: tool.auditAction,
-    auditMeta: { tool: tool.name },
+    auditMeta,
   });
   return executeAgentTool(tool.name, input, auth);
 }

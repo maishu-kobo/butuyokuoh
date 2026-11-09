@@ -18,7 +18,7 @@
 - ゴミ箱
 - 通知設定
 - エージェント用トークン（作成・失効・操作ログ・追加分の一括取り消し）
-- エージェント向け REST API（`/api/agent/v1`）とリモート MCP（`/api/mcp`）。使い方は `/llms.txt`、仕様は `/openapi/agent-v1.yaml`。`add_item_by_url` は複数店 URL を1商品（写真比較グループ）にまとめられる（#312）。MCP の `create_comparison_group` で手作業比較グループを作成し、`update_item` で既存品目を所属させ、`list_comparison_groups` で一覧と未購入・非ゴミ箱の件数を確認できる（#335）
+- エージェント向け REST API（`/api/agent/v1`）とリモート MCP（`/api/mcp`）。使い方は `/llms.txt`、仕様は `/openapi/agent-v1.yaml`。`add_item_by_url` は複数店 URL を1商品（写真比較グループ）にまとめられる（#312）。MCP の `create_comparison_group` で手作業比較グループを作成し、`update_item` で既存品目を所属させ、`list_comparison_groups` で一覧と未購入・非ゴミ箱の件数を確認できる（#335）。ゴミ箱に移した自分の品目は `purge_item`（REST は `DELETE /api/agent/v1/items/{id}/trash`）で1件ずつ完全削除でき、同じ URL を再登録すると復元ではなく再取得になる。ほしいもの・購入済みは 409 で拒否し、ゴミ箱を空にする操作はエージェントに無い（#381）
 - エージェント向け OAuth 2.1（PKCE、CIMD / DCR、Protected Resource Metadata）。アクセス・トークンは `byoagt_` を再利用
 - パスワード変更（変更時にエージェント用トークンをすべて失効）
 - Chrome 拡張機能用トークン（`extension` スコープの byoagt_。ログイン用 JWT は出さない）
@@ -182,7 +182,7 @@
 - 完全削除
 - ゴミ箱を空にする
 
-URL 追加でゴミ箱の同一 URL だけがヒットしたときは、このタブを開かなくても自動復元される（#365）。
+URL 追加でゴミ箱の同一 URL だけがヒットしたときは、このタブを開かなくても自動復元される（#365）。取得に失敗した結果を捨てて取り直したいときは、ここで完全削除してから同じ URL を追加する。エージェント（MCP / REST）からも、ゴミ箱の品目を1件ずつだけ完全削除できる（#381）。
 
 ---
 
@@ -217,6 +217,8 @@ URL 追加でゴミ箱の同一 URL だけがヒットしたときは、この�
 - ゴミ箱を空にする
 
 同じ商品 URL を Web・拡張・エージェントから再度追加すると、ゴミ箱にある品目だけが一致する場合は自動で復元する（#365）。ほしいものや購入済みに同じ URL があるときは、どちらにあるかが分かる日本語で拒否する。
+
+1件の完全削除は Web とエージェントで同じ関数（`purgeTrashedItem`）を使い、所有者かつゴミ箱内の行だけを `price_history` → `notification_settings` → `items` の順で消す。「ゴミ箱を空にする」は Web だけで、エージェントには出さない（#381）。
 
 ### 通知設定
 

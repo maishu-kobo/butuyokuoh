@@ -13,6 +13,7 @@ import {
   fetchServerItemMedia,
   findCleanedStoredUrlRegistration,
   normalizeItemName,
+  purgeTrashedItem,
   restoreTrashedItem,
   RESTORED_FROM_TRASH_MESSAGE,
   sanitizeStoredItemUrl,
@@ -1162,6 +1163,41 @@ export function trashAgentItem(
     throw new GuestError(404, 'ITEM_NOT_FOUND', '品目が見つかりません');
   }
   return getAgentItem(auth.userId, itemId, db);
+}
+
+export type AgentPurgeResult = {
+  purged: true;
+  item: { id: number; name: string; url: string };
+};
+
+/**
+ * ゴミ箱内の自分の品目 1 件を完全削除する（#381）。Web の DELETE /api/trash/[id] と同じ
+ * purgeTrashedItem を使い、所有者確認とゴミ箱判定はそのトランザクションの中で行う。
+ * - 他人の ID・存在しない ID: 404 ITEM_NOT_FOUND（既存ツールと同じ）
+ * - ほしいもの・購入済み（deleted_at が空）: 409 ITEM_NOT_TRASHED。何も消さない
+ * - 2 回目: 行が無いので 404（trash_item のような冪等成功にはしない）
+ * ゴミ箱全件を空にする操作はエージェントに提供しない。
+ */
+export function purgeAgentItem(
+  auth: AgentAuthContext,
+  itemId: number,
+  db: Database.Database = getDb(),
+): AgentPurgeResult {
+  const result = purgeTrashedItem(db, auth.userId, itemId);
+  if (result.kind === 'not_found') {
+    throw new GuestError(404, 'ITEM_NOT_FOUND', '品目が見つかりません');
+  }
+  if (result.kind === 'not_trashed') {
+    throw new GuestError(
+      409,
+      'ITEM_NOT_TRASHED',
+      '完全削除できるのはゴミ箱の品目だけです。先に trash_item してください',
+    );
+  }
+  return {
+    purged: true,
+    item: { id: result.item.id, name: result.item.name, url: result.item.url },
+  };
 }
 
 export function listAgentCategories(userId: number, db: Database.Database = getDb()) {
