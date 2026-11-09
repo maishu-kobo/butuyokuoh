@@ -141,11 +141,13 @@ test('settings token lifecycle, REST wishlist ops, undo, and audit log', async (
   const listData = (await listed.json()) as { data: { items: { id: number }[]; total: number } };
   expect(listData.data.items.some((row) => row.id === itemId)).toBe(true);
 
+  // 取得済みの価格・画像はクライアント値で上書きできない（#382: 空のときだけ埋められる）。メモも変わらない。
   const patched = await api.patch(`/api/agent/v1/items/${itemId}`, {
     headers: bearer(token),
     data: { notes: '更新メモ', priority: 1, current_price: 99, image_url: 'https://evil.example/x.png' },
   });
-  expect(patched.status()).toBe(400);
+  expect(patched.status()).toBe(409);
+  expect((await patched.json()).code).toBe('MEDIA_ALREADY_SET');
 
   const patchedOk = await api.patch(`/api/agent/v1/items/${itemId}`, {
     headers: bearer(token),
@@ -161,9 +163,12 @@ test('settings token lifecycle, REST wishlist ops, undo, and audit log', async (
   expect(purchased.status()).toBe(200);
   expect((await purchased.json()).data.is_purchased).toBe(true);
 
-  // 完全削除はできない（ルート無し）。行は残る。
+  // 品目本体への DELETE は無い。完全削除はゴミ箱内の品目への DELETE …/trash（purge_item）だけで、
+  // ゴミ箱に無い品目は 409 で拒否される（#381）。どちらも行は残る。
   const hardDelete = await api.delete(`/api/agent/v1/items/${itemId}`, { headers: bearer(token) });
   expect([404, 405]).toContain(hardDelete.status());
+  const purgeNotTrashed = await api.delete(`/api/agent/v1/items/${itemId}/trash`, { headers: bearer(token) });
+  expect(purgeNotTrashed.status()).toBe(409);
   const connection = db();
   expect(connection.prepare('SELECT id, deleted_at FROM items WHERE id = ?').get(itemId)).toMatchObject({
     id: itemId,

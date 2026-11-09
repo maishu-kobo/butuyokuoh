@@ -2,6 +2,27 @@
 
 エージェント／作業者向けの進行ログ。仕様の正本ではない。使い方の索引は [README.md](./README.md)。
 
+## 2026-11-09 — エージェントからゴミ箱の品目を1件だけ完全削除（#381）
+
+### 決定
+
+- 削除ロジックは新しく書かず、Web の `DELETE /api/trash/[id]` と MCP / REST で `purgeTrashedItem`（`src/lib/item-input.ts`）を共有する。所有者確認とゴミ箱判定は同じ `immediate` トランザクションの中で行い、消し順は Web と同じ `price_history` → `notification_settings` → `items`。
+- 戻り値は `purged` / `not_trashed` / `not_found` に分け、Web は従来どおりまとめて 404、エージェントは `not_trashed` を 409 `ITEM_NOT_TRASHED`、`not_found` を 404 `ITEM_NOT_FOUND` にする。2 回目は 404（`trash_item` のような冪等成功にしない）。
+- ツール名は `purge_item`。`scope: write`、`auditAction: items.purge`、`destructiveHint: true` / `idempotentHint: false`。操作ログには `item_id` も残す（元に戻せないため）。
+- ゴミ箱全件を空にする操作（Web の `DELETE /api/trash`）はエージェントに公開しない。テストで「破壊的ツールは `trash_item` と `purge_item` だけ」「品目一覧・品目本体に `DELETE` が無い」を固定した。
+
+### 結果
+
+- 追加: `purgeAgentItem`、MCP `purge_item`、REST `DELETE /api/agent/v1/items/{id}/trash`。`tests/trash-url-restore-mcp.test.ts`・`tests/agent-api.test.ts`・`tests/trash-url-restore.test.ts` に挙動テスト。完全削除後の同一 URL は `restored_from_trash` にならず再取得で新規 INSERT になることを固定。
+- 文面: `/help/agents`・`/terms`・`/privacy`・接続カードの例・MCP initialize の instructions（日英）・`llms.txt`・OpenAPI から「完全削除はできない」を外し、「ゴミ箱の自分の品目を1件ずつだけ」に直した。`LEGAL_REVISED_DATE` を 2026年11月9日 にした。
+- レビュー対応: `purge_item` の引数は宣言どおり `item_id` だけ（別名 `id`・混在・余分なキー・型違いは 400。他ツールの `id` 別名は維持）。MCP / REST とも、認可 → 検査 → 実行の順にし、`items.purge` の操作ログは実際に消えたときだけ検査済みの `item_id` 付きで書く（拒否は記録しない）。Web と REST の完全削除 `DELETE` のパス id は `parseDecimalRouteId`（10進の数字だけ。`Number("0x1f")` のように別の行を指す表記は 404）。
+- レビュー対応 2: 削除と `items.purge` の記録を `purgeAgentItem` の中で同じ接続の 1 つの immediate トランザクションにした（`purgeTrashedItemRows` を呼び出し側トランザクション前提に分け、Web は `purgeTrashedItem` で自前に包む）。記録に失敗すると削除も戻り 500 `PURGE_FAILED`（品目と子レコードは残る）。MCP の引数検査は 1 回だけになり、`executeAgentTool` を直接呼んでも同じ記録が残る。`items.purge` の INSERT だけを拒む TEMP トリガで MCP / REST の巻き戻しと再試行をテストした。
+
+### 残るもの
+
+- #382（取得失敗時の価格・画像の手動設定）は別作業。本 PR では触れない。
+- e2e（`tests/e2e/agent.spec.ts`）はブラウザ無しで未実行。追加した 409 の確認は CI か手元の Playwright で見る。
+
 ## 2026-11-06 — CI を Blacksmith から GitHub-hosted へ緊急移行
 
 ### 決定
@@ -28,3 +49,41 @@
 - `scripts/blacksmith-*` と単体テストは履歴用に残置（workflow 非参照）。削除や Issue #287 クローズは別判断。
 - production 配備そのものの動作確認は未実施（禁止）。
 - PR checks の最終成否は push 時点では pending（develop diff の既知赤は nonblocking・本 PR 対象外）。
+
+## 2026-11-09 — #382 取得失敗の価格・画像をエージェントから補う
+
+### 決定
+
+- 専用ツールは増やさず、MCP `update_item` と REST `PATCH /api/agent/v1/items/:id` を拡張する。受け付ける公式名は `current_price` と `image_url` だけ。`price` / `original_price` / `target_price` / `imageUrl` の別名は新規・更新とも 400 のまま。
+- 許可判定はフィールド単位の「null かどうか」。取得済み（または既に埋めた）側へ送ると 409 `MEDIA_ALREADY_SET` で、混在ボディ（メモ + 価格など）も丸ごと適用しない。null・空文字で消すのは 400。
+- `current_price` は 0 より大きい有限の数（円）。`image_url` は画面表示と同じ安全性に加え、公開ホストの `https:` だけ。名前解決（私設アドレスの拒否）は認証・スコープ検査のあとに `updateAgentItem` の中で行う。
+- 状態の再検査と更新は `db.transaction(...).immediate()` の中で行い、名前解決の間にゴミ箱へ入った・別の書き手が価格を入れた場合は 409 で何も書かない。埋めた価格は `price_history` に 1 行。`original_price` / `scrape_status` / `scrape_error` は触らない（取得が失敗した事実は残す）。
+- 新規登録（`add_item` / `add_item_by_url`）は従来どおりサーバー取得のみ。クライアントの価格・画像は 400。
+- `AgentItemView` と `AgentStoreView` に `scrape_status` / `scrape_error` を足し、エージェントが「補ってよい」条件を見分けられるようにした。
+
+### 結果
+
+- 実装: `src/lib/agent-items.ts`（`updateAgentItem` を async 化）、`src/lib/agent-tools.ts`（スキーマ・説明・pre-auth 構文検査）、`src/app/api/agent/v1/items/[id]/route.ts`。
+- テスト: `tests/agent-manual-media.test.ts`（REST / 実 MCP / 予算 / 価格履歴 / 別名 / 不正値 / 認証順序 / 競合）。`tests/agent-api.test.ts` と `tests/e2e/agent.spec.ts` の「取得済み価格への PATCH」は 400 から 409 `MEDIA_ALREADY_SET` に変更。
+- 文書: `public/openapi/agent-v1.yaml`、`public/llms.txt`、MCP initialize の instructions（日英）、接続カードの文面、`/terms`、`/help/agents`、`docs/features.md`、`CHANGELOG.md`。
+
+### 残るもの
+
+- e2e（`npm run test:e2e`）はこのセッションでは未実行（ブラウザ環境なし）。期待値の変更だけ入れた。
+- 手動で埋めたあとも `scrape_status` は `failed` のまま。Web カードの失敗表示を手動設定で消すかは別 Issue で判断する。
+- #381（MCP からゴミ箱を完全削除できない）は別作業。
+
+### レビュー後の修正（同日）
+
+- DB の状態に依存する検査（カテゴリ・比較グループの所有と存在、ゴミ箱、媒体が空か、URL の重複）を、画像ホストの名前解決のあとの `immediate` トランザクションの中へ移した。名前解決の間にカテゴリが消えても通常の 400 `INVALID_RELATION` で、外部キー違反の 500 にも部分書き込みにもならない。トランザクション前に残した DB 読みは所有確認（404）だけ。
+- `image_url` は「https://」で始まる絶対 URL だけを受け付け、`new URL` の `href`（ホスト小文字・フラグメント無し）で保存する。`https:cdn.example/a.png` や `https:/cdn.example/a.png` はブラウザが基底 URL で別の場所と解釈するので 400。
+- `current_price` に上限 `AGENT_MANUAL_PRICE_MAX`（1,000 億円）を置き、MCP スキーマと OpenAPI に `maximum` として書いた。数量上限 999 を掛けても安全な整数に収まり、予算合計が JSON で null にならない。小数は引き続き可。
+- view の `scrape_error` は定型文（待機ページ・ボット制限・一般失敗）だけを出し、定期チェックや Web 再取得が残した内部の例外文は出さない。種別は `scrape_error_code`（`BOT_CHALLENGE` / `FETCH_FAILED`）で残す。
+- 文書（MCP 説明、initialize の日英 instructions、llms.txt、OpenAPI、ヘルプ、接続カード）は「判定は各フィールドが null かどうかだけで、scrape_status は見ない。手動品目や一部取得の品目も同じ」に揃えた。
+- `update_item` は画像ホストの名前解決で外部 DNS に触れるため `openWorldHint: true`。入力スキーマ（`additionalProperties: false`、`required: ['item_id']`）は変えていない。
+
+### 2 回目のレビュー後の修正（同日）
+
+- 名前解決の前に、所有（404）・ゴミ箱（409 `ITEM_TRASHED`）・埋めようとした価格や画像に値がある（409 `MEDIA_ALREADY_SET`）を先に返す。外部ホストが解決できなくても順序は同じ。同じ検査は書き込みトランザクションの中でも繰り返す（競合対策はそのまま）。`tests/e2e/agent.spec.ts` の「値がある品目へ `.example` の画像 URL で 409」と同じ形を、DNS 呼び出しゼロの確認つきでユニットテストに足した。
+- 定型の失敗文は、それを出す側の実際の種別で分類する。`PRODUCT_FETCH_BLOCKED_HELP`（product-html の isBotChallengedHtml）と `AMAZON_BOT_NOTE`（scraper）は `BOT_CHALLENGE`、`PRODUCT_FETCH_HELP` は `FETCH_FAILED`。add の `media_fetch_errors`、`get_item`、`list_items` で同じ分類になることをボット対策ページの fixture で確認。
+- OpenAPI 3.1 の新しい null 許容プロパティ（`scrape_status` / `scrape_error_code` / `scrape_error`、root と stores）は `nullable` ではなく `type: [string, 'null']` と null を含む `enum` で書いた。view の `scrape_status` も `success` / `failed` / null 以外は出さない。`image_url` の pattern は実装（スキームの大文字小文字を問わない）に合わせて `^[Hh][Tt][Tt][Pp][Ss]://` にし、MCP スキーマと OpenAPI で同じ値にした。

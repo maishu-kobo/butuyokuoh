@@ -52,7 +52,11 @@ test('エージェント連携ヘルプは定数の数字を出し、秘密や�
     assert.match(page, /品目を更新する/);
     assert.match(page, /購入済みにする/);
     assert.match(page, /ゴミ箱に移す/);
-    assert.match(page, /完全に削除することはできません/);
+    assert.match(page, /ゴミ箱に移した品目を1件ずつ完全に削除する/);
+    assert.match(page, /ゴミ箱を空にする操作はありません/);
+    assert.match(page, /完全に削除できるのは、ゴミ箱に移した品目だけです/);
+    assert.match(page, /完全に削除した品目は元に戻せません/);
+    assert.equal(page.includes('完全に削除することはできません'), false);
     assert.match(page, /取り消し機能で戻せる場合があります/);
     assert.match(page, new RegExp(`操作の記録は${AGENT_AUDIT_RETENTION_DAYS}日間保存します`));
     assert.match(page, new RegExp(`読み取り：1分あたり${AGENT_RATE_LIMITS.read}回`));
