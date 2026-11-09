@@ -286,7 +286,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
     name: 'update_item',
     title: 'Update item fields',
     description:
-      '自分の品目の名前・メモ・優先度・数量・予定日・カテゴリ・比較グループ・URL を更新。価格と画像は変更不可。完全削除は不可。',
+      '自分の品目の名前・メモ・優先度・数量・予定日・カテゴリ・比較グループ・URL を更新。価格と画像は原則サーバー取得だが、取得に失敗して空のまま（get_item の current_price / image_url が null、scrape_status が failed など）のフィールドに限り、current_price（0 より大きい円の数値）と image_url（公開の https 画像 URL）を一度だけ埋められる。既に値がある価格・画像は 409 MEDIA_ALREADY_SET で変更不可。null や空文字で消すことも不可。埋めた価格は price_history に 1 行残り、get_budget_summary に数量掛けで入る。完全削除は不可。',
     scope: 'write',
     auditAction: 'items.update',
     annotations: {
@@ -303,6 +303,19 @@ export const AGENT_TOOLS: AgentToolDef[] = [
         item_id: itemIdProp,
         name: { type: 'string', maxLength: 200 },
         url: { type: 'string', format: 'uri' },
+        current_price: {
+          type: 'number',
+          exclusiveMinimum: 0,
+          description:
+            '円の価格（整数を推奨）。サーバー取得に失敗して current_price が null の品目にだけ設定できる。取得済みの価格は変更不可（409）',
+        },
+        image_url: {
+          type: 'string',
+          format: 'uri',
+          maxLength: 2000,
+          description:
+            '公開されている画像の https URL。サーバー取得に失敗して image_url が null の品目にだけ設定できる。取得済みの画像は変更不可（409）',
+        },
         ...sharedWriteProps,
       },
     },
@@ -430,7 +443,7 @@ export async function executeAgentTool(
     case 'add_item':
       return withAgentNotice(await addAgentItem(auth, input));
     case 'update_item':
-      return withAgentNotice(updateAgentItem(auth, requireItemId(input), input));
+      return withAgentNotice(await updateAgentItem(auth, requireItemId(input), input));
     case 'mark_item_purchased':
       return withAgentNotice(purchaseAgentItem(auth, requireItemId(input), input));
     case 'trash_item':
@@ -471,9 +484,10 @@ export async function callAgentToolFromRequest(
     return executeAgentTool(tool.name, input, auth);
   }
 
-  // 日付・価格の不正はレート消費より前に拒否する
+  // 日付・価格の不正はレート消費・監査より前に拒否する（構文だけ。名前解決は認証後の実行側）。
+  // update_item だけは空の価格・画像を埋める current_price / image_url を受け付ける（#382）。
   if (tool.name === 'add_item' || tool.name === 'update_item' || tool.name === 'mark_item_purchased') {
-    assertAgentWriteFields(input);
+    assertAgentWriteFields(input, { allowManualMedia: tool.name === 'update_item' });
   }
 
   const auth = await requireAgentToken(request, tool.scope, {

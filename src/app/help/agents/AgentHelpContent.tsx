@@ -121,8 +121,8 @@ export default function AgentHelpContent({ mcpUrl }: { mcpUrl: string }) {
         <h2 className="text-lg font-semibold pt-2">できる操作</h2>
         <ul className="list-disc pl-6 space-y-2">
           <li>リストを読む</li>
-          <li>品目を追加する</li>
-          <li>品目を更新する</li>
+          <li>品目を追加する（価格と画像はサーバが商品ページから取ります）</li>
+          <li>品目を更新する（サーバが価格や画像を取れなかった品目に限り、空のままの価格・画像を補えます。取れた値は変えられません）</li>
           <li>購入済みにする</li>
           <li>ゴミ箱に移す</li>
           <li>比較グループを作成・一覧取得する（MCP のみ）</li>

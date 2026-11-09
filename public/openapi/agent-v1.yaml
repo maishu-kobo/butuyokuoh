@@ -7,7 +7,9 @@ info:
     同じトークンは OAuth 2.1（PKCE）でも発行できる。発見は
     `/.well-known/oauth-protected-resource` と
     `/.well-known/oauth-authorization-server`。
-    価格・画像はサーバー取得のみ。店舗検索は提供しない。
+    新規登録の価格・画像はサーバー取得のみ（呼び出し側の値は 400）。取得に失敗して空のままの
+    `current_price` / `image_url` は `PATCH /api/agent/v1/items/{id}` で一度だけ埋められる
+    （取得済みの値は 409 `MEDIA_ALREADY_SET`）。店舗検索は提供しない。
     MCP は `/api/mcp`（Streamable HTTP, 2025-11-25）。詳細は `/llms.txt`。
 servers:
   - url: https://butsuyokuoh.exe.xyz
@@ -153,7 +155,17 @@ paths:
           $ref: '#/components/responses/Error'
     patch:
       tags: [items]
-      summary: 品目を更新（価格・画像は変更不可）
+      summary: 品目を更新（空のままの価格・画像は一度だけ埋められる）
+      description: |
+        名前・メモ・優先度・数量・予定日・カテゴリ・比較グループ・URL を更新する。
+        価格・画像は原則サーバー取得だが、取得に失敗して `current_price` / `image_url` が null の
+        フィールドに限り（`scrape_status: failed` と `scrape_error` で分かる）、`current_price`
+        （0 より大きい円の数値）と `image_url`（公開の https 画像 URL）を一度だけ埋められる。
+        片方だけでも、両方でもよい。既に値がある側へ送ると 409 `MEDIA_ALREADY_SET` でボディ全体を
+        適用しない。null や空文字で消すことはできない（400）。`price` / `original_price` /
+        `target_price` / `imageUrl` の別名は 400。埋めた価格は `price_history` に 1 行残り、
+        `/api/agent/v1/budget` に数量掛けで入る。状態の検査と更新は同じトランザクションで行い、
+        途中でゴミ箱に入った・別の書き手が価格を入れた品目は 409 で何も書かない。
       operationId: updateAgentItem
       requestBody:
         required: true
@@ -172,6 +184,17 @@ paths:
           $ref: '#/components/responses/Error'
         '404':
           $ref: '#/components/responses/Error'
+        '409':
+          description: |
+            `ITEM_TRASHED`（ゴミ箱の品目）、`MEDIA_ALREADY_SET`（価格または画像が既に入っている）、
+            `URL_TAKEN` / `URL_IN_TRASH`（URL の重複）。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  code: { type: string, enum: [ITEM_TRASHED, MEDIA_ALREADY_SET, URL_TAKEN, URL_IN_TRASH] }
   /api/agent/v1/items/{id}/purchase:
     parameters:
       - $ref: '#/components/parameters/ItemId'
@@ -317,6 +340,14 @@ components:
         source: { type: string }
         current_price: { type: number, nullable: true }
         image_url: { type: string, nullable: true }
+        scrape_status:
+          type: string
+          nullable: true
+          description: 直近のサーバー取得の結果（`failed` など）。未取得なら null。
+        scrape_error:
+          type: string
+          nullable: true
+          description: 取得失敗の理由。成功・未取得なら null。
     AgentItem:
       type: object
       properties:
@@ -332,6 +363,16 @@ components:
         added_by_agent: { type: boolean }
         has_url_duplicate: { type: boolean }
         comparison_group_id: { type: integer, nullable: true }
+        scrape_status:
+          type: string
+          nullable: true
+          description: |
+            直近のサーバー取得の結果（`failed` など）。`current_price` / `image_url` が null で
+            これが `failed` なら、PATCH で該当フィールドを一度だけ埋められる。
+        scrape_error:
+          type: string
+          nullable: true
+          description: 取得失敗の理由（`BOT_CHALLENGE` の待機ページ案内など）。
         stores:
           type: array
           items: { $ref: '#/components/schemas/AgentStore' }
@@ -455,9 +496,24 @@ components:
           type: string
           nullable: true
           pattern: '^\\d{4}-\\d{2}-\\d{2}$'
-          description: YYYY-MM-DD の実在する暦日。null でクリア。価格・画像フィールドは不可。
+          description: YYYY-MM-DD の実在する暦日。null でクリア。
         category_id: { type: integer, nullable: true, minimum: 1 }
         comparison_group_id: { type: integer, nullable: true, minimum: 1 }
+        current_price:
+          type: number
+          exclusiveMinimum: 0
+          description: |
+            円の価格（整数を推奨）。サーバー取得に失敗して `current_price` が null の品目にだけ設定できる。
+            既に価格がある品目は 409 `MEDIA_ALREADY_SET`。null・負数・文字列は 400。
+            `price` / `original_price` / `target_price` の別名は受け付けない。
+        image_url:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: |
+            公開されている画像の https URL。サーバー取得に失敗して `image_url` が null の品目にだけ設定できる。
+            既に画像がある品目は 409 `MEDIA_ALREADY_SET`。http・data・javascript スキーム、認証情報やポート付き、
+            内部アドレスへ解決するホストは 400。`imageUrl` の別名は受け付けない。
     TrashResponse:
       type: object
       required: [data, notice]

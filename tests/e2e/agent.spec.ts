@@ -141,11 +141,13 @@ test('settings token lifecycle, REST wishlist ops, undo, and audit log', async (
   const listData = (await listed.json()) as { data: { items: { id: number }[]; total: number } };
   expect(listData.data.items.some((row) => row.id === itemId)).toBe(true);
 
+  // 取得済みの価格・画像はクライアント値で上書きできない（#382: 空のときだけ埋められる）。メモも変わらない。
   const patched = await api.patch(`/api/agent/v1/items/${itemId}`, {
     headers: bearer(token),
     data: { notes: '更新メモ', priority: 1, current_price: 99, image_url: 'https://evil.example/x.png' },
   });
-  expect(patched.status()).toBe(400);
+  expect(patched.status()).toBe(409);
+  expect((await patched.json()).code).toBe('MEDIA_ALREADY_SET');
 
   const patchedOk = await api.patch(`/api/agent/v1/items/${itemId}`, {
     headers: bearer(token),

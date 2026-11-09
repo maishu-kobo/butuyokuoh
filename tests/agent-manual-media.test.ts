@@ -261,6 +261,11 @@ test('REST: a BOT_CHALLENGE item exposes scrape fields, takes price + image once
     assert.equal(kept.current_price, MANUAL_PRICE);
     assert.equal(kept.image_url, PATAGONIA_IMAGE);
     assert.equal(priceHistory(database, itemId).length, 1);
+    const keptView = await restGet(token.token, itemId);
+    assert.equal(keptView.current_price, MANUAL_PRICE);
+    assert.equal(keptView.image_url, PATAGONIA_IMAGE);
+    // 取得が失敗した事実は残す（手動設定では scrape_status を書き換えない）
+    assert.equal(keptView.scrape_status, 'failed');
   });
 }));
 
@@ -312,8 +317,11 @@ test('MCP: update_item fills price and image field by field, quantity multiplies
     assert.ok(updateTool, listed.text);
     assert.ok('current_price' in updateTool.inputSchema.properties);
     assert.ok('image_url' in updateTool.inputSchema.properties);
-    assert.equal(updateTool.description.includes('変更不可'), false, updateTool.description);
-    assert.match(updateTool.description, /取得/);
+    // 「価格と画像は変更不可」という一律の説明ではなく、空のときだけ埋められる条件付きの説明になっている
+    assert.equal(updateTool.description.includes('価格と画像は変更不可'), false, updateTool.description);
+    assert.match(updateTool.description, /current_price/);
+    assert.match(updateTool.description, /image_url/);
+    assert.match(updateTool.description, /MEDIA_ALREADY_SET/);
   });
 }));
 

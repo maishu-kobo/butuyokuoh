@@ -28,3 +28,26 @@
 - `scripts/blacksmith-*` と単体テストは履歴用に残置（workflow 非参照）。削除や Issue #287 クローズは別判断。
 - production 配備そのものの動作確認は未実施（禁止）。
 - PR checks の最終成否は push 時点では pending（develop diff の既知赤は nonblocking・本 PR 対象外）。
+
+## 2026-11-09 — #382 取得失敗の価格・画像をエージェントから補う
+
+### 決定
+
+- 専用ツールは増やさず、MCP `update_item` と REST `PATCH /api/agent/v1/items/:id` を拡張する。受け付ける公式名は `current_price` と `image_url` だけ。`price` / `original_price` / `target_price` / `imageUrl` の別名は新規・更新とも 400 のまま。
+- 許可判定はフィールド単位の「null かどうか」。取得済み（または既に埋めた）側へ送ると 409 `MEDIA_ALREADY_SET` で、混在ボディ（メモ + 価格など）も丸ごと適用しない。null・空文字で消すのは 400。
+- `current_price` は 0 より大きい有限の数（円）。`image_url` は画面表示と同じ安全性に加え、公開ホストの `https:` だけ。名前解決（私設アドレスの拒否）は認証・スコープ検査のあとに `updateAgentItem` の中で行う。
+- 状態の再検査と更新は `db.transaction(...).immediate()` の中で行い、名前解決の間にゴミ箱へ入った・別の書き手が価格を入れた場合は 409 で何も書かない。埋めた価格は `price_history` に 1 行。`original_price` / `scrape_status` / `scrape_error` は触らない（取得が失敗した事実は残す）。
+- 新規登録（`add_item` / `add_item_by_url`）は従来どおりサーバー取得のみ。クライアントの価格・画像は 400。
+- `AgentItemView` と `AgentStoreView` に `scrape_status` / `scrape_error` を足し、エージェントが「補ってよい」条件を見分けられるようにした。
+
+### 結果
+
+- 実装: `src/lib/agent-items.ts`（`updateAgentItem` を async 化）、`src/lib/agent-tools.ts`（スキーマ・説明・pre-auth 構文検査）、`src/app/api/agent/v1/items/[id]/route.ts`。
+- テスト: `tests/agent-manual-media.test.ts`（REST / 実 MCP / 予算 / 価格履歴 / 別名 / 不正値 / 認証順序 / 競合）。`tests/agent-api.test.ts` と `tests/e2e/agent.spec.ts` の「取得済み価格への PATCH」は 400 から 409 `MEDIA_ALREADY_SET` に変更。
+- 文書: `public/openapi/agent-v1.yaml`、`public/llms.txt`、MCP initialize の instructions（日英）、接続カードの文面、`/terms`、`/help/agents`、`docs/features.md`、`CHANGELOG.md`。
+
+### 残るもの
+
+- e2e（`npm run test:e2e`）はこのセッションでは未実行（ブラウザ環境なし）。期待値の変更だけ入れた。
+- 手動で埋めたあとも `scrape_status` は `failed` のまま。Web カードの失敗表示を手動設定で消すかは別 Issue で判断する。
+- #381（MCP からゴミ箱を完全削除できない）は別作業。

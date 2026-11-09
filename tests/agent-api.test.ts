@@ -150,6 +150,7 @@ test('agent api: read/write scopes, ownership, notice, and CRUD without hard del
     assert.equal(patched.status, 200, patched.text);
     assert.equal((patched.json as { data: { notes: string; priority: number } }).data.notes, '更新メモ');
 
+    // 取得済みの価格はクライアント値で上書きできない（#382 で空のときだけ埋められるようになった）
     const priceDenied = await call(
       itemIdPath,
       'PATCH',
@@ -158,7 +159,17 @@ test('agent api: read/write scopes, ownership, notice, and CRUD without hard del
       { id: String(itemId) },
       bearer(both.token),
     );
-    assert.equal(priceDenied.status, 400, priceDenied.text);
+    assert.equal(priceDenied.status, 409, priceDenied.text);
+    assert.equal((priceDenied.json as { code: string }).code, 'MEDIA_ALREADY_SET');
+    const afterDenied = await call(
+      itemIdPath,
+      'GET',
+      `/api/agent/v1/items/${itemId}`,
+      undefined,
+      { id: String(itemId) },
+      bearer(read.token),
+    );
+    assert.equal((afterDenied.json as { data: { current_price: number | null } }).data.current_price, AMAZON_PRICE);
 
     const purchased = await call(
       purchasePath,
