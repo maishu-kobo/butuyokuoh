@@ -18,6 +18,7 @@ import { AGENT_MANUAL_PRICE_MAX } from '../src/lib/agent-items';
 import { PRODUCT_WAITING_HELP } from '../src/lib/product-html';
 import { PRODUCT_FETCH_BLOCKED_HELP, PRODUCT_FETCH_HELP } from '../src/lib/public-page';
 import { AMAZON_BOT_NOTE } from '../src/lib/scraper';
+import { installFrozenClock } from './trash-restore-clock';
 
 const tokensPath = '../src/app/api/agent-tokens/route.ts';
 const itemsPath = '../src/app/api/agent/v1/items/route.ts';
@@ -46,7 +47,8 @@ const challengeHtml = '<html><head><title>Attention Required! | Cloudflare</titl
 // DNS は固定。private-cdn.example だけ私設アドレスへ解決し、unresolvable.example は解決に失敗する。
 // どのホストを引いたかを記録する。
 const resolvedHosts: string[] = [];
-before(() => {
+let releaseClock: (() => void) | null = null;
+before(async () => {
   mock.method(dns, 'lookup', async (host: string) => {
     resolvedHosts.push(host);
     if (host === PRIVATE_IMAGE_HOST) return [{ address: '10.0.0.1', family: 4 }];
@@ -55,8 +57,11 @@ before(() => {
     }
     return [{ address: '8.8.8.8', family: 4 }];
   });
+  // JS の Date とこの一時 DB の datetime('now') を同じ時刻に固定する（createMember より先）。
+  releaseClock = installFrozenClock(await db());
 });
 after(() => {
+  releaseClock?.();
   mock.restoreAll();
   assert.ok(resolvedHosts.length > 0, 'image URL validation must use the DNS mock');
 });
