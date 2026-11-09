@@ -9,6 +9,7 @@ import {
   AMAZON_PRODUCT_URL,
   regressionFetchPort,
 } from '../src/lib/product-regression-fixtures';
+import { installFrozenClock } from './trash-restore-clock';
 
 const tokensPath = '../src/app/api/agent-tokens/route.ts';
 const itemsPath = '../src/app/api/agent/v1/items/route.ts';
@@ -26,13 +27,17 @@ const sameOriginUrl = 'http://localhost';
 
 // 商品取得は fixture、API の事前 DNS 検査も固定して実ネットワークを使わない。
 let dnsLookupCalls = 0;
-before(() => {
+let releaseClock: (() => void) | null = null;
+before(async () => {
   mock.method(dns, 'lookup', async () => {
     dnsLookupCalls += 1;
     return [{ address: '8.8.8.8', family: 4 }];
   });
+  // JS の Date とこの一時 DB の datetime('now') を同じ時刻に固定する（createMember より先）。
+  releaseClock = installFrozenClock(await db());
 });
 after(() => {
+  releaseClock?.();
   mock.restoreAll();
   assert.ok(dnsLookupCalls > 0, 'fixture URL validation must use the DNS mock');
 });
