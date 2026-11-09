@@ -187,7 +187,11 @@ test('利用規約は正式版で、免責・変更・準拠法を書く', () =>
   assert.match(page, /エージェント用トークンは、発行したときに一度だけ表示します/);
   assert.match(page, /AIエージェントとの連携/);
   assert.match(page, /エージェントがトークンを使って行った操作は、会員自身の操作として扱います/);
-  assert.match(page, /読む、追加する、更新する、購入済みにする、ゴミ箱に移す、の5つ/);
+  assert.match(page, /読む、追加する、更新する、購入済みにする、ゴミ箱に移す、ゴミ箱に移した品目を1件ずつ完全に削除する、の6つ/);
+  assert.match(page, /完全に削除できるのは、ゴミ箱に移した品目だけです/);
+  assert.match(page, /完全に削除した品目は元に戻せません/);
+  assert.equal(page.includes('完全に削除することはできません'), false);
+  assert.equal(page.includes('の5つです'), false);
   assert.match(page, /間違えた操作は、取り消し機能で戻せる場合があります/);
   assert.match(page, /有効期限などの詳細はヘルプページに載せています/);
   assert.match(page, /上限の値はヘルプページに載せています/);

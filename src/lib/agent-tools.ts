@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server';
 import { AGENT_RATE_LIMITS } from '@/lib/agent-access-limits';
 import { createAgentComparisonGroup, listAgentComparisonGroups } from '@/lib/agent-comparison-groups';
 import {
+  AGENT_MANUAL_PRICE_MAX,
   addAgentItem,
   addAgentItemByUrl,
   assertAgentUrlAddPreflight,
@@ -14,6 +15,7 @@ import {
   listAgentCategories,
   listAgentItems,
   purchaseAgentItem,
+  purgeAgentItem,
   trashAgentItem,
   updateAgentItem,
   type AgentItemStatus,
@@ -42,7 +44,8 @@ export type AgentToolName =
   | 'add_item'
   | 'update_item'
   | 'mark_item_purchased'
-  | 'trash_item';
+  | 'trash_item'
+  | 'purge_item';
 
 export type AgentToolDef = {
   name: AgentToolName;
@@ -286,14 +289,15 @@ export const AGENT_TOOLS: AgentToolDef[] = [
     name: 'update_item',
     title: 'Update item fields',
     description:
-      '自分の品目の名前・メモ・優先度・数量・予定日・カテゴリ・比較グループ・URL を更新。価格と画像は変更不可。完全削除は不可。',
+      `自分の品目の名前・メモ・優先度・数量・予定日・カテゴリ・比較グループ・URL を更新。価格と画像は原則サーバー取得だが、get_item の current_price / image_url が null のフィールドに限り、current_price（0 より大きく ${AGENT_MANUAL_PRICE_MAX} 以下の円。小数可）と image_url（「https://」で始まる公開画像の絶対 URL。保存はホスト小文字・フラグメント無しの正規形）を一度だけ埋められる。判定は各フィールドが null かどうかだけで、scrape_status（取得失敗の参考情報）は見ない。URL なしの手動品目も、価格だけ取れて画像が空といった一部取得の品目も、null 側だけ埋められる。既に値がある価格・画像は 409 MEDIA_ALREADY_SET で変更不可（そのときはボディ全体を適用しない）。null や空文字で消すことも不可。埋めた価格は price_history に 1 行残り、get_budget_summary に数量掛けで入る。価格・画像だけが空ならこのツールで埋めるのが先で、サーバに取り直させたいときだけ trash_item → purge_item → add_item_by_url。このツールでは完全削除しない（ゴミ箱の品目の完全削除は purge_item）。`,
     scope: 'write',
     auditAction: 'items.update',
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
-      openWorldHint: false,
+      // image_url の公開判定で画像ホストの名前解決（外部 DNS）に触れる
+      openWorldHint: true,
     },
     inputSchema: {
       type: 'object',
@@ -303,6 +307,22 @@ export const AGENT_TOOLS: AgentToolDef[] = [
         item_id: itemIdProp,
         name: { type: 'string', maxLength: 200 },
         url: { type: 'string', format: 'uri' },
+        current_price: {
+          type: 'number',
+          exclusiveMinimum: 0,
+          maximum: AGENT_MANUAL_PRICE_MAX,
+          description:
+            `円の価格（整数を推奨。小数可。上限 ${AGENT_MANUAL_PRICE_MAX}）。current_price が null の品目にだけ設定できる。値がある品目は 409。scrape_status は判定に使わない`,
+        },
+        image_url: {
+          type: 'string',
+          format: 'uri',
+          // スキームの大文字小文字は問わない（実装の /^https:\/\//i と同じ）。JSON Schema の pattern にフラグは無い。
+          pattern: '^[Hh][Tt][Tt][Pp][Ss]://',
+          maxLength: 2000,
+          description:
+            '「https://」で始まる公開画像の絶対 URL（スキームの大文字小文字は問わない。https:cdn.example/… のような省略形は不可）。image_url が null の品目にだけ設定できる。値がある品目は 409。保存はスキーム・ホスト小文字、フラグメント無しの正規形',
+        },
         ...sharedWriteProps,
       },
     },
@@ -310,7 +330,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   {
     name: 'mark_item_purchased',
     title: 'Mark item purchased',
-    description: '自分の品目を購入済みにする。完全削除はしない。',
+    description: '自分の品目を購入済みにする。このツールでは完全削除しない。',
     scope: 'write',
     auditAction: 'items.purchase',
     annotations: {
@@ -336,13 +356,33 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   {
     name: 'trash_item',
     title: 'Move item to trash',
-    description: '自分の品目をゴミ箱へ移す（ソフトデリート）。完全削除はできない。',
+    description: '自分の品目をゴミ箱へ移す（ソフトデリート）。このツールでは完全削除しない。ゴミ箱の品目を完全削除するには purge_item。',
     scope: 'write',
     auditAction: 'items.trash',
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
       idempotentHint: true,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['item_id'],
+      properties: { item_id: itemIdProp },
+    },
+  },
+  {
+    name: 'purge_item',
+    title: 'Permanently delete one trashed item',
+    description:
+      'ゴミ箱内の自分の品目を1件だけ完全削除する（価格履歴・通知設定も消え、元に戻せない）。引数は item_id（正の整数）だけで、別名 id や他のキーは 400。ほしいもの・購入済みの品目は ITEM_NOT_TRASHED（409）で拒否するので、先に trash_item する。他人の ID と存在しない ID は 404。2回目も 404。ゴミ箱を空にする操作ではない。完全削除後に同じ URL を add_item_by_url すると、復元ではなく新規登録（価格・画像の再取得）になる。',
+    scope: 'write',
+    auditAction: 'items.purge',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
       openWorldHint: false,
     },
     inputSchema: {
@@ -377,6 +417,30 @@ function requireItemId(args: Record<string, unknown>): number {
     throw new GuestError(400, 'INVALID_INPUT', 'item_id は正の整数です');
   }
   return raw;
+}
+
+/**
+ * purge_item 専用。元に戻せない操作なので、宣言どおり item_id（正の安全な整数）だけを受け、
+ * 別名 id・混在・余分なキー・型違いは、有効なゴミ箱行を指していても 400 にする。
+ * 既存ツールの requireItemId（id 別名を許す）は変えない。
+ */
+function requirePurgeItemId(args: Record<string, unknown>): number {
+  const keys = Object.keys(args);
+  const value = args.item_id;
+  if (
+    keys.length !== 1
+    || keys[0] !== 'item_id'
+    || typeof value !== 'number'
+    || !Number.isSafeInteger(value)
+    || value <= 0
+  ) {
+    throw new GuestError(
+      400,
+      'INVALID_INPUT',
+      'purge_item の引数は item_id（正の整数）だけです。別名 id や他のキーは受け付けません',
+    );
+  }
+  return value;
 }
 
 export async function executeAgentTool(
@@ -430,11 +494,14 @@ export async function executeAgentTool(
     case 'add_item':
       return withAgentNotice(await addAgentItem(auth, input));
     case 'update_item':
-      return withAgentNotice(updateAgentItem(auth, requireItemId(input), input));
+      return withAgentNotice(await updateAgentItem(auth, requireItemId(input), input));
     case 'mark_item_purchased':
       return withAgentNotice(purchaseAgentItem(auth, requireItemId(input), input));
     case 'trash_item':
       return withAgentNotice({ item: trashAgentItem(auth, requireItemId(input)) });
+    case 'purge_item':
+      // 削除と items.purge の記録は purgeAgentItem の中で 1 トランザクション。直接呼んでも同じ記録が残る。
+      return withAgentNotice(purgeAgentItem(auth, requirePurgeItemId(input), { tool: tool.name }));
     default:
       throw new GuestError(404, 'TOOL_NOT_FOUND', `未知のツールです: ${name}`);
   }
@@ -471,9 +538,19 @@ export async function callAgentToolFromRequest(
     return executeAgentTool(tool.name, input, auth);
   }
 
-  // 日付・価格の不正はレート消費より前に拒否する
+  // 日付・価格の不正はレート消費・監査より前に拒否する（構文だけ。名前解決は認証後の実行側）。
+  // update_item だけは空の価格・画像を埋める current_price / image_url を受け付ける（#382）。
   if (tool.name === 'add_item' || tool.name === 'update_item' || tool.name === 'mark_item_purchased') {
-    assertAgentWriteFields(input);
+    assertAgentWriteFields(input, { allowManualMedia: tool.name === 'update_item' });
+  }
+
+  // purge_item は元に戻せないので、認可 → 宣言どおりの引数検査 → 実行の順。
+  // 引数検査と items.purge の記録は executeAgentTool → purgeAgentItem の中で 1 回だけ行い、
+  // 削除と同じトランザクションに入れる。拒否（400 / 404 / 409）は成功を装う記録を残さない。
+  // scope 拒否は requireAgentToken が記録する。
+  if (tool.name === 'purge_item') {
+    const auth = await requireAgentToken(request, tool.scope);
+    return executeAgentTool(tool.name, input, auth);
   }
 
   const auth = await requireAgentToken(request, tool.scope, {

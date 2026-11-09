@@ -50,7 +50,8 @@ export async function PATCH(
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       throw new GuestError(400, 'INVALID_INPUT', 'JSON オブジェクトが必要です');
     }
-    const item = updateAgentItem(auth, parseId(raw), body);
+    // 画像ホストの名前解決は updateAgentItem の中。認証（requireAgentToken）のあとにだけ走る。
+    const item = await updateAgentItem(auth, parseId(raw), body);
     return NextResponse.json(withAgentNotice(item), {
       headers: { 'Cache-Control': 'no-store' },
     });
