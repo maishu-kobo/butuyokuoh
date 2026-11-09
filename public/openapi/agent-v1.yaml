@@ -7,9 +7,9 @@ info:
     同じトークンは OAuth 2.1（PKCE）でも発行できる。発見は
     `/.well-known/oauth-protected-resource` と
     `/.well-known/oauth-authorization-server`。
-    新規登録の価格・画像はサーバー取得のみ（呼び出し側の値は 400）。取得に失敗して空のままの
+    新規登録の価格・画像はサーバー取得のみ（呼び出し側の値は 400）。null のままの
     `current_price` / `image_url` は `PATCH /api/agent/v1/items/{id}` で一度だけ埋められる
-    （取得済みの値は 409 `MEDIA_ALREADY_SET`）。店舗検索は提供しない。
+    （判定は各フィールドが null かどうかだけ。値がある側は 409 `MEDIA_ALREADY_SET`）。店舗検索は提供しない。
     MCP は `/api/mcp`（Streamable HTTP, 2025-11-25）。詳細は `/llms.txt`。
 servers:
   - url: https://butsuyokuoh.exe.xyz
@@ -158,14 +158,19 @@ paths:
       summary: 品目を更新（空のままの価格・画像は一度だけ埋められる）
       description: |
         名前・メモ・優先度・数量・予定日・カテゴリ・比較グループ・URL を更新する。
-        価格・画像は原則サーバー取得だが、取得に失敗して `current_price` / `image_url` が null の
-        フィールドに限り（`scrape_status: failed` と `scrape_error` で分かる）、`current_price`
-        （0 より大きい円の数値）と `image_url`（公開の https 画像 URL）を一度だけ埋められる。
+        価格・画像は原則サーバー取得だが、`current_price` / `image_url` が null のフィールドに限り、
+        `current_price`（0 より大きく 100,000,000,000 以下の円。小数可）と `image_url`
+        （`https://` で始まる公開画像の絶対 URL）を一度だけ埋められる。
+        埋められるかは各フィールドが null かどうかだけで決まり、`scrape_status` / `scrape_error`
+        は取得失敗の参考情報にすぎない。URL なしの手動品目（`manual://`）も、価格だけ取れて画像が
+        空といった一部取得の品目も、null 側のフィールドだけ埋められる。
         片方だけでも、両方でもよい。既に値がある側へ送ると 409 `MEDIA_ALREADY_SET` でボディ全体を
         適用しない。null や空文字で消すことはできない（400）。`price` / `original_price` /
         `target_price` / `imageUrl` の別名は 400。埋めた価格は `price_history` に 1 行残り、
-        `/api/agent/v1/budget` に数量掛けで入る。状態の検査と更新は同じトランザクションで行い、
-        途中でゴミ箱に入った・別の書き手が価格を入れた品目は 409 で何も書かない。
+        `/api/agent/v1/budget` に数量掛けで入る。画像 URL はホスト小文字・フラグメント無しの正規形で
+        保存され、応答の `image_url` がその保存値。DB の状態に依存する検査（ゴミ箱、媒体が空か、
+        カテゴリ・比較グループの所有、URL の重複）と更新は同じトランザクションで行い、途中でゴミ箱に
+        入った・別の書き手が価格を入れた・カテゴリが消えた品目は通常の 400 / 409 で何も書かない。
       operationId: updateAgentItem
       requestBody:
         required: true
@@ -344,10 +349,15 @@ components:
           type: string
           nullable: true
           description: 直近のサーバー取得の結果（`failed` など）。未取得なら null。
+        scrape_error_code:
+          type: string
+          nullable: true
+          enum: [BOT_CHALLENGE, FETCH_FAILED, null]
+          description: 失敗の種別。`scrape_status` が `failed` のときだけ入る。
         scrape_error:
           type: string
           nullable: true
-          description: 取得失敗の理由。成功・未取得なら null。
+          description: 取得失敗の理由（利用者向けの定型文だけ。内部の例外文は出さない）。成功・未取得なら null。
     AgentItem:
       type: object
       properties:
@@ -367,12 +377,19 @@ components:
           type: string
           nullable: true
           description: |
-            直近のサーバー取得の結果（`failed` など）。`current_price` / `image_url` が null で
-            これが `failed` なら、PATCH で該当フィールドを一度だけ埋められる。
+            直近のサーバー取得の結果（`failed` など）。参考情報。PATCH で `current_price` / `image_url`
+            を埋められるかは、この値ではなく各フィールドが null かどうかだけで決まる。
+        scrape_error_code:
+          type: string
+          nullable: true
+          enum: [BOT_CHALLENGE, FETCH_FAILED, null]
+          description: 失敗の種別。`scrape_status` が `failed` のときだけ入る。
         scrape_error:
           type: string
           nullable: true
-          description: 取得失敗の理由（`BOT_CHALLENGE` の待機ページ案内など）。
+          description: |
+            取得失敗の理由。利用者向けの定型文だけで、内部の例外文（接続エラーや URL）は出さない。
+            成功・未取得なら null。
         stores:
           type: array
           items: { $ref: '#/components/schemas/AgentStore' }
@@ -502,16 +519,22 @@ components:
         current_price:
           type: number
           exclusiveMinimum: 0
+          maximum: 100000000000
           description: |
-            円の価格（整数を推奨）。サーバー取得に失敗して `current_price` が null の品目にだけ設定できる。
-            既に価格がある品目は 409 `MEDIA_ALREADY_SET`。null・負数・文字列は 400。
+            円の価格（整数を推奨。小数可）。上限は 100,000,000,000（1,000 億円）で、数量の上限 999 を
+            掛けても合計が安全な整数に収まる。`current_price` が null の品目にだけ設定できる
+            （`scrape_status` は判定に使わない。手動品目や一部取得の品目も同じ）。
+            既に価格がある品目は 409 `MEDIA_ALREADY_SET`。null・負数・上限超え・文字列は 400。
             `price` / `original_price` / `target_price` の別名は受け付けない。
         image_url:
           type: string
           format: uri
+          pattern: '^https://'
           maxLength: 2000
           description: |
-            公開されている画像の https URL。サーバー取得に失敗して `image_url` が null の品目にだけ設定できる。
+            `https://` で始まる公開画像の絶対 URL。`https:cdn.example/a.png` や `https:/cdn.example/a.png`
+            のような省略形はブラウザが基底 URL によって別の場所と解釈するので 400。保存はホスト小文字・
+            フラグメント無しの正規形。`image_url` が null の品目にだけ設定できる（`scrape_status` は判定に使わない）。
             既に画像がある品目は 409 `MEDIA_ALREADY_SET`。http・data・javascript スキーム、認証情報やポート付き、
             内部アドレスへ解決するホストは 400。`imageUrl` の別名は受け付けない。
     TrashResponse:

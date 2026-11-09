@@ -14,6 +14,9 @@ import {
   regressionLookup,
 } from '../src/lib/product-regression-fixtures';
 import type { AgentItemView } from '../src/lib/agent-items';
+import { AGENT_MANUAL_PRICE_MAX } from '../src/lib/agent-items';
+import { PRODUCT_WAITING_HELP } from '../src/lib/product-html';
+import { PRODUCT_FETCH_BLOCKED_HELP } from '../src/lib/public-page';
 
 const tokensPath = '../src/app/api/agent-tokens/route.ts';
 const itemsPath = '../src/app/api/agent/v1/items/route.ts';
@@ -124,8 +127,14 @@ type McpToolResult = {
   structuredContent?: { data: Record<string, unknown> };
   _meta?: { code?: string; httpStatus?: number };
 };
+type McpToolDescriptor = {
+  name: string;
+  description: string;
+  annotations: Record<string, boolean>;
+  inputSchema: { additionalProperties?: boolean; required?: string[]; properties: Record<string, unknown> };
+};
 type McpResponse = {
-  result?: McpToolResult & { tools?: { name: string; description: string; inputSchema: { properties: Record<string, unknown> } }[] };
+  result?: McpToolResult & { tools?: McpToolDescriptor[] };
   error?: { code: number; message: string; data?: { httpStatus?: number; code?: string } };
 };
 
@@ -201,10 +210,12 @@ test('REST: a BOT_CHALLENGE item exposes scrape fields, takes price + image once
     assert.equal(addedData.media_fetch_errors[0]?.code, 'BOT_CHALLENGE');
     assert.equal(addedData.item.current_price, null);
     assert.equal(addedData.item.image_url, null);
-    // 取得失敗が view から分かる（手動設定してよい条件をエージェントが判断できる）
+    // 取得失敗が view から分かる（参考情報。埋められるかは各フィールドが null かどうかだけで決まる）
     assert.equal(addedData.item.scrape_status, 'failed');
-    assert.match(addedData.item.scrape_error ?? '', BOT_MESSAGE);
+    assert.equal(addedData.item.scrape_error_code, 'BOT_CHALLENGE');
+    assert.equal(addedData.item.scrape_error, PRODUCT_WAITING_HELP, 'the known waiting-page message is shown as is');
     assert.equal(addedData.item.stores[0]?.scrape_status, 'failed');
+    assert.equal(addedData.item.stores[0]?.scrape_error_code, 'BOT_CHALLENGE');
     assert.match(addedData.item.stores[0]?.scrape_error ?? '', BOT_MESSAGE);
     const itemId = addedData.item.id;
 
@@ -317,6 +328,20 @@ test('MCP: update_item fills price and image field by field, quantity multiplies
     assert.ok(updateTool, listed.text);
     assert.ok('current_price' in updateTool.inputSchema.properties);
     assert.ok('image_url' in updateTool.inputSchema.properties);
+    assert.equal(
+      (updateTool.inputSchema.properties.current_price as { maximum?: number }).maximum,
+      AGENT_MANUAL_PRICE_MAX,
+      'the schema advertises the documented price ceiling',
+    );
+    // image_url の名前解決で外部 DNS に触れるので openWorldHint は true。入力の形は変えない。
+    assert.deepEqual(updateTool.annotations, {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    });
+    assert.equal(updateTool.inputSchema.additionalProperties, false);
+    assert.deepEqual(updateTool.inputSchema.required, ['item_id']);
     // 「価格と画像は変更不可」という一律の説明ではなく、空のときだけ埋められる条件付きの説明になっている
     assert.equal(updateTool.description.includes('価格と画像は変更不可'), false, updateTool.description);
     assert.match(updateTool.description, /current_price/);
@@ -325,22 +350,136 @@ test('MCP: update_item fills price and image field by field, quantity multiplies
   });
 }));
 
-test('a manual item (no URL) can be priced by the agent and the price counts in the budget', () => serial(async () => {
+test('a manual item (no URL, scrape_status null) can be priced by the agent; fractional yen and canonical image URLs are stored as such', () => serial(async () => {
   await createMember('manual-media-manual');
   const token = await createToken(['read', 'write'], 'manual-media-manual');
   const database = await db();
 
-  const added = mcpData<AddData>(await mcpTool(token.token, 'add_item', { name: 'URL なし', planned_purchase_date: '2026-12-01' }));
+  const added = mcpData<AddData>(await mcpTool(token.token, 'add_item', { name: 'URL なし', planned_purchase_date: '2026-12-01', quantity: 2 }));
   assert.ok(added.item.url.startsWith('manual://'));
   assert.equal(added.item.current_price, null);
+  // 手動品目は取得そのものが無い。許可判定は scrape_status ではなく各フィールドが null かどうかだけ。
+  assert.equal(added.item.scrape_status, null);
   assert.deepEqual(added.media_fetch_errors, []);
 
-  const priced = mcpData<AgentItemView>(await mcpTool(token.token, 'update_item', { item_id: added.item.id, current_price: 500 }));
-  assert.equal(priced.current_price, 500);
-  assert.deepEqual(priceHistory(database, added.item.id).map((entry) => entry.price), [500]);
+  const priced = mcpData<AgentItemView>(await mcpTool(token.token, 'update_item', { item_id: added.item.id, current_price: 1234.5 }));
+  assert.equal(priced.current_price, 1234.5, 'positive fractional yen are accepted as given');
+  assert.deepEqual(priceHistory(database, added.item.id).map((entry) => entry.price), [1234.5]);
 
   const budget = await restBudget(token.token, '2026-12');
-  assert.equal(budget.months['2026-12'].total, 500);
+  assert.equal(budget.months['2026-12'].total, 2469);
+
+  // 画像は「https://」で始まる絶対 URL だけ受け付け、保存するのは正規形（ホスト小文字、フラグメント無し）。
+  const imaged = mcpData<AgentItemView>(await mcpTool(token.token, 'update_item', {
+    item_id: added.item.id,
+    image_url: 'https://CDN.Example/Path/Photo.png?x=1#frag',
+  }));
+  assert.equal(imaged.image_url, 'https://cdn.example/Path/Photo.png?x=1');
+  assert.equal(itemRow(database, added.item.id).image_url, 'https://cdn.example/Path/Photo.png?x=1');
+}));
+
+test('the price ceiling is explicit: the maximum is accepted and stays finite at the largest quantity, one more is 400', () => serial(async () => {
+  const owner = await createMember('manual-media-ceiling');
+  const token = await createToken(['read', 'write'], 'manual-media-ceiling');
+  const database = await db();
+  const insert = database.prepare(
+    "INSERT INTO items (user_id, name, url, source, quantity, planned_purchase_date) VALUES (?, ?, ?, 'other', 999, '2027-01-15')",
+  );
+  const maxId = Number(insert.run(owner.id, '上限', 'manual://ceiling-max').lastInsertRowid);
+  const overId = Number(insert.run(owner.id, '超過', 'manual://ceiling-over').lastInsertRowid);
+
+  const accepted = await restPatch(token.token, maxId, { current_price: AGENT_MANUAL_PRICE_MAX });
+  assert.equal(accepted.status, 200, accepted.text);
+  assert.equal((accepted.json as Wrapped<AgentItemView>).data.current_price, AGENT_MANUAL_PRICE_MAX);
+
+  for (const price of [AGENT_MANUAL_PRICE_MAX + 1, 1e308, Number.MAX_VALUE]) {
+    const rejected = await restPatch(token.token, overId, { current_price: price });
+    assert.equal(rejected.status, 400, `${price}: ${rejected.text}`);
+    assert.equal((rejected.json as ErrorBody).code, 'INVALID_INPUT');
+  }
+  assert.equal(itemRow(database, overId).current_price, null);
+  assert.equal(priceHistory(database, overId).length, 0);
+
+  const budget = await restBudget(token.token, '2027-01');
+  assert.equal(budget.months['2027-01'].total, AGENT_MANUAL_PRICE_MAX * 999);
+  assert.ok(Number.isSafeInteger(budget.months['2027-01'].total), 'ceiling × max quantity stays an exact integer');
+  assert.ok(JSON.stringify(budget).includes(String(AGENT_MANUAL_PRICE_MAX * 999)), 'the JSON total is a number, not null');
+
+  // 公開の OpenAPI も同じ上限を書く
+  const openapi = readFileSync(new URL('../public/openapi/agent-v1.yaml', import.meta.url), 'utf8');
+  assert.ok(openapi.includes(`maximum: ${AGENT_MANUAL_PRICE_MAX}`), 'OpenAPI documents the same ceiling');
+}));
+
+test('scrape_error in item and store views is a fixed user-facing message with a code, never a raw exception string', () => serial(async () => {
+  const owner = await createMember('manual-media-scrape-error');
+  const token = await createToken(['read', 'write'], 'manual-media-scrape-error');
+  const database = await db();
+  const rawInternal = 'HTTP error 502: https://internal.example/path ECONNRESET 10.0.0.5';
+  const rawBot = 'Amazonのボット対策により価格を取得できませんでした（内部: 10.0.0.5）';
+  const insert = database.prepare(
+    "INSERT INTO items (user_id, name, url, source, scrape_status, scrape_error) VALUES (?, ?, ?, 'other', ?, ?)",
+  );
+  const internalId = Number(insert.run(owner.id, '内部エラー', 'manual://scrape-internal', 'failed', rawInternal).lastInsertRowid);
+  const botId = Number(insert.run(owner.id, 'ボット', 'manual://scrape-bot', 'failed', rawBot).lastInsertRowid);
+  const waitingId = Number(insert.run(owner.id, '待機ページ', 'manual://scrape-waiting', 'failed', PRODUCT_WAITING_HELP).lastInsertRowid);
+  const staleId = Number(insert.run(owner.id, '成功後', 'manual://scrape-stale', 'success', rawInternal).lastInsertRowid);
+  const nullId = Number(insert.run(owner.id, '未取得', 'manual://scrape-null', null, null).lastInsertRowid);
+
+  const views = new Map<number, AgentItemView>();
+  for (const id of [internalId, botId, waitingId, staleId, nullId]) {
+    views.set(id, await restGet(token.token, id));
+  }
+  const internal = views.get(internalId)!;
+  assert.equal(internal.scrape_status, 'failed');
+  assert.equal(internal.scrape_error_code, 'FETCH_FAILED');
+  assert.ok(internal.scrape_error && internal.scrape_error.length > 0);
+  for (const fragment of ['ECONNRESET', '10.0.0.5', 'internal.example', 'HTTP error']) {
+    assert.equal(internal.scrape_error.includes(fragment), false, fragment);
+    assert.equal(internal.stores[0].scrape_error?.includes(fragment), false, `store: ${fragment}`);
+  }
+  assert.equal(internal.stores[0].scrape_error_code, 'FETCH_FAILED');
+
+  const bot = views.get(botId)!;
+  assert.equal(bot.scrape_error_code, 'BOT_CHALLENGE');
+  assert.equal(bot.scrape_error, PRODUCT_FETCH_BLOCKED_HELP, 'a bot-like raw string maps to the fixed blocked message');
+  assert.equal(bot.stores[0].scrape_error, PRODUCT_FETCH_BLOCKED_HELP);
+
+  const waiting = views.get(waitingId)!;
+  assert.equal(waiting.scrape_error_code, 'BOT_CHALLENGE');
+  assert.equal(waiting.scrape_error, PRODUCT_WAITING_HELP, 'a known fixed message is kept as is');
+
+  const stale = views.get(staleId)!;
+  assert.equal(stale.scrape_status, 'success');
+  assert.equal(stale.scrape_error, null, 'a successful fetch exposes no error even if the column still holds text');
+  assert.equal(stale.scrape_error_code, null);
+
+  const never = views.get(nullId)!;
+  assert.equal(never.scrape_status, null);
+  assert.equal(never.scrape_error, null);
+  assert.equal(never.scrape_error_code, null);
+
+  // list_items（MCP）も同じ整形
+  const listed = mcpData<{ items: AgentItemView[] }>(await mcpTool(token.token, 'list_items', { q: 'scrape-internal' }));
+  const listedInternal = listed.items.find((item) => item.id === internalId);
+  assert.ok(listedInternal);
+  assert.equal(listedInternal.scrape_error_code, 'FETCH_FAILED');
+  assert.equal(listedInternal.scrape_error?.includes('ECONNRESET'), false);
+  assert.equal(JSON.stringify(listed).includes('10.0.0.5'), false, 'no raw detail leaks anywhere in the list payload');
+
+  // 写真グループの店行も同じ整形で、失敗した店だけが失敗を出す
+  const groupId = Number(database.prepare(
+    "INSERT INTO comparison_groups (user_id, name, priority, origin) VALUES (?, '店比較', 3, 'photo')",
+  ).run(owner.id).lastInsertRowid);
+  database.prepare("UPDATE items SET comparison_group_id = ?, sort_order = 0 WHERE id = ?").run(groupId, internalId);
+  database.prepare(
+    "INSERT INTO items (user_id, name, url, source, comparison_group_id, sort_order, current_price, scrape_status) VALUES (?, '内部エラー', 'https://shop.example/ok', 'other', ?, 1, 980, 'success')",
+  ).run(owner.id, groupId);
+  const grouped = await restGet(token.token, internalId);
+  assert.equal(grouped.stores.length, 2);
+  assert.equal(grouped.stores[0].scrape_error_code, 'FETCH_FAILED');
+  assert.equal(grouped.stores[0].scrape_error?.includes('ECONNRESET'), false);
+  assert.equal(grouped.stores[1].scrape_error, null);
+  assert.equal(grouped.stores[1].scrape_error_code, null);
 }));
 
 test('fetched price and image are never overwritten, add paths still reject client media, and aliases stay closed', () => serial(async () => {
@@ -447,6 +586,11 @@ test('invalid prices and unsafe image URLs are rejected without touching other f
     'javascript:alert(1)',
     'data:image/png;base64,iVBORw0KGgo=',
     'http://cdn.example/a.png',
+    // 「https://」が無い形は、ブラウザが基底 URL によって別の場所と解釈するので受け付けない
+    'https:cdn.example/photo.png',
+    'https:/cdn.example/x',
+    'https:///cdn.example/x',
+    'HTTPS:cdn.example/x',
     'https://user:pw@cdn.example/a.png',
     'https://cdn.example:8443/a.png',
     'https://localhost/a.png',
@@ -593,4 +737,67 @@ test('state is re-checked inside the write transaction: a trash or a concurrent 
   assert.equal(other.current_price, null);
   assert.equal(other.image_url, 'https://cdn.example/other.png');
   assert.equal(priceHistory(database, otherId).length, 0);
+
+  // カテゴリ・比較グループの所有と存在も同じトランザクションで見る。名前解決の間に消えたら
+  // 通常の 400 INVALID_RELATION で、外部キー違反の 500 にも部分書き込みにもならない。
+  const relId = Number(database.prepare(
+    "INSERT INTO items (user_id, name, url, source, notes) VALUES (?, '関連', 'manual://race-relations', 'other', 'before')",
+  ).run(owner.id).lastInsertRowid);
+  const categoryId = Number(database.prepare(
+    "INSERT INTO categories (user_id, name, color) VALUES (?, '消えるカテゴリ', '#123456')",
+  ).run(owner.id).lastInsertRowid);
+  const groupId = Number(database.prepare(
+    "INSERT INTO comparison_groups (user_id, name, priority, origin) VALUES (?, '消えるグループ', 3, NULL)",
+  ).run(owner.id).lastInsertRowid);
+  const relationBody = { notes: 'after', category_id: categoryId, comparison_group_id: groupId, current_price: MANUAL_PRICE, image_url: body.image_url };
+  await assert.rejects(
+    () => updateAgentItem(auth, relId, relationBody, database, {
+      deps: {
+        resolve: async () => {
+          database.prepare('DELETE FROM categories WHERE id = ?').run(categoryId);
+          return publicAddress;
+        },
+      },
+    }),
+    guestError(400, 'INVALID_RELATION'),
+  );
+  let rel = itemRow(database, relId) as ItemRow & { category_id: number | null; comparison_group_id: number | null };
+  assert.equal(rel.notes, 'before');
+  assert.equal(rel.category_id, null);
+  assert.equal(rel.comparison_group_id, null);
+  assert.equal(rel.current_price, null);
+  assert.equal(rel.image_url, null);
+  assert.equal(priceHistory(database, relId).length, 0);
+
+  const categoryAgain = Number(database.prepare(
+    "INSERT INTO categories (user_id, name, color) VALUES (?, '残るカテゴリ', '#654321')",
+  ).run(owner.id).lastInsertRowid);
+  await assert.rejects(
+    () => updateAgentItem(auth, relId, { ...relationBody, category_id: categoryAgain }, database, {
+      deps: {
+        resolve: async () => {
+          database.prepare('DELETE FROM comparison_groups WHERE id = ?').run(groupId);
+          return publicAddress;
+        },
+      },
+    }),
+    guestError(400, 'INVALID_RELATION'),
+  );
+  rel = itemRow(database, relId) as typeof rel;
+  assert.equal(rel.notes, 'before');
+  assert.equal(rel.category_id, null);
+  assert.equal(rel.current_price, null);
+  assert.equal(rel.image_url, null);
+  assert.equal(priceHistory(database, relId).length, 0);
+
+  // 競合が無ければ、関連も媒体もメモも一度に入る
+  const applied = await updateAgentItem(auth, relId, { ...relationBody, category_id: categoryAgain, comparison_group_id: null }, database, {
+    deps: { resolve: async () => publicAddress },
+  });
+  assert.equal(applied.notes, 'after');
+  assert.equal(applied.category_id, categoryAgain);
+  assert.equal(applied.comparison_group_id, null);
+  assert.equal(applied.current_price, MANUAL_PRICE);
+  assert.equal(applied.image_url, body.image_url);
+  assert.deepEqual(priceHistory(database, relId).map((entry) => entry.price), [MANUAL_PRICE]);
 }));

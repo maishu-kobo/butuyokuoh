@@ -18,7 +18,7 @@
 - ゴミ箱
 - 通知設定
 - エージェント用トークン（作成・失効・操作ログ・追加分の一括取り消し）
-- エージェント向け REST API（`/api/agent/v1`）とリモート MCP（`/api/mcp`）。使い方は `/llms.txt`、仕様は `/openapi/agent-v1.yaml`。`add_item_by_url` は複数店 URL を1商品（写真比較グループ）にまとめられる（#312）。MCP の `create_comparison_group` で手作業比較グループを作成し、`update_item` で既存品目を所属させ、`list_comparison_groups` で一覧と未購入・非ゴミ箱の件数を確認できる（#335）。サーバー取得に失敗して空のままの価格・画像は、`update_item` / REST `PATCH` の `current_price` / `image_url` で一度だけ埋められる。取得済みの値は上書きせず、`get_item` / `list_items` の `scrape_status` / `scrape_error` で失敗が分かる（#382）
+- エージェント向け REST API（`/api/agent/v1`）とリモート MCP（`/api/mcp`）。使い方は `/llms.txt`、仕様は `/openapi/agent-v1.yaml`。`add_item_by_url` は複数店 URL を1商品（写真比較グループ）にまとめられる（#312）。MCP の `create_comparison_group` で手作業比較グループを作成し、`update_item` で既存品目を所属させ、`list_comparison_groups` で一覧と未購入・非ゴミ箱の件数を確認できる（#335）。null のままの価格・画像は、`update_item` / REST `PATCH` の `current_price` / `image_url` で一度だけ埋められる（判定は各フィールドが null かどうかだけで、手動品目や一部だけ取れた品目も同じ）。値がある側は上書きせず、`get_item` / `list_items` の `scrape_status` / `scrape_error_code` / `scrape_error` で取得失敗が分かる（#382）
 - エージェント向け OAuth 2.1（PKCE、CIMD / DCR、Protected Resource Metadata）。アクセス・トークンは `byoagt_` を再利用
 - パスワード変更（変更時にエージェント用トークンをすべて失効）
 - Chrome 拡張機能用トークン（`extension` スコープの byoagt_。ログイン用 JWT は出さない）

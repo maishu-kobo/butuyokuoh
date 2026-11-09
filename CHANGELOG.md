@@ -6,7 +6,7 @@
 
 ### Added
 
-- エージェント MCP の `update_item` と REST `PATCH /api/agent/v1/items/:id` で、サーバー取得に失敗して空のままの価格（`current_price`）と画像 URL（`image_url`）を一度だけ埋められるようにする。取得済みの値は 409 `MEDIA_ALREADY_SET` で守り、新規登録ではこれまでどおりクライアントの価格・画像を受け付けない。`get_item` / `list_items` と `stores` に `scrape_status` / `scrape_error` を足し、埋めた価格は `price_history` に 1 行残って `get_budget_summary` に数量掛けで入る（#382）。
+- エージェント MCP の `update_item` と REST `PATCH /api/agent/v1/items/:id` で、null のままの価格（`current_price`、上限 1,000 億円）と画像 URL（`image_url`、`https://` で始まる絶対 URL を正規形で保存）を一度だけ埋められるようにする。判定は各フィールドが null かどうかだけで、値がある側は 409 `MEDIA_ALREADY_SET` で守り、新規登録ではこれまでどおりクライアントの価格・画像を受け付けない。`get_item` / `list_items` と `stores` に `scrape_status` / `scrape_error_code` / `scrape_error`（利用者向けの定型文だけ）を足し、埋めた価格は `price_history` に 1 行残って `get_budget_summary` に数量掛けで入る（#382）。
 - MCP から手作業比較グループを作成・一覧取得し、既存品目をまとめられるようにする（#335）。
 - 新規登録でプライバシーポリシーと利用規約への同意を必須にし、アプリ画面のフッターに両ページへのリンクを置く（#314）。
 - エージェント連携ヘルプに iPhone の Siri・ショートカットから使う手順を載せる（#317）。

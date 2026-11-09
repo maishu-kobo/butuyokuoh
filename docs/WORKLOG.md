@@ -51,3 +51,12 @@
 - e2e（`npm run test:e2e`）はこのセッションでは未実行（ブラウザ環境なし）。期待値の変更だけ入れた。
 - 手動で埋めたあとも `scrape_status` は `failed` のまま。Web カードの失敗表示を手動設定で消すかは別 Issue で判断する。
 - #381（MCP からゴミ箱を完全削除できない）は別作業。
+
+### レビュー後の修正（同日）
+
+- DB の状態に依存する検査（カテゴリ・比較グループの所有と存在、ゴミ箱、媒体が空か、URL の重複）を、画像ホストの名前解決のあとの `immediate` トランザクションの中へ移した。名前解決の間にカテゴリが消えても通常の 400 `INVALID_RELATION` で、外部キー違反の 500 にも部分書き込みにもならない。トランザクション前に残した DB 読みは所有確認（404）だけ。
+- `image_url` は「https://」で始まる絶対 URL だけを受け付け、`new URL` の `href`（ホスト小文字・フラグメント無し）で保存する。`https:cdn.example/a.png` や `https:/cdn.example/a.png` はブラウザが基底 URL で別の場所と解釈するので 400。
+- `current_price` に上限 `AGENT_MANUAL_PRICE_MAX`（1,000 億円）を置き、MCP スキーマと OpenAPI に `maximum` として書いた。数量上限 999 を掛けても安全な整数に収まり、予算合計が JSON で null にならない。小数は引き続き可。
+- view の `scrape_error` は定型文（待機ページ・ボット制限・一般失敗）だけを出し、定期チェックや Web 再取得が残した内部の例外文は出さない。種別は `scrape_error_code`（`BOT_CHALLENGE` / `FETCH_FAILED`）で残す。
+- 文書（MCP 説明、initialize の日英 instructions、llms.txt、OpenAPI、ヘルプ、接続カード）は「判定は各フィールドが null かどうかだけで、scrape_status は見ない。手動品目や一部取得の品目も同じ」に揃えた。
+- `update_item` は画像ホストの名前解決で外部 DNS に触れるため `openWorldHint: true`。入力スキーマ（`additionalProperties: false`、`required: ['item_id']`）は変えていない。
