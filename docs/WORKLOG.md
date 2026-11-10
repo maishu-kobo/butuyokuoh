@@ -7,15 +7,15 @@
 ### 決定
 
 - DB / スキーマは触らず、既存の `items.notes`（`AGENT_NOTES_MAX=2000`、制御文字除去）を使う。notes はスキーマ上任意（欠落で拒否しない）。
-- 案内上の既定は「登録時に必ず会話からメモを書く」。ユーザー明示の内容・メモ不要指定を優先。登録前確認なし。
-- 登録成功時は常にサーバ組み立ての `memo.tell_user` を返す（MCP の content.text 先頭にも載せる）。`relay=true` のときそのまま伝える。付け忘れは `update_item` で補ってから with-notes の tell_user を伝える。明示空は「メモは付けていません…」。
+- DEFAULT（強い既定）: 登録時はユーザーがメモに触れなくても会話から ALWAYS メモを書く。ユーザー明示の内容・メモ不要指定を優先。登録前確認なし。
+- 登録成功時は常にサーバ組み立ての `memo.tell_user` を返す。`relay=true` のとき MCP text 先頭にも載せ、そのまま伝える。付け忘れ（`relay=false`）は text 先頭にエージェント向け案内を置き、`update_item` で補ってから with-notes の tell_user を伝える。明示空だけ「メモは付けていません…」。
 - ゴミ箱復元では「追加しました」と言わず、リクエスト notes 未適用を案内（Bugbot Medium 対応）。
 - 比較候補一括保存へのメモ必須化はスコープ外。
 
 ### 結果
 
-- `src/lib/agent-memo.ts`、REST / MCP の add・notes 付き update、MCP text 先頭表示。
-- テスト: `tests/agent-memo.test.ts`（tell_user 両ケース、クリア、復元、案内）、e2e `agent.spec.ts`。
+- `src/lib/agent-memo.ts`、REST / MCP の add・notes 付き update、MCP text 先頭表示（relay 時は tell_user、付け忘れはエージェント向け案内）。
+- テスト: `tests/agent-memo.test.ts`（tell_user 両ケース、クリア、復元、DEFAULT 案内）、e2e `agent.spec.ts`。
 
 ## 2026-11-10 — 比較中の商品を1回で同じ比較グループへ保存する（#388）
 

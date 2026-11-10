@@ -149,10 +149,12 @@ test('案内: initialize・ツール説明・llms.txt が「既定は必ずメ�
     protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'test', version: '1' },
   });
   const instructions = init.result!.instructions ?? '';
-  assert.match(instructions, /ALWAYS write a short conversation summary/i);
-  assert.match(instructions, /既定は必ずメモを書く/);
+  assert.match(instructions, /DEFAULT \(strong\): ALWAYS write a short conversation summary/i);
+  assert.match(instructions, /DEFAULT（強い既定）/);
+  assert.match(instructions, /必ず（ALWAYS）/);
   assert.match(instructions, /memo\.tell_user/);
   assert.match(instructions, /以下のメモを追加しました/);
+  assert.match(instructions, /メモは付けていません/);
   assert.match(instructions, /explicitly decline|メモ不要/);
 
   const tools = (await rpc(both.token, 'tools/list')).result!.tools!;
@@ -160,18 +162,20 @@ test('案内: initialize・ツール説明・llms.txt が「既定は必ずメ�
   const update = tools.find((entry) => entry.name === 'update_item');
   assert.ok(addByUrl && update);
   assert.equal((addByUrl.inputSchema.required ?? []).includes('notes'), false, 'notes は必須にしない');
-  assert.match(addByUrl.description, /既定では必ず/);
+  assert.match(addByUrl.description, /DEFAULT は ALWAYS/);
   assert.match(addByUrl.description, /memo\.tell_user/);
+  assert.match(addByUrl.description, /メモは付けていません/);
   assert.match(update.description, /空文字または null でメモを消せる/);
 
   const notesProp = addByUrl.inputSchema.properties?.notes;
   assert.ok(notesProp);
   assert.equal(notesProp.maxLength, 2000);
-  assert.match(notesProp.description ?? '', /既定は必ず入れる/);
+  assert.match(notesProp.description ?? '', /DEFAULT は ALWAYS 入れる/);
 
   const llms = readFileSync(path.join(process.cwd(), 'public/llms.txt'), 'utf8');
-  assert.match(llms, /ALWAYS|必ずメモ|tell_user/);
+  assert.match(llms, /DEFAULT is: ALWAYS|強い既定|tell_user/);
   assert.match(llms, /以下のメモを追加しました/);
+  assert.match(llms, /メモは付けていません/);
 }));
 
 test('MCP/REST: notes 保存・tell_user・クリア・他人拒否・付け忘れ案内 (#396)', () => serial(async () => {
@@ -231,7 +235,7 @@ test('MCP/REST: notes 保存・tell_user・クリア・他人拒否・付け忘�
     const clearedNull = await tool(both.token, 'update_item', { item_id: itemId, notes: null as unknown as string });
     assert.equal((clearedNull.result!.structuredContent!.data as { notes: string | null }).notes, null);
 
-    // 付け忘れ（notes キー無し）→ 登録は成功、tell_user あり、relay=false
+    // 付け忘れ（notes キー無し）→ 登録は成功、tell_user あり、relay=false。text 先頭はエージェント向け案内（no-memo 文は出さない）
     const omitted = await tool(both.token, 'add_item', { name: 'メモ無し手動' });
     assert.equal(omitted.result?.isError, false, JSON.stringify(omitted));
     const omittedData = omitted.result!.structuredContent!.data as {
@@ -243,7 +247,10 @@ test('MCP/REST: notes 保存・tell_user・クリア・他人拒否・付け忘�
     assert.equal(omittedData.memo.relay, false);
     assert.deepEqual(omittedData.memo.tell_user, buildNoMemoTellUser());
     assert.match(omittedData.memo.agent_instructions.ja, /update_item/);
-    assert.ok((omitted.result!.content?.[0]?.text ?? '').startsWith(buildNoMemoTellUser().ja));
+    const omittedText = omitted.result!.content?.[0]?.text ?? '';
+    assert.ok(omittedText.startsWith('【エージェント向け】'), omittedText.slice(0, 120));
+    assert.match(omittedText, /update_item/);
+    assert.doesNotMatch(omittedText.slice(0, omittedText.indexOf('{')), /メモは付けていません/);
 
     // 明示的に空＝拒否扱い
     const declined = await tool(both.token, 'add_item', { name: '拒否メモ', notes: null as unknown as string });
