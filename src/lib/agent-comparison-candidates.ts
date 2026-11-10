@@ -13,7 +13,12 @@
 //   移した・消したなら 409 で何も書かない（手作業の変更を再送で巻き戻さない）。
 // - 既存の商品は移動も復元もしない。ゴミ箱・購入済み・同じ商品の店舗比較（photo）の行、
 //   別々の手作業比較グループにいる候補同士、同じ URL の行が複数あって決められない候補は拒否する。
-// - write だけのトークンには、ID と操作の結果だけを返す。名前・URL・価格・件数は read があるときだけ。
+// - 保存記録の照合では、URL の候補は記録した行が今もその URL の商品かも確かめる（update_item で
+//   URL を書き換えられた行を、要求された商品として返さない）。item_id の候補は ID に従う。
+// - 候補がすべて指定の名前のグループに入っていて書くものが無い最初の要求も、受領の記録だけは残す
+//   （上限は消費せず、所属も変えない）。そのあとの再送は、この記録と照合する。
+// - write だけのトークンには、ID と操作の結果だけを返す。グループ名は、現在の名前が要求の名前と
+//   同じときに限り、要求の名前をそのまま返す。商品名・URL・価格・件数・変更後のグループ名は read があるときだけ。
 // - 新規登録の取得・保存・失敗の記録は、add_item_by_url と同じ関数を使う。
 
 import { createHash } from 'node:crypto';
@@ -37,6 +42,7 @@ import { recordAgentAudit, type AgentAuthContext, type AgentRateKind } from '@/l
 import { getDb } from '@/lib/db';
 import { GuestError } from '@/lib/guest';
 import {
+  classifyStoredUrlMatches,
   findCleanedStoredUrlMatches,
   findCleanedStoredUrlRegistration,
   normalizeItemName,
@@ -81,7 +87,10 @@ export type SaveComparisonCandidatesResult = {
   /** 同じ要求が以前に保存済みで、その結果を返しているか */
   replayed: boolean;
   message: string;
-  /** name / item_count は、トークンに read があるときだけ返す */
+  /**
+   * item_count は、トークンに read があるときだけ返す。name は read があれば現在の名前、
+   * write だけなら現在の名前が要求の name と同じときに限り要求の name（違えば省く）。
+   */
   group: { id: number; origin: null; created: boolean; name?: string; item_count?: number };
   candidates: SavedComparisonCandidate[];
   item_ids: number[];
@@ -230,6 +239,15 @@ function groupLabel(group: GroupRef, canRead: boolean): string {
   return canRead ? `「${group.name}」（ID ${group.id}）` : `（ID ${group.id}）`;
 }
 
+function ambiguousUrl(liveIds: number[], position: number): GuestError {
+  return refuse(
+    409,
+    'URL_AMBIGUOUS',
+    `この URL と同じ商品ページの登録が複数あります（品目 ID ${liveIds.join('、')}。購入済みを含みます）。どれを比較候補にするか決められないので、url の代わりに item_id で1件を指定してください。`,
+    position,
+  );
+}
+
 type ResolvedCandidate =
   /** まだ登録の無い URL。取得して新しい商品として入れる */
   | { state: 'new' }
@@ -255,17 +273,11 @@ function resolveCandidate(
   let row: Record<string, unknown>;
   if (candidate.kind === 'url') {
     // 古いリストには同じ URL の行が複数あることがある。どの行（どのグループ）かを勝手に選ばない。
-    const live = findCleanedStoredUrlMatches(db, userId, candidate.url).filter((match) => !match.deleted_at);
-    if (live.length > 1) {
-      const ids = live.map((match) => match.id).join('、');
-      throw refuse(
-        409,
-        'URL_AMBIGUOUS',
-        `この URL と同じ商品ページの登録が複数あります（品目 ID ${ids}。購入済みを含みます）。どれを比較候補にするか決められないので、url の代わりに item_id で1件を指定してください。`,
-        candidate.position,
-      );
-    }
-    const registration = findCleanedStoredUrlRegistration(db, userId, candidate.url);
+    // 品目の表を読むのは 1 回。重複の判定も、リスト / ゴミ箱 / 未登録の振り分けも同じ結果から行う。
+    const matches = findCleanedStoredUrlMatches(db, userId, candidate.url);
+    const live = matches.filter((match) => !match.deleted_at);
+    if (live.length > 1) throw ambiguousUrl(live.map((match) => match.id), candidate.position);
+    const registration = classifyStoredUrlMatches(matches);
     if (registration.kind === 'free') return { state: 'new' };
     if (registration.kind === 'trashed') {
       // 単品登録と違い、自動では復元しない（複数店の登録と同じ）。
@@ -453,6 +465,26 @@ function findIntactReceipt(
   const intact = group != null && rows.every((item) => (
     item != null && !item.deleted_at && !item.is_purchased && item.comparison_group_id === group.id
   ));
+  if (intact) {
+    // ID と所属が残っていても、URL の候補は「記録した行が今もその URL の商品か」を確かめる
+    // （update_item で URL を書き換えられた行を、要求された商品として返さない）。判定は登録時と
+    // 同じ findCleanedStoredUrlMatches（計測パラメータ・楽天の包装 URL を同じ商品として扱う）。
+    // item_id の候補は、指定された ID そのものに従う。
+    request.candidates.forEach((candidate, index) => {
+      if (candidate.kind !== 'url') return;
+      const itemId = recorded[index]!.itemId;
+      const live = findCleanedStoredUrlMatches(db, userId, candidate.url).filter((match) => !match.deleted_at);
+      if (!live.some((match) => match.id === itemId)) {
+        throw refuse(
+          409,
+          'SAVED_REQUEST_CHANGED',
+          `同じ依頼は ${row.created_at}（UTC）に保存済みですが、そのとき保存した品目 ID ${itemId} の URL がそのあとで変更され、この候補の URL の商品ではなくなっています。利用者の変更を上書きしないよう、送り直しでは登録も所属の変更もしません。今の品目をそのまま比較に使うなら url の代わりに item_id: ${itemId} を指定し、この URL の商品を改めて入れたいと利用者が言ったときだけ、別のグループ名で呼び直すか add_item_by_url の comparison_group_id を使ってください。`,
+          candidate.position,
+        );
+      }
+      if (live.length > 1) throw ambiguousUrl(live.map((match) => match.id), candidate.position);
+    });
+  }
   if (!intact) {
     throw refuse(
       409,
@@ -529,26 +561,76 @@ function storedFetchError(row: CandidateRow): AgentMediaFetchError[] {
   return failure ? [{ url: row.url, code: failure.code, message: failure.message }] : [];
 }
 
-const RECEIPT_ONLY_NOTE = ' このトークンには read 権限が無いため、ID と操作の結果だけを返します（商品名・URL・価格・グループ名・件数は返しません）。';
+const RECEIPT_ONLY_NOTE = ' このトークンには read 権限が無いため、ID と操作の結果だけを返します（商品名・URL・価格・件数は返しません。グループ名は、指定された名前と今の名前が同じときだけ返します）。';
+
+/**
+ * 応答に載せるグループ名。read があれば現在の名前。write だけのトークンには、現在の名前が要求の
+ * 名前（整形後）と同じときに限り、呼び出し側が指定した名前をそのまま返す（保存済みの値は読ませない）。
+ * 利用者があとで名前を変えていれば undefined（返さない）。
+ */
+function groupNameFor(group: GroupRef, requestName: string, canRead: boolean): string | undefined {
+  if (canRead) return group.name;
+  return isRequestedGroup(group, requestName) ? requestName : undefined;
+}
+
+/** 文面用。名前を返せないときは ID だけで示す。 */
+function groupLabelFor(group: GroupRef, requestName: string, canRead: boolean): string {
+  const name = groupNameFor(group, requestName, canRead);
+  return name === undefined ? `（ID ${group.id}）` : `「${name}」（ID ${group.id}）`;
+}
+
+/**
+ * 保存記録（操作ログの 1 行）。同じ要求の再送を見分ける材料になる。key は候補の目印で、URL は書かない。
+ * changed = false は、書くものが無かった要求の受領の記録（商品・グループ・所属は変えていない）。
+ * 呼び出し側のトランザクションの中で書く。書けなければ、同じトランザクションの保存も戻る。
+ */
+function recordSaveReceipt(
+  db: Database.Database,
+  auth: AgentAuthContext,
+  auditMeta: Record<string, unknown> | undefined,
+  receipt: {
+    fingerprint: string;
+    groupId: number;
+    groupCreated: boolean;
+    changed: boolean;
+    entries: { position: number; row: CandidateRow; result: ComparisonCandidateResult; key: string }[];
+  },
+): void {
+  recordAgentAudit(auth.token.id, auth.userId, COMPARISON_CANDIDATES_AUDIT_ACTION, {
+    scope: 'write',
+    ...(auditMeta ?? {}),
+    request_fingerprint: receipt.fingerprint,
+    group_id: receipt.groupId,
+    group_created: receipt.groupCreated,
+    changed: receipt.changed,
+    results: receipt.entries.map((entry) => ({
+      position: entry.position, item_id: entry.row.id, result: entry.result, key: entry.key,
+    })),
+  }, db);
+}
 
 /**
  * 応答の group / candidates を組み立てる。write だけのトークンには、書き込みの確認に要る
- * ID と操作の結果だけを返し、既存の商品名・URL・価格・グループ名・件数は read があるときだけ足す。
+ * ID・操作の結果・（要求と同じなら）グループ名だけを返し、既存の商品名・URL・価格・件数は
+ * read があるときだけ足す。
  */
 function describeSaved(
   db: Database.Database,
   auth: AgentAuthContext,
   group: GroupRef,
+  requestName: string,
   groupCreated: boolean,
   entries: { position: number; row: CandidateRow; result: ComparisonCandidateResult }[],
 ): Pick<SaveComparisonCandidatesResult, 'group' | 'candidates' | 'item_ids'> {
   const canRead = auth.scopes.includes('read');
+  const name = groupNameFor(group, requestName, canRead);
   return {
     group: {
       id: group.id,
       origin: null,
       created: groupCreated,
-      ...(canRead ? { name: group.name, item_count: activeGroupItemCount(db, auth.userId, group.id) } : {}),
+      ...(name === undefined ? {} : { name }),
+      ...(canRead ? { item_count: activeGroupItemCount(db, auth.userId, group.id) } : {}),
     },
     candidates: entries.map(({ position, row, result }) => ({
       position,
@@ -626,8 +708,8 @@ export async function saveAgentComparisonCandidates(
         status: 'already_saved',
         changed: false,
         replayed: true,
-        message: `同じ依頼は既に保存済みです（比較グループ${groupLabel(group, canRead)}）。この呼び出しでは何も変更していません。最初の保存の結果は replay_of にあります。${note}`,
-        ...describeSaved(db, auth, group, false, rows.map((row, index) => ({
+        message: `同じ依頼は既に保存済みです（比較グループ${groupLabelFor(group, request.name, canRead)}）。この呼び出しでは何も変更していません。最初の保存の結果は replay_of にあります。${note}`,
+        ...describeSaved(db, auth, group, request.name, false, rows.map((row, index) => ({
           position: request.candidates[index].position, row, result: 'already_in_group',
         }))),
         // 保存済みの取得失敗の内容は、read があるときだけ返す。
@@ -654,16 +736,25 @@ export async function saveAgentComparisonCandidates(
 
     if (plan.unchanged && plan.targetGroup) {
       const group = plan.targetGroup;
+      const entries = plan.resolved.map((entry, index) => ({
+        position: request.candidates[index].position,
+        row: loadRow((entry as { itemId: number }).itemId),
+        result: 'already_in_group' as const,
+        key: candidateKeyHash(request.candidates[index]),
+      }));
+      // 書くものは無いが、この要求を受けたことは保存記録に残す（商品・グループ・所属は変えず、
+      // 上限も消費しない）。応答が途切れたあとで利用者が Web で候補を外しても、遅れて届いた同じ
+      // 要求がこの記録と照合され、候補を入れ直したり 2 つ目のグループを作ったりしない。
+      // 同じ要求がもう一度来たときは記録が先に見つかるので、ここへは来ない（記録は 1 件だけ）。
+      recordSaveReceipt(db, auth, options.auditMeta, {
+        fingerprint, groupId: group.id, groupCreated: false, changed: false, entries,
+      });
       return {
         status: 'already_saved',
         changed: false,
         replayed: false,
-        message: `候補はすべて既に比較グループ${groupLabel(group, canRead)}に入っています。この呼び出しでは何も変更していません。${note}`,
-        ...describeSaved(db, auth, group, false, plan.resolved.map((entry, index) => ({
-          position: request.candidates[index].position,
-          row: loadRow((entry as { itemId: number }).itemId),
-          result: 'already_in_group',
-        }))),
+        message: `候補はすべて既に比較グループ${groupLabelFor(group, request.name, canRead)}に入っています。この呼び出しでは何も変更していません。${note}`,
+        ...describeSaved(db, auth, group, request.name, false, entries),
         media_fetch_errors: [],
       };
     }
@@ -727,16 +818,9 @@ export async function saveAgentComparisonCandidates(
 
     // 保存と同じトランザクションに操作ログを入れる。ログを書けなければ保存も戻る。
     // この記録が、同じ要求の再送を見分ける保存記録になる（key は候補の目印。URL は書かない）。
-    recordAgentAudit(auth.token.id, auth.userId, COMPARISON_CANDIDATES_AUDIT_ACTION, {
-      scope: 'write',
-      ...(options.auditMeta ?? {}),
-      request_fingerprint: fingerprint,
-      group_id: group.id,
-      group_created: groupCreated,
-      results: saved.map((entry) => ({
-        position: entry.position, item_id: entry.row.id, result: entry.result, key: entry.key,
-      })),
-    }, db);
+    recordSaveReceipt(db, auth, options.auditMeta, {
+      fingerprint, groupId: group.id, groupCreated, changed: true, entries: saved,
+    });
 
     const createdCount = saved.filter((entry) => entry.result === 'created').length;
     const addedCount = saved.filter((entry) => entry.result === 'added_to_group').length;
@@ -747,8 +831,8 @@ export async function saveAgentComparisonCandidates(
       replayed: false,
       message: groupCreated
         ? `比較グループ「${group.name}」を作り、候補 ${saved.length} 件を独立した商品のまま入れました（${counts}）。${note}`
-        : `候補の一部が既に入っていた、指定と同じ名前の比較グループ${groupLabel(group, canRead)}へ残りを足しました（${counts}）。新しいグループは作らず、既存の商品の所属は動かしていません。${note}`,
-      ...describeSaved(db, auth, group, groupCreated, saved),
+        : `候補の一部が既に入っていた、指定と同じ名前の比較グループ${groupLabelFor(group, request.name, canRead)}へ残りを足しました（${counts}）。新しいグループは作らず、既存の商品の所属は動かしていません。${note}`,
+      ...describeSaved(db, auth, group, request.name, groupCreated, saved),
       // この呼び出しで取りに行った URL の失敗だけ（呼び出し側が渡した URL）。
       media_fetch_errors: fetchErrors,
     };

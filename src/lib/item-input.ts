@@ -337,7 +337,14 @@ export function findCleanedStoredUrlRegistration(
   cleanedUrl: string,
   excludeItemId?: number,
 ): CleanedUrlRegistration {
-  const matches = findCleanedStoredUrlMatches(db, userId, cleanedUrl, excludeItemId);
+  return classifyStoredUrlMatches(findCleanedStoredUrlMatches(db, userId, cleanedUrl, excludeItemId));
+}
+
+/**
+ * findCleanedStoredUrlMatches の結果を、リスト / 購入済み / ゴミ箱 / 未登録に振り分ける。
+ * 一致した行を自分でも使う呼び出し側（重複行の検出など）が、品目の表を読み直さずに済むように分けてある。
+ */
+export function classifyStoredUrlMatches(matches: StoredUrlMatch[]): CleanedUrlRegistration {
   if (matches.length === 0) return { kind: 'free' };
 
   const active = matches.find((row) => !row.deleted_at);

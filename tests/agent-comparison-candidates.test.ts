@@ -30,8 +30,13 @@ const webItemsPath = '../src/app/api/items/route.ts';
 const TOOL = 'save_comparison_candidates';
 
 let releaseClock: (() => void) | null = null;
+/** 名前解決（外部取得の入口。保存より前）で要求を待たせる。待たせるテストだけが設定し、終わりに null へ戻す。 */
+let holdResolve: ((host: string) => Promise<void>) | null = null;
 before(async () => {
-  mock.method(dns, 'lookup', async () => [{ address: '8.8.8.8', family: 4 }]);
+  mock.method(dns, 'lookup', async (host: string) => {
+    await holdResolve?.(host);
+    return [{ address: '8.8.8.8', family: 4 }];
+  });
   releaseClock = installFrozenClock(await db());
 });
 after(() => {
@@ -459,20 +464,55 @@ test('外部取得の最中に同じ要求が重なっても、保存は1回分�
   const auth = await createToken(['read', 'write'], 'cc-concurrent');
   const database = await db();
   const args = { name: 'ケースの比較', candidates: [{ url: PITAKA_URL }, { url: AMAZON_PRODUCT_URL }] };
-  let second: Promise<McpResponse> | null = null;
-  let groupsWhenSecondStarted = -1;
-  const { fetched, port } = recordingPort(() => {
-    if (second) return;
-    // 1回目が最初の URL を取得している最中（まだ何も保存していない）に、同じ要求をもう一度送る。
-    groupsWhenSecondStarted = snapshot(database, owner.id).groups.length;
-    second = tool(auth.token, TOOL, args);
+  const { fetched, port } = recordingPort();
+
+  // 2つの要求を、どちらも最初の URL の名前解決（事前の検査のあと、取得と保存の前）で止め、
+  // 両方がそろってから同時に進める。実行環境の速さや順序に頼らずに、必ず重なる。
+  // 取得は逐次なので、最初の URL のホストで 2 件待っていれば、別々の要求が 1 件ずつ待っている。
+  const firstHost = new URL(PITAKA_URL).hostname;
+  const parked: { host: string; resume: () => void }[] = [];
+  let open = false;
+  let whenBothParked: { hosts: string[]; groups: number; items: number; audits: number; fetched: number } | null = null;
+  const release = () => {
+    open = true;
+    for (const entry of parked.splice(0)) entry.resume();
+  };
+  holdResolve = (host) => new Promise<void>((resume) => {
+    if (open) return resume();
+    parked.push({ host, resume });
+    if (parked.length < 2) return;
+    const state = snapshot(database, owner.id);
+    whenBothParked = {
+      hosts: parked.map((entry) => entry.host),
+      groups: state.groups.length,
+      items: state.items.length,
+      audits: auditRows(database, auth.record.id).length,
+      fetched: fetched.length,
+    };
+    release();
   });
+  // 2件目が来なければ待ち続けずに進め、下の whenBothParked の検査で失敗させる。
+  const giveUp = setTimeout(release, 5_000);
+
   await withPort(port, async () => {
-    const firstBody = await tool(auth.token, TOOL, args);
-    assert.ok(second, 'the overlapping request was sent');
-    const results = [saved(firstBody), saved(await second)];
-    assert.equal(groupsWhenSecondStarted, 0);
-    assert.ok(fetched.length > 2, '2回目も保存の前に取得まで進んでいる');
+    let bodies: McpResponse[];
+    try {
+      bodies = await Promise.all([tool(auth.token, TOOL, args), tool(auth.token, TOOL, args)]);
+    } finally {
+      clearTimeout(giveUp);
+      holdResolve = null;
+    }
+    assert.deepEqual(
+      whenBothParked,
+      { hosts: [firstHost, firstHost], groups: 0, items: 0, audits: 0, fetched: 0 },
+      'どちらも何も保存されていないうちに、両方の要求が外部取得の入口まで進んでいる',
+    );
+    const results = bodies.map(saved);
+    assert.deepEqual(
+      [...fetched].sort(),
+      [AMAZON_PRODUCT_URL, AMAZON_PRODUCT_URL, PITAKA_URL, PITAKA_URL].sort(),
+      '2回目も保存済みの結果を待たずに、自分で取得まで進んでいる',
+    );
 
     const state = snapshot(database, owner.id);
     assert.equal(state.groups.length, 1);
@@ -936,19 +976,39 @@ test('write だけのトークンには、ID と操作の結果だけを返す�
       const text = JSON.stringify(body);
       for (const value of hidden) assert.equal(text.includes(value), false, `${label}: ${value} を返さない`);
     };
-    const assertReceiptShape = (result: Saved) => {
-      assert.deepEqual(Object.keys(result.group).sort(), ['created', 'id', 'origin']);
+    // グループ名は、現在の名前が要求の名前と同じときだけ（要求の名前そのものを）返す。件数は返さない。
+    const assertReceiptShape = (result: Saved, groupName: string | null) => {
+      assert.deepEqual(
+        Object.keys(result.group).sort(),
+        groupName === null ? ['created', 'id', 'origin'] : ['created', 'id', 'name', 'origin'],
+      );
+      if (groupName !== null) assert.equal(result.group.name, groupName);
       for (const entry of result.candidates) {
         assert.deepEqual(Object.keys(entry).sort(), ['item_id', 'position', 'result']);
       }
     };
 
     // 登録済み2件 + 新規 URL 1件を保存。
-    const args = { name: '受領だけの比較', candidates: [{ item_id: first }, { item_id: second }, { url: PITAKA_URL }] };
+    // 作成に成功したら、グループ ID と、呼び出し側が指定した名前（整形後）を返す。
+    const args = { name: '  受領だけの比較 ', candidates: [{ item_id: first }, { item_id: second }, { url: PITAKA_URL }] };
     const body = await tool(write.token, TOOL, args);
     const result = saved(body);
     assert.equal(result.status, 'saved');
-    assertReceiptShape(result);
+    assert.equal(result.group.created, true);
+    assertReceiptShape(result, '受領だけの比較');
+    assert.match(result.message, /「受領だけの比較」/);
+
+    // 名前がそのままの再送と、同じ名前のグループへの追加でも、指定した名前を返す。
+    const sameNameReplay = saved(await tool(write.token, TOOL, args));
+    assert.equal(sameNameReplay.replayed, true);
+    assertReceiptShape(sameNameReplay, '受領だけの比較');
+    const extra = insertItem(database, owner.id, 'ないしょの商品名6', 'https://example.com/products/hidden-path-6', { price: 765432 });
+    const joinedBody = await tool(write.token, TOOL, { name: '受領だけの比較', candidates: [{ item_id: first }, { item_id: extra }] });
+    const joined = saved(joinedBody);
+    assert.equal(joined.group.created, false);
+    assertReceiptShape(joined, '受領だけの比較');
+    assert.equal(JSON.stringify(joinedBody).includes('765432'), false);
+    database.prepare('UPDATE items SET comparison_group_id = NULL WHERE id = ?').run(extra);
     assert.deepEqual(result.candidates.map((entry) => [entry.position, entry.result]), [
       [1, 'added_to_group'], [2, 'added_to_group'], [3, 'created'],
     ]);
@@ -964,7 +1024,8 @@ test('write だけのトークンには、ID と操作の結果だけを返す�
     const replay = saved(replayBody);
     assert.equal(replay.status, 'already_saved');
     assert.equal(replay.replayed, true);
-    assertReceiptShape(replay);
+    assertReceiptShape(replay, null);
+    assert.equal(JSON.stringify(replayBody).includes('受領だけの比較'), false, '今の名前ではなくなった名前を、今のグループ名として返さない');
     assert.deepEqual(replay.item_ids, result.item_ids);
     assert.deepEqual(replay.media_fetch_errors, []);
     assert.deepEqual(replay.replay_of?.candidates.map((entry) => Object.keys(entry).sort()), [
@@ -978,7 +1039,7 @@ test('write だけのトークンには、ID と操作の結果だけを返す�
     const unchanged = saved(unchangedBody);
     assert.equal(unchanged.replayed, false);
     assert.equal(unchanged.changed, false);
-    assertReceiptShape(unchanged);
+    assertReceiptShape(unchanged, '受領だけの比較');
     assertNothingLeaks(unchangedBody, '変更なし');
 
     // 拒否の文面にも、既存のグループ名や商品名を出さない。
@@ -1014,6 +1075,148 @@ test('write だけのトークンには、ID と操作の結果だけを返す�
       name: 'ないしょの商品名2', url: 'https://example.com/products/hidden-path-2', current_price: 876543,
     });
     assert.doesNotMatch(full.message, /read 権限が無い/);
+  });
+}));
+
+test('再送の照合は URL も見る: 保存した行の URL が update_item で書き換えられたら、別の商品を保存済みとして返さない', () => serial(async () => {
+  const { fetched, port } = recordingPort();
+  await withPort(port, async () => {
+    const owner = await createMember('cc-url-edit');
+    const auth = await createToken(['read', 'write'], 'cc-url-edit');
+    const database = await db();
+    const URL_C = 'https://example.com/products/url-edit-c';
+    const args = { name: 'URL を変える比較', candidates: [{ url: PITAKA_URL }, { url: AMAZON_PRODUCT_URL }] };
+    const first = saved(await tool(auth.token, TOOL, args));
+    const [idA, idB] = first.item_ids;
+    const reordered = {
+      name: ' URL を変える比較 ',
+      candidates: [{ url: `${AMAZON_PRODUCT_URL}?tag=affiliate-22` }, { url: `${PITAKA_URL}?utm_source=retry` }],
+    };
+
+    // 保存した行の URL が同じ商品ページのまま（計測パラメータが付いただけ）なら、再送として返す。
+    database.prepare('UPDATE items SET url = ? WHERE id = ?').run(`${PITAKA_URL}?utm_medium=mail`, idA);
+    for (const retry of [args, reordered]) {
+      const replay = saved(await tool(auth.token, TOOL, retry));
+      assert.equal(replay.replayed, true);
+      assert.deepEqual([...replay.item_ids].sort(), [idA, idB].sort());
+    }
+
+    // 利用者（または別の操作）が update_item で B の行の URL を C に変えた。ID と所属は残っている。
+    const editedRow = await tool(auth.token, 'update_item', { item_id: idB, url: URL_C });
+    assert.equal(editedRow.result?.isError, false, JSON.stringify(editedRow));
+    assert.equal((database.prepare('SELECT url FROM items WHERE id = ?').get(idB) as { url: string }).url, URL_C);
+    const edited = snapshot(database, owner.id);
+    const rateBefore = await rateUsed(auth.record.id);
+    const fetchedBefore = fetched.length;
+    const auditsBefore = auditRows(database, auth.record.id).length;
+
+    // A/B の再送（順序・計測パラメータ違いを含む）: A/C を「保存済み」と返さず、B を登録し直しもしない。
+    for (const [index, retry] of [args, reordered].entries()) {
+      const conflict = failure(await tool(auth.token, TOOL, retry));
+      assert.equal(conflict.code, 'SAVED_REQUEST_CHANGED', conflict.text);
+      assert.match(conflict.text, index === 0 ? /候補2/ : /候補1/);
+      assert.ok(conflict.text.includes(`item_id: ${idB}`), conflict.text);
+      assert.match(conflict.text, /何も保存・変更していません/);
+      assert.deepEqual(snapshot(database, owner.id), edited);
+    }
+    assert.equal(fetched.length, fetchedBefore, 'B を取得し直さない');
+    assert.deepEqual(await rateUsed(auth.record.id), rateBefore);
+    assert.equal(auditRows(database, auth.record.id).length, auditsBefore);
+
+    // item_id だけの要求は、指定された ID に従う（URL が変わっていても、その行のこと）。
+    const byId = saved(await tool(auth.token, TOOL, { name: 'URL を変える比較', candidates: [{ item_id: idA }, { item_id: idB }] }));
+    assert.equal(byId.status, 'already_saved');
+    assert.equal(byId.changed, false);
+    assert.deepEqual(byId.item_ids, [idA, idB]);
+    assert.equal(byId.candidates[1].url, URL_C);
+    const afterById = snapshot(database, owner.id);
+    const byIdReplay = saved(await tool(auth.token, TOOL, { name: 'URL を変える比較', candidates: [{ item_id: idB }, { item_id: idA }] }));
+    assert.equal(byIdReplay.replayed, true);
+    assert.deepEqual(byIdReplay.item_ids, [idB, idA]);
+    assert.deepEqual(snapshot(database, owner.id), afterById);
+
+    // URL を元に戻したあと、同じ URL の生きている行がもう1件できた: どちらの行かを勝手に決めない。
+    database.prepare('UPDATE items SET url = ? WHERE id = ?').run(AMAZON_PRODUCT_URL, idB);
+    assert.equal(saved(await tool(auth.token, TOOL, args)).replayed, true);
+    const duplicate = insertItem(database, owner.id, '同じ URL の別の行', `${AMAZON_PRODUCT_URL}?tag=dup-22`);
+    const withDuplicate = snapshot(database, owner.id);
+    const ambiguous = failure(await tool(auth.token, TOOL, args));
+    assert.equal(ambiguous.code, 'URL_AMBIGUOUS', ambiguous.text);
+    assert.match(ambiguous.text, /候補2/);
+    for (const id of [idB, duplicate]) assert.ok(ambiguous.text.includes(String(id)), ambiguous.text);
+    assert.deepEqual(snapshot(database, owner.id), withDuplicate);
+    assert.equal(fetched.length, fetchedBefore);
+  });
+}));
+
+test('書くものが無い最初の要求も受領を記録する: そのあと Web で外された候補を、遅れた再送で入れ直さない', () => serial(async () => {
+  const { fetched, port } = recordingPort();
+  await withPort(port, async () => {
+    const owner = await createMember('cc-ack');
+    const auth = await createToken(['read', 'write'], 'cc-ack');
+    const database = await db();
+    const NAME = 'すでにまとめてある比較';
+    const groupId = insertGroup(database, owner.id, NAME);
+    const a = insertItem(database, owner.id, '候補A', 'https://example.com/products/ack-a', { group: groupId });
+    const b = insertItem(database, owner.id, '候補B', 'https://example.com/products/ack-b', { group: groupId });
+    const args = { name: NAME, candidates: [{ item_id: a }, { url: 'https://example.com/products/ack-b' }] };
+    const before = snapshot(database, owner.id);
+
+    // 1回目: 何も変えない。保存記録が無かったので replayed は false。応答は届かなかったものとする。
+    const first = saved(await tool(auth.token, TOOL, args));
+    assert.deepEqual(
+      { status: first.status, changed: first.changed, replayed: first.replayed, group: first.group.id, ids: first.item_ids },
+      { status: 'already_saved', changed: false, replayed: false, group: groupId, ids: [a, b] },
+    );
+    assert.equal(first.replay_of, undefined);
+    assert.deepEqual(snapshot(database, owner.id), before, '商品・グループ・所属は変えない');
+    assert.deepEqual(await rateUsed(auth.record.id), { add: 0, add_url: 0, add_day: 0 }, '上限は消費しない');
+    const audits = auditRows(database, auth.record.id);
+    assert.equal(audits.length, 1, '受領の記録を1件残す');
+    const meta = JSON.parse(audits[0].meta) as {
+      changed: boolean; group_id: number; group_created: boolean; tool: string;
+      results: { item_id: number; result: string }[];
+    };
+    assert.deepEqual(
+      { changed: meta.changed, group_id: meta.group_id, group_created: meta.group_created, tool: meta.tool },
+      { changed: false, group_id: groupId, group_created: false, tool: TOOL },
+    );
+    assert.deepEqual(meta.results.map((entry) => [entry.item_id, entry.result]), [[a, 'already_in_group'], [b, 'already_in_group']]);
+    assert.equal(audits[0].meta.includes('ack-b'), false, '記録に URL は書かない');
+
+    // 同じ要求（順序・計測パラメータ違い）をもう一度: 記録と照合して返し、記録は増やさない。
+    const reordered = { name: ` ${NAME} `, candidates: [{ url: 'https://example.com/products/ack-b?utm_source=retry' }, { item_id: a }] };
+    for (const retry of [args, reordered]) {
+      const replay = saved(await tool(auth.token, TOOL, retry));
+      assert.deepEqual(
+        { status: replay.status, changed: replay.changed, replayed: replay.replayed, group_created: replay.replay_of?.group_created },
+        { status: 'already_saved', changed: false, replayed: true, group_created: false },
+      );
+      assert.ok(replay.replay_of!.candidates.every((entry) => entry.result === 'already_in_group'));
+    }
+    assert.equal(auditRows(database, auth.record.id).length, 1);
+    assert.deepEqual(snapshot(database, owner.id), before);
+
+    // 利用者が Web で B をグループから外した。遅れて届いた同じ要求は、B を入れ直さない。
+    database.prepare('UPDATE items SET comparison_group_id = NULL WHERE id = ?').run(b);
+    const removedOne = snapshot(database, owner.id);
+    for (const retry of [args, reordered]) {
+      const conflict = failure(await tool(auth.token, TOOL, retry));
+      assert.equal(conflict.code, 'SAVED_REQUEST_CHANGED', conflict.text);
+      assert.deepEqual(snapshot(database, owner.id), removedOne);
+    }
+
+    // 両方を外したあとでも、2つ目のグループを作らない。
+    database.prepare('UPDATE items SET comparison_group_id = NULL WHERE id = ?').run(a);
+    const removedBoth = snapshot(database, owner.id);
+    const conflict = failure(await tool(auth.token, TOOL, args));
+    assert.equal(conflict.code, 'SAVED_REQUEST_CHANGED', conflict.text);
+    assert.deepEqual(snapshot(database, owner.id), removedBoth);
+    assert.equal(removedBoth.groups.length, 1);
+
+    assert.equal(auditRows(database, auth.record.id).length, 1, '拒否は記録を足さない');
+    assert.deepEqual(await rateUsed(auth.record.id), { add: 0, add_url: 0, add_day: 0 });
+    assert.deepEqual(fetched, []);
   });
 }));
 
