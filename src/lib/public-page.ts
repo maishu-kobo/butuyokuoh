@@ -158,9 +158,9 @@ export async function fetchPublicPage(value: string, dependencies: {
       verifiedUrl = url.href;
       const result = await Promise.race([(dependencies.request || requestPage)(url, address, controller.signal), aborted]);
       if (result.status >= 300 && result.status < 400) {
-        if (!result.location || redirects === 3) throw new PublicPageError(502, 'リンク先の商品を確認できませんでした。商品ページをブラウザで開き、そのURLを貼り直してください。');
         // ここから先は転送先の検査が通るまで、入力にも転送先にも結び付けない。
         verifiedUrl = undefined;
+        if (!result.location || redirects === 3) throw new PublicPageError(502, 'リンク先の商品を確認できませんでした。商品ページをブラウザで開き、そのURLを貼り直してください。');
         url = publicPageUrl(new URL(result.location, url).href);
         continue;
       }

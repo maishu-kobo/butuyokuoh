@@ -138,8 +138,14 @@ test('store open label follows the item source name', () => {
 
 test('an existing Tsukumo item without an image uses the official image for its product number', () => {
   const url = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
-  const item = { name: 'CANVIO DESKTOP HD-TDA4U3-B', url, image_url: null, source: 'other' as const };
+  const item = { name: 'ツクモの商品（4981254057384）', url, image_url: null, source: 'other' as const };
   assert.match(card(item), /src="https:\/\/cdn\.tsukumo\.co\.jp\/image\/item\/4981254057384_1\.jpg"/);
   assert.match(card({ ...item, image_url: 'https://example.com/custom.jpg' }), /src="https:\/\/example\.com\/custom\.jpg"/);
   assert.match(card({ ...item, url: 'https://example.com/goods/4981254057384/' }), /No Image/);
+});
+
+test('a card with a redirected product name cannot borrow the input URL photo (#374)', () => {
+  const html = card({ name: '転送先の商品B', url: 'https://shop.tsukumo.co.jp/goods/4981254057384/', image_url: null });
+  assert.match(html, /No Image/);
+  assert.doesNotMatch(html, /4981254057384_1\.jpg/);
 });

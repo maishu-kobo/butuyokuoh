@@ -245,7 +245,9 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   const storedImage = displayableItemImageUrl(
     displayImageUrl !== undefined ? displayImageUrl : item.image_url,
   );
-  const catalogImage = displayImageUrl === undefined && !storedImage ? tsukumoCatalogImage(item.url)?.imageUrl : null;
+  const catalog = displayImageUrl === undefined && !storedImage ? tsukumoCatalogImage(item.url) : null;
+  // 保存URLは転送元かもしれない。保存名でも同じ商品番号を確認できたときだけ写真を補う。
+  const catalogImage = catalog && item.name === `ツクモの商品（${catalog.productNumber}）` ? catalog.imageUrl : null;
   const shownImage = storedImage || (catalogImage !== unavailableCatalogImage ? catalogImage : null);
   const imageBody = shownImage ? (
     <img

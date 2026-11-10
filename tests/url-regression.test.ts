@@ -530,3 +530,54 @@ test('member registration does not fall back to the original product when the re
     assert.deepEqual(images, []);
   } finally { installProductFetchPort(null); }
 });
+
+test('a retry cannot recover the image of a product already known to redirect (#374)', async () => {
+  const { scrapeUrl } = await import('../src/lib/scraper');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const images: string[] = [];
+  const requests: string[] = [];
+  installProductFetchPort({ lookup(target) {
+    images.push(target.href);
+    return { status: 200, contentType: 'image/jpeg' };
+  } });
+  try {
+    const item = await scrapeUrl(REDIRECT_SOURCE, {
+      maxRetries: 1, baseDelayMs: 0,
+      resolve: async () => [{ address: '8.8.8.8', family: 4 }],
+      request: async (url) => {
+        requests.push(url.href);
+        if (requests.length === 1) return { status: 302, location: REDIRECT_PRODUCT, body: Buffer.alloc(0) };
+        if (url.href === REDIRECT_PRODUCT) return { status: 503, body: Buffer.alloc(0) };
+        throw new Error('connection interrupted');
+      },
+    });
+    assert.deepEqual(requests, [REDIRECT_SOURCE, REDIRECT_PRODUCT, REDIRECT_SOURCE]);
+    assert.equal(item.imageUrl, null);
+    assert.deepEqual(images, []);
+  } finally { installProductFetchPort(null); }
+});
+
+test('a redirect without a reachable destination cannot identify a catalog photo (#374)', async () => {
+  const { fetchPublicPage, PublicPageError } = await import('../src/lib/public-page');
+  const { scrapeUrl } = await import('../src/lib/scraper');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const resolve = async () => [{ address: '8.8.8.8', family: 4 }];
+  for (const location of [REDIRECT_SOURCE, undefined]) {
+    const redirect = { status: 302, location };
+    await assert.rejects(fetchPublicPage(REDIRECT_SOURCE, {
+      resolve, request: async () => ({ ...redirect, html: '' }),
+    }), (err: unknown) => err instanceof PublicPageError && !err.url);
+    const images: string[] = [];
+    installProductFetchPort({ lookup(target) {
+      images.push(target.href);
+      return { status: 200, contentType: 'image/jpeg' };
+    } });
+    try {
+      const item = await scrapeUrl(REDIRECT_SOURCE, {
+        maxRetries: 0, resolve, request: async () => ({ ...redirect, body: Buffer.alloc(0) }),
+      });
+      assert.equal(item.imageUrl, null);
+      assert.deepEqual(images, []);
+    } finally { installProductFetchPort(null); }
+  }
+});

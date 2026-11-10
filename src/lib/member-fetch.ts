@@ -136,21 +136,23 @@ async function followPublicRedirects(
   urlString: string,
   init: RequestInit | undefined,
   options: MemberFetchDeps & { timeoutMs: number },
+  redirectSources: Set<string>,
 ) {
   let current = new URL(urlString);
   const request = options.request ?? requestPinned;
   const headers = headerRecord(init?.headers);
-  if (options.trace) options.trace.url = current.href;
+  if (options.trace) options.trace.url = redirectSources.has(current.href) ? null : current.href;
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
     const address = await resolvedPublicAddress(current, options.resolve);
-    if (options.trace) options.trace.url = current.href;
+    if (options.trace) options.trace.url = redirectSources.has(current.href) ? null : current.href;
     const timeoutSignal = AbortSignal.timeout(options.timeoutMs);
     const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
     const result = await request(current, address, headers, signal);
     if (result.status >= 300 && result.status < 400) {
-      if (!result.location || redirects === MAX_REDIRECTS) throw new HttpError(result.status, current.href);
-      // 転送先が解決を通るまでは、入力にも転送先にも結び付けない。
+      // 転送元は、再試行中に接続できなくても画像補完の対象に戻さない。
+      redirectSources.add(current.href);
       if (options.trace) options.trace.url = null;
+      if (!result.location || redirects === MAX_REDIRECTS) throw new HttpError(result.status, current.href);
       try {
         current = new URL(result.location, current);
       } catch {
@@ -178,10 +180,11 @@ export async function fetchPublicMember(
   const baseDelayMs = options.baseDelayMs ?? 1000;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   let lastError: Error | null = null;
+  const redirectSources = new Set<string>();
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await followPublicRedirects(url, init, { ...options, timeoutMs });
+      return await followPublicRedirects(url, init, { ...options, timeoutMs }, redirectSources);
     } catch (error) {
       if (error instanceof BlockedTargetError) throw error;
       lastError = error instanceof Error ? error : new Error(String(error));
