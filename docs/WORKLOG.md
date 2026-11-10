@@ -2,6 +2,19 @@
 
 エージェント／作業者向けの進行ログ。仕様の正本ではない。使い方の索引は [README.md](./README.md)。
 
+## 2026-11-10 — エージェントが商品メモ（notes）を使う（#396）
+
+### 決定
+
+- DB / スキーマは触らず、既存の `items.notes`（`AGENT_NOTES_MAX=2000`、制御文字除去）を使う。
+- MCP `instructions`・`notes` スキーマ説明・`add_item` / `add_item_by_url` / `update_item` / 読み取りツールの説明、`/llms.txt`、OpenAPI で「登録時に会話要約を notes へ自動保存／登録前確認なし／登録後にユーザーへ報告」を明示する。
+- 登録系（と notes を含む更新）の成功結果に `memo`（`tell_user` / `ask_edit` / `agent_instructions`）を付ける。比較候補一括保存へのメモ必須化は別担当との衝突回避のためスコープ外。
+
+### 結果
+
+- `src/lib/agent-memo.ts` を追加。REST / MCP の add・notes 付き update で `withMemoFollowUp` を適用。
+- テスト: `tests/agent-memo.test.ts`（案内、MCP 追加/読取/編集/報告ガイド、所有者チェック、長さ上限、REST）。
+
 ## 2026-11-10 — 比較中の商品を1回で同じ比較グループへ保存する（#388）
 
 ### 決定
