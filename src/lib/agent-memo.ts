@@ -17,26 +17,26 @@ export const AGENT_NOTES_FIELD_DESCRIPTION =
 
 /** initialize / llms.txt 向け（英語） */
 export const AGENT_MEMO_USAGE_INSTRUCTIONS_EN = [
-  'DEFAULT (strong): ALWAYS write a short conversation summary into each product\'s memo field (`notes`) at registration—even when the user said nothing about memos. Pull price, where to buy, compared items, why they want it, and similar context from the conversation.',
+  'DEFAULT (strong): ALWAYS write a short conversation summary into each product\'s memo field (`notes`) when registering a new product—even when the user said nothing about memos. Pull price, where to buy, compared items, why they want it, and similar context from the conversation.',
   '`notes` stays schema-optional: missing notes never rejects registration. That does not weaken the DEFAULT—omit only when the user explicitly declines a memo (pass null or ""), or when they explicitly dictate what/how to memo (then follow that).',
   'Do not ask the user to confirm the memo before registering.',
   'Every successful registration includes server-built `memo.tell_user`. When `memo.relay` is true, relay `memo.tell_user.ja` (or `.en`) to the user verbatim—it is already complete. Prefer Japanese `tell_user.ja` for Japanese users.',
   'With notes: tell_user is 「以下のメモを追加しました：…。編集・削除したい場合は教えてね」. If notes were omitted by mistake (`action=omitted`, `relay=false`), follow `agent_instructions`: summarize via `update_item` first, then relay that update\'s with-notes tell_user (do not leave the user without a memo unless they declined; do not relay the no-memo tell_user in that case).',
   'Only if the user declined a memo: relay 「メモは付けていません。追加したい場合は教えてね」.',
   'Edit/clear later with `update_item` (`notes`; null or "" clears). Read tools return `notes`.',
-  'Trash restore (`restored_from_trash`) does not apply request `notes` and must not be reported as a newly added memo.',
+  'Trash restore (`restored_from_trash`) and store-attach (`store_attached`, `add_item_by_url` with `item_id`) do not apply request `notes` and must not be reported as a newly added memo. For store-attach, omit `notes` (or it is ignored); change the memo with `update_item` only.',
 ].join(' ');
 
 /** initialize / llms.txt 向け（日本語） */
 export const AGENT_MEMO_USAGE_INSTRUCTIONS_JA = [
-  'DEFAULT（強い既定）: 登録時はユーザーがメモに一言も触れていなくても、会話文脈から必ず（ALWAYS）短い要約を notes に書く。価格・買う場所・比べた相手・ほしい理由などを拾う。',
+  'DEFAULT（強い既定）: 新規商品の登録時はユーザーがメモに一言も触れていなくても、会話文脈から必ず（ALWAYS）短い要約を notes に書く。価格・買う場所・比べた相手・ほしい理由などを拾う。',
   'notes はスキーマ上は任意（無くても登録は拒否しない）。これは DEFAULT を弱めない。メモ不要と明示したときだけ空（null または空文字）。内容・書き方を明示したらそれを優先。',
   '登録の前にメモの確認は取らない。',
   '登録が成功したら必ずサーバ組み立ての memo.tell_user が付く。memo.relay が true のときは memo.tell_user.ja をそのままユーザーへ伝える（文面は完成済み）。',
   'メモあり: 「以下のメモを追加しました：…。編集・削除したい場合は教えてね」。付け忘れ（action=omitted, relay=false）は agent_instructions に従い、先に update_item で会話要約を保存し、その応答の with-notes の tell_user を伝える（拒否していない限りメモ無しのままにしない。このときの no-memo の tell_user は伝えない）。',
   'ユーザーがメモ不要と明示したときだけ: 「メモは付けていません。追加したい場合は教えてね」をそのまま伝える。',
   'あとから直す・消すときは update_item の notes（空文字または null で削除）。読み取りは notes を返す。',
-  'ゴミ箱復元（restored_from_trash）ではリクエストの notes は適用されない。「メモを追加しました」と言わない。',
+  'ゴミ箱復元（restored_from_trash）と店追加（store_attached、add_item_by_url の item_id）ではリクエストの notes は適用されない。「メモを追加しました」と言わない。店追加では notes を送らない（送っても無視）。メモ変更は update_item だけ。',
 ].join('');
 
 export type AgentMemoAction =
@@ -44,6 +44,7 @@ export type AgentMemoAction =
   | 'updated'
   | 'cleared'
   | 'restored'
+  | 'store_attached'
   | 'omitted'
   | 'declined';
 
@@ -64,7 +65,7 @@ export type AgentMemoFollowUp = {
 };
 
 export type MemoFollowUpOptions = {
-  kind: 'add' | 'update' | 'restore';
+  kind: 'add' | 'update' | 'restore' | 'store_attach';
   /** リクエストの notes（undefined=キー無し、null/""=明示的に空） */
   requestedNotes?: unknown;
 };
@@ -226,19 +227,21 @@ function buildUpdateFollowUp(text: string | null): AgentMemoFollowUp {
   };
 }
 
+function ignoredNotesHint(requestedNotes: unknown, contextJa: string, contextEn: string): string {
+  if (requestedNotes === undefined) return '';
+  const requestedText = notesText(requestedNotes);
+  if (requestedText) {
+    return ` 今回送った notes は${contextJa}では適用されていません。その内容に変えたいなら update_item の notes を使ってください。`;
+  }
+  return ` 今回送った notes（空）は${contextJa}では適用されていません。消したいなら update_item で notes に空文字または null を送ってください。`;
+}
+
 function buildRestoreFollowUp(
   existingText: string | null,
   requestedNotes: unknown,
 ): AgentMemoFollowUp {
   const requested = requestedNotes !== undefined;
-  const requestedText = notesText(requestedNotes);
-  const ignoredHint = requested
-    ? (
-      requestedText
-        ? ' 今回送った notes は復元では適用されていません。その内容に変えたいなら update_item の notes を使ってください。'
-        : ' 今回送った notes（空）は復元では適用されていません。消したいなら update_item で notes に空文字または null を送ってください。'
-    )
-    : '';
+  const ignoredHint = ignoredNotesHint(requestedNotes, '復元', 'restore');
   const tell_user = existingText
     ? {
       ja: `ゴミ箱から復元しました。いまのメモ：${existingText}。編集・削除したい場合は教えてね`,
@@ -271,7 +274,46 @@ function buildRestoreFollowUp(
   };
 }
 
-/** 登録・メモ更新・復元の成功結果に載せる事後報告ガイド */
+function buildStoreAttachFollowUp(
+  existingText: string | null,
+  requestedNotes: unknown,
+): AgentMemoFollowUp {
+  const requested = requestedNotes !== undefined;
+  const ignoredHint = ignoredNotesHint(requestedNotes, '店追加', 'store attach');
+  const tell_user = existingText
+    ? {
+      ja: `店舗ページを追加しました。いまのメモ：${existingText}。編集・削除したい場合は教えてね`,
+      en: `I added a store page. Current memo: ${existingText}. Tell me if you want to edit or delete it`,
+    }
+    : {
+      ja: '店舗ページを追加しました。メモはまだ空です。追加したい場合は教えてね',
+      en: 'I added a store page. There is no memo yet. Tell me if you want to add one',
+    };
+  return {
+    field: 'notes',
+    action: 'store_attached',
+    saved: existingText != null,
+    text: existingText,
+    tell_user,
+    relay: true,
+    ask_edit: askEdit(),
+    agent_instructions: {
+      ja:
+        'これは新規商品の登録ではなく、既存商品への店追加です。既存のメモを「追加しました」と言わないでください。'
+        + 'memo.tell_user.ja をそのまま伝えてください。'
+        + 'メモを変えるときは update_item の notes を使います。'
+        + ignoredHint,
+      en:
+        'This was a store attach to an existing product, not a new registration. Do not say you added a new memo. '
+        + 'Relay memo.tell_user verbatim. Use update_item notes to change the memo. '
+        + (requested
+          ? 'Request notes were not applied on store attach; use update_item notes to change or clear them.'
+          : ''),
+    },
+  };
+}
+
+/** 登録・メモ更新・復元・店追加の成功結果に載せる事後報告ガイド */
 export function buildMemoFollowUp(
   notes: string | null | undefined,
   options: MemoFollowUpOptions | 'add' | 'update',
@@ -280,6 +322,9 @@ export function buildMemoFollowUp(
   const text = typeof notes === 'string' && notes.trim() ? notes : null;
   if (opts.kind === 'restore') {
     return buildRestoreFollowUp(text, opts.requestedNotes);
+  }
+  if (opts.kind === 'store_attach') {
+    return buildStoreAttachFollowUp(text, opts.requestedNotes);
   }
   if (opts.kind === 'update') {
     return buildUpdateFollowUp(text);
@@ -290,6 +335,7 @@ export function buildMemoFollowUp(
 type WithNotes = { notes?: string | null };
 type WithItemNotes = { item?: WithNotes | null };
 type WithRestoreFlag = { restored_from_trash?: boolean };
+type WithStoreAttachFlag = { store_attached?: boolean };
 
 export function notesFromAgentPayload(data: unknown): string | null {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
@@ -310,12 +356,19 @@ export function isRestoredFromTrashPayload(data: unknown): boolean {
   return (data as WithRestoreFlag).restored_from_trash === true;
 }
 
+export function isStoreAttachedPayload(data: unknown): boolean {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  return (data as WithStoreAttachFlag).store_attached === true;
+}
+
 export function withMemoFollowUp<T extends object>(
   data: T,
   options: MemoFollowUpOptions | 'add' | 'update',
 ): T & { memo: AgentMemoFollowUp } {
   const opts: MemoFollowUpOptions = typeof options === 'string' ? { kind: options } : options;
-  const kind = opts.kind === 'add' && isRestoredFromTrashPayload(data) ? 'restore' : opts.kind;
+  let kind = opts.kind;
+  if (kind === 'add' && isRestoredFromTrashPayload(data)) kind = 'restore';
+  else if (kind === 'add' && isStoreAttachedPayload(data)) kind = 'store_attach';
   return {
     ...data,
     memo: buildMemoFollowUp(notesFromAgentPayload(data), {

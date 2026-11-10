@@ -12,6 +12,7 @@ import { call, createMember, db } from './regression-harness';
 import {
   AMAZON_NAME,
   AMAZON_PRODUCT_URL,
+  RAKUTEN_URL,
   regressionFetchPort,
 } from '../src/lib/product-regression-fixtures';
 import { installFrozenClock } from './trash-restore-clock';
@@ -139,6 +140,16 @@ test('buildMemoFollowUp: メモあり・付け忘れ・拒否・クリアの tel
   assert.match(restored.tell_user.ja, /ゴミ箱から復元/);
   assert.doesNotMatch(restored.tell_user.ja, /以下のメモを追加しました/);
   assert.match(restored.agent_instructions.ja, /適用されていません/);
+
+  const storeAttached = buildMemoFollowUp('既存メモ', {
+    kind: 'store_attach',
+    requestedNotes: '上書きしようとするメモ',
+  });
+  assert.equal(storeAttached.action, 'store_attached');
+  assert.equal(storeAttached.relay, true);
+  assert.match(storeAttached.tell_user.ja, /店舗ページを追加しました/);
+  assert.doesNotMatch(storeAttached.tell_user.ja, /以下のメモを追加しました/);
+  assert.match(storeAttached.agent_instructions.ja, /店追加/);
 });
 
 test('案内: initialize・ツール説明・llms.txt が「既定は必ずメモ」と tell_user リレーを伝える (#396)', () => serial(async () => {
@@ -333,6 +344,50 @@ test('MCP: ゴミ箱復元では「メモを追加しました」と言わず te
     assert.doesNotMatch(data.memo.tell_user.ja, /以下のメモを追加しました/);
     assert.match(data.memo.agent_instructions.ja, /適用されていません/);
     assert.ok((restored.result!.content?.[0]?.text ?? '').startsWith('ゴミ箱から復元'));
+  } finally {
+    installProductFetchPort(null);
+  }
+}));
+
+test('MCP: 店追加では既存メモを上書きせず「メモを追加しました」と言わない (#396 Bugbot)', () => serial(async () => {
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  installProductFetchPort(regressionFetchPort());
+  try {
+    await createMember('memo-attach');
+    const token = await createToken(['read', 'write'], 'memo-attach');
+
+    const first = await tool(token.token, 'add_item_by_url', {
+      url: AMAZON_PRODUCT_URL,
+      notes: '既存の大事なメモ',
+    });
+    const itemId = (first.result!.structuredContent!.data as { item: { id: number } }).item.id;
+
+    const attached = await tool(token.token, 'add_item_by_url', {
+      item_id: itemId,
+      url: RAKUTEN_URL,
+      notes: 'DEFAULTで送ってしまう上書きメモ',
+    });
+    assert.equal(attached.result?.isError, false, JSON.stringify(attached));
+    const data = attached.result!.structuredContent!.data as {
+      store_attached?: boolean;
+      item: { notes: string | null };
+      stores: unknown[];
+      memo: MemoFollowUp;
+    };
+    assert.equal(data.store_attached, true);
+    assert.ok(data.stores.length >= 2);
+    assert.equal(data.item.notes, '既存の大事なメモ');
+    assert.equal(data.memo.action, 'store_attached');
+    assert.equal(data.memo.relay, true);
+    assert.equal(data.memo.text, '既存の大事なメモ');
+    assert.match(data.memo.tell_user.ja, /店舗ページを追加しました/);
+    assert.doesNotMatch(data.memo.tell_user.ja, /以下のメモを追加しました/);
+    assert.match(data.memo.agent_instructions.ja, /適用されていません/);
+    assert.ok((attached.result!.content?.[0]?.text ?? '').startsWith('店舗ページを追加しました'));
+
+    const got = await tool(token.token, 'get_item', { item_id: itemId });
+    const gotItem = got.result!.structuredContent!.data as { notes?: string | null };
+    assert.equal(gotItem.notes, '既存の大事なメモ');
   } finally {
     installProductFetchPort(null);
   }

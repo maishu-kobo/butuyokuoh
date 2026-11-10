@@ -531,7 +531,7 @@ components:
         field: { type: string, enum: [notes] }
         action:
           type: string
-          enum: [added, updated, cleared, restored, omitted, declined]
+          enum: [added, updated, cleared, restored, store_attached, omitted, declined]
         saved: { type: boolean }
         text: { type: string, nullable: true }
         tell_user:
