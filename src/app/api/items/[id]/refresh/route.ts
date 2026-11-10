@@ -3,6 +3,7 @@ import { assertGuestCapacity, assertGuestSessionActive, GuestError } from '@/lib
 import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { tsukumoCatalogImage } from '@/lib/tsukumo-catalog';
 import { scrapeUrl, deriveScrapeOutcome, isUnusableScrape, ScrapedItem } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { excludesPagePriceCheck } from '@/lib/price-check-items';
@@ -10,6 +11,7 @@ import { excludesPagePriceCheck } from '@/lib/price-check-items';
 interface DbItem {
   id: number;
   user_id: number;
+  name: string;
   url: string;
   current_price: number | null;
   image_url: string | null;
@@ -68,6 +70,19 @@ async function handlePOST(
     const current = db.prepare('SELECT * FROM items WHERE id = ? AND user_id = ?').get(id, user.id) as DbItem | undefined;
     if (!current) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
     if (current.url !== item.url) return NextResponse.json({ error: 'URLが変更されました。もう一度お試しください' }, { status: 409 });
+
+    // 写真だけが取れた場合は、保持する名前・価格と同じ商品の写真か照合する。
+    if (scraped.nameIsFallback && scraped.imageIsFallback) {
+      const sameProduct = /^ツクモの商品（\d{13}）$/.test(current.name)
+        ? current.name === scraped.name
+        : tsukumoCatalogImage(current.url)?.imageUrl === scraped.imageUrl;
+      if (!sameProduct) {
+        scraped = {
+          name: '取得失敗', price: null, imageUrl: null, source: scraped.source,
+          note: '保存済みの品目と同じ商品の写真を確認できなかったため、商品情報を保持しました。',
+        };
+      }
+    }
 
     // スクレイプ結果（成功/失敗）を導出（check-prices と共通ロジック）
     const outcome = deriveScrapeOutcome(scraped);
