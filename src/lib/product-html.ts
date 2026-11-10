@@ -319,6 +319,7 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
 
     if (!price) {
       // Shopifyサイトのセント単位価格（Shopifyかどうかを確認）
+      // codeql[js/incomplete-url-substring-sanitization] — ページ本文の CDN / テーマ痕跡。URL の許可判定ではない。
       const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme');
       if (isShopify) {
         // Shopifyの場合、"price":NNNNNN (5桁以上、セント単位) をJPYとみなす
