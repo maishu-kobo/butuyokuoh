@@ -5,6 +5,7 @@ import { photoGroupSaveWrites } from '@/lib/capture/photo-group-actions';
 import { sourceBadgeClass } from '@/lib/capture/photo-card-view';
 import { displayableItemImageUrl, safeImgSrc } from '@/lib/capture/image-hosts';
 import { linkableHttpUrl } from '@/lib/http-url';
+import { tsukumoCatalogImage } from '@/lib/tsukumo-catalog';
 
 import { useId, useState, useRef, type ReactNode } from 'react';
 import { Item, Category, ComparisonGroup } from '@/types';
@@ -51,6 +52,7 @@ const auxiliaryActionClass = 'text-gray-600 hover:text-blue-700 focus:text-blue-
 
 export default function ItemCard({ item, onUpdate, onDelete, categories = [], comparisonGroups = [], isLowestPrice = false, heading, extra, info, displayImageUrl, groupMemberIds, offerPriceRefresh = true, shopCount, shopTags }: ItemCardProps) {
   const { isGuest } = useAuth();
+  const [unavailableCatalogImage, setUnavailableCatalogImage] = useState<string | null>(null);
   const [showChart, setShowChart] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -240,12 +242,15 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
         ? '商品ページを開く'
         : `${storeLabel}で開く`;
   const productTitle = heading || item.name;
-  const shownImage = displayableItemImageUrl(
+  const storedImage = displayableItemImageUrl(
     displayImageUrl !== undefined ? displayImageUrl : item.image_url,
   );
+  const catalogImage = displayImageUrl === undefined && !storedImage ? tsukumoCatalogImage(item.url)?.imageUrl : null;
+  const shownImage = storedImage || (catalogImage !== unavailableCatalogImage ? catalogImage : null);
   const imageBody = shownImage ? (
     <img
       src={shownImage}
+      onError={catalogImage ? () => setUnavailableCatalogImage(catalogImage) : undefined}
       alt={productTitle}
       loading="lazy"
       decoding="async"

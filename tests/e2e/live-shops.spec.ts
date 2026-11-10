@@ -105,3 +105,21 @@ test('live Rakuten EUC-JP product is readable on add, preview and refresh of a g
   await expect(card.getByPlaceholder('商品名', { exact: true })).toHaveValue(item.name);
   await card.screenshot({ path: 'test-results/rakuten-encoding.png' });
 });
+
+test('live Tsukumo registration displays the same image as the shop for item 4981254057384', async ({ page }) => {
+  const url = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+  const expectedImage = 'https://cdn.tsukumo.co.jp/image/item/4981254057384_1.jpg';
+  await page.goto('/');
+  await page.getByRole('button', { name: 'ゲストで試す', exact: true }).click();
+  await page.getByRole('button', { name: '新しいアイテムを追加' }).click();
+  await page.getByPlaceholder('https://www.amazon.co.jp/...').fill(url);
+  await page.getByRole('button', { name: '追加', exact: true }).click();
+  const image = page.locator('a[href="' + url + '"] img');
+  await expect(image).toBeVisible({ timeout: 30_000 });
+  await page.reload();
+  await expect(image).toHaveAttribute('src', expectedImage);
+  await expect.poll(() => image.evaluate(el => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  const card = image.locator('xpath=ancestor::div[contains(@class,"shadow-md")][1]');
+  await expect(card.getByRole('heading')).toHaveText(/HD-TDA4U3-B$|^ツクモの商品（4981254057384）$/);
+  await card.screenshot({ path: 'test-results/tsukumo-374-card.png' });
+});

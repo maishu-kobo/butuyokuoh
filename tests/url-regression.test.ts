@@ -95,6 +95,48 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
     const denied = await call(preview, 'POST', '/api/items/preview', { url: 'http://127.0.0.1/secret' });
     assert.equal(denied.status, 400, denied.text);
 
+    const tsukumo = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+    const tsukumoImage = 'https://cdn.tsukumo.co.jp/image/item/4981254057384_1.jpg';
+    const imageOnly = await call(items, 'POST', '/api/items', { url: tsukumo });
+    assert.equal(imageOnly.status, 201, imageOnly.text);
+    const partial = bodyOf(imageOnly.json);
+    assert.equal(partial.image_url, tsukumoImage);
+    assert.equal(partial.url, tsukumo);
+    assert.equal(partial.current_price, null);
+    assert.match(String(partial.name), /4981254057384/);
+    database.prepare('UPDATE items SET name = ?, current_price = ?, image_url = NULL WHERE id = ?')
+      .run('CANVIO DESKTOP HD-TDA4U3-B', 24981, partial.id);
+    const photoRecovered = await call(refresh, 'POST', `/api/items/${partial.id}/refresh`, undefined, { id: String(partial.id) });
+    assert.equal(photoRecovered.status, 200, photoRecovered.text);
+    assert.equal(bodyOf(photoRecovered.json).image_url, tsukumoImage);
+    assert.equal(bodyOf(photoRecovered.json).name, 'CANVIO DESKTOP HD-TDA4U3-B');
+    assert.equal(bodyOf(photoRecovered.json).current_price, 24981);
+    const editedImage = 'https://cdn.example.com/my-hdd.jpg';
+    database.prepare('UPDATE items SET image_url = ? WHERE id = ?').run(editedImage, partial.id);
+    const withExistingImage = await call(refresh, 'POST', `/api/items/${partial.id}/refresh`, undefined, { id: String(partial.id) });
+    assert.equal(withExistingImage.status, 200, withExistingImage.text);
+    const refreshed = bodyOf(withExistingImage.json);
+    assert.equal(refreshed.name, 'CANVIO DESKTOP HD-TDA4U3-B');
+    assert.equal(refreshed.image_url, editedImage);
+    assert.match(String(refreshed.note), /商品名と価格は取得できませんでした/);
+    assert.equal(refreshed.scrape_error, refreshed.note);
+    assert.doesNotMatch(String(refreshed.note), /商品番号で表示/);
+    // 商品名と価格は更新できても、ページに写真がなければ編集済みの画像を維持する。
+    port.installProductFetchPort({ lookup(target) {
+      if (target.href !== tsukumo) return fixtures.regressionLookup(target);
+      return { status: 200, contentType: 'text/html', body: Buffer.from('<title>CANVIO HDD</title><p>販売価格: 24,000円</p>') };
+    } });
+    const fromPage = await call(refresh, 'POST', `/api/items/${partial.id}/refresh`, undefined, { id: String(partial.id) });
+    assert.equal(fromPage.status, 200, fromPage.text);
+    const details = bodyOf(fromPage.json);
+    assert.equal(details.name, 'CANVIO HDD');
+    assert.equal(details.current_price, 24000);
+    assert.equal(details.image_url, editedImage);
+    port.installProductFetchPort(fixtures.regressionFetchPort());
+    // A missing CDN image never turns a failed page into a saved item.
+    const unavailable = await call(preview, 'POST', '/api/items/preview', { url: 'https://shop.tsukumo.co.jp/goods/0406621759011/' });
+    assert.ok(unavailable.status >= 400, unavailable.text);
+
     const pitaka = await call(preview, 'POST', '/api/items/preview', { url: fixtures.PITAKA_URL });
     assert.equal(pitaka.status, 200, pitaka.text);
     assert.deepEqual(bodyOf(pitaka.json), {
@@ -220,6 +262,10 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
     assert.equal(memberFail.status, 422, memberFail.text);
     assert.equal(bodyOf(memberFail.json).code, 'SCRAPE_FAILED');
     assert.equal(database.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(member.id, fixtures.EMPTY_URL), undefined);
+    const memberTsukumo = await call(preview, 'POST', '/api/items/preview', { url: tsukumo });
+    assert.equal(memberTsukumo.status, 200, memberTsukumo.text);
+    assert.equal(bodyOf(memberTsukumo.json).image_url, tsukumoImage);
+    assert.equal(bodyOf(memberTsukumo.json).price, null);
     const deadShort = 'https://amzn.asia/d/expand-fail';
     const deadPreview = await call(preview, 'POST', '/api/items/preview', { url: deadShort });
     assert.equal(deadPreview.status, 422, deadPreview.text);
@@ -254,5 +300,89 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
   } finally {
     port.installProductFetchPort(null);
     installAuthTestHooks(null);
+  }
+});
+
+test('member registration uses the redirected Tsukumo product number for catalog photos', async () => {
+  const { scrapeUrl } = await import('../src/lib/scraper');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const original = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+  const destination = 'https://shop.tsukumo.co.jp/goods/0406621759011/';
+  const destinationImage = 'https://cdn.tsukumo.co.jp/image/item/0406621759011_1.jpg';
+  let redirectTo = destination;
+  let pageStatus = 200;
+  const requests: string[] = [];
+  installProductFetchPort({ lookup(target) {
+    requests.push(target.href);
+    if (target.href === original) return { status: 301, location: redirectTo };
+    if (target.href === redirectTo) {
+      return { status: pageStatus, contentType: 'text/html', body: Buffer.from('<title>Monitor-B｜ツクモ公式通販サイト</title><p>販売価格: 10,000円</p>') };
+    }
+    return { status: 200, contentType: 'image/jpeg' };
+  } });
+  try {
+    for (pageStatus of [200, 503]) {
+      requests.length = 0;
+      const item = await scrapeUrl(original);
+      assert.equal(item.name, pageStatus === 200 ? 'Monitor-B' : 'ツクモの商品（0406621759011）');
+      assert.equal(item.price, pageStatus === 200 ? 10000 : null);
+      assert.equal(item.imageUrl, destinationImage);
+      assert.deepEqual(requests, [original, destination, destinationImage]);
+    }
+    for (redirectTo of ['https://other.example/goods/0406621759011/', 'https://shop.tsukumo.co.jp/search/']) {
+      for (pageStatus of [200, 503]) {
+        requests.length = 0;
+        const item = await scrapeUrl(original);
+        assert.equal(item.imageUrl, null);
+        assert.deepEqual(requests, [original, redirectTo]);
+      }
+    }
+  } finally { installProductFetchPort(null); }
+});
+
+test('price-only checks fetch the Tsukumo page without probing the image CDN', async () => {
+  const { scrapeUrl } = await import('../src/lib/scraper');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const url = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+  const requests: string[] = [];
+  let status = 200;
+  installProductFetchPort({
+    lookup(target) {
+      requests.push(target.href);
+      return { status, contentType: 'text/html', body: Buffer.from('<title>HDD</title><p>販売価格: 24,981円</p>') };
+    },
+  });
+  try {
+    for (status of [200, 503]) {
+      requests.length = 0;
+      const result = await scrapeUrl(url, undefined, 'price');
+      assert.equal(result.price, status === 200 ? 24981 : null);
+      assert.deepEqual(requests, [url]);
+    }
+  } finally { installProductFetchPort(null); }
+});
+
+test('Tsukumo photo recovery only accepts a JPEG from the matching official product path', async () => {
+  const { recoverTsukumoImage } = await import('../src/lib/tsukumo-image');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const url = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+  const image = 'https://cdn.tsukumo.co.jp/image/item/4981254057384_1.jpg';
+  const lookups: string[] = [];
+  let response = { status: 200, contentType: 'image/jpeg' };
+  installProductFetchPort({ lookup(candidate) { lookups.push(candidate.href); return response; } });
+  try {
+    const item = { name: 'CANVIO DESKTOP HD-TDA4U3-B', price: 24981, imageUrl: null, source: 'other', sourceName: 'ツクモ' };
+    for (const invalid of ['https://example.com/goods/4981254057384/', url + 'related/', url.replace('https:', 'http:')]) {
+      assert.equal(await recoverTsukumoImage(invalid), null);
+    }
+    assert.equal(await recoverTsukumoImage(url, { ...item, imageUrl: image }), null);
+    assert.deepEqual(lookups, []);
+    assert.deepEqual(await recoverTsukumoImage(url, item), { ...item, imageUrl: image, imageIsFallback: true });
+    for (response of [{ status: 200, contentType: 'text/html' }, { status: 302, contentType: 'image/jpeg' }, { status: 404, contentType: 'image/jpeg' }]) {
+      assert.equal(await recoverTsukumoImage(url), null);
+    }
+    assert.deepEqual([...new Set(lookups)], [image]);
+  } finally {
+    installProductFetchPort(null);
   }
 });

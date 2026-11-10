@@ -108,8 +108,7 @@ test('empty og:image still finds product image on parent figure#mainimg (tsukumo
   const product = parseProductHtml(html, 'https://shop.tsukumo.co.jp/goods/0406621759011/');
   assert.equal(product.imageUrl, 'https://cdn.tsukumo.co.jp/image/item/0406621759011_1.jpg');
   assert.equal(product.price, 60419);
-  // タイトル末尾の「-B …｜サイト名」は既存のサイト名除去で落ちることがある
-  assert.match(product.name, /34WR55QK/);
+  assert.equal(product.name, 'LG Electronics 34WR55QK-B モニター');
 
   // JSON-LD の image も og が空のときの候補になる
   const fromLd = parseProductHtml(
@@ -124,6 +123,27 @@ test('empty og:image still finds product image on parent figure#mainimg (tsukumo
     parseProductHtml('<title>説明だけ</title><p>画像なし</p>', 'https://shop.example/goods/2').imageUrl,
     null,
   );
+});
+
+test('Tsukumo uses the displayed main photo even when og:image advertises a thumbnail', () => {
+  const url = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+  const thumbnail = 'https://cdn.tsukumo.co.jp/image/item/4981254057384_0.jpg';
+  const main = 'https://cdn.tsukumo.co.jp/image/item/4981254057384_1.jpg';
+  const meta = `<meta property="og:image" content="${thumbnail}">`;
+  const html = `${meta}<img src="/logo.png"><figure id="mainimg"><a><img src="${main}"></a></figure>`;
+  assert.equal(parseProductHtml(html, url).imageUrl, main);
+  assert.equal(parseProductHtml(meta, url).imageUrl, thumbnail);
+  const emptyFigure = `${meta}<figure id="mainimg"></figure><img src="/related.jpg">`;
+  assert.equal(parseProductHtml(emptyFigure, url).imageUrl, thumbnail);
+  assert.equal(parseProductHtml(html, 'https://other.example/product').imageUrl, thumbnail);
+});
+
+test('Tsukumo keeps the model suffix with or without its storefront title', () => {
+  const name = 'BUFFALO バッファロー CANVIO DESKTOP HD-TDA4U3-B';
+  for (const suffix of ['｜ツクモ公式通販サイト', '']) {
+    const html = `<title>${name}${suffix}</title>`;
+    assert.equal(parseProductHtml(html, 'https://shop.tsukumo.co.jp/goods/4981254057384/').name, name);
+  }
 });
 
 test('Apple shop buy pages and installment copy do not become a product price', () => {
