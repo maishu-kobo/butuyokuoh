@@ -21,18 +21,24 @@ export function listAgentComparisonGroups(userId: number, db: Database.Database 
   `).all(userId) as AgentComparisonGroup[];
 }
 
+/** 比較グループ名の検査と整形。create_comparison_group と save_comparison_candidates で共有する。 */
+export function normalizeComparisonGroupName(raw: unknown): string {
+  if (typeof raw !== 'string' || raw.length > 200) {
+    throw new GuestError(400, 'INVALID_INPUT', '比較グループ名は1〜200文字で指定してください');
+  }
+  const name = raw.replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  if (!name) {
+    throw new GuestError(400, 'INVALID_INPUT', '比較グループ名を入力してください');
+  }
+  return name;
+}
+
 export function createAgentComparisonGroup(
   userId: number,
   input: Record<string, unknown>,
   db: Database.Database = getDb(),
 ): AgentComparisonGroup {
-  if (typeof input.name !== 'string' || input.name.length > 200) {
-    throw new GuestError(400, 'INVALID_INPUT', '比較グループ名は1〜200文字で指定してください');
-  }
-  const name = input.name.replace(/[\u0000-\u001f\u007f]/g, '').trim();
-  if (!name) {
-    throw new GuestError(400, 'INVALID_INPUT', '比較グループ名を入力してください');
-  }
+  const name = normalizeComparisonGroupName(input.name);
   // Web で作る手作業グループと同じ既定値（origin=NULL、priority=3）。
   // 所有者や origin はエージェントの引数から受け取らない。
   const result = db.prepare('INSERT INTO comparison_groups (user_id, name) VALUES (?, ?)')

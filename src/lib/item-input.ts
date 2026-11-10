@@ -304,15 +304,15 @@ function urlMatchesCleaned(rowUrl: string, cleanedUrl: string, identity: string 
 }
 
 /**
- * クリーン後 URL（＋楽天 identity）が、リスト / 購入済み / ゴミ箱のどれにあるか。
- * アクティブ行があればゴミ箱より優先する。
+ * クリーン後 URL（＋楽天 identity）と同じ商品ページを指す、その利用者の行をすべて返す（ゴミ箱も含む）。
+ * 「同じ URL」の判定はここだけに置く。古いリストには同じ URL の行が複数あることがある。
  */
-export function findCleanedStoredUrlRegistration(
+export function findCleanedStoredUrlMatches(
   db: Database.Database,
   userId: number,
   cleanedUrl: string,
   excludeItemId?: number,
-): CleanedUrlRegistration {
+): StoredUrlMatch[] {
   const identity = rakutenProductIdentity(cleanedUrl);
   const rows = (
     excludeItemId != null
@@ -324,7 +324,27 @@ export function findCleanedStoredUrlRegistration(
       ).all(userId)
   ) as StoredUrlMatch[];
 
-  const matches = rows.filter((row) => urlMatchesCleaned(row.url, cleanedUrl, identity));
+  return rows.filter((row) => urlMatchesCleaned(row.url, cleanedUrl, identity));
+}
+
+/**
+ * クリーン後 URL（＋楽天 identity）が、リスト / 購入済み / ゴミ箱のどれにあるか。
+ * アクティブ行があればゴミ箱より優先する。
+ */
+export function findCleanedStoredUrlRegistration(
+  db: Database.Database,
+  userId: number,
+  cleanedUrl: string,
+  excludeItemId?: number,
+): CleanedUrlRegistration {
+  return classifyStoredUrlMatches(findCleanedStoredUrlMatches(db, userId, cleanedUrl, excludeItemId));
+}
+
+/**
+ * findCleanedStoredUrlMatches の結果を、リスト / 購入済み / ゴミ箱 / 未登録に振り分ける。
+ * 一致した行を自分でも使う呼び出し側（重複行の検出など）が、品目の表を読み直さずに済むように分けてある。
+ */
+export function classifyStoredUrlMatches(matches: StoredUrlMatch[]): CleanedUrlRegistration {
   if (matches.length === 0) return { kind: 'free' };
 
   const active = matches.find((row) => !row.deleted_at);
