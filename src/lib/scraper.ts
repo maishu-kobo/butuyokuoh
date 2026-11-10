@@ -7,6 +7,7 @@ import { canonicalRakutenAffiliateUrl, rakutenProductIdentity } from './capture/
 import { BlockedTargetError, fetchPublicMember, HttpError, resolvedPublicAddress, type MemberFetchDeps } from './member-fetch';
 import { productFetchDeps } from './product-fetch-port';
 
+import { tsukumoCatalogImage } from './tsukumo-catalog';
 import { recoverTsukumoImage } from './tsukumo-image';
 
 export { HttpError };
@@ -657,7 +658,7 @@ async function scrapeGeneric(sanitizedUrl: string, deps: MemberFetchDeps | undef
   }
 
   try {
-    const response = await fetchWithRetry(sanitizedUrl, {
+    const { response, url: pageUrl } = await fetchPublicMember(sanitizedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
@@ -667,15 +668,17 @@ async function scrapeGeneric(sanitizedUrl: string, deps: MemberFetchDeps | undef
     }, deps);
     const html = await readHtmlResponse(response);
 
-    const item = parseProductHtml(html, sanitizedUrl);
+    // ツクモを経由した転送では、実際に商品情報を取得したページから写真と型番を選ぶ。
+    const tsukumoRedirect = pageUrl !== sanitizedUrl && (tsukumoCatalogImage(sanitizedUrl) || tsukumoCatalogImage(pageUrl));
+    const item = parseProductHtml(html, tsukumoRedirect ? pageUrl : sanitizedUrl);
     if (purpose === 'price' || item.failureCode || item.imageUrl) return item;
-    return await recoverTsukumoImage(sanitizedUrl, isUnusableScrape(item) ? undefined : item) ?? item;
+    return await recoverTsukumoImage(pageUrl, isUnusableScrape(item) ? undefined : item) ?? item;
   } catch (error) {
     if (error instanceof BlockedTargetError) {
       return { name: '無効なURL', price: null, imageUrl: null, source: 'other', sourceName: null };
     }
     if (purpose === 'item') {
-      const recovered = await recoverTsukumoImage(sanitizedUrl);
+      const recovered = await recoverTsukumoImage(error instanceof HttpError ? error.url : sanitizedUrl);
       if (recovered) return recovered;
     }
     console.error('Generic scraping error:', error);

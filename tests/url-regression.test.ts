@@ -303,6 +303,34 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
   }
 });
 
+test('member registration uses the redirected Tsukumo product number for catalog photos', async () => {
+  const { scrapeUrl } = await import('../src/lib/scraper');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const original = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+  const destination = 'https://shop.tsukumo.co.jp/goods/0406621759011/';
+  const destinationImage = 'https://cdn.tsukumo.co.jp/image/item/0406621759011_1.jpg';
+  let pageStatus = 200;
+  const requests: string[] = [];
+  installProductFetchPort({ lookup(target) {
+    requests.push(target.href);
+    if (target.href === original) return { status: 301, location: destination };
+    if (target.href === destination) {
+      return { status: pageStatus, contentType: 'text/html', body: Buffer.from('<title>Monitor-B｜ツクモ公式通販サイト</title><p>販売価格: 10,000円</p>') };
+    }
+    return { status: 200, contentType: 'image/jpeg' };
+  } });
+  try {
+    for (pageStatus of [200, 503]) {
+      requests.length = 0;
+      const item = await scrapeUrl(original);
+      assert.equal(item.name, pageStatus === 200 ? 'Monitor-B' : 'ツクモの商品（0406621759011）');
+      assert.equal(item.price, pageStatus === 200 ? 10000 : null);
+      assert.equal(item.imageUrl, destinationImage);
+      assert.deepEqual(requests, [original, destination, destinationImage]);
+    }
+  } finally { installProductFetchPort(null); }
+});
+
 test('price-only checks fetch the Tsukumo page without probing the image CDN', async () => {
   const { scrapeUrl } = await import('../src/lib/scraper');
   const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
