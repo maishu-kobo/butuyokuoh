@@ -2,6 +2,29 @@
 
 エージェント／作業者向けの進行ログ。仕様の正本ではない。使い方の索引は [README.md](./README.md)。
 
+## 2026-11-10 — 比較中の商品を1回で同じ比較グループへ保存する（#388）
+
+### 決定
+
+- MCP に `save_comparison_candidates` を足した（`src/lib/agent-comparison-candidates.ts`）。引数は `name` と `candidates`（2〜10件。各要素は `url` か `item_id` のどちらか一方、`url` には任意の `name`）。各候補は独立した商品のまま、手作業比較グループ（`origin = NULL`）に入る。REST には足していない（`create_comparison_group` と同じく MCP のみ）。
+- 取得・保存・失敗の記録は新しく書かず、`add_item_by_url` と同じ `prepareStoreMedia` / `insertAgentItem` / `mediaFetchErrors`、グループ作成は `createAgentComparisonGroup` を使う。外部取得はトランザクションの外で逐次、書き込みは 1 つの `immediate` トランザクションで、その中で候補の状態を読み直す。失敗すればグループも商品も所属変更も残らない。
+- 再送の扱いは、表も列も足さず、保存済みの状態から判定する。候補がすべて同じ手作業比較グループに入っていれば、何も書かずに `status: already_saved`（`changed: false`）でそのグループと品目 ID を返す。操作ログ（`comparison_candidates.save`）に残した要求の指紋（整形後のグループ名と候補の組の SHA-256。順序と計測パラメータに依らない）が一致すれば `replayed: true` と `replay_of`（最初の保存の結果）も返す。応答が途切れた再送も、取得中に重なった同じ要求も、この読み直しで 1 回分の保存になる。グループ名だけ変えた再送も 2 つ目のグループを作らない。
+- 既存の商品の扱い: 既登録 URL（リスト上・グループなし）は再取得も重複登録もせずその商品を入れる。候補の一部が既に手作業比較グループにいれば、新しいグループは作らずそのグループへ残りを足す（指定の名前は使わない。応答の `group.created: false`）。別々の比較グループにいる候補同士（409 `CANDIDATES_IN_DIFFERENT_GROUPS`）、同じ商品の店舗比較の店の行（409 `ITEM_IN_STORE_GROUP`）、ゴミ箱（409 `ITEM_TRASHED` / `URL_IN_TRASH`）、購入済み（409 `ITEM_PURCHASED`）は拒否し、移動も復元もしない。登録済みの商品は所属以外（名前・メモ・価格・「エージェントが追加」の印）を変えない。
+- 上限は既存の数え方にそろえた。新規 URL があればその件数分の add / add_url / add_day（`add_item_by_url` と同じ）、取得なしでグループを作るなら add / add_day を 1（`create_comparison_group` と同じ）、拒否と変更なしの再送は消費しない。検査は 認可 → 構文と候補の状態 → レート → 取得 の順で、確実に失敗する要求は外へ取りに行かない。
+- 接続時の案内（initialize の `instructions`）の 2〜3 行目に、日英で保存方法の選び方を置いた（保存を頼まれたときだけ適用。比較候補は `save_comparison_candidates`、同じ商品の店舗比較は `add_item_by_url` の `urls`、独立した商品と「別々に」は `add_item_by_url` を商品ごとに1回）。`add_item_by_url` / `create_comparison_group` の説明と `llms.txt` も同じ基準にそろえた。
+
+### 結果
+
+- テスト: `tests/agent-comparison-candidates.test.ts`（実 `/api/mcp` 経路と Web の `/api/comparison-groups`・`/api/items`。混在保存、1件失敗で何も残さない、再送、取得中の重複要求、取得中の状態変化、既登録 URL・別グループ・ゴミ箱・購入済み、権限・所有者・入力・上限、従来の単品・複数店舗登録、指紋のプロパティテスト）。`tests/e2e/agent.spec.ts` に、MCP で保存した2件が Web の比較の絞り込みに出る確認を足した。
+- 文面: `public/llms.txt`、`docs/features.md`、`CHANGELOG.md`、`/help/agents`、接続カードの頼み方の例。
+
+### 制約・残るもの
+
+- 再送で `replay_of` を返せるのは操作ログの保持期間内（`AGENT_AUDIT_RETENTION_DAYS`）で、その所有者の直近 200 件の保存記録まで。それを過ぎても状態からの判定（`already_saved`、重複なし）は変わらない。
+- 新規 URL の取得は既存の複数店登録と同じく逐次（Amazon の取得はブラウザ起動に進むことがあり、並列にしない）。遅いページが続くとクライアントのタイムアウトを超えうるが、同じ引数の再送で安全に続けられる。
+- Issue の 3（Grok Bot・Codex・Claude Code での同じ会話の検証）は、配備後に coordinator が行う。この作業では実クライアントでの実行はしていない。
+- 「この2台の違いを教えて」で何も保存しないことは、案内とツールの説明で促すだけで、サーバ側では強制できない。実クライアントの検証で確かめる。
+
 ## 2026-11-09 — エージェントからゴミ箱の品目を1件だけ完全削除（#381）
 
 ### 決定

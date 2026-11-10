@@ -296,6 +296,84 @@ test('MCP tools/list and a representative tools/call', async ({ context }) => {
   expect(callBody.result.isError).toBe(false);
 });
 
+test('MCP save_comparison_candidates: two different products land in one comparison group shown on the Web', async ({ page }) => {
+  const api = page.request;
+  const pitakaUrl = 'https://pitakajapan.com/products/magez-grip';
+  const pitakaName = 'MagEZ Grip 3';
+  const rakutenUrl = 'https://item.rakuten.co.jp/crispin/giacometti_fg173_anero/?variantId=43308';
+  const rakutenName = '日本語の商品';
+  const groupName = 'ケースの比較';
+
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'ゲストで試す', exact: true })).toBeVisible({ timeout: 30_000 });
+  await registerMember(api, 'compare');
+  const created = await api.post('/api/agent-tokens', {
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    data: { name: 'compare-e2e', scopes: ['read', 'write'], expiresInDays: 30 },
+  });
+  expect(created.status()).toBe(201);
+  const token = (await created.json()).token as string;
+
+  type SaveResult = {
+    status: string;
+    changed: boolean;
+    group: { id: number; name: string; origin: string | null; item_count: number; created: boolean };
+    candidates: { item_id: number; name: string; result: string }[];
+    item_ids: number[];
+  };
+  const callTool = async (name: string, args: unknown) => {
+    const response = await mcp(api, token, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+    expect(response.status()).toBe(200);
+    const body = await response.json() as { result: { isError: boolean; structuredContent: { data: unknown } } };
+    expect(body.result.isError, JSON.stringify(body)).toBe(false);
+    return body.result.structuredContent.data;
+  };
+
+  // 比較とは関係のない商品を先に1件、独立して登録しておく。
+  await callTool('add_item_by_url', { url: rakutenUrl });
+
+  const args = { name: groupName, candidates: [{ url: amazonUrl }, { url: pitakaUrl }] };
+  const saved = await callTool('save_comparison_candidates', args) as SaveResult;
+  expect(saved.status).toBe('saved');
+  expect(saved.group).toMatchObject({ name: groupName, origin: null, item_count: 2, created: true });
+  expect(saved.candidates.map((entry) => [entry.name, entry.result])).toEqual([
+    [amazonName, 'created'], [pitakaName, 'created'],
+  ]);
+
+  // 応答が途切れたものとして同じ要求を再送しても、重複しない。
+  const retried = await callTool('save_comparison_candidates', args) as SaveResult;
+  expect(retried.status).toBe('already_saved');
+  expect(retried.changed).toBe(false);
+  expect(retried.group.id).toBe(saved.group.id);
+  expect(retried.item_ids).toEqual(saved.item_ids);
+
+  const connection = db();
+  try {
+    const rows = connection.prepare(`
+      SELECT i.name, g.name AS group_name, g.origin FROM items i
+      LEFT JOIN comparison_groups g ON g.id = i.comparison_group_id
+      WHERE i.user_id = (SELECT user_id FROM comparison_groups WHERE id = ?) ORDER BY i.id
+    `).all(saved.group.id);
+    expect(rows).toEqual([
+      { name: rakutenName, group_name: null, origin: null },
+      { name: amazonName, group_name: groupName, origin: null },
+      { name: pitakaName, group_name: groupName, origin: null },
+    ]);
+  } finally {
+    connection.close();
+  }
+
+  // Web: 比較の絞り込みに保存したグループが出て、選ぶと候補の2件だけになる。
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await waitForAuthedHome(page);
+  await expect(page.getByText(rakutenName).first()).toBeVisible();
+  await page.getByRole('button', { name: /検索・フィルター/ }).click();
+  await page.getByRole('button', { name: groupName, exact: true }).click();
+  await expect(page.getByText(amazonName).first()).toBeVisible();
+  await expect(page.getByText(pitakaName).first()).toBeVisible();
+  await expect(page.getByText(rakutenName)).toHaveCount(0);
+});
+
 test('denies revoked/foreign/out-of-scope, password revokes tokens, and rate limit returns 429', async () => {
   const owner = await playwrightRequest.newContext({
     baseURL: origin,
