@@ -306,7 +306,7 @@ function normalizeOptionalId(raw: unknown, field: string): number | null | undef
   return raw;
 }
 
-function requireHttpUrl(raw: unknown): string {
+export function requireHttpUrl(raw: unknown): string {
   if (typeof raw !== 'string' || !raw.trim()) {
     throw new GuestError(400, 'INVALID_INPUT', 'URLは必須です');
   }
@@ -701,7 +701,7 @@ function assertUrlAvailableOrThrow(
   return state.match.id;
 }
 
-function insertAgentItem(
+export function insertAgentItem(
   auth: AgentAuthContext,
   input: {
     name: string;
@@ -763,7 +763,7 @@ function insertAgentItem(
   return { item: getAgentItem(auth.userId, result, db), restoredFromTrash: false };
 }
 
-type PreparedStore = {
+export type PreparedStore = {
   url: string;
   media: ServerItemMedia;
   scrapedName: string | null;
@@ -771,7 +771,7 @@ type PreparedStore = {
 
 export type AgentMediaFetchError = { url: string; code: 'BOT_CHALLENGE' | 'FETCH_FAILED'; message: string };
 
-function mediaFetchErrors(url: string, media: ServerItemMedia): AgentMediaFetchError[] {
+export function mediaFetchErrors(url: string, media: ServerItemMedia): AgentMediaFetchError[] {
   if (url.startsWith('manual://') || media.price != null || media.imageUrl != null) return [];
   return [{
     url,
@@ -808,7 +808,7 @@ function recordMediaFetchFailure(db: Database.Database, userId: number, itemId: 
   }
 }
 
-async function prepareStoreMedia(
+export async function prepareStoreMedia(
   auth: AgentAuthContext,
   url: string,
   mediaOptions: FetchServerItemMediaOptions,
