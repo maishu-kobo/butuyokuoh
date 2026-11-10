@@ -45,7 +45,7 @@ async function checkPrices() {
     try {
       console.log(`Checking: ${item.name.substring(0, 50)}...`);
       
-      const scraped = await scrapeUrl(item.url);
+      const scraped = await scrapeUrl(item.url, undefined, 'price');
 
       // スクレイプ結果（成功/失敗）を導出
       const outcome = deriveScrapeOutcome(scraped);

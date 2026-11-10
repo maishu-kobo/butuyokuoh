@@ -95,6 +95,48 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
     const denied = await call(preview, 'POST', '/api/items/preview', { url: 'http://127.0.0.1/secret' });
     assert.equal(denied.status, 400, denied.text);
 
+    const tsukumo = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+    const tsukumoImage = 'https://cdn.tsukumo.co.jp/image/item/4981254057384_1.jpg';
+    const imageOnly = await call(items, 'POST', '/api/items', { url: tsukumo });
+    assert.equal(imageOnly.status, 201, imageOnly.text);
+    const partial = bodyOf(imageOnly.json);
+    assert.equal(partial.image_url, tsukumoImage);
+    assert.equal(partial.url, tsukumo);
+    assert.equal(partial.current_price, null);
+    assert.match(String(partial.name), /4981254057384/);
+    database.prepare('UPDATE items SET name = ?, current_price = ?, image_url = NULL WHERE id = ?')
+      .run('CANVIO DESKTOP HD-TDA4U3-B', 24981, partial.id);
+    const photoRecovered = await call(refresh, 'POST', `/api/items/${partial.id}/refresh`, undefined, { id: String(partial.id) });
+    assert.equal(photoRecovered.status, 200, photoRecovered.text);
+    assert.equal(bodyOf(photoRecovered.json).image_url, tsukumoImage);
+    assert.equal(bodyOf(photoRecovered.json).name, 'CANVIO DESKTOP HD-TDA4U3-B');
+    assert.equal(bodyOf(photoRecovered.json).current_price, 24981);
+    const editedImage = 'https://cdn.example.com/my-hdd.jpg';
+    database.prepare('UPDATE items SET image_url = ? WHERE id = ?').run(editedImage, partial.id);
+    const withExistingImage = await call(refresh, 'POST', `/api/items/${partial.id}/refresh`, undefined, { id: String(partial.id) });
+    assert.equal(withExistingImage.status, 200, withExistingImage.text);
+    const refreshed = bodyOf(withExistingImage.json);
+    assert.equal(refreshed.name, 'CANVIO DESKTOP HD-TDA4U3-B');
+    assert.equal(refreshed.image_url, editedImage);
+    assert.match(String(refreshed.note), /商品名と価格は取得できませんでした/);
+    assert.equal(refreshed.scrape_error, refreshed.note);
+    assert.doesNotMatch(String(refreshed.note), /商品番号で表示/);
+    // 商品名と価格は更新できても、ページに写真がなければ編集済みの画像を維持する。
+    port.installProductFetchPort({ lookup(target) {
+      if (target.href !== tsukumo) return fixtures.regressionLookup(target);
+      return { status: 200, contentType: 'text/html', body: Buffer.from('<title>CANVIO HDD</title><p>販売価格: 24,000円</p>') };
+    } });
+    const fromPage = await call(refresh, 'POST', `/api/items/${partial.id}/refresh`, undefined, { id: String(partial.id) });
+    assert.equal(fromPage.status, 200, fromPage.text);
+    const details = bodyOf(fromPage.json);
+    assert.equal(details.name, 'CANVIO HDD');
+    assert.equal(details.current_price, 24000);
+    assert.equal(details.image_url, editedImage);
+    port.installProductFetchPort(fixtures.regressionFetchPort());
+    // A missing CDN image never turns a failed page into a saved item.
+    const unavailable = await call(preview, 'POST', '/api/items/preview', { url: 'https://shop.tsukumo.co.jp/goods/0406621759011/' });
+    assert.ok(unavailable.status >= 400, unavailable.text);
+
     const pitaka = await call(preview, 'POST', '/api/items/preview', { url: fixtures.PITAKA_URL });
     assert.equal(pitaka.status, 200, pitaka.text);
     assert.deepEqual(bodyOf(pitaka.json), {
@@ -220,6 +262,10 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
     assert.equal(memberFail.status, 422, memberFail.text);
     assert.equal(bodyOf(memberFail.json).code, 'SCRAPE_FAILED');
     assert.equal(database.prepare('SELECT id FROM items WHERE user_id = ? AND url = ?').get(member.id, fixtures.EMPTY_URL), undefined);
+    const memberTsukumo = await call(preview, 'POST', '/api/items/preview', { url: tsukumo });
+    assert.equal(memberTsukumo.status, 200, memberTsukumo.text);
+    assert.equal(bodyOf(memberTsukumo.json).image_url, tsukumoImage);
+    assert.equal(bodyOf(memberTsukumo.json).price, null);
     const deadShort = 'https://amzn.asia/d/expand-fail';
     const deadPreview = await call(preview, 'POST', '/api/items/preview', { url: deadShort });
     assert.equal(deadPreview.status, 422, deadPreview.text);
@@ -254,5 +300,284 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
   } finally {
     port.installProductFetchPort(null);
     installAuthTestHooks(null);
+  }
+});
+
+test('member registration uses the redirected Tsukumo product number for catalog photos', async () => {
+  const { scrapeUrl } = await import('../src/lib/scraper');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const original = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+  const destination = 'https://shop.tsukumo.co.jp/goods/0406621759011/';
+  const destinationImage = 'https://cdn.tsukumo.co.jp/image/item/0406621759011_1.jpg';
+  let redirectTo = destination;
+  let pageStatus = 200;
+  const requests: string[] = [];
+  installProductFetchPort({ lookup(target) {
+    requests.push(target.href);
+    if (target.href === original) return { status: 301, location: redirectTo };
+    if (target.href === redirectTo) {
+      return { status: pageStatus, contentType: 'text/html', body: Buffer.from('<title>Monitor-B｜ツクモ公式通販サイト</title><p>販売価格: 10,000円</p>') };
+    }
+    return { status: 200, contentType: 'image/jpeg' };
+  } });
+  try {
+    for (pageStatus of [200, 503]) {
+      requests.length = 0;
+      const item = await scrapeUrl(original);
+      assert.equal(item.name, pageStatus === 200 ? 'Monitor-B' : 'ツクモの商品（0406621759011）');
+      assert.equal(item.price, pageStatus === 200 ? 10000 : null);
+      assert.equal(item.imageUrl, destinationImage);
+      assert.deepEqual(requests, [original, destination, destinationImage]);
+    }
+    for (redirectTo of ['https://other.example/goods/0406621759011/', 'https://shop.tsukumo.co.jp/search/']) {
+      for (pageStatus of [200, 503]) {
+        requests.length = 0;
+        const item = await scrapeUrl(original);
+        assert.equal(item.imageUrl, null);
+        assert.deepEqual(requests, [original, redirectTo]);
+      }
+    }
+  } finally { installProductFetchPort(null); }
+});
+
+test('price-only checks fetch the Tsukumo page without probing the image CDN', async () => {
+  const { scrapeUrl } = await import('../src/lib/scraper');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const url = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+  const requests: string[] = [];
+  let status = 200;
+  installProductFetchPort({
+    lookup(target) {
+      requests.push(target.href);
+      return { status, contentType: 'text/html', body: Buffer.from('<title>HDD</title><p>販売価格: 24,981円</p>') };
+    },
+  });
+  try {
+    for (status of [200, 503]) {
+      requests.length = 0;
+      const result = await scrapeUrl(url, undefined, 'price');
+      assert.equal(result.price, status === 200 ? 24981 : null);
+      assert.deepEqual(requests, [url]);
+    }
+  } finally { installProductFetchPort(null); }
+});
+
+test('Tsukumo photo recovery only accepts a JPEG from the matching official product path', async () => {
+  const { recoverTsukumoImage } = await import('../src/lib/tsukumo-image');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const url = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+  const image = 'https://cdn.tsukumo.co.jp/image/item/4981254057384_1.jpg';
+  const lookups: string[] = [];
+  let response = { status: 200, contentType: 'image/jpeg' };
+  installProductFetchPort({ lookup(candidate) { lookups.push(candidate.href); return response; } });
+  try {
+    const item = { name: 'CANVIO DESKTOP HD-TDA4U3-B', price: 24981, imageUrl: null, source: 'other', sourceName: 'ツクモ' };
+    for (const invalid of ['https://example.com/goods/4981254057384/', url + 'related/', url.replace('https:', 'http:')]) {
+      assert.equal(await recoverTsukumoImage(invalid), null);
+    }
+    assert.equal(await recoverTsukumoImage(url, { ...item, imageUrl: image }), null);
+    assert.deepEqual(lookups, []);
+    assert.deepEqual(await recoverTsukumoImage(url, item), { ...item, imageUrl: image, imageIsFallback: true });
+    for (response of [{ status: 200, contentType: 'text/html' }, { status: 302, contentType: 'image/jpeg' }, { status: 404, contentType: 'image/jpeg' }]) {
+      assert.equal(await recoverTsukumoImage(url), null);
+    }
+    assert.deepEqual([...new Set(lookups)], [image]);
+  } finally {
+    installProductFetchPort(null);
+  }
+});
+
+// #374 / PR #376 のレビュー指摘: 転送後に取得できなかったとき、元の商品の公式画像で登録しない。
+// 画像の補完は「最後に検証して接続した URL」を基準にする。
+const REDIRECT_SOURCE = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+const REDIRECT_SOURCE_IMAGE = 'https://cdn.tsukumo.co.jp/image/item/4981254057384_1.jpg';
+const REDIRECT_PRODUCT = 'https://shop.tsukumo.co.jp/goods/0406621759011/';
+const REDIRECT_PRODUCT_IMAGE = 'https://cdn.tsukumo.co.jp/image/item/0406621759011_1.jpg';
+const REDIRECT_NON_PRODUCTS = [
+  'https://other.example/goods/0406621759011/',
+  'https://shop.tsukumo.co.jp/search/',
+  'http://shop.tsukumo.co.jp/goods/0406621759011/',
+];
+
+// 入力は必ず転送する。転送先は失敗し、公式 CDN は両方の商品の画像を返す。
+function redirectFailurePort(state: { destination: string; failure: 'status' | 'exception' }, requests: string[]) {
+  return {
+    lookup(target: URL) {
+      requests.push(target.href);
+      if (target.href === REDIRECT_SOURCE) return { status: 301, location: state.destination };
+      if (target.href === state.destination) {
+        if (state.failure === 'exception') throw new Error('socket hang up');
+        return { status: 503 };
+      }
+      if (target.hostname === 'cdn.tsukumo.co.jp') return { status: 200, contentType: 'image/jpeg' };
+      return undefined;
+    },
+  };
+}
+
+test('guest registration never saves the original Tsukumo photo after a redirect whose destination fails (#374)', async () => {
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const { getDb } = await import('../src/lib/db');
+  const { installAuthTestHooks } = await import('../src/lib/auth');
+  const { startGuest } = await import('../src/lib/guest');
+  const database = getDb();
+  const items = '../src/app/api/items/route.ts';
+  const requests: string[] = [];
+  const state = { destination: REDIRECT_PRODUCT, failure: 'status' as const };
+  const guest = startGuest(undefined, database);
+  // ゲストには見本の品目が最初から入っているので、URL から登録した行だけを見る。
+  const saved = () => database.prepare("SELECT name, url, image_url FROM items WHERE user_id = ? AND url LIKE 'http%'")
+    .all(guest.user.id).map(row => ({ ...(row as { name: string; url: string; image_url: string | null }) }));
+  installProductFetchPort(redirectFailurePort(state, requests));
+  installAuthTestHooks({ user: guest.user });
+  try {
+    for (const destination of REDIRECT_NON_PRODUCTS) {
+      state.destination = destination;
+      requests.length = 0;
+      const response = await call(items, 'POST', '/api/items', { url: REDIRECT_SOURCE });
+      assert.equal(response.status, 502, `${destination} ${response.text}`);
+      assert.equal(bodyOf(response.json).code, 'SCRAPE_FAILED');
+      assert.deepEqual(requests, [REDIRECT_SOURCE, destination]);
+      assert.deepEqual(saved(), []);
+    }
+
+    // 同じ店の別商品へ転送されたときは、転送先の商品番号と画像で登録する。
+    state.destination = REDIRECT_PRODUCT;
+    requests.length = 0;
+    const response = await call(items, 'POST', '/api/items', { url: REDIRECT_SOURCE });
+    assert.equal(response.status, 201, response.text);
+    assert.deepEqual(requests, [REDIRECT_SOURCE, REDIRECT_PRODUCT, REDIRECT_PRODUCT_IMAGE]);
+    assert.deepEqual(saved(), [{
+      name: 'ツクモの商品（0406621759011）', url: REDIRECT_SOURCE, image_url: REDIRECT_PRODUCT_IMAGE,
+    }]);
+    assert.equal(requests.includes(REDIRECT_SOURCE_IMAGE), false);
+  } finally {
+    installProductFetchPort(null);
+    installAuthTestHooks(null);
+  }
+});
+
+test('member registration never returns the original Tsukumo photo after a redirect whose connection breaks (#374)', async () => {
+  const { scrapeUrl } = await import('../src/lib/scraper');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const requests: string[] = [];
+  const state = { destination: REDIRECT_PRODUCT, failure: 'exception' as const };
+  installProductFetchPort(redirectFailurePort(state, requests));
+  try {
+    for (const destination of REDIRECT_NON_PRODUCTS) {
+      state.destination = destination;
+      requests.length = 0;
+      const item = await scrapeUrl(REDIRECT_SOURCE);
+      assert.equal(item.name, '取得失敗', destination);
+      assert.equal(item.imageUrl, null, destination);
+      assert.deepEqual(requests, [REDIRECT_SOURCE, destination]);
+    }
+
+    state.destination = REDIRECT_PRODUCT;
+    requests.length = 0;
+    const item = await scrapeUrl(REDIRECT_SOURCE);
+    assert.equal(item.name, 'ツクモの商品（0406621759011）');
+    assert.equal(item.imageUrl, REDIRECT_PRODUCT_IMAGE);
+    assert.deepEqual(requests, [REDIRECT_SOURCE, REDIRECT_PRODUCT, REDIRECT_PRODUCT_IMAGE]);
+
+    // 定期の価格確認は、転送先で通信が切れても CDN を呼ばない。
+    requests.length = 0;
+    const priceOnly = await scrapeUrl(REDIRECT_SOURCE, undefined, 'price');
+    assert.equal(priceOnly.name, '取得失敗');
+    assert.equal(priceOnly.imageUrl, null);
+    assert.deepEqual(requests, [REDIRECT_SOURCE, REDIRECT_PRODUCT]);
+
+    // 転送を追う前の通信例外は、従来どおり入力した商品の公式画像で登録できる。
+    state.destination = REDIRECT_SOURCE;
+    requests.length = 0;
+    installProductFetchPort({ lookup(target) {
+      requests.push(target.href);
+      if (target.href === REDIRECT_SOURCE) throw new Error('socket hang up');
+      return { status: 200, contentType: 'image/jpeg' };
+    } });
+    const direct = await scrapeUrl(REDIRECT_SOURCE);
+    assert.equal(direct.name, 'ツクモの商品（4981254057384）');
+    assert.equal(direct.imageUrl, REDIRECT_SOURCE_IMAGE);
+    assert.deepEqual(requests, [REDIRECT_SOURCE, REDIRECT_SOURCE_IMAGE]);
+  } finally { installProductFetchPort(null); }
+});
+
+test('member registration does not fall back to the original product when the redirect target cannot be resolved (#374)', async () => {
+  const { scrapeUrl } = await import('../src/lib/scraper');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const pages: string[] = [];
+  const images: string[] = [];
+  let lookups = 0;
+  installProductFetchPort({ lookup(target) { images.push(target.href); return { status: 200, contentType: 'image/jpeg' }; } });
+  try {
+    const item = await scrapeUrl(REDIRECT_SOURCE, {
+      maxRetries: 0,
+      baseDelayMs: 0,
+      timeoutMs: 1000,
+      // 入力の名前解決は通り、転送先の名前解決だけ失敗する。
+      resolve: async () => {
+        if (++lookups > 1) throw new Error('getaddrinfo ENOTFOUND');
+        return [{ address: '8.8.8.8', family: 4 }];
+      },
+      request: async (url) => {
+        pages.push(url.href);
+        return { status: 301, location: REDIRECT_PRODUCT, body: Buffer.alloc(0) };
+      },
+    });
+    assert.equal(item.name, '取得失敗');
+    assert.equal(item.imageUrl, null);
+    assert.deepEqual(pages, [REDIRECT_SOURCE]);
+    assert.deepEqual(images, []);
+  } finally { installProductFetchPort(null); }
+});
+
+test('a retry cannot recover the image of a product already known to redirect (#374)', async () => {
+  const { scrapeUrl } = await import('../src/lib/scraper');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const images: string[] = [];
+  const requests: string[] = [];
+  installProductFetchPort({ lookup(target) {
+    images.push(target.href);
+    return { status: 200, contentType: 'image/jpeg' };
+  } });
+  try {
+    const item = await scrapeUrl(REDIRECT_SOURCE, {
+      maxRetries: 1, baseDelayMs: 0,
+      resolve: async () => [{ address: '8.8.8.8', family: 4 }],
+      request: async (url) => {
+        requests.push(url.href);
+        if (requests.length === 1) return { status: 302, location: REDIRECT_PRODUCT, body: Buffer.alloc(0) };
+        if (url.href === REDIRECT_PRODUCT) return { status: 503, body: Buffer.alloc(0) };
+        throw new Error('connection interrupted');
+      },
+    });
+    assert.deepEqual(requests, [REDIRECT_SOURCE, REDIRECT_PRODUCT, REDIRECT_SOURCE]);
+    assert.equal(item.imageUrl, null);
+    assert.deepEqual(images, []);
+  } finally { installProductFetchPort(null); }
+});
+
+test('a redirect without a reachable destination cannot identify a catalog photo (#374)', async () => {
+  const { fetchPublicPage, PublicPageError } = await import('../src/lib/public-page');
+  const { scrapeUrl } = await import('../src/lib/scraper');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const resolve = async () => [{ address: '8.8.8.8', family: 4 }];
+  for (const location of [REDIRECT_SOURCE, undefined]) {
+    const redirect = { status: 302, location };
+    await assert.rejects(fetchPublicPage(REDIRECT_SOURCE, {
+      resolve, request: async () => ({ ...redirect, html: '' }),
+    }), (err: unknown) => err instanceof PublicPageError && !err.url);
+    const images: string[] = [];
+    installProductFetchPort({ lookup(target) {
+      images.push(target.href);
+      return { status: 200, contentType: 'image/jpeg' };
+    } });
+    try {
+      const item = await scrapeUrl(REDIRECT_SOURCE, {
+        maxRetries: 0, resolve, request: async () => ({ ...redirect, body: Buffer.alloc(0) }),
+      });
+      assert.equal(item.imageUrl, null);
+      assert.deepEqual(images, []);
+    } finally { installProductFetchPort(null); }
   }
 });

@@ -7,6 +7,9 @@ import { canonicalRakutenAffiliateUrl, rakutenProductIdentity } from './capture/
 import { BlockedTargetError, fetchPublicMember, HttpError, resolvedPublicAddress, type MemberFetchDeps } from './member-fetch';
 import { productFetchDeps } from './product-fetch-port';
 
+import { tsukumoCatalogImage } from './tsukumo-catalog';
+import { recoverTsukumoImage } from './tsukumo-image';
+
 export { HttpError };
 export type FetchWithRetryOptions = MemberFetchDeps;
 
@@ -39,6 +42,8 @@ export type ScrapeDeps = MemberFetchDeps & {
 };
 
 export interface ScrapedItem {
+  nameIsFallback?: boolean;
+  imageIsFallback?: boolean;
   name: string;
   price: number | null;
   imageUrl: string | null;
@@ -258,15 +263,17 @@ const PRICE_LATER_NOTE = '価格は取得できませんでした。商品は保
 const CONFIGURATOR_PRICE_NOTE =
   '構成を選ぶページのため単一の価格を取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
 
-export async function scrapeUrl(url: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
-  const result = await scrapeUrlFromPage(url, deps ?? productFetchDeps());
+type ScrapePurpose = 'item' | 'price';
+
+export async function scrapeUrl(url: string, deps?: ScrapeDeps, purpose: ScrapePurpose = 'item'): Promise<ScrapedItem> {
+  const result = await scrapeUrlFromPage(url, deps ?? productFetchDeps(), purpose);
   if (!result.price && !result.note && !isUnusableScrape(result)) {
     result.note = isAppleShopBuyPage(url) ? CONFIGURATOR_PRICE_NOTE : PRICE_LATER_NOTE;
   }
   return result;
 }
 
-async function scrapeUrlFromPage(url: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
+async function scrapeUrlFromPage(url: string, deps: ScrapeDeps | undefined, purpose: ScrapePurpose): Promise<ScrapedItem> {
   // Amazonの短縮リンクの場合、展開を試みる
   if (isAmazonShortUrl(url)) {
     const expandedUrl = await expandShortUrl(url, deps);
@@ -343,7 +350,7 @@ async function scrapeUrlFromPage(url: string, deps?: ScrapeDeps): Promise<Scrape
     };
   }
 
-  return scrapeGeneric(genericValidation.sanitizedUrl, deps);
+  return scrapeGeneric(genericValidation.sanitizedUrl, deps, purpose);
 }
 
 export const AMAZON_BOT_NOTE =
@@ -627,7 +634,7 @@ async function scrapeRakuten(sanitizedUrl: string, deps?: MemberFetchDeps): Prom
   }
 }
 
-async function scrapeGeneric(sanitizedUrl: string, deps?: MemberFetchDeps): Promise<ScrapedItem> {
+async function scrapeGeneric(sanitizedUrl: string, deps: MemberFetchDeps | undefined, purpose: ScrapePurpose): Promise<ScrapedItem> {
   // SSRF対策: fetch直前にホスト名を再検証（ローカルIPをブロック）
   const actualHostname = getHostname(sanitizedUrl);
   if (!actualHostname ||
@@ -646,21 +653,32 @@ async function scrapeGeneric(sanitizedUrl: string, deps?: MemberFetchDeps): Prom
     };
   }
 
+  // 取得に失敗したとき、画像の補完の基準にする URL。HTTP エラーに限らず、接続切断や
+  // タイムアウトでも、転送後は入力した商品へ戻さない。
+  const trace: { url: string | null } = { url: sanitizedUrl };
   try {
-    const response = await fetchWithRetry(sanitizedUrl, {
+    const { response, url: pageUrl } = await fetchPublicMember(sanitizedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
         // Shopifyサイトで日本円価格を取得するためのクッキー
         'Cookie': 'localization=JP; cart_currency=JPY',
       },
-    }, deps);
+    }, { ...deps, trace });
     const html = await readHtmlResponse(response);
 
-    return parseProductHtml(html, sanitizedUrl);
+    // ツクモを経由した転送では、実際に商品情報を取得したページから写真と型番を選ぶ。
+    const tsukumoRedirect = pageUrl !== sanitizedUrl && (tsukumoCatalogImage(sanitizedUrl) || tsukumoCatalogImage(pageUrl));
+    const item = parseProductHtml(html, tsukumoRedirect ? pageUrl : sanitizedUrl);
+    if (purpose === 'price' || item.failureCode || item.imageUrl) return item;
+    return await recoverTsukumoImage(pageUrl, isUnusableScrape(item) ? undefined : item) ?? item;
   } catch (error) {
     if (error instanceof BlockedTargetError) {
       return { name: '無効なURL', price: null, imageUrl: null, source: 'other', sourceName: null };
+    }
+    if (purpose === 'item' && trace.url) {
+      const recovered = await recoverTsukumoImage(trace.url);
+      if (recovered) return recovered;
     }
     console.error('Generic product fetch failed');
     return {
