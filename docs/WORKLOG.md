@@ -2,18 +2,21 @@
 
 エージェント／作業者向けの進行ログ。仕様の正本ではない。使い方の索引は [README.md](./README.md)。
 
-## 2026-11-10 — 誤価格ガード（Apple 構成ページ / 不完全な円断片）（#397）
+## 2026-11-10 — エージェントが商品メモ（notes）を使う（#396）
 
 ### 決定
 
-- テスター報告の MacBook Pro ¥3,000 は、主因が #327（緩い「◯円」フォールバック）で既に止まっていた。再確認で、構成ページでも JSON-LD / `og:price:amount` の 3000 が通る穴と、汎用 HTML の不完全断片（`¥4,` → 4）が残っていた。
-- `apple.com/.../shop/buy-` は構造化データも含めて価格を常に null。`parseYenPrice` で完全な円金額以外を捨て、`fetchServerItemMedia` でも範囲ガードを揃える。
-- AliExpress のパラメータ付き URL（#398）は現行 main で再現せずクローズ（Web / MCP とも正規化・重複・保存を確認）。
+- DB / スキーマは触らず、既存の `items.notes`（`AGENT_NOTES_MAX=2000`、制御文字除去）を使う。notes はスキーマ上任意（欠落で拒否しない）。
+- DEFAULT（強い既定）: 登録時はユーザーがメモに触れなくても会話から ALWAYS メモを書く。ユーザー明示の内容・メモ不要指定を優先。登録前確認なし。
+- 登録成功時は常にサーバ組み立ての `memo.tell_user` を返す。`relay=true` のとき MCP text 先頭にも載せ、そのまま伝える。付け忘れ（`relay=false`）は text 先頭にエージェント向け案内を置き、`update_item` で補ってから with-notes の tell_user を伝える。明示空だけ「メモは付けていません…」。
+- ゴミ箱復元では「追加しました」と言わず、リクエスト notes 未適用を案内（Bugbot Medium 対応）。
+- 店追加（`item_id` / `store_attached`）もメモを上書きせず、「メモを追加しました」と言わない（Bugbot Medium 対応）。
+- 比較候補一括保存へのメモ必須化はスコープ外。
 
 ### 結果
 
-- テスト: `tests/product-fetch.test.ts`（構成ページ + JSON-LD/og、不完全断片）、`tests/apple-config-price.test.ts`（REST / MCP 追加で current_price null）、`tests/url-normalize-aliexpress.test.ts`（Slack 実 URL の正規化）。
-- 関連報告（任意）: `teddyworks.co.jp/products/kensui-kaku-model1` は現行パーサで価格 46,800 を取れる（多バリエーションの Shopify。取得失敗報告は別因の可能性）。楽天 `tfi-shop/tfi-9045` は価格取得失敗報告だが、誤価格の根因（構成ページの数字取り違え）とは別。本 PR では未修正。
+- `src/lib/agent-memo.ts`、REST / MCP の add・notes 付き update、MCP text 先頭表示（relay 時は tell_user、付け忘れはエージェント向け案内）。
+- テスト: `tests/agent-memo.test.ts`（tell_user 両ケース、クリア、復元、店追加、DEFAULT 案内）、e2e `agent.spec.ts`。
 
 ## 2026-11-10 — 商品カード右上の店舗ページボタンを外す（#394）
 
