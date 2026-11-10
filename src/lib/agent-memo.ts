@@ -227,7 +227,7 @@ function buildUpdateFollowUp(text: string | null): AgentMemoFollowUp {
   };
 }
 
-function ignoredNotesHint(requestedNotes: unknown, contextJa: string, contextEn: string): string {
+function ignoredNotesHint(requestedNotes: unknown, contextJa: string): string {
   if (requestedNotes === undefined) return '';
   const requestedText = notesText(requestedNotes);
   if (requestedText) {
@@ -241,7 +241,7 @@ function buildRestoreFollowUp(
   requestedNotes: unknown,
 ): AgentMemoFollowUp {
   const requested = requestedNotes !== undefined;
-  const ignoredHint = ignoredNotesHint(requestedNotes, '復元', 'restore');
+  const ignoredHint = ignoredNotesHint(requestedNotes, '復元');
   const tell_user = existingText
     ? {
       ja: `ゴミ箱から復元しました。いまのメモ：${existingText}。編集・削除したい場合は教えてね`,
@@ -279,7 +279,7 @@ function buildStoreAttachFollowUp(
   requestedNotes: unknown,
 ): AgentMemoFollowUp {
   const requested = requestedNotes !== undefined;
-  const ignoredHint = ignoredNotesHint(requestedNotes, '店追加', 'store attach');
+  const ignoredHint = ignoredNotesHint(requestedNotes, '店追加');
   const tell_user = existingText
     ? {
       ja: `店舗ページを追加しました。いまのメモ：${existingText}。編集・削除したい場合は教えてね`,
