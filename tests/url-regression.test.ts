@@ -309,12 +309,13 @@ test('member registration uses the redirected Tsukumo product number for catalog
   const original = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
   const destination = 'https://shop.tsukumo.co.jp/goods/0406621759011/';
   const destinationImage = 'https://cdn.tsukumo.co.jp/image/item/0406621759011_1.jpg';
+  let redirectTo = destination;
   let pageStatus = 200;
   const requests: string[] = [];
   installProductFetchPort({ lookup(target) {
     requests.push(target.href);
-    if (target.href === original) return { status: 301, location: destination };
-    if (target.href === destination) {
+    if (target.href === original) return { status: 301, location: redirectTo };
+    if (target.href === redirectTo) {
       return { status: pageStatus, contentType: 'text/html', body: Buffer.from('<title>Monitor-B｜ツクモ公式通販サイト</title><p>販売価格: 10,000円</p>') };
     }
     return { status: 200, contentType: 'image/jpeg' };
@@ -327,6 +328,14 @@ test('member registration uses the redirected Tsukumo product number for catalog
       assert.equal(item.price, pageStatus === 200 ? 10000 : null);
       assert.equal(item.imageUrl, destinationImage);
       assert.deepEqual(requests, [original, destination, destinationImage]);
+    }
+    for (redirectTo of ['https://other.example/goods/0406621759011/', 'https://shop.tsukumo.co.jp/search/']) {
+      for (pageStatus of [200, 503]) {
+        requests.length = 0;
+        const item = await scrapeUrl(original);
+        assert.equal(item.imageUrl, null);
+        assert.deepEqual(requests, [original, redirectTo]);
+      }
     }
   } finally { installProductFetchPort(null); }
 });
