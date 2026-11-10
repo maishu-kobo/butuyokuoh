@@ -581,3 +581,40 @@ test('a redirect without a reachable destination cannot identify a catalog photo
     } finally { installProductFetchPort(null); }
   }
 });
+
+test('refresh keeps the saved product when only a different redirected photo is available (#374)', async () => {
+  const { getDb } = await import('../src/lib/db');
+  const { installAuthTestHooks } = await import('../src/lib/auth');
+  const { startGuest } = await import('../src/lib/guest');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const db = getDb();
+  const guest = startGuest(undefined, db).user;
+  const memberId = db.prepare('INSERT INTO users (email, name) VALUES (?, ?)').run('refresh-374@example.test', 'member').lastInsertRowid;
+  const member = db.prepare('SELECT * FROM users WHERE id = ?').get(memberId) as CurrentUser;
+  const savedName = '保存済みのHDD';
+  installProductFetchPort(redirectFailurePort({ destination: REDIRECT_PRODUCT, failure: 'status' }, []));
+  try {
+    for (const user of [guest, member]) {
+      installAuthTestHooks({ user });
+      const id = String(db.prepare('INSERT INTO items (user_id, name, url, current_price) VALUES (?, ?, ?, ?)')
+        .run(user.id, savedName, REDIRECT_SOURCE, 24981).lastInsertRowid);
+      const refresh = () => call('../src/app/api/items/[id]/refresh/route.ts', 'POST', `/api/items/${id}/refresh`, undefined, { id });
+      const response = await refresh();
+      assert.equal(response.status, 200, response.text);
+      const item = bodyOf(response.json);
+      assert.equal(item.name, savedName);
+      assert.equal(item.current_price, 24981);
+      assert.equal(item.image_url, null);
+      assert.match(String(item.note), /同じ商品/);
+      assert.equal(db.prepare('SELECT image_url FROM items WHERE id = ?').pluck().get(id), null);
+
+      // 転送先の商品番号が保存済みであれば、その商品の画像は回復できる。
+      db.prepare('UPDATE items SET name = ? WHERE id = ?').run('ツクモの商品（0406621759011）', id);
+      const matched = await refresh();
+      assert.equal(bodyOf(matched.json).image_url, REDIRECT_PRODUCT_IMAGE);
+    }
+  } finally {
+    installProductFetchPort(null);
+    installAuthTestHooks(null);
+  }
+});
