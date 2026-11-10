@@ -12,7 +12,6 @@ Next.js 16 / React 19 は、古い学習データと違うことがある。迷�
 
 - スキーマは `src/lib/db.ts`。API は `src/app/api/`
 - 単体テストは `tests/*.test.ts`。e2e は `tests/e2e/`
-- `looper/state.md` はループの状態ファイル
 - `data/`（SQLite）と `.env*` は gitignore
 
 ## コマンド
@@ -99,7 +98,7 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 
 始める前に、`git log`、開いている Issue と PR、`npm test` を確認する。同じ失敗を2回したら、再発を防ぐ1行をこのファイルに足す PR を開く。
 
-日付付きの決定・結果・残件は `docs/WORKLOG.md` に追記する（仕様の正本ではない）。
+経緯・進捗・確認結果は PR の説明（と必要なら Issue）に書く。利用者に見える変更は `CHANGELOG.md` の `[Unreleased]` へ。耐久する設計判断だけを、適切な `docs/` の仕様ファイルに残す。`docs/WORKLOG.md` への追記はしない（重複と並行 PR のコンフリクトを避ける）。
 
 <!-- BEGIN:nextjs-agent-rules -->
 
