@@ -15,6 +15,17 @@
 - テスト: `tests/product-fetch.test.ts`（構成ページ + JSON-LD/og、不完全断片）、`tests/apple-config-price.test.ts`（REST / MCP 追加で current_price null）、`tests/url-normalize-aliexpress.test.ts`（Slack 実 URL の正規化）。
 - 関連報告（任意）: `teddyworks.co.jp/products/kensui-kaku-model1` は現行パーサで価格 46,800 を取れる（多バリエーションの Shopify。取得失敗報告は別因の可能性）。楽天 `tfi-shop/tfi-9045` は価格取得失敗報告だが、誤価格の根因（構成ページの数字取り違え）とは別。本 PR では未修正。
 
+## 2026-11-10 — 商品カード右上の店舗ページボタンを外す（#394）
+
+### 決定
+
+- `ItemCard` 右上のアイコン専用リンクを削除し、「〇〇で開く」テキストボタンだけを店舗ページの専用コントロールとする。画像・タイトルのリンクは従来どおり残す。
+- 単体テストと Playwright で、テキスト付きストア開くリンクが1つ・アイコン専用が0であることを保証する。
+
+### 結果
+
+- 変更: `src/components/ItemCard.tsx`、`tests/item-card-product-link.test.ts`、`tests/e2e/item-card-store-link.spec.ts`、`CHANGELOG.md`。
+
 ## 2026-11-10 — 比較中の商品を1回で同じ比較グループへ保存する（#388）
 
 ### 決定
