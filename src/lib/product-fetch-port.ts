@@ -40,6 +40,16 @@ function activePort(): ProductFetchPort | null {
   return null;
 }
 
+export function productImageHeadFixture(value: string): Response | undefined {
+  const port = activePort();
+  if (!port) return undefined;
+  const fixture = port.lookup(new URL(value));
+  return new Response(null, {
+    status: fixture?.status ?? 404,
+    headers: { 'content-type': fixture?.contentType ?? '' },
+  });
+}
+
 const resolvePublic: PageResolver = async () => PUBLIC_ANSWER;
 
 export function productFetchDeps(): MemberFetchDeps | undefined {

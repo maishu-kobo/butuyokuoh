@@ -45,6 +45,12 @@ export interface MemberFetchDeps {
   timeoutMs?: number;
   resolve?: PageResolver;
   request?: PinnedRequest;
+  /**
+   * 呼び出し側が渡す記録先。失敗の種類（HTTP エラー、接続切断、タイムアウト）によらず、
+   * 最後に検証した URL を残す。転送を追っていなければ入力 URL、追っていれば公開アドレスへ
+   * 解決してから接続した最後の転送先。転送先がまだ解決を通っていない間は null。
+   */
+  trace?: { url: string | null };
 }
 
 const RETRY_DELAY_MULTIPLIERS = [1, 5, 15];
@@ -130,16 +136,22 @@ async function followPublicRedirects(
   urlString: string,
   init: RequestInit | undefined,
   options: MemberFetchDeps & { timeoutMs: number },
+  redirectSources: Set<string>,
 ) {
   let current = new URL(urlString);
   const request = options.request ?? requestPinned;
   const headers = headerRecord(init?.headers);
+  if (options.trace) options.trace.url = redirectSources.has(current.href) ? null : current.href;
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
     const address = await resolvedPublicAddress(current, options.resolve);
+    if (options.trace) options.trace.url = redirectSources.has(current.href) ? null : current.href;
     const timeoutSignal = AbortSignal.timeout(options.timeoutMs);
     const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
     const result = await request(current, address, headers, signal);
     if (result.status >= 300 && result.status < 400) {
+      // 転送元は、再試行中に接続できなくても画像補完の対象に戻さない。
+      redirectSources.add(current.href);
+      if (options.trace) options.trace.url = null;
       if (!result.location || redirects === MAX_REDIRECTS) throw new HttpError(result.status, current.href);
       try {
         current = new URL(result.location, current);
@@ -168,10 +180,11 @@ export async function fetchPublicMember(
   const baseDelayMs = options.baseDelayMs ?? 1000;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   let lastError: Error | null = null;
+  const redirectSources = new Set<string>();
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await followPublicRedirects(url, init, { ...options, timeoutMs });
+      return await followPublicRedirects(url, init, { ...options, timeoutMs }, redirectSources);
     } catch (error) {
       if (error instanceof BlockedTargetError) throw error;
       lastError = error instanceof Error ? error : new Error(String(error));

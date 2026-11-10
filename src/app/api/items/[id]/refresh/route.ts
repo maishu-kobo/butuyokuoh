@@ -10,8 +10,10 @@ import { excludesPagePriceCheck } from '@/lib/price-check-items';
 interface DbItem {
   id: number;
   user_id: number;
+  name: string;
   url: string;
   current_price: number | null;
+  image_url: string | null;
   comparison_group_id: number | null;
 }
 
@@ -68,17 +70,20 @@ async function handlePOST(
     if (!current) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
     if (current.url !== item.url) return NextResponse.json({ error: 'URLが変更されました。もう一度お試しください' }, { status: 409 });
 
-    // スクレイプ結果（成功/失敗）を導出（check-prices と共通ロジック）
-    const outcome = deriveScrapeOutcome(scraped);
-    // ボット挑戦・待機ページなど使えない結果では、既存の商品名・価格・画像を残す。
-    const unusable = isUnusableScrape(scraped);
+    // 保存URLは登録時の転送元かもしれない。写真だけの再取得では保存名の商品番号を照合する。
+    const unconfirmedPhoto = scraped.nameIsFallback && scraped.imageIsFallback && current.name !== scraped.name;
+    const note = unconfirmedPhoto
+      ? '商品名と価格は取得できませんでした。保存済みの品目と同じ商品の写真を確認できなかったため、商品情報を保持しました。'
+      : scraped.note;
+    const outcome = deriveScrapeOutcome({ ...scraped, note });
+    const unusable = unconfirmedPhoto || isUnusableScrape(scraped);
 
     // スクレイピング結果を更新（商品名、価格、画像）
     const updates: string[] = [];
     const values: unknown[] = [];
 
     if (!unusable) {
-      if (scraped.name) {
+      if (scraped.name && !scraped.nameIsFallback) {
         updates.push('name = ?');
         values.push(scraped.name);
       }
@@ -98,7 +103,7 @@ async function handlePOST(
       }
 
       // 画像が取得できた場合
-      if (scraped.imageUrl) {
+      if (scraped.imageUrl && (!scraped.imageIsFallback || !current.image_url)) {
         updates.push('image_url = ?');
         values.push(scraped.imageUrl);
       }
@@ -117,7 +122,7 @@ async function handlePOST(
     db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...values);
 
     const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as Record<string, unknown>;
-    return NextResponse.json({ ...updated, note: scraped.note });
+    return NextResponse.json({ ...updated, note });
   }).immediate();
 }
 
