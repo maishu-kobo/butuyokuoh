@@ -904,6 +904,8 @@ export async function addAgentItemByUrl(
   media_fetch_errors: AgentMediaFetchError[];
   restored_from_trash?: boolean;
   restore_message?: string;
+  /** 既存品目へ店を足したとき true。メモは既存のまま（リクエスト notes は適用しない） */
+  store_attached?: boolean;
 }> {
   rejectAgentClientMediaFields(body);
   const urls = parseAgentProductUrls(body);
@@ -992,9 +994,10 @@ export async function addAgentItemByUrl(
   const quantity = body.quantity !== undefined
     ? normalizeQuantity(body.quantity)
     : (existing ? Number(existing.quantity) || 1 : 1);
-  const notes = body.notes !== undefined
-    ? normalizeNotes(body.notes)
-    : (existing ? ((existing.notes as string | null) ?? null) : null);
+  // 既存品目への店追加ではメモを変えない（DEFAULT ALWAYS の notes 送信で上書きしない。変更は update_item）
+  const notes = existing
+    ? ((existing.notes as string | null) ?? null)
+    : normalizeNotes(body.notes);
   const planned = body.planned_purchase_date !== undefined
     ? (normalizeOptionalDate(body.planned_purchase_date, 'planned_purchase_date') ?? null)
     : (existing ? ((existing.planned_purchase_date as string | null) ?? null) : null);
@@ -1123,8 +1126,11 @@ export async function addAgentItemByUrl(
     (prepared) => prepared.media.price != null || prepared.media.imageUrl != null,
   );
   return {
-    item, stores: item.stores, media_fetched: mediaFetched,
+    item,
+    stores: item.stores,
+    media_fetched: mediaFetched,
     media_fetch_errors: toInsert.flatMap(prepared => mediaFetchErrors(prepared.url, prepared.media)),
+    ...(existing ? { store_attached: true as const } : {}),
   };
 }
 
