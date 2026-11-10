@@ -41,6 +41,19 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 
 作者のエージェントは、`.github/pull_request_template.md` の証拠を PR に書く。「終わった」だけでは完了にしない。`npm test`、`npx tsc --noEmit`、`npm run lint`、`npm run build` は、そのセッションの中で自分で実行し、結果を PR に書く。CI を待つためだけに、実行を終わらせない。
 
+## PR の説明
+
+本文の先頭は 1〜2 文にする。何をする PR か、レビューでよく見る必要があるかを書く。UI が変わるときはスクリーンショットを置く。`Closes #N` は折りたたみの外に残す。
+
+背景、変更、確認手順、テスト結果、リスクは次の折りたたみに入れる。`</summary>` の直後は空行にする。要約の行には、書いたモデル名と、その文面が対応するコミットの短い SHA を書く。レビューで差分が変わったら、先頭の文と折りたたみ（または SHA）を更新する。確認項目の見出しは `.github/pull_request_template.md` から動かさない。
+
+```html
+<details>
+<summary>エージェントによる詳細（モデル名 / コミットの短い SHA 時点）</summary>
+
+</details>
+```
+
 ## 開発の進め方
 
 - 作業は GitHub Issue に載せる。1 Issue につき 1 ブランチ、意味のある単位で小さい PR。
