@@ -480,11 +480,11 @@ components:
         priority: { type: integer, minimum: 1, maximum: 5 }
         quantity: { type: integer, minimum: 1, maximum: 999 }
         notes:
-          type: string
+          type: [string, 'null']
           maxLength: 2000
           description: |
-            商品メモ。登録時は会話の短い要約を自動で入れる（登録前の確認はしない）。
-            成功応答の memo に従いユーザーへ報告する。
+            商品メモ（任意だが登録の既定は必ず入れる。ユーザー未言及でも会話要約。
+            明示指示・メモ不要ならそれに従う。登録前確認なし）。成功応答の memo.tell_user を relay 時はそのまま伝える。
         planned_purchase_date:
           type: string
           pattern: '^\\d{4}-\\d{2}-\\d{2}$'
@@ -507,11 +507,11 @@ components:
         priority: { type: integer, minimum: 1, maximum: 5 }
         quantity: { type: integer, minimum: 1, maximum: 999 }
         notes:
-          type: string
+          type: [string, 'null']
           maxLength: 2000
           description: |
-            商品メモ。登録時は会話の短い要約を自動で入れる（登録前の確認はしない）。
-            成功応答の memo に従いユーザーへ報告する。
+            商品メモ（任意だが登録の既定は必ず入れる。ユーザー未言及でも会話要約。
+            明示指示・メモ不要ならそれに従う。登録前確認なし）。成功応答の memo.tell_user を relay 時はそのまま伝える。
         planned_purchase_date:
           type: string
           pattern: '^\\d{4}-\\d{2}-\\d{2}$'
@@ -520,20 +520,27 @@ components:
         comparison_group_id: { type: integer, minimum: 1 }
     MemoFollowUp:
       type: object
-      required: [field, saved, text, tell_user, ask_edit, agent_instructions]
+      required: [field, action, saved, text, tell_user, relay, ask_edit, agent_instructions]
       description: |
-        登録・メモ更新の成功時に付くエージェント向け事後報告ガイド。
-        ユーザーへメモを見せ、追加・修正があるか聞く。登録前の確認は求めない。
+        登録・メモ更新・ゴミ箱復元の成功時に付く。tell_user はサーバが組み立てたユーザー向け文面。
+        relay が true のときエージェントは tell_user をそのまま伝える。notes は任意だが登録の既定は必ず書く。
       properties:
         field: { type: string, enum: [notes] }
+        action:
+          type: string
+          enum: [added, updated, cleared, restored, omitted, declined]
         saved: { type: boolean }
         text: { type: string, nullable: true }
         tell_user:
           type: object
           required: [ja, en]
+          description: ユーザーへそのまま伝える文面（登録成功時は常に付く）
           properties:
             ja: { type: string }
             en: { type: string }
+        relay:
+          type: boolean
+          description: true のとき tell_user をそのまま伝える。false のときは先に agent_instructions（例: update_item でメモ追加）
         ask_edit:
           type: object
           required: [ja, en]
@@ -595,9 +602,11 @@ components:
         priority: { type: integer, minimum: 1, maximum: 5 }
         quantity: { type: integer, minimum: 1, maximum: 999 }
         notes:
-          type: string
+          type: [string, 'null']
           maxLength: 2000
-          description: 商品メモの追加・修正。送った成功応答には memo ガイドが付く。
+          description: |
+            商品メモの追加・修正・削除（空文字または null で削除）。
+            送った成功応答には memo.tell_user が付き、そのままユーザーへ伝える。
         planned_purchase_date:
           type: string
           nullable: true

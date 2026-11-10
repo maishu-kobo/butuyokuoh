@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import {
   AGENT_MEMO_USAGE_INSTRUCTIONS_EN,
   AGENT_MEMO_USAGE_INSTRUCTIONS_JA,
+  formatAgentToolResultText,
 } from '@/lib/agent-memo';
 import { assertAccessTokenResource, oauthWwwAuthenticate } from '@/lib/agent-oauth';
 import { callAgentToolFromRequest, listAgentToolDescriptors } from '@/lib/agent-tools';
@@ -145,7 +146,8 @@ async function handleToolsCall(id: JsonRpcId, params: unknown, request: NextRequ
       content: [
         {
           type: 'text',
-          text: JSON.stringify(data, null, 2),
+          // 登録・メモ更新では memo.tell_user.ja を先頭に置き、エージェントがそのまま伝えやすくする
+          text: formatAgentToolResultText(data),
         },
       ],
       structuredContent: data,

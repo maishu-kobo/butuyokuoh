@@ -57,7 +57,10 @@ export async function POST(request: NextRequest) {
       auditAction: 'items.add',
     });
     const result = await addAgentItem(auth, body);
-    return NextResponse.json(withAgentNotice(withMemoFollowUp(result, 'add')), {
+    return NextResponse.json(withAgentNotice(withMemoFollowUp(result, {
+      kind: 'add',
+      requestedNotes: body.notes,
+    })), {
       status: 201,
       headers: { 'Cache-Control': 'no-store' },
     });

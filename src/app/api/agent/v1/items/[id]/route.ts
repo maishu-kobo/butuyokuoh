@@ -54,7 +54,7 @@ export async function PATCH(
     // 画像ホストの名前解決は updateAgentItem の中。認証（requireAgentToken）のあとにだけ走る。
     const item = await updateAgentItem(auth, parseId(raw), body);
     const payload = Object.prototype.hasOwnProperty.call(body, 'notes')
-      ? withMemoFollowUp(item, 'update')
+      ? withMemoFollowUp(item, { kind: 'update' })
       : item;
     return NextResponse.json(withAgentNotice(payload), {
       headers: { 'Cache-Control': 'no-store' },
