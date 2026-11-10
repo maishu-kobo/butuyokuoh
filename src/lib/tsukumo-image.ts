@@ -43,6 +43,6 @@ export async function recoverTsukumoImage(url: string, item?: ScrapedItem): Prom
     imageUrl: catalog.imageUrl,
     source: 'other',
     sourceName: 'ツクモ',
-    note: '商品画像を取得しました。商品名と価格は取得できなかったため、商品番号で表示します。「編集」から変更できます。',
+    note: '商品画像を確認しました。商品名と価格は取得できませんでした。「編集」から入力・変更できます。',
   };
 }

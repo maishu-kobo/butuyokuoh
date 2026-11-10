@@ -262,15 +262,17 @@ const PRICE_LATER_NOTE = '価格は取得できませんでした。商品は保
 const CONFIGURATOR_PRICE_NOTE =
   '構成を選ぶページのため単一の価格を取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
 
-export async function scrapeUrl(url: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
-  const result = await scrapeUrlFromPage(url, deps ?? productFetchDeps());
+type ScrapePurpose = 'item' | 'price';
+
+export async function scrapeUrl(url: string, deps?: ScrapeDeps, purpose: ScrapePurpose = 'item'): Promise<ScrapedItem> {
+  const result = await scrapeUrlFromPage(url, deps ?? productFetchDeps(), purpose);
   if (!result.price && !result.note && !isUnusableScrape(result)) {
     result.note = isAppleShopBuyPage(url) ? CONFIGURATOR_PRICE_NOTE : PRICE_LATER_NOTE;
   }
   return result;
 }
 
-async function scrapeUrlFromPage(url: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
+async function scrapeUrlFromPage(url: string, deps: ScrapeDeps | undefined, purpose: ScrapePurpose): Promise<ScrapedItem> {
   // Amazonの短縮リンクの場合、展開を試みる
   if (isAmazonShortUrl(url)) {
     console.log('Detected Amazon short URL, attempting to expand:', url);
@@ -350,7 +352,7 @@ async function scrapeUrlFromPage(url: string, deps?: ScrapeDeps): Promise<Scrape
     };
   }
 
-  return scrapeGeneric(genericValidation.sanitizedUrl, deps);
+  return scrapeGeneric(genericValidation.sanitizedUrl, deps, purpose);
 }
 
 export const AMAZON_BOT_NOTE =
@@ -634,7 +636,7 @@ async function scrapeRakuten(sanitizedUrl: string, deps?: MemberFetchDeps): Prom
   }
 }
 
-async function scrapeGeneric(sanitizedUrl: string, deps?: MemberFetchDeps): Promise<ScrapedItem> {
+async function scrapeGeneric(sanitizedUrl: string, deps: MemberFetchDeps | undefined, purpose: ScrapePurpose): Promise<ScrapedItem> {
   // SSRF対策: fetch直前にホスト名を再検証（ローカルIPをブロック）
   const actualHostname = getHostname(sanitizedUrl);
   if (!actualHostname ||
@@ -665,14 +667,16 @@ async function scrapeGeneric(sanitizedUrl: string, deps?: MemberFetchDeps): Prom
     const html = await readHtmlResponse(response);
 
     const item = parseProductHtml(html, sanitizedUrl);
-    if (item.failureCode || item.imageUrl) return item;
+    if (purpose === 'price' || item.failureCode || item.imageUrl) return item;
     return await recoverTsukumoImage(sanitizedUrl, isUnusableScrape(item) ? undefined : item) ?? item;
   } catch (error) {
     if (error instanceof BlockedTargetError) {
       return { name: '無効なURL', price: null, imageUrl: null, source: 'other', sourceName: null };
     }
-    const recovered = await recoverTsukumoImage(sanitizedUrl);
-    if (recovered) return recovered;
+    if (purpose === 'item') {
+      const recovered = await recoverTsukumoImage(sanitizedUrl);
+      if (recovered) return recovered;
+    }
     console.error('Generic scraping error:', error);
     return {
       name: '取得失敗',

@@ -111,6 +111,16 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
     assert.equal(bodyOf(photoRecovered.json).image_url, tsukumoImage);
     assert.equal(bodyOf(photoRecovered.json).name, 'CANVIO DESKTOP HD-TDA4U3-B');
     assert.equal(bodyOf(photoRecovered.json).current_price, 24981);
+    const editedImage = 'https://cdn.example.com/my-hdd.jpg';
+    database.prepare('UPDATE items SET image_url = ? WHERE id = ?').run(editedImage, partial.id);
+    const withExistingImage = await call(refresh, 'POST', `/api/items/${partial.id}/refresh`, undefined, { id: String(partial.id) });
+    assert.equal(withExistingImage.status, 200, withExistingImage.text);
+    const refreshed = bodyOf(withExistingImage.json);
+    assert.equal(refreshed.name, 'CANVIO DESKTOP HD-TDA4U3-B');
+    assert.equal(refreshed.image_url, editedImage);
+    assert.match(String(refreshed.note), /商品名と価格は取得できませんでした/);
+    assert.equal(refreshed.scrape_error, refreshed.note);
+    assert.doesNotMatch(String(refreshed.note), /商品番号で表示/);
     // A missing CDN image never turns a failed page into a saved item.
     const unavailable = await call(preview, 'POST', '/api/items/preview', { url: 'https://shop.tsukumo.co.jp/goods/0406621759011/' });
     assert.ok(unavailable.status >= 400, unavailable.text);
@@ -279,6 +289,28 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
     port.installProductFetchPort(null);
     installAuthTestHooks(null);
   }
+});
+
+test('price-only checks fetch the Tsukumo page without probing the image CDN', async () => {
+  const { scrapeUrl } = await import('../src/lib/scraper');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const url = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+  const requests: string[] = [];
+  let status = 200;
+  installProductFetchPort({
+    lookup(target) {
+      requests.push(target.href);
+      return { status, contentType: 'text/html', body: Buffer.from('<title>HDD</title><p>販売価格: 24,981円</p>') };
+    },
+  });
+  try {
+    for (status of [200, 503]) {
+      requests.length = 0;
+      const result = await scrapeUrl(url, undefined, 'price');
+      assert.equal(result.price, status === 200 ? 24981 : null);
+      assert.deepEqual(requests, [url]);
+    }
+  } finally { installProductFetchPort(null); }
 });
 
 test('Tsukumo photo recovery only accepts a JPEG from the matching official product path', async () => {
