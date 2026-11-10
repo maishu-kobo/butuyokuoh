@@ -69,10 +69,11 @@ function productAnchors(html: string): string[] {
     .map((match) => match[0]);
 }
 
-test('http product url makes image, title, and store button open the page in a new tab', () => {
+test('http product url makes image, title, and one text store button open the page in a new tab', () => {
   const html = card();
   const anchors = productAnchors(html);
-  assert.ok(anchors.length >= 3, `expected image, title, and store links, got ${anchors.length}`);
+  // 画像・タイトル・「〇〇で開く」テキストボタンの3つ。右上のアイコン専用ボタンは置かない（#394）。
+  assert.equal(anchors.length, 3, `expected image, title, and one store text link, got ${anchors.length}`);
   for (const anchor of anchors) {
     assert.match(anchor, /target="_blank"/);
     assert.match(anchor, /rel="noopener noreferrer"/);
@@ -81,6 +82,9 @@ test('http product url makes image, title, and store button open the page in a n
   assert.match(html, new RegExp(`<a\\b[^>]*href="${productHref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*>[\\s\\S]*?<img\\b`));
   assert.match(html, />Amazonで開く</);
   assert.match(html, /min-h-\[44px\]/);
+  assert.equal((html.match(/>Amazonで開く</g) || []).length, 1);
+  // 右上にあったアイコン専用コントロール（テキスト無し・min-w-[44px]）は残さない。
+  assert.equal(html.includes('min-w-[44px] text-gray-400'), false);
 
   const actionAt = html.indexOf(actionBar);
   assert.ok(actionAt > 0, 'action bar');
