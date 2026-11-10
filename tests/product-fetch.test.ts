@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { isPublicAddress, publicPageUrl, fetchPublicPage, requestPage, MAX_PAGE_BYTES, MAX_AMAZON_PAGE_BYTES, PRODUCT_FETCH_HELP } from '../src/lib/public-page';
+import { isPublicAddress, publicPageUrl, fetchPublicPage, requestPage, PublicPageError, MAX_PAGE_BYTES, MAX_AMAZON_PAGE_BYTES, PRODUCT_FETCH_HELP } from '../src/lib/public-page';
 import { isAppleShopBuyPage, parseProductHtml } from '../src/lib/product-html';
 import { extractAmazonProduct, isAmazonProductPage } from '../src/lib/amazon-product';
 
@@ -113,8 +113,7 @@ test('empty og:image still finds product image on parent figure#mainimg (tsukumo
   const product = parseProductHtml(html, 'https://shop.tsukumo.co.jp/goods/0406621759011/');
   assert.equal(product.imageUrl, 'https://cdn.tsukumo.co.jp/image/item/0406621759011_1.jpg');
   assert.equal(product.price, 60419);
-  // タイトル末尾の「-B …｜サイト名」は既存のサイト名除去で落ちることがある
-  assert.match(product.name, /34WR55QK/);
+  assert.equal(product.name, 'LG Electronics 34WR55QK-B モニター');
 
   // JSON-LD の image も og が空のときの候補になる
   const fromLd = parseProductHtml(
@@ -129,6 +128,27 @@ test('empty og:image still finds product image on parent figure#mainimg (tsukumo
     parseProductHtml('<title>説明だけ</title><p>画像なし</p>', 'https://shop.example/goods/2').imageUrl,
     null,
   );
+});
+
+test('Tsukumo uses the displayed main photo even when og:image advertises a thumbnail', () => {
+  const url = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+  const thumbnail = 'https://cdn.tsukumo.co.jp/image/item/4981254057384_0.jpg';
+  const main = 'https://cdn.tsukumo.co.jp/image/item/4981254057384_1.jpg';
+  const meta = `<meta property="og:image" content="${thumbnail}">`;
+  const html = `${meta}<img src="/logo.png"><figure id="mainimg"><a><img src="${main}"></a></figure>`;
+  assert.equal(parseProductHtml(html, url).imageUrl, main);
+  assert.equal(parseProductHtml(meta, url).imageUrl, thumbnail);
+  const emptyFigure = `${meta}<figure id="mainimg"></figure><img src="/related.jpg">`;
+  assert.equal(parseProductHtml(emptyFigure, url).imageUrl, thumbnail);
+  assert.equal(parseProductHtml(html, 'https://other.example/product').imageUrl, thumbnail);
+});
+
+test('Tsukumo keeps the model suffix with or without its storefront title', () => {
+  const name = 'BUFFALO バッファロー CANVIO DESKTOP HD-TDA4U3-B';
+  for (const suffix of ['｜ツクモ公式通販サイト', '']) {
+    const html = `<title>${name}${suffix}</title>`;
+    assert.equal(parseProductHtml(html, 'https://shop.tsukumo.co.jp/goods/4981254057384/').name, name);
+  }
 });
 
 test('Apple shop buy pages and installment copy do not become a product price', () => {
@@ -230,4 +250,48 @@ test('large Amazon HTML can be registered; beyond its cap keeps complete product
     await assert.rejects(get('/dp/B0HCNJW81Q/normal','www.amazon.co.jp.evil.example'), {message:PRODUCT_FETCH_HELP});
     assert.doesNotMatch(PRODUCT_FETCH_HELP,/大きすぎ|バイト|MiB/);
   } finally { server.closeAllConnections(); server.close(); }
+});
+
+test('a failed fetch reports the last verified URL, never an unverified redirect target (#374)', async () => {
+  const source = 'https://shop.tsukumo.co.jp/goods/4981254057384/';
+  const destination = 'https://shop.tsukumo.co.jp/goods/0406621759011/';
+  const publicAnswer = async () => [{ address: '8.8.8.8', family: 4 }];
+  const failedUrl = async (dependencies: Parameters<typeof fetchPublicPage>[1]) => {
+    try { await fetchPublicPage(source, { timeoutMs: 1000, ...dependencies }); }
+    catch (error) {
+      assert.ok(error instanceof PublicPageError);
+      return error.url;
+    }
+    throw new Error('fetch did not fail');
+  };
+  const redirectThenFail: typeof requestPage = async url => {
+    if (url.href === source) return { status: 301, location: destination, html: '' };
+    throw new Error('socket hang up');
+  };
+
+  // 転送を追っていない失敗は入力 URL。
+  assert.equal(await failedUrl({ resolve: publicAnswer, request: async () => { throw new Error('socket hang up'); } }), source);
+  assert.equal(await failedUrl({ resolve: async () => { throw new Error('getaddrinfo ENOTFOUND'); } }), source);
+  // 転送先へ接続してからの失敗は転送先。
+  assert.equal(await failedUrl({ resolve: publicAnswer, request: redirectThenFail }), destination);
+  assert.equal(await failedUrl({
+    resolve: publicAnswer,
+    request: async url => {
+      if (url.href === source) return { status: 301, location: destination, html: '' };
+      throw new PublicPageError(502, PRODUCT_FETCH_HELP);
+    },
+  }), destination);
+  // 転送先が公開アドレス検査を通る前の失敗は、入力にも転送先にも結び付けない。
+  let lookups = 0;
+  assert.equal(await failedUrl({
+    resolve: async () => {
+      if (++lookups > 1) throw new Error('getaddrinfo ENOTFOUND');
+      return [{ address: '8.8.8.8', family: 4 }];
+    },
+    request: redirectThenFail,
+  }), undefined);
+  assert.equal(await failedUrl({
+    resolve: publicAnswer,
+    request: async () => ({ status: 301, location: 'http://169.254.169.254/latest/meta-data', html: '' }),
+  }), undefined);
 });
