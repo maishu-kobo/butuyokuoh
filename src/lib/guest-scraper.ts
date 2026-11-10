@@ -46,8 +46,9 @@ export async function scrapeGuestUrl(url: string, userId: number) {
     return result;
   } catch (error) {
     if (error instanceof PublicPageError) {
-      if (error.status >= 500) {
-        const recovered = await recoverTsukumoImage(url);
+      // 転送後の失敗で入力した商品の画像を使わない。基準は最後に検証した URL だけ。
+      if (error.status >= 500 && error.url) {
+        const recovered = await recoverTsukumoImage(error.url);
         if (recovered) return recovered;
       }
       throw new GuestError(error.status, 'SCRAPE_FAILED', error.message);
