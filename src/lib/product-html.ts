@@ -1,4 +1,6 @@
+import { Parser } from 'htmlparser2';
 import { isBotChallengedHtml, PRODUCT_FETCH_BLOCKED_HELP } from './public-page';
+import { tsukumoCatalogImage } from './tsukumo-catalog';
 import type { ScrapedItem } from './scraper';
 
 export const PRODUCT_WAITING_HELP = '販売サイトのボット対策による待機ページが返されたため、価格と画像を取得できませんでした。商品ページをブラウザで確認し、時間をおいて再試行するか、別の店のURLを使ってください。商品名を入力して手動で追加することもできます。';
@@ -137,6 +139,35 @@ function extractJsonLdImage(html: string): string | null {
   return null;
 }
 
+function resolveProductImage(src: string | null, pageUrl: string): string | null {
+  if (!src) return null;
+  try {
+    const image = new URL(src, pageUrl);
+    if (image.protocol === 'http:' && pageUrl.startsWith('https:')) image.protocol = 'https:';
+    return ['https:', 'http:'].includes(image.protocol) ? image.href : null;
+  } catch { return null; }
+}
+
+// ツクモの共有用画像は小さいため、商品ページで表示する figure#mainimg の写真を優先する。
+function tsukumoMainImage(html: string, pageUrl: string): string | null {
+  let figureDepth = 0;
+  let image: string | null = null;
+  const parser = new Parser({
+    onopentag(tag, attrs) {
+      if (tag === 'figure' && (figureDepth || attrs.id === 'mainimg')) figureDepth++;
+      if (figureDepth && tag === 'img' && attrs.src?.trim()) {
+        image = resolveProductImage(attrs.src.trim(), pageUrl);
+        if (image) parser.pause();
+      }
+    },
+    onclosetag(tag) {
+      if (tag === 'figure' && figureDepth) figureDepth--;
+    },
+  });
+  parser.end(html);
+  return image;
+}
+
 /**
  * 商品画像 URL の候補。取れなければ null（プレースホルダは作らない）。
  * ツクモのように og:image が空で、id=mainimg が figure 側にあるページ向けに
@@ -194,6 +225,7 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
     };
   }
   const appleBuyPage = isAppleShopBuyPage(sanitizedUrl);
+  const isTsukumoProduct = tsukumoCatalogImage(sanitizedUrl) !== null;
   // タイトルから商品名
   const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
   let name = titleMatch ? titleMatch[1].trim() : '不明な商品';
@@ -205,7 +237,7 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
     .replace(/&amp;/g, '&')                 // &amp; を & に
     .replace(/&quot;/g, '"')                // &quot; を " に
     .replace(/&#39;/g, "'")                 // &#39; を ' に
-    .replace(/\s*[-|–—]\s*[^-|–—]+$/g, '')  // 末尾のサイト名部分を除去 ("- SITE_NAME" など)
+    .replace(isTsukumoProduct ? /\s*[｜|–—-]\s*ツクモ公式通販サイト$/ : /\s*[-|–—]\s*[^-|–—]+$/, '')
     .replace(/\s+/g, ' ')                   // 連続スペースを単一に
     .trim();
 
@@ -354,17 +386,10 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
       ?? firstProductYenMatch(html, /JPY\s*([\d,]+)/gi);
   }
 
-  // 画像。空の og:image は未取得扱い。親要素に main/product がある img も拾う。
-  let imageUrl = extractProductImageUrl(html);
-
-  // Resolve relative/CDN images and prefer HTTPS on secure product pages.
-  if (imageUrl) {
-    try {
-      const image = new URL(imageUrl.replace(/&amp;/g, '&'), sanitizedUrl);
-      if (image.protocol === 'http:' && sanitizedUrl.startsWith('https:')) image.protocol = 'https:';
-      imageUrl = ['https:', 'http:'].includes(image.protocol) ? image.href : null;
-    } catch { imageUrl = null; }
-  }
+  const mainImage = isTsukumoProduct ? tsukumoMainImage(html, sanitizedUrl) : null;
+  const imageUrl = mainImage ?? resolveProductImage(
+    extractProductImageUrl(html)?.replace(/&amp;/g, '&') ?? null, sanitizedUrl,
+  );
 
   // ホスト名からソース名を生成
   const sourceName = hostname.replace(/^www\./, '').split('.')[0];

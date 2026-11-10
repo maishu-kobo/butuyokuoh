@@ -119,5 +119,7 @@ test('live Tsukumo registration displays the same image as the shop for item 498
   await page.reload();
   await expect(image).toHaveAttribute('src', expectedImage);
   await expect.poll(() => image.evaluate(el => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
-  await image.locator('xpath=ancestor::div[contains(@class,"shadow-md")][1]').screenshot({ path: 'test-results/tsukumo-374-card.png' });
+  const card = image.locator('xpath=ancestor::div[contains(@class,"shadow-md")][1]');
+  await expect(card.getByRole('heading')).toHaveText(/HD-TDA4U3-B$|^ツクモの商品（4981254057384）$/);
+  await card.screenshot({ path: 'test-results/tsukumo-374-card.png' });
 });
