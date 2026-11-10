@@ -347,6 +347,18 @@ test('MCP save_comparison_candidates: two different products land in one compari
   expect(retried.group.id).toBe(saved.group.id);
   expect(retried.item_ids).toEqual(saved.item_ids);
 
+  // 同じ候補を別の名前で頼んでも、既存のグループへ足しも移しもせず、2つ目のグループも作らない。
+  const otherName = await mcp(api, token, {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: { name: 'save_comparison_candidates', arguments: { ...args, name: '別の用途' } },
+  });
+  expect(otherName.status()).toBe(200);
+  const otherNameBody = await otherName.json() as { result: { isError: boolean; _meta?: { code?: string } } };
+  expect(otherNameBody.result.isError).toBe(true);
+  expect(otherNameBody.result._meta?.code).toBe('CANDIDATE_IN_OTHER_GROUP');
+
   const connection = db();
   try {
     const rows = connection.prepare(`

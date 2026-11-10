@@ -254,6 +254,13 @@ test('案内: initialize の冒頭・ツール一覧・llms.txt から、比較�
   assert.ok(llms.includes(`"name": "${TOOL}"`));
   assert.match(llms, /Choosing how to save/);
   assert.match(llms, /別々に入れて/);
+  // 上限の説明は、消費のあとの失敗では戻らないことを書く（「拒否は一切消費しない」とは書かない）。
+  assert.doesNotMatch(llms, /Rejected calls and no-change retries cost nothing/);
+  assert.match(llms, /not refunded/);
+  for (const code of ['CANDIDATE_IN_OTHER_GROUP', 'SAVED_REQUEST_CHANGED', 'CANDIDATES_CHANGED', 'URL_AMBIGUOUS']) {
+    assert.ok(llms.includes(code), `llms.txt に ${code} がある`);
+    assert.ok(saveTool.description.includes(code), `ツールの説明に ${code} がある`);
+  }
 }));
 
 test('新規 URL と登録済み ID を1回で同じ手作業比較グループへ保存し、Web の比較表示にも出る', () => serial(async () => {
@@ -438,14 +445,12 @@ test('応答が途切れて同じ要求を再送しても、グループも商�
     assert.deepEqual(await rateUsed(auth.record.id), rateAfterFirst, '再送は上限を消費しない');
     assert.equal(auditRows(database, auth.record.id).length, 1);
 
-    // グループ名だけ変えて送り直しても、同じ候補の組を別のグループに重複させない。
-    const renamed = saved(await tool(auth.token, TOOL, { ...args, name: 'イヤホン比較（言い換え）' }));
-    assert.equal(renamed.status, 'already_saved');
-    assert.equal(renamed.changed, false);
-    assert.equal(renamed.replayed, false);
-    assert.equal(renamed.group.id, first.group.id);
-    assert.equal(renamed.group.name, 'イヤホンの比較', '既存グループの名前は変えない');
+    // グループ名だけ変えた要求は別の依頼。同じ候補を2つ目のグループへ重複させず、既存のグループにも触らない。
+    const renamed = failure(await tool(auth.token, TOOL, { ...args, name: 'イヤホン比較（言い換え）' }));
+    assert.equal(renamed.code, 'CANDIDATE_IN_OTHER_GROUP', renamed.text);
+    assert.match(renamed.text, /イヤホンの比較/);
     assert.deepEqual(snapshot(database, owner.id), afterFirst);
+    assert.deepEqual(await rateUsed(auth.record.id), rateAfterFirst);
   });
 }));
 
@@ -527,9 +532,9 @@ test('既登録 URL・別グループ所属・ゴミ箱・購入済みの候補�
     assert.deepEqual(await rateUsed(auth.record.id), { add: 1, add_url: 0, add_day: 1 });
     const groupA = reused.group.id;
 
-    // 候補の一部が既に手作業比較グループにいる: そのグループへ残りを足す。既存の所属は動かさない。
+    // 候補の一部が、指定と同じ名前の手作業比較グループにいる: そのグループへ残りを足す。既存の所属は動かさない。
     const joined = saved(await tool(auth.token, TOOL, {
-      name: '別名の比較', candidates: [{ item_id: registeredId }, { url: AMAZON_PRODUCT_URL }],
+      name: ' 既登録を含む比較 ', candidates: [{ item_id: registeredId }, { url: AMAZON_PRODUCT_URL }],
     }));
     assert.equal(joined.status, 'saved');
     assert.equal(joined.changed, true);
@@ -557,6 +562,8 @@ test('既登録 URL・別グループ所属・ゴミ箱・購入済みの候補�
     const refusals: { candidates: unknown[]; code: string; text: RegExp }[] = [
       // 別々の手作業比較グループにいる候補同士: どちらも移動しない。
       { candidates: [{ item_id: registeredId }, { item_id: inOtherGroupId }], code: 'CANDIDATES_IN_DIFFERENT_GROUPS', text: /別の比較/ },
+      // 指定と違う名前のグループにいる候補: そのグループへ足しも、そこから移しもしない。
+      { candidates: [{ item_id: registeredId }, { item_id: freeId }], code: 'CANDIDATE_IN_OTHER_GROUP', text: /候補1.*既登録を含む比較/ },
       // 同じ商品の店舗比較（photo）の店の行は、手作業比較へ移さない。
       { candidates: [{ item_id: freeId }, { item_id: storeRowId }], code: 'ITEM_IN_STORE_GROUP', text: /候補2/ },
       // ゴミ箱の ID・ゴミ箱にだけある URL は復元しない。
@@ -647,6 +654,366 @@ test('権限・所有者・入力・登録件数の上限は既存の決まり�
     const dailyLimited = await tool(daily.token, TOOL, { name: '日次上限', candidates: valid });
     assert.equal(dailyLimited.error?.data?.code, 'AGENT_RATE_LIMITED');
     assert.deepEqual(snapshot(database, owner.id), untouched);
+  });
+}));
+
+test('指定した名前のグループだけを使う: 別の名前のグループにいる候補は 409、名前が同じだけの無関係なグループには入れない', () => serial(async () => {
+  const { fetched, port } = recordingPort();
+  await withPort(port, async () => {
+    const owner = await createMember('cc-named');
+    const auth = await createToken(['read', 'write'], 'cc-named');
+    const database = await db();
+    const a = insertItem(database, owner.id, '候補A', 'https://example.com/products/named-a');
+    const b = insertItem(database, owner.id, '候補B', 'https://example.com/products/named-b');
+
+    const commute = saved(await tool(auth.token, TOOL, { name: '通勤用', candidates: [{ item_id: a }, { item_id: b }] }));
+    const afterCommute = snapshot(database, owner.id);
+    const rateAfterCommute = await rateUsed(auth.record.id);
+
+    // A + C を「別用途」で: C を「通勤用」へ足さない。A を移さない。新しいグループも作らない。
+    const refused = failure(await tool(auth.token, TOOL, {
+      name: '別用途', candidates: [{ item_id: a }, { url: PITAKA_URL }],
+    }));
+    assert.equal(refused.code, 'CANDIDATE_IN_OTHER_GROUP', refused.text);
+    assert.match(refused.text, /候補1/);
+    assert.match(refused.text, /通勤用/);
+    assert.match(refused.text, /update_item/);
+    assert.match(refused.text, /何も保存・変更していません/);
+    assert.deepEqual(snapshot(database, owner.id), afterCommute);
+    assert.deepEqual(fetched, [], '拒否が決まっている要求は取得しない');
+    assert.deepEqual(await rateUsed(auth.record.id), rateAfterCommute);
+    assert.equal(auditRows(database, auth.record.id).length, 1);
+
+    // 同じ名前（整形後）を指定すれば、そのグループへ足す。
+    const joined = saved(await tool(auth.token, TOOL, {
+      name: '  通勤用 ', candidates: [{ item_id: a }, { url: PITAKA_URL }],
+    }));
+    assert.deepEqual(
+      { id: joined.group.id, created: joined.group.created, item_count: joined.group.item_count },
+      { id: commute.group.id, created: false, item_count: 3 },
+    );
+    assert.deepEqual(joined.candidates.map((entry) => entry.result), ['already_in_group', 'created']);
+
+    // 候補がどのグループにもいなければ、同じ名前の無関係なグループがあっても、そこへは入れない。
+    const d = insertItem(database, owner.id, '候補D', 'https://example.com/products/named-d');
+    const e = insertItem(database, owner.id, '候補E', 'https://example.com/products/named-e');
+    const fresh = saved(await tool(auth.token, TOOL, { name: '通勤用', candidates: [{ item_id: d }, { item_id: e }] }));
+    assert.equal(fresh.group.created, true);
+    assert.notEqual(fresh.group.id, commute.group.id);
+    assert.equal(fresh.group.item_count, 2);
+    const members = database.prepare(
+      'SELECT id FROM items WHERE user_id = ? AND comparison_group_id = ? ORDER BY id',
+    ).all(owner.id, commute.group.id) as { id: number }[];
+    assert.equal(members.length, 3, '無関係な同名グループの中身は変わらない');
+    assert.ok(!members.some((row) => row.id === d || row.id === e));
+  });
+}));
+
+test('再送は保存記録で判定する: 利用者があとで外した・消した内容を巻き戻さず、名前の変更や追加はそのまま返す', () => serial(async () => {
+  const { fetched, port } = recordingPort();
+  await withPort(port, async () => {
+    const owner = await createMember('cc-history');
+    const auth = await createToken(['read', 'write'], 'cc-history');
+    const database = await db();
+    const existingId = insertItem(database, owner.id, '登録済み', 'https://example.com/products/history-b');
+    const args = { name: '履歴の比較', candidates: [{ url: PITAKA_URL }, { item_id: existingId }] };
+    const first = saved(await tool(auth.token, TOOL, args));
+    const createdId = first.candidates[0].item_id;
+
+    // 保存記録が古くなっても（間に多くの保存が挟まっても）、件数では切らずに見つける。
+    const insertAudit = database.prepare(
+      "INSERT INTO agent_audit_log (token_id, user_id, action, meta) VALUES (?, ?, 'comparison_candidates.save', ?)",
+    );
+    for (let index = 0; index < 250; index += 1) {
+      insertAudit.run(auth.record.id, owner.id, JSON.stringify({ request_fingerprint: `other-${index}`, group_id: 1, results: [] }));
+    }
+    insertAudit.run(auth.record.id, owner.id, 'not json');
+
+    // 利用者がグループ名を変え、別の商品を足したあとの再送: 何も書かず、今の名前で返す。
+    database.prepare('UPDATE comparison_groups SET name = ? WHERE id = ?').run('改名した比較', first.group.id);
+    insertItem(database, owner.id, 'あとから足した商品', 'https://example.com/products/history-extra', { group: first.group.id });
+    const edited = snapshot(database, owner.id);
+    const replay = saved(await tool(auth.token, TOOL, args));
+    assert.equal(replay.status, 'already_saved');
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(
+      { id: replay.group.id, name: replay.group.name, item_count: replay.group.item_count },
+      { id: first.group.id, name: '改名した比較', item_count: 3 },
+    );
+    assert.deepEqual(replay.item_ids, first.item_ids);
+    assert.deepEqual(snapshot(database, owner.id), edited);
+
+    // 利用者が両方をグループから外したあとで、遅れて届いた同じ要求: 2つ目のグループを作らない。
+    for (const itemId of first.item_ids) {
+      const removed = await tool(auth.token, 'update_item', { item_id: itemId, comparison_group_id: null });
+      assert.equal(removed.result?.isError, false, JSON.stringify(removed));
+    }
+    const ungrouped = snapshot(database, owner.id);
+    const rateBefore = await rateUsed(auth.record.id);
+    const fetchedBefore = fetched.length;
+    const reordered = { name: ' 履歴の比較 ', candidates: [{ item_id: existingId }, { url: `${PITAKA_URL}?utm_source=retry` }] };
+    for (const retry of [args, reordered]) {
+      const diverged = failure(await tool(auth.token, TOOL, retry));
+      assert.equal(diverged.code, 'SAVED_REQUEST_CHANGED', diverged.text);
+      assert.match(diverged.text, /何も保存・変更していません/);
+      assert.deepEqual(snapshot(database, owner.id), ungrouped, '手作業の変更を巻き戻さない');
+    }
+    assert.equal(fetched.length, fetchedBefore);
+    assert.deepEqual(await rateUsed(auth.record.id), rateBefore);
+    assert.equal(
+      auditRows(database, auth.record.id).filter((row) => row.meta.includes(`"group_id":${first.group.id},`)).length,
+      1,
+      '成功の記録は最初の1件だけ',
+    );
+
+    // 記録した品目が消され、同じ URL が別の行として同じグループに入り直していても、別の ID を
+    // 最初の保存の結果として返さない。
+    database.prepare('UPDATE items SET comparison_group_id = ? WHERE id = ?').run(first.group.id, existingId);
+    database.prepare('DELETE FROM price_history WHERE item_id = ?').run(createdId);
+    database.prepare('DELETE FROM items WHERE id = ?').run(createdId);
+    const replacementId = insertItem(database, owner.id, '入れ直した商品', PITAKA_URL, { group: first.group.id });
+    assert.notEqual(replacementId, createdId);
+    const replaced = snapshot(database, owner.id);
+    const stale = failure(await tool(auth.token, TOOL, args));
+    assert.equal(stale.code, 'SAVED_REQUEST_CHANGED', stale.text);
+    assert.deepEqual(snapshot(database, owner.id), replaced);
+  });
+}));
+
+test('外部取得の最中に既存の候補が別グループへ移った・外れた・別の行に替わったら、書き先を変えずに 409', () => serial(async () => {
+  const owner = await createMember('cc-moved');
+  const database = await db();
+  const NAME = '取得中に変わる比較';
+
+  type Scenario = { label: string; setup: () => { candidates: unknown[]; mutate: () => void } };
+  const scenarios: Scenario[] = [
+    {
+      label: '同じ名前の別グループへ移った',
+      setup: () => {
+        const groupA = insertGroup(database, owner.id, NAME);
+        const groupB = insertGroup(database, owner.id, NAME);
+        const itemId = insertItem(database, owner.id, '移る商品', 'https://example.com/products/moved-1', { group: groupA });
+        return {
+          candidates: [{ item_id: itemId }, { url: PITAKA_URL }],
+          mutate: () => { database.prepare('UPDATE items SET comparison_group_id = ? WHERE id = ?').run(groupB, itemId); },
+        };
+      },
+    },
+    {
+      label: 'グループから外れた',
+      setup: () => {
+        const groupA = insertGroup(database, owner.id, NAME);
+        const itemId = insertItem(database, owner.id, '外れる商品', 'https://example.com/products/moved-2', { group: groupA });
+        return {
+          candidates: [{ item_id: itemId }, { url: PITAKA_URL }],
+          mutate: () => { database.prepare('UPDATE items SET comparison_group_id = NULL WHERE id = ?').run(itemId); },
+        };
+      },
+    },
+    {
+      label: 'グループなしの候補が別のグループへ入った',
+      setup: () => {
+        const groupB = insertGroup(database, owner.id, NAME);
+        const itemId = insertItem(database, owner.id, '入る商品', 'https://example.com/products/moved-3');
+        return {
+          candidates: [{ item_id: itemId }, { url: PITAKA_URL }],
+          mutate: () => { database.prepare('UPDATE items SET comparison_group_id = ? WHERE id = ?').run(groupB, itemId); },
+        };
+      },
+    },
+    {
+      label: 'URL の候補が別の行に替わった',
+      setup: () => {
+        const url = 'https://example.com/products/moved-4';
+        const itemId = insertItem(database, owner.id, '替わる商品', url);
+        return {
+          candidates: [{ url }, { url: PITAKA_URL }],
+          mutate: () => {
+            database.prepare('DELETE FROM items WHERE id = ?').run(itemId);
+            insertItem(database, owner.id, '替わったあとの商品', url);
+          },
+        };
+      },
+    },
+  ];
+
+  for (const [index, scenario] of scenarios.entries()) {
+    await setTestUser(owner);
+    const auth = await createToken(['read', 'write'], `cc-moved-${index}`);
+    const { candidates, mutate } = scenario.setup();
+    let afterMutation: ReturnType<typeof snapshot> | null = null;
+    const { fetched, port } = recordingPort(() => {
+      if (afterMutation) return;
+      mutate();
+      afterMutation = snapshot(database, owner.id);
+    });
+    await withPort(port, async () => {
+      const failed = failure(await tool(auth.token, TOOL, { name: NAME, candidates }));
+      assert.equal(failed.code, 'CANDIDATES_CHANGED', `${scenario.label}: ${failed.text}`);
+      assert.match(failed.text, /何も保存・変更していません/);
+      assert.ok(fetched.length > 0, `${scenario.label}: 取得まで進んでいる`);
+      assert.deepEqual(snapshot(database, owner.id), afterMutation, `${scenario.label}: 何も書かない`);
+      assert.equal(auditRows(database, auth.record.id).length, 0);
+      // 取得を始める前に消費した上限は、このあとの失敗では戻らない。
+      assert.deepEqual(await rateUsed(auth.record.id), { add: 1, add_url: 1, add_day: 1 });
+    });
+  }
+  assert.equal(
+    (database.prepare('SELECT COUNT(*) AS count FROM items WHERE user_id = ? AND url = ?').get(owner.id, PITAKA_URL) as { count: number }).count,
+    0,
+    '取得できた側だけを登録しない',
+  );
+}));
+
+test('同じ URL の登録が複数ある候補は、行を勝手に選ばず item_id の指定を求める', () => serial(async () => {
+  const { fetched, port } = recordingPort();
+  await withPort(port, async () => {
+    const owner = await createMember('cc-ambiguous');
+    const auth = await createToken(['read', 'write'], 'cc-ambiguous');
+    const database = await db();
+    const groupA = insertGroup(database, owner.id, '重複Aの比較');
+    const dupUrl = 'https://shop.example/item';
+    const dupA = insertItem(database, owner.id, '重複A', `${dupUrl}?utm_source=old`, { group: groupA });
+    const dupB = insertItem(database, owner.id, '重複B', dupUrl);
+    const boughtUrl = 'https://shop.example/bought';
+    const live = insertItem(database, owner.id, '買い直し候補', boughtUrl);
+    const bought = insertItem(database, owner.id, '購入済みの同じURL', `${boughtUrl}?utm_medium=mail`, { purchased: true });
+    const trashUrl = 'https://shop.example/once-trashed';
+    insertItem(database, owner.id, 'ゴミ箱の同じURL', `${trashUrl}?utm_source=old`, { deleted: true });
+    const liveWithTrash = insertItem(database, owner.id, '生きている側', trashUrl);
+    const other = insertItem(database, owner.id, '別の商品', 'https://shop.example/other');
+    const frozen = snapshot(database, owner.id);
+
+    const cases: { candidates: unknown[]; ids: number[]; position: RegExp }[] = [
+      // リスト上に2行（片方は比較グループ所属）
+      { candidates: [{ url: dupUrl }, { item_id: other }], ids: [dupA, dupB], position: /候補1/ },
+      // 重複の片方を item_id で、もう片方を URL で指した混在
+      { candidates: [{ item_id: dupA }, { url: `${dupUrl}?utm_campaign=x` }], ids: [dupA, dupB], position: /候補2/ },
+      // リスト上の行と購入済みの行
+      { candidates: [{ item_id: other }, { url: boughtUrl }], ids: [live, bought], position: /候補2/ },
+    ];
+    for (const entry of cases) {
+      const refused = failure(await tool(auth.token, TOOL, { name: '重複Aの比較', candidates: entry.candidates }));
+      assert.equal(refused.code, 'URL_AMBIGUOUS', refused.text);
+      assert.match(refused.text, entry.position);
+      assert.match(refused.text, /item_id/);
+      for (const id of entry.ids) assert.ok(refused.text.includes(String(id)), `${id} を案内する: ${refused.text}`);
+      assert.deepEqual(snapshot(database, owner.id), frozen);
+    }
+    assert.deepEqual(fetched, []);
+    assert.deepEqual(await rateUsed(auth.record.id), { add: 0, add_url: 0, add_day: 0 });
+
+    // item_id で1件を指定すれば保存できる。もう一方の重複行には触らない。
+    const explicit = saved(await tool(auth.token, TOOL, {
+      name: '重複Aの比較', candidates: [{ item_id: dupA }, { item_id: other }],
+    }));
+    assert.equal(explicit.group.id, groupA);
+    assert.deepEqual(explicit.candidates.map((entry) => entry.result), ['already_in_group', 'added_to_group']);
+    assert.equal(
+      (database.prepare('SELECT comparison_group_id FROM items WHERE id = ?').get(dupB) as { comparison_group_id: number | null }).comparison_group_id,
+      null,
+    );
+
+    // 生きている行が1件だけ（もう1件はゴミ箱）なら、これまでどおりその行を使う。
+    const single = saved(await tool(auth.token, TOOL, {
+      name: 'ゴミ箱と重なる比較', candidates: [{ url: trashUrl }, { item_id: live }],
+    }));
+    assert.deepEqual(single.item_ids, [liveWithTrash, live]);
+  });
+}));
+
+test('write だけのトークンには、ID と操作の結果だけを返す（保存・再送・拒否のどれでも）', () => serial(async () => {
+  const { port } = recordingPort();
+  await withPort(port, async () => {
+    const owner = await createMember('cc-receipt');
+    const write = await createToken(['write'], 'cc-receipt-write');
+    const database = await db();
+    const SECRET_GROUP = 'ないしょのグループ名';
+    const first = insertItem(database, owner.id, 'ないしょの商品名1', 'https://example.com/products/hidden-path-1', { price: 987654, notes: 'ないしょのメモ' });
+    const second = insertItem(database, owner.id, 'ないしょの商品名2', 'https://example.com/products/hidden-path-2', { price: 876543 });
+    const hidden = ['ないしょ', 'hidden-path', '987654', '876543', PITAKA_NAME, String(PITAKA_PRICE)];
+    const assertNothingLeaks = (body: McpResponse, label: string) => {
+      const text = JSON.stringify(body);
+      for (const value of hidden) assert.equal(text.includes(value), false, `${label}: ${value} を返さない`);
+    };
+    const assertReceiptShape = (result: Saved) => {
+      assert.deepEqual(Object.keys(result.group).sort(), ['created', 'id', 'origin']);
+      for (const entry of result.candidates) {
+        assert.deepEqual(Object.keys(entry).sort(), ['item_id', 'position', 'result']);
+      }
+    };
+
+    // 登録済み2件 + 新規 URL 1件を保存。
+    const args = { name: '受領だけの比較', candidates: [{ item_id: first }, { item_id: second }, { url: PITAKA_URL }] };
+    const body = await tool(write.token, TOOL, args);
+    const result = saved(body);
+    assert.equal(result.status, 'saved');
+    assertReceiptShape(result);
+    assert.deepEqual(result.candidates.map((entry) => [entry.position, entry.result]), [
+      [1, 'added_to_group'], [2, 'added_to_group'], [3, 'created'],
+    ]);
+    assert.deepEqual(result.item_ids.slice(0, 2), [first, second]);
+    assert.match(result.message, /read 権限が無い/);
+    assertNothingLeaks(body, '保存');
+
+    // 利用者がグループ名を変えたあとの再送: 変更後の名前も、保存済みの取得結果も返さない。
+    database.prepare('UPDATE comparison_groups SET name = ? WHERE id = ?').run(SECRET_GROUP, result.group.id);
+    database.prepare("UPDATE items SET current_price = NULL, image_url = NULL, scrape_status = 'failed', scrape_error = 'hidden-path-error' WHERE id = ?")
+      .run(result.item_ids[2]);
+    const replayBody = await tool(write.token, TOOL, args);
+    const replay = saved(replayBody);
+    assert.equal(replay.status, 'already_saved');
+    assert.equal(replay.replayed, true);
+    assertReceiptShape(replay);
+    assert.deepEqual(replay.item_ids, result.item_ids);
+    assert.deepEqual(replay.media_fetch_errors, []);
+    assert.deepEqual(replay.replay_of?.candidates.map((entry) => Object.keys(entry).sort()), [
+      ['item_id', 'position', 'result'], ['item_id', 'position', 'result'], ['item_id', 'position', 'result'],
+    ]);
+    assertNothingLeaks(replayBody, '再送');
+
+    // 保存記録の無い「変更なし」（別の組）でも同じ。
+    database.prepare('UPDATE comparison_groups SET name = ? WHERE id = ?').run('受領だけの比較', result.group.id);
+    const unchangedBody = await tool(write.token, TOOL, { name: '受領だけの比較', candidates: [{ item_id: second }, { item_id: first }] });
+    const unchanged = saved(unchangedBody);
+    assert.equal(unchanged.replayed, false);
+    assert.equal(unchanged.changed, false);
+    assertReceiptShape(unchanged);
+    assertNothingLeaks(unchangedBody, '変更なし');
+
+    // 拒否の文面にも、既存のグループ名や商品名を出さない。
+    database.prepare('UPDATE comparison_groups SET name = ? WHERE id = ?').run(SECRET_GROUP, result.group.id);
+    const otherGroup = insertGroup(database, owner.id, 'ないしょの別グループ');
+    const elsewhere = insertItem(database, owner.id, 'ないしょの商品名3', 'https://example.com/products/hidden-path-3', { group: otherGroup });
+    const photoGroup = insertGroup(database, owner.id, 'ないしょの店舗比較', 'photo');
+    const storeRow = insertItem(database, owner.id, 'ないしょの店の行', 'https://example.com/products/hidden-path-4', { group: photoGroup });
+    const free = insertItem(database, owner.id, 'ないしょの商品名5', 'https://example.com/products/hidden-path-5');
+    const refusals: [unknown[], string][] = [
+      [[{ item_id: first }, { item_id: free }], 'CANDIDATE_IN_OTHER_GROUP'],
+      [[{ item_id: first }, { item_id: elsewhere }], 'CANDIDATES_IN_DIFFERENT_GROUPS'],
+      [[{ item_id: free }, { item_id: storeRow }], 'ITEM_IN_STORE_GROUP'],
+    ];
+    for (const [candidates, code] of refusals) {
+      const refusedBody = await tool(write.token, TOOL, { name: '拒否の比較', candidates });
+      assert.equal(failure(refusedBody).code, code, JSON.stringify(refusedBody));
+      assertNothingLeaks(refusedBody, code);
+    }
+    database.prepare('UPDATE items SET comparison_group_id = NULL WHERE id = ?').run(first);
+    const divergedBody = await tool(write.token, TOOL, args);
+    assert.equal(failure(divergedBody).code, 'SAVED_REQUEST_CHANGED');
+    assertNothingLeaks(divergedBody, '保存後の変更');
+
+    // read もあるトークンには、これまでどおり名前・URL・価格・件数を返す。
+    await setTestUser(owner);
+    const both = await createToken(['read', 'write'], 'cc-receipt-both');
+    const full = saved(await tool(both.token, TOOL, { name: SECRET_GROUP, candidates: [{ item_id: second }, { item_id: free }] }));
+    assert.equal(full.group.name, SECRET_GROUP);
+    assert.equal(full.group.item_count, 3);
+    assert.deepEqual(full.candidates[0], {
+      position: 1, item_id: second, result: 'already_in_group',
+      name: 'ないしょの商品名2', url: 'https://example.com/products/hidden-path-2', current_price: 876543,
+    });
+    assert.doesNotMatch(full.message, /read 権限が無い/);
   });
 }));
 
