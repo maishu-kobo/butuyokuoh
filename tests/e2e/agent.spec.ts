@@ -310,9 +310,10 @@ test('MCP tools/list and a representative tools/call', async ({ context }) => {
   expect(init.status()).toBe(200);
   const initBody = await init.json() as { result: { protocolVersion: string; instructions?: string } };
   expect(initBody.result.protocolVersion).toBe('2025-11-25');
-  // #396: 接続時の案内に「既定は必ずメモ」と tell_user がある
+  // #396: 接続時の案内に DEFAULT ALWAYS メモと tell_user がある
   expect(initBody.result.instructions ?? '').toContain('以下のメモを追加しました');
-  expect(initBody.result.instructions ?? '').toContain('必ずメモを書く');
+  expect(initBody.result.instructions ?? '').toContain('DEFAULT（強い既定）');
+  expect(initBody.result.instructions ?? '').toContain('必ず（ALWAYS）');
   expect(initBody.result.instructions ?? '').toContain('tell_user');
 
   const notified = await mcp(api, token, { jsonrpc: '2.0', method: 'notifications/initialized' });

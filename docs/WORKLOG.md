@@ -17,6 +17,17 @@
 - `src/lib/agent-memo.ts`、REST / MCP の add・notes 付き update、MCP text 先頭表示（relay 時は tell_user、付け忘れはエージェント向け案内）。
 - テスト: `tests/agent-memo.test.ts`（tell_user 両ケース、クリア、復元、DEFAULT 案内）、e2e `agent.spec.ts`。
 
+## 2026-11-10 — 商品カード右上の店舗ページボタンを外す（#394）
+
+### 決定
+
+- `ItemCard` 右上のアイコン専用リンクを削除し、「〇〇で開く」テキストボタンだけを店舗ページの専用コントロールとする。画像・タイトルのリンクは従来どおり残す。
+- 単体テストと Playwright で、テキスト付きストア開くリンクが1つ・アイコン専用が0であることを保証する。
+
+### 結果
+
+- 変更: `src/components/ItemCard.tsx`、`tests/item-card-product-link.test.ts`、`tests/e2e/item-card-store-link.spec.ts`、`CHANGELOG.md`。
+
 ## 2026-11-10 — 比較中の商品を1回で同じ比較グループへ保存する（#388）
 
 ### 決定
