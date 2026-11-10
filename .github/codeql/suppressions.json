@@ -1,12 +1,6 @@
 {
   "suppressions": [
     {
-      "rule": "js/incomplete-url-substring-sanitization",
-      "path": "src/lib/product-html.ts",
-      "line": "      const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme');",
-      "reason": "ページ本文から価格の単位を選ぶだけ。URL の許可判定ではない"
-    },
-    {
       "rule": "js/user-controlled-bypass",
       "path": "src/app/api/auth/login/route.ts",
       "line": "    if (!normalizedEmail || !password) {",

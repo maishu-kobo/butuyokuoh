@@ -318,10 +318,9 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
     }
 
     if (!price) {
-      // Shopifyサイトのセント単位価格（Shopifyかどうかを確認）
-      // codeql[js/incomplete-url-substring-sanitization] — ページ本文の CDN / テーマ痕跡。URL の許可判定ではない。
-      const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme');
-      if (isShopify) {
+      // Shopify のセント単位価格。ホスト部分文字列は使わずテーマ痕跡だけで判定する
+      // （js/incomplete-url-substring-sanitization の誤検知を避ける）。
+      if (html.includes('Shopify.theme')) {
         // Shopifyの場合、"price":NNNNNN (5桁以上、セント単位) をJPYとみなす
         const shopifyPriceMatch = html.match(/"price":(\d{5,})/);
         if (shopifyPriceMatch) {
