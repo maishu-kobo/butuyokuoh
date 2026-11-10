@@ -45,6 +45,12 @@ export interface MemberFetchDeps {
   timeoutMs?: number;
   resolve?: PageResolver;
   request?: PinnedRequest;
+  /**
+   * 呼び出し側が渡す記録先。失敗の種類（HTTP エラー、接続切断、タイムアウト）によらず、
+   * 最後に検証した URL を残す。転送を追っていなければ入力 URL、追っていれば公開アドレスへ
+   * 解決してから接続した最後の転送先。転送先がまだ解決を通っていない間は null。
+   */
+  trace?: { url: string | null };
 }
 
 const RETRY_DELAY_MULTIPLIERS = [1, 5, 15];
@@ -134,13 +140,17 @@ async function followPublicRedirects(
   let current = new URL(urlString);
   const request = options.request ?? requestPinned;
   const headers = headerRecord(init?.headers);
+  if (options.trace) options.trace.url = current.href;
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
     const address = await resolvedPublicAddress(current, options.resolve);
+    if (options.trace) options.trace.url = current.href;
     const timeoutSignal = AbortSignal.timeout(options.timeoutMs);
     const signal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
     const result = await request(current, address, headers, signal);
     if (result.status >= 300 && result.status < 400) {
       if (!result.location || redirects === MAX_REDIRECTS) throw new HttpError(result.status, current.href);
+      // 転送先が解決を通るまでは、入力にも転送先にも結び付けない。
+      if (options.trace) options.trace.url = null;
       try {
         current = new URL(result.location, current);
       } catch {

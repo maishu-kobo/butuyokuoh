@@ -657,6 +657,9 @@ async function scrapeGeneric(sanitizedUrl: string, deps: MemberFetchDeps | undef
     };
   }
 
+  // 取得に失敗したとき、画像の補完の基準にする URL。HTTP エラーに限らず、接続切断や
+  // タイムアウトでも、転送後は入力した商品へ戻さない。
+  const trace: { url: string | null } = { url: sanitizedUrl };
   try {
     const { response, url: pageUrl } = await fetchPublicMember(sanitizedUrl, {
       headers: {
@@ -665,7 +668,7 @@ async function scrapeGeneric(sanitizedUrl: string, deps: MemberFetchDeps | undef
         // Shopifyサイトで日本円価格を取得するためのクッキー
         'Cookie': 'localization=JP; cart_currency=JPY',
       },
-    }, deps);
+    }, { ...deps, trace });
     const html = await readHtmlResponse(response);
 
     // ツクモを経由した転送では、実際に商品情報を取得したページから写真と型番を選ぶ。
@@ -677,8 +680,8 @@ async function scrapeGeneric(sanitizedUrl: string, deps: MemberFetchDeps | undef
     if (error instanceof BlockedTargetError) {
       return { name: '無効なURL', price: null, imageUrl: null, source: 'other', sourceName: null };
     }
-    if (purpose === 'item') {
-      const recovered = await recoverTsukumoImage(error instanceof HttpError ? error.url : sanitizedUrl);
+    if (purpose === 'item' && trace.url) {
+      const recovered = await recoverTsukumoImage(trace.url);
       if (recovered) return recovered;
     }
     console.error('Generic scraping error:', error);

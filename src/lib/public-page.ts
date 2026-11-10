@@ -7,6 +7,12 @@ import { isAmazonProductPage } from './amazon-product';
 import { decodeHtml } from './html-encoding';
 
 export class PublicPageError extends Error {
+  /**
+   * 失敗した要求が向いていた、最後に検証した URL。fetchPublicPage が設定する。
+   * 転送を追っていなければ入力 URL、追っていれば公開アドレス検査を通って接続した最後の転送先。
+   * 転送先がまだ検査を通っていないとき、および入力 URL 自体が不正なときは undefined。
+   */
+  url?: string;
   constructor(public status: number, message: string) { super(message); }
 }
 const invalidUrl = () => new PublicPageError(400, '公開されている商品ページのHTTP(S) URLを指定してください');
@@ -139,6 +145,8 @@ export async function fetchPublicPage(value: string, dependencies: {
   resolve?: PageResolver; request?: typeof requestPage; timeoutMs?: number;
 } = {}) {
   let url = publicPageUrl(value);
+  // 失敗時に画像の補完などの基準にしてよい URL。未接続の Location は入れない。
+  let verifiedUrl: string | undefined = url.href;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), dependencies.timeoutMs ?? 12_000);
   const aborted = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () =>
@@ -147,9 +155,12 @@ export async function fetchPublicPage(value: string, dependencies: {
     for (let redirects = 0; redirects <= 3; redirects++) {
       const address = await Promise.race([publicAddress(url, dependencies.resolve), aborted]);
       controller.signal.throwIfAborted();
+      verifiedUrl = url.href;
       const result = await Promise.race([(dependencies.request || requestPage)(url, address, controller.signal), aborted]);
       if (result.status >= 300 && result.status < 400) {
         if (!result.location || redirects === 3) throw new PublicPageError(502, 'リンク先の商品を確認できませんでした。商品ページをブラウザで開き、そのURLを貼り直してください。');
+        // ここから先は転送先の検査が通るまで、入力にも転送先にも結び付けない。
+        verifiedUrl = undefined;
         url = publicPageUrl(new URL(result.location, url).href);
         continue;
       }
@@ -157,7 +168,8 @@ export async function fetchPublicPage(value: string, dependencies: {
     }
     throw invalidUrl();
   } catch (error) {
-    if (error instanceof PublicPageError) throw error;
-    throw new PublicPageError(502, PRODUCT_FETCH_HELP);
+    const failure = error instanceof PublicPageError ? error : new PublicPageError(502, PRODUCT_FETCH_HELP);
+    failure.url = verifiedUrl;
+    throw failure;
   } finally { clearTimeout(timer); controller.abort(); }
 }
