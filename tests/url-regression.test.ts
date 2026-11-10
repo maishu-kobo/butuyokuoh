@@ -121,6 +121,18 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
     assert.match(String(refreshed.note), /商品名と価格は取得できませんでした/);
     assert.equal(refreshed.scrape_error, refreshed.note);
     assert.doesNotMatch(String(refreshed.note), /商品番号で表示/);
+    // 商品名と価格は更新できても、ページに写真がなければ編集済みの画像を維持する。
+    port.installProductFetchPort({ lookup(target) {
+      if (target.href !== tsukumo) return fixtures.regressionLookup(target);
+      return { status: 200, contentType: 'text/html', body: Buffer.from('<title>CANVIO HDD</title><p>販売価格: 24,000円</p>') };
+    } });
+    const fromPage = await call(refresh, 'POST', `/api/items/${partial.id}/refresh`, undefined, { id: String(partial.id) });
+    assert.equal(fromPage.status, 200, fromPage.text);
+    const details = bodyOf(fromPage.json);
+    assert.equal(details.name, 'CANVIO HDD');
+    assert.equal(details.current_price, 24000);
+    assert.equal(details.image_url, editedImage);
+    port.installProductFetchPort(fixtures.regressionFetchPort());
     // A missing CDN image never turns a failed page into a saved item.
     const unavailable = await call(preview, 'POST', '/api/items/preview', { url: 'https://shop.tsukumo.co.jp/goods/0406621759011/' });
     assert.ok(unavailable.status >= 400, unavailable.text);
@@ -328,7 +340,7 @@ test('Tsukumo photo recovery only accepts a JPEG from the matching official prod
     }
     assert.equal(await recoverTsukumoImage(url, { ...item, imageUrl: image }), null);
     assert.deepEqual(lookups, []);
-    assert.deepEqual(await recoverTsukumoImage(url, item), { ...item, imageUrl: image });
+    assert.deepEqual(await recoverTsukumoImage(url, item), { ...item, imageUrl: image, imageIsFallback: true });
     for (response of [{ status: 200, contentType: 'text/html' }, { status: 302, contentType: 'image/jpeg' }, { status: 404, contentType: 'image/jpeg' }]) {
       assert.equal(await recoverTsukumoImage(url), null);
     }

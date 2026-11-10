@@ -35,12 +35,13 @@ export async function recoverTsukumoImage(url: string, item?: ScrapedItem): Prom
     : await checkCatalogImage(catalog.path);
   if (!available) return null;
 
-  if (item) return { ...item, imageUrl: catalog.imageUrl };
+  if (item) return { ...item, imageUrl: catalog.imageUrl, imageIsFallback: true };
   return {
     name: `ツクモの商品（${catalog.productNumber}）`,
     nameIsFallback: true,
     price: null,
     imageUrl: catalog.imageUrl,
+    imageIsFallback: true,
     source: 'other',
     sourceName: 'ツクモ',
     note: '商品画像を確認しました。商品名と価格は取得できませんでした。「編集」から入力・変更できます。',

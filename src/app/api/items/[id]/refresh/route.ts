@@ -99,7 +99,7 @@ async function handlePOST(
       }
 
       // 画像が取得できた場合
-      if (scraped.imageUrl && (!scraped.nameIsFallback || !current.image_url)) {
+      if (scraped.imageUrl && (!scraped.imageIsFallback || !current.image_url)) {
         updates.push('image_url = ?');
         values.push(scraped.imageUrl);
       }

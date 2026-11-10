@@ -42,6 +42,7 @@ export type ScrapeDeps = MemberFetchDeps & {
 
 export interface ScrapedItem {
   nameIsFallback?: boolean;
+  imageIsFallback?: boolean;
   name: string;
   price: number | null;
   imageUrl: string | null;
