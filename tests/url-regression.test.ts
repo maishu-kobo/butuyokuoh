@@ -108,7 +108,9 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
       .run('CANVIO DESKTOP HD-TDA4U3-B', 24981, partial.id);
     const photoRecovered = await call(refresh, 'POST', `/api/items/${partial.id}/refresh`, undefined, { id: String(partial.id) });
     assert.equal(photoRecovered.status, 200, photoRecovered.text);
-    assert.equal(bodyOf(photoRecovered.json).image_url, tsukumoImage);
+    // 商品名しか保存されておらずページを取得できないため、写真の同一性は確認できない。
+    assert.equal(bodyOf(photoRecovered.json).image_url, null);
+    assert.match(String(bodyOf(photoRecovered.json).note), /同じ商品/);
     assert.equal(bodyOf(photoRecovered.json).name, 'CANVIO DESKTOP HD-TDA4U3-B');
     assert.equal(bodyOf(photoRecovered.json).current_price, 24981);
     const editedImage = 'https://cdn.example.com/my-hdd.jpg';
@@ -613,6 +615,41 @@ test('refresh keeps the saved product when only a different redirected photo is 
       const matched = await refresh();
       assert.equal(bodyOf(matched.json).image_url, REDIRECT_PRODUCT_IMAGE);
     }
+  } finally {
+    installProductFetchPort(null);
+    installAuthTestHooks(null);
+  }
+});
+
+test('refresh cannot identify a previously redirected product from the stored input URL alone (#374)', async () => {
+  const { getDb } = await import('../src/lib/db');
+  const { startGuest } = await import('../src/lib/guest');
+  const { installAuthTestHooks } = await import('../src/lib/auth');
+  const { installProductFetchPort } = await import('../src/lib/product-fetch-port');
+  const guest = startGuest(undefined, getDb()).user;
+  let registering = true;
+  installAuthTestHooks({ user: guest });
+  installProductFetchPort({ lookup(target) {
+    if (target.href === REDIRECT_SOURCE) return registering ? { status: 302, location: REDIRECT_PRODUCT } : { status: 503 };
+    if (target.href === REDIRECT_PRODUCT) return {
+      status: 200, contentType: 'text/html', body: Buffer.from('<title>商品B</title><p>販売価格: 10,000円</p>'),
+    };
+    return { status: target.href === REDIRECT_SOURCE_IMAGE ? 200 : 404, contentType: 'image/jpeg' };
+  } });
+  try {
+    const created = await call('../src/app/api/items/route.ts', 'POST', '/api/items', { url: REDIRECT_SOURCE });
+    assert.equal(created.status, 201, created.text);
+    const item = bodyOf(created.json);
+    assert.equal(item.url, REDIRECT_SOURCE);
+    assert.equal(item.name, '商品B');
+    assert.equal(item.image_url, null);
+    registering = false;
+    const id = String(item.id);
+    const refreshed = await call('../src/app/api/items/[id]/refresh/route.ts', 'POST', `/api/items/${id}/refresh`, undefined, { id });
+    assert.equal(refreshed.status, 200, refreshed.text);
+    assert.equal(bodyOf(refreshed.json).name, '商品B');
+    assert.equal(bodyOf(refreshed.json).current_price, 10000);
+    assert.equal(bodyOf(refreshed.json).image_url, null);
   } finally {
     installProductFetchPort(null);
     installAuthTestHooks(null);

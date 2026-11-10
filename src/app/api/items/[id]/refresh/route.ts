@@ -3,7 +3,6 @@ import { assertGuestCapacity, assertGuestSessionActive, GuestError } from '@/lib
 import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { tsukumoCatalogImage } from '@/lib/tsukumo-catalog';
 import { scrapeUrl, deriveScrapeOutcome, isUnusableScrape, ScrapedItem } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { excludesPagePriceCheck } from '@/lib/price-check-items';
@@ -71,23 +70,13 @@ async function handlePOST(
     if (!current) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
     if (current.url !== item.url) return NextResponse.json({ error: 'URLが変更されました。もう一度お試しください' }, { status: 409 });
 
-    // 写真だけが取れた場合は、保持する名前・価格と同じ商品の写真か照合する。
-    if (scraped.nameIsFallback && scraped.imageIsFallback) {
-      const sameProduct = /^ツクモの商品（\d{13}）$/.test(current.name)
-        ? current.name === scraped.name
-        : tsukumoCatalogImage(current.url)?.imageUrl === scraped.imageUrl;
-      if (!sameProduct) {
-        scraped = {
-          name: '取得失敗', price: null, imageUrl: null, source: scraped.source,
-          note: '保存済みの品目と同じ商品の写真を確認できなかったため、商品情報を保持しました。',
-        };
-      }
-    }
-
-    // スクレイプ結果（成功/失敗）を導出（check-prices と共通ロジック）
-    const outcome = deriveScrapeOutcome(scraped);
-    // ボット挑戦・待機ページなど使えない結果では、既存の商品名・価格・画像を残す。
-    const unusable = isUnusableScrape(scraped);
+    // 保存URLは登録時の転送元かもしれない。写真だけの再取得では保存名の商品番号を照合する。
+    const unconfirmedPhoto = scraped.nameIsFallback && scraped.imageIsFallback && current.name !== scraped.name;
+    const note = unconfirmedPhoto
+      ? '商品名と価格は取得できませんでした。保存済みの品目と同じ商品の写真を確認できなかったため、商品情報を保持しました。'
+      : scraped.note;
+    const outcome = deriveScrapeOutcome({ ...scraped, note });
+    const unusable = unconfirmedPhoto || isUnusableScrape(scraped);
 
     // スクレイピング結果を更新（商品名、価格、画像）
     const updates: string[] = [];
@@ -133,7 +122,7 @@ async function handlePOST(
     db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...values);
 
     const updated = db.prepare('SELECT * FROM items WHERE id = ?').get(id) as Record<string, unknown>;
-    return NextResponse.json({ ...updated, note: scraped.note });
+    return NextResponse.json({ ...updated, note });
   }).immediate();
 }
 
