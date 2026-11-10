@@ -12,8 +12,19 @@ function isProductWaitingPage(html: string): boolean {
   return !!title && /^hang tight!\s*routing to checkout(?:\.{0,3}|…)?$/i.test(title);
 }
 
-function parseYenPrice(value: unknown): number | null {
-  const price = Number(String(value).replace(/[,¥￥\s]/g, ''));
+/**
+ * 表示・構造化データの円価格。不完全な断片（例: 切り途中の "4,"）や壊れた桁区切りは捨てる。
+ * 数値はそのまま範囲だけ見る。スクレイプ結果を「事実の価格」として残す前の共通ガード。
+ */
+export function parseYenPrice(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value > 0 && value <= 1_000_000_000 ? Math.round(value) : null;
+  }
+  const text = String(value ?? '').replace(/[¥￥\s]/g, '').trim();
+  if (!text) return null;
+  // 1234 / 1,234 / 12,345,678（任意で小数）。末尾カンマや 12,34 は拒否。
+  if (!/^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$/.test(text)) return null;
+  const price = Number(text.replace(/,/g, ''));
   return Number.isFinite(price) && price > 0 && price <= 1_000_000_000 ? Math.round(price) : null;
 }
 
@@ -52,8 +63,8 @@ function firstProductYenMatch(
   for (const match of html.matchAll(pattern)) {
     if (match.index == null) continue;
     if (!yenMatchLooksLikeProductPrice(html, match.index, match[0])) continue;
-    const extracted = parseInt(match[1].replace(/,/g, ''), 10);
-    if (extracted > 0) return extracted;
+    const extracted = parseYenPrice(match[1]);
+    if (extracted != null) return extracted;
   }
   return null;
 }
@@ -241,149 +252,149 @@ export function parseProductHtml(html: string, sanitizedUrl: string): ScrapedIte
     .replace(/\s+/g, ' ')                   // 連続スペースを単一に
     .trim();
 
-  // JSON-LDから価格取得を試行（script タグ置換はせず本文キャプチャのみ）
+  // Apple の構成（buy-）ページはモデル未選択で単一の売価が無い。
+  // 月額・最低購入・修理料に加え、JSON-LD / og:price に載る「から」価格も誤認しやすいので
+  // 構造化データも含めて価格は常に未取得（#327 / #397）。
   let price: number | null = null;
-  for (const raw of parseJsonLdScripts(html)) {
-    if (price) break;
-    if (!raw || typeof raw !== 'object') continue;
-    const data = raw as {
-      hasVariant?: Array<{ offers?: { price?: unknown; priceCurrency?: string } }>;
-      offers?: { price?: unknown; priceCurrency?: string } | Array<{ price?: unknown; priceCurrency?: string }>;
-      '@graph'?: Array<{ offers?: { price?: unknown; priceCurrency?: string } }>;
-    };
+  if (!appleBuyPage) {
+    // JSON-LDから価格取得を試行（script タグ置換はせず本文キャプチャのみ）
+    for (const raw of parseJsonLdScripts(html)) {
+      if (price) break;
+      if (!raw || typeof raw !== 'object') continue;
+      const data = raw as {
+        hasVariant?: Array<{ offers?: { price?: unknown; priceCurrency?: string } }>;
+        offers?: { price?: unknown; priceCurrency?: string } | Array<{ price?: unknown; priceCurrency?: string }>;
+        '@graph'?: Array<{ offers?: { price?: unknown; priceCurrency?: string } }>;
+      };
 
-    // hasVariant配列をチェック（Shopifyなど）- JPYを優先
-    if (data.hasVariant && Array.isArray(data.hasVariant)) {
-      for (const variant of data.hasVariant) {
-        if (variant.offers?.price && variant.offers?.priceCurrency === 'JPY') {
-          price = parseYenPrice(variant.offers.price);
+      // hasVariant配列をチェック（Shopifyなど）- JPYを優先
+      if (data.hasVariant && Array.isArray(data.hasVariant)) {
+        for (const variant of data.hasVariant) {
+          if (variant.offers?.price && variant.offers?.priceCurrency === 'JPY') {
+            price = parseYenPrice(variant.offers.price);
+            break;
+          }
+        }
+      }
+
+      // 直接のoffers（JPYを優先）
+      if (!price && data.offers) {
+        // offersが配列の場合
+        if (Array.isArray(data.offers)) {
+          for (const offer of data.offers) {
+            if (offer.price && (offer.priceCurrency === 'JPY' || !offer.priceCurrency)) {
+              price = parseYenPrice(offer.price);
+              break;
+            }
+          }
+        } else if (data.offers.price) {
+          // offersがオブジェクトの場合
+          if (data.offers.priceCurrency === 'JPY' || !data.offers.priceCurrency) {
+            price = parseYenPrice(data.offers.price);
+          }
+        }
+      }
+
+      // @graphをチェック
+      if (!price && data['@graph']) {
+        for (const item of data['@graph']) {
+          if (item.offers?.price) {
+            if (item.offers.priceCurrency === 'JPY' || !item.offers.priceCurrency) {
+              price = parseYenPrice(item.offers.price);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // Shopify/EC サイトのJSON価格取得（JPY通貨を優先）
+    if (!price) {
+      // "price":"NNNNN","priceCurrency":"JPY" パターン（引用符付き価格）
+      const jpyQuotedMatch = html.match(/"price"\s*:\s*"(\d+)"\s*,\s*"priceCurrency"\s*:\s*"JPY"/);
+      if (jpyQuotedMatch) {
+        price = parseYenPrice(jpyQuotedMatch[1]);
+      }
+    }
+
+    if (!price) {
+      // Shopifyサイトのセント単位価格（Shopifyかどうかを確認）
+      const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme');
+      if (isShopify) {
+        // Shopifyの場合、"price":NNNNNN (5桁以上、セント単位) をJPYとみなす
+        const shopifyPriceMatch = html.match(/"price":(\d{5,})/);
+        if (shopifyPriceMatch) {
+          // 100で割って円に変換
+          price = parseYenPrice(Math.round(parseInt(shopifyPriceMatch[1], 10) / 100));
+        }
+      }
+    }
+
+    // og:price:amount メタタグから価格取得（通貨がJPYの場合のみ）
+    if (!price) {
+      const ogCurrencyMatch = html.match(/<meta[^>]*property="og:price:currency"[^>]*content="([^"]+)"/);
+      const currency = ogCurrencyMatch ? ogCurrencyMatch[1] : null;
+
+      if (currency === 'JPY') {
+        const ogPriceMatch = html.match(/<meta[^>]*property="og:price:amount"[^>]*content="([^"]+)"/) ||
+                             html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:price:amount"/);
+        if (ogPriceMatch) {
+          price = parseYenPrice(ogPriceMatch[1]);
+        }
+      }
+    }
+
+    // フォールバック: HTMLから価格パターンを検索。
+    if (!price) {
+      // EC-CUBE系サイトの販売価格（price02_default）を優先
+      const eccubePriceMatch = html.match(/id="price02_default">([\d,]+)/);
+      if (eccubePriceMatch) {
+        price = parseYenPrice(eccubePriceMatch[1]);
+      }
+    }
+
+    if (!price) {
+      // 「販売価格」の近くにある価格を探す（より厳密なパターン）
+      // 「販売価格: 1,234円」や「販売価格：¥1,234」のような形式
+      const salePriceMatch = html.match(/販売価格[\s：:]*¥?\s*([\d,]+)/);
+      if (salePriceMatch) {
+        const extracted = parseYenPrice(salePriceMatch[1]);
+        if (extracted != null && extracted >= 100) { // 100円未満は除外
+          price = extracted;
+        }
+      }
+    }
+
+    if (!price) {
+      // まず価格用のクラス/ID内の価格を探す（0円・不完全断片を除外）
+      const structuredPriceMatches = html.matchAll(/<[^>]*(?:class|id)="[^"]*price[^"]*"[^>]*>\s*¥?\s*([\d,]+)/gi);
+      for (const match of structuredPriceMatches) {
+        if (match.index != null && !yenMatchLooksLikeProductPrice(html, match.index, match[0])) continue;
+        const extracted = parseYenPrice(match[1]);
+        if (extracted != null) {
+          price = extracted;
           break;
         }
       }
     }
 
-    // 直接のoffers（JPYを優先）
-    if (!price && data.offers) {
-      // offersが配列の場合
-      if (Array.isArray(data.offers)) {
-        for (const offer of data.offers) {
-          if (offer.price && (offer.priceCurrency === 'JPY' || !offer.priceCurrency)) {
-            price = parseYenPrice(offer.price);
-            break;
-          }
-        }
-      } else if (data.offers.price) {
-        // offersがオブジェクトの場合
-        if (data.offers.priceCurrency === 'JPY' || !data.offers.priceCurrency) {
-          price = parseYenPrice(data.offers.price);
-        }
+    if (!price) {
+      // data-price属性
+      const dataPriceMatch = html.match(/data-price="([\d,]+)"/);
+      if (dataPriceMatch) {
+        price = parseYenPrice(dataPriceMatch[1]);
       }
     }
 
-    // @graphをチェック
-    if (!price && data['@graph']) {
-      for (const item of data['@graph']) {
-        if (item.offers?.price) {
-          if (item.offers.priceCurrency === 'JPY' || !item.offers.priceCurrency) {
-            price = parseYenPrice(item.offers.price);
-            break;
-          }
-        }
-      }
+    if (!price) {
+      // 一般的な価格パターン。分割払い・月額・保証修理料などの近傍は除外する。
+      price = firstProductYenMatch(html, /([\d,]+)円/g);
     }
-  }
 
-  // Shopify/EC サイトのJSON価格取得（JPY通貨を優先）
-  if (!price) {
-    // "price":"NNNNN","priceCurrency":"JPY" パターン（引用符付き価格）
-    const jpyQuotedMatch = html.match(/"price"\s*:\s*"(\d+)"\s*,\s*"priceCurrency"\s*:\s*"JPY"/);
-    if (jpyQuotedMatch) {
-      price = parseInt(jpyQuotedMatch[1], 10);
+    if (!price) {
+      price = firstProductYenMatch(html, /¥\s*([\d,]+)/g)
+        ?? firstProductYenMatch(html, /JPY\s*([\d,]+)/gi);
     }
-  }
-  
-  if (!price) {
-    // Shopifyサイトのセント単位価格（Shopifyかどうかを確認）
-    const isShopify = html.includes('cdn.shopify.com') || html.includes('Shopify.theme');
-    if (isShopify) {
-      // Shopifyの場合、"price":NNNNNN (5桁以上、セント単位) をJPYとみなす
-      const shopifyPriceMatch = html.match(/"price":(\d{5,})/);
-      if (shopifyPriceMatch) {
-        // 100で割って円に変換
-        price = Math.round(parseInt(shopifyPriceMatch[1], 10) / 100);
-      }
-    }
-  }
-
-  // og:price:amount メタタグから価格取得（通貨がJPYの場合のみ）
-  if (!price) {
-    const ogCurrencyMatch = html.match(/<meta[^>]*property="og:price:currency"[^>]*content="([^"]+)"/);
-    const currency = ogCurrencyMatch ? ogCurrencyMatch[1] : null;
-    
-    if (currency === 'JPY') {
-      const ogPriceMatch = html.match(/<meta[^>]*property="og:price:amount"[^>]*content="([^"]+)"/) ||
-                           html.match(/<meta[^>]*content="([^"]+)"[^>]*property="og:price:amount"/);
-      if (ogPriceMatch) {
-        price = parseInt(ogPriceMatch[1].replace(/,/g, ''), 10);
-      }
-    }
-  }
-
-  // フォールバック: HTMLから価格パターンを検索。
-  // Apple の構成ページは単一価格が無く、月額・修理料・最低購入金額を拾いやすいので
-  // JSON-LD / og:price 以外の緩い円表記フォールバックは使わない（価格未取得）。
-  if (!price && !appleBuyPage) {
-    // EC-CUBE系サイトの販売価格（price02_default）を優先
-    const eccubePriceMatch = html.match(/id="price02_default">([\d,]+)/);
-    if (eccubePriceMatch) {
-      price = parseInt(eccubePriceMatch[1].replace(/,/g, ''), 10);
-    }
-  }
-
-  if (!price && !appleBuyPage) {
-    // 「販売価格」の近くにある価格を探す（より厳密なパターン）
-    // 「販売価格: 1,234円」や「販売価格：¥1,234」のような形式
-    const salePriceMatch = html.match(/販売価格[\s：:]*¥?\s*([\d,]+)/);
-    if (salePriceMatch) {
-      const extracted = parseInt(salePriceMatch[1].replace(/,/g, ''), 10);
-      if (extracted >= 100) { // 100円未満は除外
-        price = extracted;
-      }
-    }
-  }
-
-  if (!price && !appleBuyPage) {
-    // まず価格用のクラス/ID内の価格を探す（0円を除外）
-    const structuredPriceMatches = html.matchAll(/<[^>]*(?:class|id)="[^"]*price[^"]*"[^>]*>\s*¥?\s*([\d,]+)/gi);
-    for (const match of structuredPriceMatches) {
-      if (match.index != null && !yenMatchLooksLikeProductPrice(html, match.index, match[0])) continue;
-      const extracted = parseInt(match[1].replace(/,/g, ''), 10);
-      if (extracted > 0) {
-        price = extracted;
-        break;
-      }
-    }
-  }
-
-  if (!price && !appleBuyPage) {
-    // data-price属性
-    const dataPriceMatch = html.match(/data-price="([\d,]+)"/);
-    if (dataPriceMatch) {
-      const extracted = parseInt(dataPriceMatch[1].replace(/,/g, ''), 10);
-      if (extracted > 0) {
-        price = extracted;
-      }
-    }
-  }
-
-  if (!price && !appleBuyPage) {
-    // 一般的な価格パターン。分割払い・月額・保証修理料などの近傍は除外する。
-    price = firstProductYenMatch(html, /([\d,]+)円/g);
-  }
-
-  if (!price && !appleBuyPage) {
-    price = firstProductYenMatch(html, /¥\s*([\d,]+)/g)
-      ?? firstProductYenMatch(html, /JPY\s*([\d,]+)/gi);
   }
 
   const mainImage = isTsukumoProduct ? tsukumoMainImage(html, sanitizedUrl) : null;

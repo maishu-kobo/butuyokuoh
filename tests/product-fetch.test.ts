@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { isPublicAddress, publicPageUrl, fetchPublicPage, requestPage, PublicPageError, MAX_PAGE_BYTES, MAX_AMAZON_PAGE_BYTES, PRODUCT_FETCH_HELP } from '../src/lib/public-page';
-import { isAppleShopBuyPage, parseProductHtml } from '../src/lib/product-html';
+import { isAppleShopBuyPage, parseProductHtml, parseYenPrice } from '../src/lib/product-html';
 import { extractAmazonProduct, isAmazonProductPage } from '../src/lib/amazon-product';
 
 test('product titles decode HTML entities exactly once', () => {
@@ -152,7 +152,9 @@ test('Tsukumo keeps the model suffix with or without its storefront title', () =
 });
 
 test('Apple shop buy pages and installment copy do not become a product price', () => {
-  assert.equal(isAppleShopBuyPage('https://www.apple.com/jp/shop/buy-mac/macbook-pro-proled-xdr'), true);
+  // テスター報告の保存 URL（構成／多モデルのランディング。単一の売価が無い）
+  const testerMacBookPro = 'https://www.apple.com/jp/shop/buy-mac/macbook-pro-proled-xdr';
+  assert.equal(isAppleShopBuyPage(testerMacBookPro), true);
   assert.equal(isAppleShopBuyPage('https://www.apple.com/jp/macbook-pro/'), false);
   assert.equal(isAppleShopBuyPage('https://evil.example/shop/buy-mac/x'), false);
 
@@ -167,11 +169,15 @@ test('Apple shop buy pages and installment copy do not become a product price', 
   assert.equal(air.price, null);
   assert.match(air.name, /MacBook Air/);
 
-  const pro = parseProductHtml(
-    appleBuy.replace('MacBook Air', 'MacBook Pro'),
-    'https://www.apple.com/jp/shop/buy-mac/macbook-pro-proled-xdr',
-  );
+  const pro = parseProductHtml(appleBuy.replace('MacBook Air', 'MacBook Pro'), testerMacBookPro);
   assert.equal(pro.price, null);
+
+  // 構成ページでは JSON-LD / og:price の 3,000 も売価として残さない（#397）
+  const withStructured = `${appleBuy.replace('MacBook Air', 'MacBook Pro')}
+    <script type="application/ld+json">{"@type":"Product","offers":{"price":3000,"priceCurrency":"JPY"}}</script>
+    <meta property="og:price:currency" content="JPY" />
+    <meta property="og:price:amount" content="3000" />`;
+  assert.equal(parseProductHtml(withStructured, testerMacBookPro).price, null);
 
   // 通常の商品ページでは、分割の近傍だけ飛ばして本体価格を取る
   const shop = parseProductHtml(
@@ -179,6 +185,29 @@ test('Apple shop buy pages and installment copy do not become a product price', 
     'https://shop.example/products/note',
   );
   assert.equal(shop.price, 89800);
+});
+
+test('incomplete yen fragments are not saved as product prices', () => {
+  assert.equal(parseYenPrice('4,'), null);
+  assert.equal(parseYenPrice('12,34'), null);
+  assert.equal(parseYenPrice('1,234'), 1234);
+  assert.equal(parseYenPrice(398800), 398800);
+  assert.equal(parseYenPrice(0), null);
+  assert.equal(parseYenPrice(-1), null);
+
+  // 切り途中の "¥4," だけが price クラスにある HTML は価格未取得（Amazon の implied ガードと同趣旨）
+  const truncated = parseProductHtml(
+    `<title>ケース</title><div class="price">¥4,</div>`,
+    'https://shop.example/products/case',
+  );
+  assert.equal(truncated.price, null);
+
+  // 完全な本体価格があればそちらを使う
+  const complete = parseProductHtml(
+    `<title>ケース</title><div class="price">¥4,</div><p>販売価格: 4,980円</p>`,
+    'https://shop.example/products/case',
+  );
+  assert.equal(complete.price, 4980);
 });
 
 const amazonProduct = `<img src="https://m.media-amazon.com/images/I/case.jpg" id="landingImage">
