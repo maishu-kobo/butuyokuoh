@@ -422,7 +422,8 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
           </div>
 
           {item.notes && (
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-1">{item.notes}</p>
+            // 1行に切ると保存済みのメモがカードで読めない。幅で折り返して全文を出す。
+            <p className="mt-1 max-w-full text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words">{item.notes}</p>
           )}
           {info}
         </div>
