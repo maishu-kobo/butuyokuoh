@@ -29,6 +29,7 @@ import { BlockedTargetError, resolvedPublicAddress, type MemberFetchDeps } from 
 import { annotateSpend, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
 import { PRODUCT_WAITING_HELP } from '@/lib/product-html';
 import { PRODUCT_FETCH_BLOCKED_HELP, PRODUCT_FETCH_HELP, publicPageUrl } from '@/lib/public-page';
+import { amazonUsdFallbackNoteText } from '@/lib/amazon-product';
 import { AMAZON_BOT_NOTE, CONFIGURATOR_PRICE_NOTE, PRICE_LATER_NOTE } from '@/lib/scraper';
 import type { Item } from '@/types';
 
@@ -268,6 +269,8 @@ export function agentScrapeFailure(
 ): { code: AgentMediaFetchError['code']; message: string } | null {
   if (agentScrapeStatus(status) !== 'failed') return null;
   const raw = typeof rawError === 'string' ? rawError : '';
+  const usd = amazonUsdFallbackNoteText(raw);
+  if (usd) return { code: 'FETCH_FAILED' as const, message: usd };
   const known = KNOWN_FAILURE_MESSAGES.get(raw);
   if (known) {
     // 画像が残っているのに「価格と画像」と書く定型文だけ、価格だけの文に替える。
@@ -795,7 +798,10 @@ export type PreparedStore = {
 export type AgentMediaFetchError = { url: string; code: 'BOT_CHALLENGE' | 'FETCH_FAILED'; message: string };
 
 export function mediaFetchErrors(url: string, media: ServerItemMedia): AgentMediaFetchError[] {
-  if (url.startsWith('manual://') || media.price != null || media.imageUrl != null) return [];
+  if (url.startsWith('manual://') || media.price != null) return [];
+  const usd = amazonUsdFallbackNoteText(media.scraped?.note);
+  if (usd) return [{ url, code: 'FETCH_FAILED', message: usd }];
+  if (media.imageUrl != null) return [];
   return [{
     url,
     code: media.scraped?.failureCode ?? 'FETCH_FAILED',

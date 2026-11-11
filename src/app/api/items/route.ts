@@ -5,6 +5,7 @@ import { assertOwnedRelations } from '@/lib/api-access';
 import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { amazonUsdFallbackNoteText } from '@/lib/amazon-product';
 import { isUnusableScrape, scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
@@ -210,9 +211,10 @@ async function handlePOST(request: NextRequest) {
     if (scraped.price) assertGuestCapacity(user, 'price_history', db);
     assertOwnedRelations(db, user.id, body);
 
+    const usdNote = amazonUsdFallbackNoteText(scraped.note);
     const stmt = db.prepare(`
-      INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority, planned_purchase_date, comparison_group_id, category_id, notes, quantity)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority, planned_purchase_date, comparison_group_id, category_id, notes, quantity, scrape_status, scrape_error)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -229,7 +231,9 @@ async function handlePOST(request: NextRequest) {
       comparison_group_id || null,
       category_id || null,
       notes || null,
-      quantity
+      quantity,
+      usdNote ? 'failed' : null,
+      usdNote,
     );
 
     // 価格履歴に追加
