@@ -259,8 +259,8 @@ export function isUnusableScrape(scraped: { name?: string | null; failureCode?: 
   );
 }
 
-const PRICE_LATER_NOTE = '価格は取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
-const CONFIGURATOR_PRICE_NOTE =
+export const PRICE_LATER_NOTE = '価格は取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
+export const CONFIGURATOR_PRICE_NOTE =
   '構成を選ぶページのため単一の価格を取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
 
 type ScrapePurpose = 'item' | 'price';
