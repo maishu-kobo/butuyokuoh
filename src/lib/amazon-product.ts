@@ -7,13 +7,18 @@ export function isAmazonProductPage(url: URL) {
   return isAmazonHost(url.hostname) && /\/(?:dp|gp\/product|gp\/aw\/d)\/[A-Z0-9]{10}(?:[/?]|$)/i.test(url.pathname);
 }
 
-// Keep only the product's title, main image and buy-box price. A whole-page yen
-// regex also matches recommendations, crossed-out list prices and installments.
+// Keep only the product's title, main image and new buy-box price. A whole-page yen
+// regex also matches recommendations, crossed-out list prices, installments and
+// used/marketplace offers. Book pages put the new price on `#price.header-price`
+// (not `.a-price`). `a-text-price` is the struck list price, except when the same
+// element is also priceToPay / apexPriceToPay.
 export function extractAmazonProduct(html: string): ScrapedItem {
   const priceRoots = new Set(['corePriceDisplay_desktop_feature_div', 'corePrice_desktop',
-    'corePrice_mobile_feature_div', 'corePriceDisplay_mobile_feature_div', 'apex_desktop',
-    'apex_mobile', 'price', 'buybox', 'buybox_feature_div', 'desktop_buybox', 'mobile_buybox']);
-  const legacyPrices = new Set(['priceblock_ourprice', 'priceblock_dealprice', 'priceblock_saleprice']);
+    'corePrice_feature_div', 'corePrice_mobile_feature_div', 'corePriceDisplay_mobile_feature_div',
+    'apex_desktop', 'apex_mobile', 'price', 'buybox', 'buybox_feature_div', 'desktop_buybox',
+    'mobile_buybox', 'booksHeaderSection', 'newBooksSingleBuyingOptionHeader_feature_div']);
+  const legacyPrices = new Set(['priceblock_ourprice', 'priceblock_dealprice', 'priceblock_saleprice',
+    'price', 'price_inside_buybox', 'newBuyBoxPrice']);
   type Frame = { priceRoot: boolean; ignored: boolean; kind?: 'name' | 'price'; text: string; rank: number };
   const stack: Frame[] = [];
   let name = '', imageUrl: string | null = null;
@@ -22,15 +27,20 @@ export function extractAmazonProduct(html: string): ScrapedItem {
     onopentag(tag, attrs) {
       const parent = stack[stack.length - 1];
       const classes = new Set((attrs.class || '').split(/\s+/));
+      const id = attrs.id || '';
+      const payable = classes.has('priceToPay') || classes.has('apexPriceToPay');
+      // Struck list price. The amount to pay can also carry a-text-price.
+      const listPrice = (classes.has('a-text-price') || classes.has('basisPrice')) && !payable;
       const ignored = Boolean(parent?.ignored || ['script', 'style', 's', 'del'].includes(tag) ||
         'hidden' in attrs || /display\s*:\s*none/i.test(attrs.style || '') ||
-        /installment|monthly|payment-plan/i.test(`${attrs.id || ''} ${attrs.class || ''}`) ||
-        ['a-text-price', 'basisPrice', 'aok-hidden', 'a-hidden'].some(value => classes.has(value)));
-      const priceRoot = Boolean(parent?.priceRoot || priceRoots.has(attrs.id));
-      const payable = classes.has('priceToPay') || classes.has('apexPriceToPay');
-      const price = !ignored && (legacyPrices.has(attrs.id) || (priceRoot && (payable || classes.has('a-price'))));
-      stack.push({ priceRoot, ignored, kind: !ignored && attrs.id === 'productTitle' ? 'name' : price ? 'price' : undefined,
-        text: '', rank: payable ? 0 : legacyPrices.has(attrs.id) ? 1 : 2 });
+        /installment|monthly|payment-plan/i.test(`${id} ${attrs.class || ''}`) ||
+        listPrice ||
+        ['aok-hidden', 'a-hidden'].some(value => classes.has(value)));
+      const priceRoot = Boolean(parent?.priceRoot || priceRoots.has(id) || id.startsWith('newAccordionRow'));
+      const bookNewPrice = classes.has('header-price') || classes.has('offer-price');
+      const price = !ignored && (legacyPrices.has(id) || (priceRoot && (payable || classes.has('a-price') || bookNewPrice)));
+      stack.push({ priceRoot, ignored, kind: !ignored && id === 'productTitle' ? 'name' : price ? 'price' : undefined,
+        text: '', rank: payable ? 0 : (legacyPrices.has(id) || bookNewPrice) ? 1 : 2 });
       if (!ignored && tag === 'img' && ['landingImage', 'imgBlkFront', 'main-image'].includes(attrs.id)) {
         let candidate = attrs['data-old-hires'] || attrs.src;
         if (!/^https?:\/\//i.test(candidate || '')) {

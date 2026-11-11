@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fc from 'fast-check';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { isPublicAddress, publicPageUrl, fetchPublicPage, requestPage, PublicPageError, MAX_PAGE_BYTES, MAX_AMAZON_PAGE_BYTES, PRODUCT_FETCH_HELP } from '../src/lib/public-page';
@@ -225,6 +226,62 @@ test('Amazon parser uses the buy-box price and main image, independent of attrib
   const mobile = `<span id='productTitle'>モバイル商品</span><div id='corePrice_mobile_feature_div'><span class='a-price'><span>￥</span><span>2,999</span></span></div>`;
   assert.equal(extractAmazonProduct(mobile).price,2999);
   assert.equal(extractAmazonProduct(`<span id="productTitle">旧形式</span><span id="priceblock_dealprice">￥1,999</span>`).price,1999);
+});
+
+const bookCover = 'https://m.media-amazon.com/images/I/81am5vH8G-L._SL1262_.jpg';
+
+function bookPage(newPrice: string): string {
+  return `<img id="imgBlkFront" data-old-hires="${bookCover}" src="https://m.media-amazon.com/images/I/81am5vH8G-L.jpg">
+<span id="productTitle">半島を出よ 上 (幻冬舎文庫 む 1-25)</span>
+<div id="tmmSwatches">
+  <span class="a-color-price">￥1,650</span>
+  <span>80 Used from ￥1</span>
+  <span class="a-color-price">￥9,999</span>
+</div>
+<div id="desktop_buybox"><div id="buybox">
+  <div id="newBooksSingleBuyingOptionHeader_feature_div"><div id="booksHeaderSection">
+    <span id="newBuyingOption">Buy new:</span>
+    <span id="price" class="a-size-medium a-color-price header-price a-text-normal">${newPrice}</span>
+  </div></div>
+</div></div>
+<div id="usedAccordionRow"><span id="usedPrice" class="a-color-price">￥1</span></div>
+<div id="recommendations"><span class="a-price">￥999</span></div>`;
+}
+
+test('Amazon book pages keep the new header price, not a used or other-format price', () => {
+  const parsed = extractAmazonProduct(bookPage('￥796'));
+  assert.equal(parsed.name, '半島を出よ 上 (幻冬舎文庫 む 1-25)');
+  assert.equal(parsed.price, 796);
+  assert.equal(parsed.imageUrl, bookCover);
+
+  // 新品のアコーディオンと corePrice_feature_div。中古行は見ない。
+  assert.equal(extractAmazonProduct(`<span id="productTitle">文庫</span>
+    <div id="newAccordionRow_0"><span class="a-price priceToPay"><span class="a-offscreen">￥880</span></span></div>
+    <div id="usedAccordionRow"><span id="usedPrice" class="a-price"><span class="a-offscreen">￥50</span></span></div>`).price, 880);
+  assert.equal(extractAmazonProduct(`<span id="productTitle">文庫</span>
+    <div id="corePrice_feature_div">
+      <span class="a-price a-text-price" data-a-strike="true"><span class="a-offscreen">￥1,100</span></span>
+      <span class="a-price a-text-price apexPriceToPay" data-a-color="price"><span class="a-offscreen">￥880</span></span>
+    </div>
+    <div id="usedOnlyBuybox"><span id="usedPrice" class="a-color-price">￥50</span></div>`).price, 880);
+  assert.equal(extractAmazonProduct(`<span id="productTitle">文庫</span>
+    <div id="desktop_buybox"><span class="a-size-base a-color-price offer-price">￥792</span></div>
+    <div id="usedAccordionRow"><span id="usedPrice">￥1</span></div>`).price, 792);
+
+  // 中古・マーケットプレイスだけの表示は新品価格として保存しない。
+  assert.equal(extractAmazonProduct(`<span id="productTitle">中古のみ</span>
+    <img id="imgBlkFront" data-old-hires="${bookCover}">
+    <div id="usedAccordionRow"><span id="usedPrice" class="a-price"><span class="a-offscreen">￥120</span></span></div>
+    <div id="tmmSwatches"><span>54 Used from ￥1</span><span class="a-color-price">￥1</span></div>`).price, null);
+});
+
+test('Amazon new prices are the buy-box amount for any whole yen, ignoring used offers', () => {
+  fc.assert(fc.property(fc.integer({ min: 1, max: 999_999 }), (yen) => {
+    const shown = `￥${yen.toLocaleString('en-US')}`;
+    const parsed = extractAmazonProduct(bookPage(shown));
+    assert.equal(parsed.price, yen);
+    assert.equal(parsed.imageUrl, bookCover);
+  }));
 });
 
 test('missing price is not replaced by recommendations, foreign currency or incomplete HTML', () => {
