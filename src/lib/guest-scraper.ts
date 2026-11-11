@@ -9,10 +9,40 @@ import {
   PRODUCT_FETCH_BLOCKED_HELP,
   scrapeFailedHelp,
 } from './public-page';
-import { productFetchGuestDeps } from './product-fetch-port';
+import { productAmazonExchange, productFetchGuestDeps } from './product-fetch-port';
 import { parseProductHtml } from './product-html';
-import { extractAmazonProduct, isAmazonHost, isAmazonProductPage } from './amazon-product';
-import { isUnusableScrape } from './scraper';
+import { amazonUsdFallbackNote, extractAmazonListing, isAmazonHost, isAmazonProductPage } from './amazon-product';
+import { liveAmazonExchange, switchedAmazonHtml } from './amazon-currency';
+import { isUnusableScrape, type ScrapedItem } from './scraper';
+
+async function amazonGuestPrice(productUrl: string, html: string): Promise<ScrapedItem> {
+  const listing = extractAmazonListing(html);
+  const result: ScrapedItem = {
+    name: listing.name,
+    price: listing.price,
+    imageUrl: listing.imageUrl,
+    source: listing.source,
+    sourceName: listing.sourceName,
+  };
+  if (result.price != null || listing.usdPrice == null) return result;
+  const exchange = productAmazonExchange() ?? liveAmazonExchange();
+  try {
+    const switched = await switchedAmazonHtml(productUrl, exchange);
+    if (!switched) return { ...result, note: amazonUsdFallbackNote(listing.usdPrice) };
+    const again = extractAmazonListing(switched);
+    if (again.price != null) {
+      return {
+        ...result,
+        name: again.name && again.name !== '不明な商品' ? again.name : result.name,
+        price: again.price,
+        imageUrl: again.imageUrl ?? result.imageUrl,
+      };
+    }
+    return { ...result, note: amazonUsdFallbackNote(again.usdPrice ?? listing.usdPrice) };
+  } catch {
+    return { ...result, note: amazonUsdFallbackNote(listing.usdPrice) };
+  }
+}
 
 export async function scrapeGuestUrl(url: string, userId: number) {
   const db = getDb();
@@ -30,7 +60,9 @@ export async function scrapeGuestUrl(url: string, userId: number) {
     if (isBotChallengedHtml(page.html)) {
       throw new GuestError(422, 'SCRAPE_FAILED', PRODUCT_FETCH_BLOCKED_HELP);
     }
-    let result = isAmazonProductPage(resolvedUrl) ? extractAmazonProduct(page.html) : parseProductHtml(page.html, page.url);
+    let result = isAmazonProductPage(resolvedUrl)
+      ? await amazonGuestPrice(page.url, page.html)
+      : parseProductHtml(page.html, page.url);
     if (!result.failureCode && !result.imageUrl) {
       result = await recoverTsukumoImage(page.url, isUnusableScrape(result) ? undefined : result) ?? result;
     }

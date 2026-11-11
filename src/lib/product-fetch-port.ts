@@ -1,3 +1,4 @@
+import type { AmazonExchange } from './amazon-currency';
 import { isAmazonProductPage } from './amazon-product';
 import { decodeHtml } from './html-encoding';
 import type { MemberFetchDeps } from './member-fetch';
@@ -14,8 +15,14 @@ import type { ProductFixture } from './product-regression-fixtures';
 // 本番では使わない。環境変数もヘッダーも、本番の公開IP検査を外さない。
 // 差し替えはプロセス内のポートだけ。未登録のURLは店へ出さず失敗にする。
 
+export type ProductLookupContext = {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+};
+
 export type ProductFetchPort = {
-  lookup: (url: URL) => ProductFixture | undefined;
+  lookup: (url: URL, context?: ProductLookupContext) => ProductFixture | undefined;
   timeoutMs?: number;
 };
 
@@ -60,8 +67,8 @@ export function productFetchDeps(): MemberFetchDeps | undefined {
     baseDelayMs: 0,
     timeoutMs: port.timeoutMs ?? 400,
     resolve: resolvePublic,
-    request: async (url, _address, _headers, signal) => {
-      const fixture = port.lookup(url);
+    request: async (url, _address, headers, signal) => {
+      const fixture = port.lookup(url, { method: 'GET', headers });
       if (!fixture) throw new Error('fixture miss');
       if (fixture.hang) {
         await new Promise((_resolve, reject) => {
@@ -91,7 +98,7 @@ export function productFetchGuestDeps(): {
     timeoutMs: port.timeoutMs ?? 400,
     resolve: resolvePublic,
     request: async (url, _address, signal) => {
-      const fixture = port.lookup(url);
+      const fixture = port.lookup(url, { method: 'GET' });
       if (!fixture) throw new PublicPageError(502, PRODUCT_FETCH_HELP);
       if (fixture.hang) {
         await new Promise((_resolve, reject) => {
@@ -115,5 +122,25 @@ export function productFetchGuestDeps(): {
         ...(body.length > max ? { truncated: true } : {}),
       };
     },
+  };
+}
+
+/** テストの取得ポートが、通貨設定の GET/POST にも答える。未登録の URL は店へ出さない。 */
+export function productAmazonExchange(): AmazonExchange | undefined {
+  const port = activePort();
+  if (!port) return undefined;
+  const call = async (url: string, method: string, headers: Record<string, string>, body?: string) => {
+    const fixture = port.lookup(new URL(url), { method, headers, body });
+    if (!fixture) return { status: 404, body: '', setCookie: [] };
+    const raw = fixture.body ?? Buffer.alloc(0);
+    return {
+      status: fixture.status,
+      body: decodeHtml(raw, fixture.contentType || 'text/html'),
+      setCookie: fixture.setCookie ?? [],
+    };
+  };
+  return {
+    get: (url, headers) => call(url, 'GET', headers),
+    post: (url, headers, body) => call(url, 'POST', headers, body),
   };
 }
