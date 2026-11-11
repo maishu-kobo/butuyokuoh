@@ -137,6 +137,7 @@ export function productAmazonExchange(): AmazonExchange | undefined {
       status: fixture.status,
       body: decodeHtml(raw, fixture.contentType || 'text/html'),
       setCookie: fixture.setCookie ?? [],
+      location: fixture.location,
     };
   };
   return {

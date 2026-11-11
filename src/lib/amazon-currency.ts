@@ -13,6 +13,8 @@ import { MAX_AMAZON_PAGE_BYTES } from './public-page';
 // 為替でドルを円に換算しない。
 
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+// 本番の Amazon 取得（member-fetch の MAX_REDIRECTS）と同じ。初回を含めて 4 回まで。
+const CURRENCY_REDIRECTS = 3;
 const LANGUAGES = new Set(['ja_JP', 'en_US', 'zh_CN']);
 const COOKIE_NAMES = new Set([
   'session-id',
@@ -29,6 +31,7 @@ export type AmazonExchangeResponse = {
   status: number;
   body: string;
   setCookie: string[];
+  location?: string;
 };
 
 export type AmazonExchange = {
@@ -99,29 +102,65 @@ function pageHeaders(jar: Map<string, string>): Record<string, string> {
   };
 }
 
+function nextCurrencyUrl(current: URL, location: string | undefined): URL | null {
+  if (!location || /[\r\n]/.test(location)) return null;
+  let next: URL;
+  try { next = new URL(location, current); } catch { return null; }
+  next.hash = '';
+  return allowedCurrencyUrl(next) ? next : null;
+}
+
+/** 3xx は許可した Amazon のパスだけ追う。外せないときは null（円は保存しない）。 */
+async function followCurrency(
+  exchange: AmazonExchange,
+  start: URL,
+  method: 'GET' | 'POST',
+  headers: Record<string, string>,
+  body: string | undefined,
+  jar: Map<string, string>,
+): Promise<AmazonExchangeResponse | null> {
+  let current = start;
+  let verb = method;
+  let payload = body;
+  let hopHeaders = headers;
+  for (let redirects = 0; redirects <= CURRENCY_REDIRECTS; redirects++) {
+    const response = verb === 'POST'
+      ? await exchange.post(current.href, hopHeaders, payload ?? '')
+      : await exchange.get(current.href, hopHeaders);
+    absorbCookies(jar, response.setCookie);
+    if (response.status < 300 || response.status >= 400) return response;
+    const next = nextCurrencyUrl(current, response.location);
+    if (!next || redirects === CURRENCY_REDIRECTS) return null;
+    current = next;
+    // 本番の取得と同じく、転送のあとは GET。POST の本文は送り直さない。
+    verb = 'GET';
+    payload = undefined;
+    hopHeaders = pageHeaders(jar);
+  }
+  return null;
+}
+
 /** 円を選べたとき、切り替え後の商品 HTML を返す。選べなければ null。 */
 export async function switchedAmazonHtml(productUrl: string, exchange: AmazonExchange): Promise<string | null> {
   const urls = preferencesUrls(productUrl);
   if (!urls) return null;
   const jar = new Map<string, string>([['i18n-prefs', 'JPY'], ['lc-acbjp', 'ja_JP']]);
-  const edit = await exchange.get(urls.edit.href, pageHeaders(jar));
-  if (edit.status < 200 || edit.status >= 300) return null;
-  absorbCookies(jar, edit.setCookie);
+  const edit = await followCurrency(exchange, urls.edit, 'GET', pageHeaders(jar), undefined, jar);
+  if (!edit || edit.status < 200 || edit.status >= 300) return null;
   const choice = readAmazonCurrencyChoice(edit.body);
   if (!choice) return null;
-  const saved = await exchange.post(urls.save.href, {
+  const saved = await followCurrency(exchange, urls.save, 'POST', {
     ...pageHeaders(jar),
     'Accept': 'application/json, text/javascript, */*; q=0.01',
     'Content-Type': 'application/json; charset=UTF-8',
     'anti-csrftoken-a2z': choice.csrf,
     'Origin': urls.product.origin,
-  }, JSON.stringify({ lop: choice.language, cop: 'JPY' }));
-  if (saved.status < 200 || saved.status >= 300) return null;
-  absorbCookies(jar, saved.setCookie);
+  }, JSON.stringify({ lop: choice.language, cop: 'JPY' }), jar);
+  if (!saved || saved.status < 200 || saved.status >= 300) return null;
   jar.set('i18n-prefs', 'JPY');
   jar.set('lc-acbjp', 'ja_JP');
-  const page = await exchange.get(urls.product.href, pageHeaders(jar));
-  if (page.status < 200 || page.status >= 300 || !page.body) return null;
+  const page = await followCurrency(exchange, urls.product, 'GET', pageHeaders(jar), undefined, jar);
+  if (!page || page.status < 200 || page.status >= 300 || !page.body) return null;
   return page.body;
 }
 
@@ -160,9 +199,11 @@ function requestAmazon(
       const status = response.statusCode || 502;
       const setCookieHeader = response.headers['set-cookie'];
       const setCookie = Array.isArray(setCookieHeader) ? setCookieHeader : setCookieHeader ? [setCookieHeader] : [];
+      const locationHeader = response.headers.location;
+      const location = Array.isArray(locationHeader) ? locationHeader[0] : locationHeader;
       response.on('error', reject);
       if (status >= 300 && status < 400) {
-        resolve({ status, body: '', setCookie });
+        resolve({ status, body: '', setCookie, location });
         response.resume();
         return;
       }

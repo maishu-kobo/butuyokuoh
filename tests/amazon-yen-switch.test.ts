@@ -153,6 +153,114 @@ test('a yen page does not ask Amazon to switch currency', async () => {
   }
 });
 
+function redirect(location: string, setCookie: string[] = []): ProductFixture {
+  return { status: 302, location, body: Buffer.alloc(0), setCookie };
+}
+
+test('a currency-switch redirect on an allowed Amazon path still saves the yen new price', async () => {
+  const hits: Hit[] = [];
+  installProductFetchPort({
+    lookup: (url, context?: ProductLookupContext) => {
+      const method = (context?.method ?? 'GET').toUpperCase();
+      const headers = context?.headers ?? {};
+      const cookie = headers.Cookie ?? headers.cookie ?? '';
+      hits.push({ method, href: url.href, cookie, body: context?.body ?? '' });
+      if (url.pathname === '/customer-preferences/edit' && url.searchParams.get('step') !== 'form') {
+        return redirect('https://www.amazon.co.jp/customer-preferences/edit?step=form', [
+          'session-id=TESTSESSION; Domain=.amazon.co.jp; Path=/; Secure',
+        ]);
+      }
+      if (url.pathname === '/customer-preferences/edit') return fixture(yenChoice);
+      if (url.pathname === '/customer-preferences/ajax/save-preferences' && url.searchParams.get('done') !== '1') {
+        return redirect('https://www.amazon.co.jp/customer-preferences/ajax/save-preferences?ref=icp_save_cop_to_JPY&done=1', [
+          'i18n-prefs=JPY; Domain=.amazon.co.jp; Path=/',
+        ]);
+      }
+      if (url.pathname === '/customer-preferences/ajax/save-preferences') {
+        return fixture('{}', [], 'application/json');
+      }
+      if (url.pathname.startsWith('/dp/') && cookie.includes('session-id=TESTSESSION') && url.searchParams.get('landed') !== '1') {
+        return redirect('https://www.amazon.co.jp/dp/4344410009?landed=1');
+      }
+      if (url.pathname.startsWith('/dp/') && url.searchParams.get('landed') === '1') return fixture(yenPage(957));
+      if (url.pathname.startsWith('/dp/')) return fixture(dollarPage('6.06'));
+      return undefined;
+    },
+    timeoutMs: 400,
+  });
+  try {
+    const result = await scrapeUrl(PRODUCT);
+    assert.equal(result.price, 957);
+    assert.equal(result.note, undefined);
+    assert.equal(hits.some((hit) => hit.href.includes('step=form')), true);
+    assert.equal(hits.some((hit) => hit.href.includes('done=1')), true);
+    assert.equal(hits.some((hit) => hit.href.includes('landed=1')), true);
+    assert.match(hits.find((hit) => hit.href.includes('step=form'))?.cookie ?? '', /session-id=TESTSESSION/);
+  } finally {
+    installProductFetchPort(null);
+  }
+});
+
+test('a currency-switch redirect off Amazon or off the allowed paths is not followed', async () => {
+  const outside: Hit[] = [];
+  installProductFetchPort({
+    lookup: (url, context?: ProductLookupContext) => {
+      outside.push({
+        method: (context?.method ?? 'GET').toUpperCase(),
+        href: url.href,
+        cookie: context?.headers?.Cookie ?? context?.headers?.cookie ?? '',
+        body: context?.body ?? '',
+      });
+      if (url.pathname === '/customer-preferences/edit') {
+        return redirect('https://evil.example/customer-preferences/edit');
+      }
+      if (url.pathname.startsWith('/dp/')) return fixture(dollarPage('6.06'));
+      return undefined;
+    },
+    timeoutMs: 400,
+  });
+  try {
+    const escaped = await scrapeUrl(PRODUCT);
+    assert.equal(escaped.price, null);
+    assert.match(escaped.note ?? '', /USD 6\.06/);
+    assert.equal(outside.some((hit) => hit.href.includes('evil.example')), false);
+  } finally {
+    installProductFetchPort(null);
+  }
+
+  const offPath: Hit[] = [];
+  installProductFetchPort({
+    lookup: (url, context?: ProductLookupContext) => {
+      offPath.push({
+        method: (context?.method ?? 'GET').toUpperCase(),
+        href: url.href,
+        cookie: context?.headers?.Cookie ?? context?.headers?.cookie ?? '',
+        body: context?.body ?? '',
+      });
+      if (url.pathname === '/customer-preferences/edit') return fixture(yenChoice, ['session-id=TESTSESSION; Domain=.amazon.co.jp; Path=/']);
+      if (url.pathname === '/customer-preferences/ajax/save-preferences') {
+        return redirect('https://www.amazon.co.jp/s?k=secret');
+      }
+      if (url.pathname.startsWith('/dp/')) return cookiePage(context);
+      return undefined;
+    },
+    timeoutMs: 400,
+  });
+  try {
+    const blocked = await scrapeUrl(PRODUCT);
+    assert.equal(blocked.price, null);
+    assert.match(blocked.note ?? '', /USD 6\.06/);
+    assert.equal(offPath.some((hit) => new URL(hit.href).pathname === '/s'), false);
+  } finally {
+    installProductFetchPort(null);
+  }
+});
+
+function cookiePage(context: ProductLookupContext | undefined): ProductFixture {
+  const cookie = context?.headers?.Cookie ?? context?.headers?.cookie ?? '';
+  return fixture(cookie.includes('session-id=TESTSESSION') ? yenPage(957) : dollarPage('6.06'));
+}
+
 test('when yen cannot be selected, the visible USD new price is recorded and not stored as yen', async () => {
   const hits: Hit[] = [];
   installSwitch(hits, noYenChoice, yenPage(957));
