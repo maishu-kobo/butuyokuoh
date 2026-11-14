@@ -19,8 +19,19 @@ const invalidUrl = () => new PublicPageError(400, '公開されている商品�
 export const MAX_PAGE_BYTES = 2 * 1024 * 1024;
 export const MAX_AMAZON_PAGE_BYTES = 8 * 1024 * 1024;
 export const PRODUCT_FETCH_HELP = '商品情報を自動取得できませんでした。もう一度試すか、「手動で追加」で商品名を入力してください。入力したURLやメモはそのまま使えます。';
+/** 会員・共通。サイト側制限であり、ゲスト体験だけの禁止ではないことを明示する（#408）。 */
 export const PRODUCT_FETCH_BLOCKED_HELP =
-  'このサイトは自動での商品情報取得を制限しているようです。もう一度試すか、「手動で追加」で商品名を入力してください。入力したURLやメモはそのまま使えます。';
+  'この販売サイトが、サーバーからの商品情報の自動取得を制限しているようです（ゲスト体験だけの制限ではありません）。もう一度試すか、「手動で追加」で商品名を入力するか、別の店の商品ページURLを使ってください。入力したURLやメモはそのまま使えます。';
+/**
+ * ゲスト向け。簡易取得（ブラウザなし）の差と、ログインしてもサイト側制限が残る旨を足す（#408）。
+ * Puppeteer はゲストに開かない方針のまま、文言だけ明確にする。
+ */
+export const PRODUCT_FETCH_BLOCKED_HELP_GUEST =
+  'この販売サイトが、サーバーからの商品情報の自動取得を制限しているようです。ゲスト体験ではブラウザを使わない簡易取得のため、会員ログイン時より失敗しやすいことがあります。ログインするとAmazonなどでは取得できる場合がありますが、サイト側の制限は残ることがあります。「手動で追加」で商品名を入力するか、別の店の商品ページURLを試してください。入力したURLやメモはそのまま使えます。';
+
+/** ゲストの公開ページ取得でも使う。ボット専用 UA だと弾かれやすいサイト向け（#408）。 */
+export const PRODUCT_PAGE_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 /** ボット挑戦・アクセス拒否ページの典型的な断片。先頭だけ見れば足りる。 */
 export function isBotChallengedHtml(html: string): boolean {
@@ -39,13 +50,31 @@ export function isBotChallengedHtml(html: string): boolean {
 /** 取得失敗時の画面向け文言。手動追加への導線は共通で残す。 */
 export function scrapeFailedHelp(
   scraped?: { name?: string | null; note?: string | null; failureCode?: string | null } | null,
+  options?: { forGuest?: boolean },
 ): string {
+  const blocked = options?.forGuest ? PRODUCT_FETCH_BLOCKED_HELP_GUEST : PRODUCT_FETCH_BLOCKED_HELP;
   const note = scraped?.note?.trim() || '';
   // failureCode 付き（待機ページ / AliExpress 挑戦など）は note を優先する。
   if (scraped?.failureCode === 'BOT_CHALLENGE') {
-    return note || PRODUCT_FETCH_BLOCKED_HELP;
+    if (!note) return blocked;
+    // 汎用の制限文だけ、ゲスト向けに差し替える（Amazon 固有 note 等は呼び出し側で扱う）。
+    if (
+      options?.forGuest &&
+      (note === PRODUCT_FETCH_BLOCKED_HELP || note === PRODUCT_FETCH_BLOCKED_HELP_GUEST)
+    ) {
+      return PRODUCT_FETCH_BLOCKED_HELP_GUEST;
+    }
+    return note;
   }
-  if (note === PRODUCT_FETCH_BLOCKED_HELP || note === PRODUCT_FETCH_HELP) return note;
+  if (
+    note === PRODUCT_FETCH_BLOCKED_HELP ||
+    note === PRODUCT_FETCH_BLOCKED_HELP_GUEST ||
+    note === PRODUCT_FETCH_HELP
+  ) {
+    return options?.forGuest && note === PRODUCT_FETCH_BLOCKED_HELP
+      ? PRODUCT_FETCH_BLOCKED_HELP_GUEST
+      : note;
+  }
   return PRODUCT_FETCH_HELP;
 }
 
@@ -96,7 +125,8 @@ export const requestPage = (url: URL, address: { address: string; family: number
       maxHeaderSize: 16_384,
       headers: {
         Host: url.host,
-        'User-Agent': 'Mozilla/5.0 (compatible; Butuyokuoh/1.0)',
+        // 会員の汎用取得と同じブラウザ相当 UA。専用ボット UA だと弾かれやすい（#408）。
+        'User-Agent': PRODUCT_PAGE_USER_AGENT,
         'Accept': 'text/html,application/xhtml+xml', 'Accept-Encoding': 'identity',
         'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8',
         'Cookie': amazon ? 'i18n-prefs=JPY; lc-acbjp=ja_JP' : 'localization=JP; cart_currency=JPY',

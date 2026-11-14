@@ -79,9 +79,10 @@ test('fixed shop fixtures register, refresh and fail for guests and members with
   const items = '../src/app/api/items/route.ts';
   const itemRoute = '../src/app/api/items/[id]/route.ts';
   const refresh = '../src/app/api/items/[id]/refresh/route.ts';
-  const help = '手動で追加';
+  // Amazon ボット失敗は「編集」、その他の取得失敗は「手動で追加」へ案内する（#408）
+  const help = '手動で追加|「編集」から入力';
   const genericHelp = '商品情報を自動取得できませんでした';
-  const blockedHelp = '自動での商品情報取得を制限';
+  const blockedHelp = 'Amazon側|ゲスト体験に限った制限ではありません|販売サイトが、サーバーからの';
 
   port.installProductFetchPort(fixtures.regressionFetchPort());
   installAuthTestHooks({ user: null });

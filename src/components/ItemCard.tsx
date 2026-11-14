@@ -401,7 +401,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
                   title={item.scrape_error || '価格の取得に失敗しました'}
                 >
                   <AlertTriangle size={12} />
-                  {scrapeFailureCaption(item.scrape_error, item.source)}
+                  {scrapeFailureCaption(item.scrape_error, item.source, { forGuest: isGuest })}
                 </span>
               )}
             </div>

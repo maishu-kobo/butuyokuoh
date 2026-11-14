@@ -7,13 +7,25 @@ import {
   publicPageUrl,
   PublicPageError,
   PRODUCT_FETCH_BLOCKED_HELP,
+  PRODUCT_FETCH_BLOCKED_HELP_GUEST,
+  PRODUCT_FETCH_HELP,
   scrapeFailedHelp,
 } from './public-page';
 import { productAmazonExchange, productFetchGuestDeps } from './product-fetch-port';
-import { parseProductHtml } from './product-html';
+import { parseProductHtml, PRODUCT_WAITING_HELP, PRODUCT_WAITING_HELP_GUEST } from './product-html';
 import { amazonUsdFallbackNote, extractAmazonListing, isAmazonHost, isAmazonProductPage } from './amazon-product';
 import { liveAmazonExchange, switchedAmazonHtml } from './amazon-currency';
-import { isUnusableScrape, type ScrapedItem } from './scraper';
+import { AMAZON_BOT_NOTE, isUnusableScrape, type ScrapedItem } from './scraper';
+
+function guestScrapeFailedHelp(
+  scraped: { name?: string | null; note?: string | null; failureCode?: string | null } | null,
+): string {
+  const note = scraped?.note?.trim() || '';
+  if (note === PRODUCT_WAITING_HELP || note === PRODUCT_WAITING_HELP_GUEST) {
+    return PRODUCT_WAITING_HELP_GUEST;
+  }
+  return scrapeFailedHelp(scraped, { forGuest: true });
+}
 
 async function amazonGuestPrice(productUrl: string, html: string): Promise<ScrapedItem> {
   const listing = extractAmazonListing(html);
@@ -58,7 +70,11 @@ export async function scrapeGuestUrl(url: string, userId: number) {
       throw new GuestError(422, 'SCRAPE_FAILED', 'Amazonの商品ページを確認できませんでした。商品ページをブラウザで開き、そのURLを貼り直してください。');
     }
     if (isBotChallengedHtml(page.html)) {
-      throw new GuestError(422, 'SCRAPE_FAILED', PRODUCT_FETCH_BLOCKED_HELP);
+      throw new GuestError(
+        422,
+        'SCRAPE_FAILED',
+        isAmazonHost(resolvedUrl.hostname) ? AMAZON_BOT_NOTE : PRODUCT_FETCH_BLOCKED_HELP_GUEST,
+      );
     }
     let result = isAmazonProductPage(resolvedUrl)
       ? await amazonGuestPrice(page.url, page.html)
@@ -67,7 +83,7 @@ export async function scrapeGuestUrl(url: string, userId: number) {
       result = await recoverTsukumoImage(page.url, isUnusableScrape(result) ? undefined : result) ?? result;
     }
     if (result.failureCode || !result.name || result.name === '不明な商品' || isUnusableScrape(result)) {
-      throw new GuestError(422, 'SCRAPE_FAILED', scrapeFailedHelp(result));
+      throw new GuestError(422, 'SCRAPE_FAILED', guestScrapeFailedHelp(result));
     }
     result.name = result.name.slice(0, 200);
     if (result.price !== null && (!Number.isFinite(result.price) || result.price < 0 || result.price > 1_000_000_000)) result.price = null;
@@ -83,7 +99,16 @@ export async function scrapeGuestUrl(url: string, userId: number) {
         const recovered = await recoverTsukumoImage(error.url);
         if (recovered) return recovered;
       }
-      throw new GuestError(error.status, 'SCRAPE_FAILED', error.message);
+      let message = error.message;
+      const host = (() => {
+        try { return error.url ? new URL(error.url).hostname : ''; } catch { return ''; }
+      })();
+      if (isAmazonHost(host) && (message === PRODUCT_FETCH_HELP || message === PRODUCT_FETCH_BLOCKED_HELP)) {
+        message = AMAZON_BOT_NOTE;
+      } else if (message === PRODUCT_FETCH_BLOCKED_HELP) {
+        message = PRODUCT_FETCH_BLOCKED_HELP_GUEST;
+      }
+      throw new GuestError(error.status, 'SCRAPE_FAILED', message);
     }
     throw error;
   }
