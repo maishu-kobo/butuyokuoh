@@ -1,13 +1,13 @@
-import { amazonUsdFallbackNote, extractAmazonListing, isAmazonProductPage } from './amazon-product';
-import { liveAmazonExchange, switchedAmazonHtml, type AmazonExchange } from './amazon-currency';
-import { productAmazonExchange } from './product-fetch-port';
+import { isAmazonProductPage } from './amazon-product';
+import { liveAmazonExchange, type AmazonExchange } from './amazon-currency';
+import { resolveAmazonListing } from './amazon-listing';
+import { productAmazonExchange, productFetchDeps } from './product-fetch-port';
 import { isAppleShopBuyPage, parseProductHtml } from './product-html';
 import { readHtmlResponse } from './html-encoding';
 import { launchPageBrowser } from './page-browser';
 import { validateAndSanitizeUrl, sanitizeGenericUrl } from './url-validator';
 import { canonicalRakutenAffiliateUrl, rakutenProductIdentity } from './capture/rakuten-link';
 import { BlockedTargetError, fetchPublicMember, HttpError, resolvedPublicAddress, type MemberFetchDeps } from './member-fetch';
-import { productFetchDeps } from './product-fetch-port';
 
 import { tsukumoCatalogImage } from './tsukumo-catalog';
 import { recoverTsukumoImage } from './tsukumo-image';
@@ -409,49 +409,6 @@ function amazonExchangeFor(deps?: ScrapeDeps): AmazonExchange | null {
   return liveAmazonExchange(deps);
 }
 
-/** 新品がドル表示なら、通貨設定で円を選んだあとのページから円の新品価格を取る。 */
-async function withYenNewPrice(productUrl: string, html: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
-  const listing = extractAmazonListing(html);
-  const item: ScrapedItem = {
-    name: listing.name,
-    price: listing.price,
-    imageUrl: listing.imageUrl,
-    source: 'amazon',
-    sourceName: 'Amazon',
-  };
-  if (item.price != null || listing.usdPrice == null) return item;
-  const exchange = amazonExchangeFor(deps);
-  if (!exchange) {
-    item.note = amazonUsdFallbackNote(listing.usdPrice);
-    return item;
-  }
-  try {
-    const switched = await switchedAmazonHtml(productUrl, exchange);
-    if (!switched) {
-      item.note = amazonUsdFallbackNote(listing.usdPrice);
-      return item;
-    }
-    const again = extractAmazonListing(switched);
-    if (again.price != null) {
-      return {
-        name: again.name && again.name !== '不明な商品' ? again.name : item.name,
-        price: again.price,
-        imageUrl: again.imageUrl ?? item.imageUrl,
-        source: 'amazon',
-        sourceName: 'Amazon',
-      };
-    }
-    if (again.name && again.name !== '不明な商品') item.name = again.name;
-    if (again.imageUrl) item.imageUrl = again.imageUrl;
-    item.note = amazonUsdFallbackNote(again.usdPrice ?? listing.usdPrice);
-    return item;
-  } catch (error) {
-    if (error instanceof BlockedTargetError) throw error;
-    item.note = amazonUsdFallbackNote(listing.usdPrice);
-    return item;
-  }
-}
-
 /**
  * Puppeteer（ヘッドレスブラウザ）でAmazon商品ページを取得するフォールバック
  * 素のfetchがAmazonのボット対策に弾かれた場合に使用する
@@ -512,7 +469,7 @@ async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: ScrapeDeps
       return null;
     }
 
-    return withYenNewPrice(sanitizedUrl, html, deps);
+    return resolveAmazonListing(sanitizedUrl, html, amazonExchangeFor(deps));
   } finally {
     // ブラウザプロセスのリーク防止のため必ずクローズする
     await browser.close();
@@ -551,9 +508,8 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
       console.log('Amazon bot detection or error page detected');
       fallbackResult = amazonBotFallback();
     } else {
-      // 商品ページは取れている。円の新品が無いときだけ、画面の通貨設定で円を選んで取り直す。
-      // 在庫切れのように価格そのものが無いときはブラウザを起動しない。
-      return withYenNewPrice(sanitizedUrl, html, deps);
+      // 在庫切れのように価格そのものが無いときは、ここではブラウザを起動しない。
+      return resolveAmazonListing(sanitizedUrl, html, amazonExchangeFor(deps));
     }
   } catch (error) {
     if (error instanceof BlockedTargetError) {
