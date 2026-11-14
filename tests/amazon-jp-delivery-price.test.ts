@@ -175,3 +175,93 @@ test('a Japan-delivery page does not call address-change', async () => {
     mock.restoreAll();
   }
 });
+
+test('amazon.com with a United States glow does not call address-change', async () => {
+  mock.method(dns, 'lookup', async () => [{ address: '8.8.8.8', family: 4 }]);
+  const hits: Hit[] = [];
+  const comUrl = 'https://www.amazon.com/dp/B0HFZ4DCL8';
+  installProductFetchPort({
+    lookup: (url, context?: ProductLookupContext) => {
+      const method = (context?.method ?? 'GET').toUpperCase();
+      hits.push({ method, href: url.href, cookie: '', body: context?.body ?? '' });
+      if (url.hostname.includes('amazon.com') && url.pathname.startsWith('/dp/')) {
+        return fixture(usDeliveryPage().replace('アメリカ合衆国', 'United States'));
+      }
+      return undefined;
+    },
+    timeoutMs: 400,
+  });
+  try {
+    const result = await scrapeUrl(comUrl);
+    assert.equal(result.price, null);
+    assert.equal(hits.some((hit) => hit.href.includes('address-change')), false);
+  } finally {
+    installProductFetchPort(null);
+    mock.restoreAll();
+  }
+});
+
+test('US delivery with a dollar buybox still converts to yen after a useless delivery rewrite', async () => {
+  mock.method(dns, 'lookup', async () => [{ address: '8.8.8.8', family: 4 }]);
+  const hits: Hit[] = [];
+  const CSRF = 'test-csrf-token';
+  const dollarUs = `<!doctype html><html lang="ja-jp"><body>
+<span id="nav-global-location-data-modal-action"
+  data-a-modal="{&quot;ajaxHeaders&quot;:{&quot;anti-csrftoken-a2z&quot;:&quot;${GLOW_CSRF}&quot;}}"></span>
+<div id="glow-ingress-block"><span id="glow-ingress-line2">アメリカ合衆国</span></div>
+<img id="landingImage" data-old-hires="${COVER}" src="${COVER}">
+<span id="productTitle">${TITLE}</span>
+<div id="desktop_buybox"><div id="corePriceDisplay_desktop_feature_div">
+  <span class="a-price aok-align-center priceToPay">
+    <span class="a-offscreen"> </span>
+    <span aria-hidden="true"><span class="a-price-symbol">USD</span><span class="a-price-whole">6<span class="a-price-decimal">.</span></span><span class="a-price-fraction">06</span></span>
+  </span>
+</div></div>
+</body></html>`;
+  const emptyAfterDelivery = `<!doctype html><html lang="ja-jp"><body>
+<span id="nav-global-location-data-modal-action"
+  data-a-modal="{&quot;ajaxHeaders&quot;:{&quot;anti-csrftoken-a2z&quot;:&quot;${GLOW_CSRF}&quot;}}"></span>
+<div id="glow-ingress-block"><span id="glow-ingress-line2">千代田区千代田 100-0001</span></div>
+<img id="landingImage" data-old-hires="${COVER}" src="${COVER}">
+<span id="productTitle">${TITLE}</span>
+<div id="desktop_buybox"><div id="corePrice_desktop"></div></div>
+</body></html>`;
+  const yenChoice = `<form method="post" id="international-customer-select-preferences-form">
+<input type="hidden" name="anti-csrftoken-a2z" value="${CSRF}" />
+<input type="radio" name="lop" value="ja_JP" checked />
+<select name="cop"><option value="JPY" selected>JPY</option></select>
+</form>`;
+  installProductFetchPort({
+    lookup: (url, context?: ProductLookupContext) => {
+      const method = (context?.method ?? 'GET').toUpperCase();
+      const headers = context?.headers ?? {};
+      const cookie = headers.Cookie ?? headers.cookie ?? '';
+      hits.push({ method, href: url.href, cookie, body: context?.body ?? '' });
+      if (url.pathname === '/gp/delivery/ajax/address-change.html') {
+        return fixture('{"successful":1}', ['ubid-acbjp=TESTUBID; Domain=.amazon.co.jp; Path=/; Secure'], 'application/json');
+      }
+      if (url.pathname === '/customer-preferences/edit') {
+        return fixture(yenChoice, ['session-id=TESTSESSION; Domain=.amazon.co.jp; Path=/; Secure']);
+      }
+      if (url.pathname === '/customer-preferences/ajax/save-preferences') {
+        return fixture('{}', ['i18n-prefs=JPY; Domain=.amazon.co.jp; Path=/'], 'application/json');
+      }
+      if (url.pathname.startsWith('/dp/')) {
+        if (cookie.includes('session-id=TESTSESSION')) return fixture(jpDeliveryPage(957));
+        if (cookie.includes('ubid-acbjp=TESTUBID')) return fixture(emptyAfterDelivery);
+        return fixture(dollarUs);
+      }
+      return undefined;
+    },
+    timeoutMs: 400,
+  });
+  try {
+    const result = await scrapeUrl(PRODUCT);
+    assert.equal(result.price, 957);
+    assert.equal(hits.some((hit) => hit.href.includes('address-change')), true);
+    assert.equal(hits.some((hit) => hit.href.includes('save-preferences')), true);
+  } finally {
+    installProductFetchPort(null);
+    mock.restoreAll();
+  }
+});

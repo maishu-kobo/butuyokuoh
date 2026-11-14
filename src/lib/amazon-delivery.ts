@@ -1,4 +1,4 @@
-import { isAmazonHost, isAmazonProductPage } from './amazon-product';
+import { isAmazonProductPage } from './amazon-product';
 import {
   amazonPageHeaders,
   followAmazonExchange,
@@ -7,6 +7,11 @@ import {
 
 const JAPAN_ZIP = '1000001';
 const CSRF_OK = /^[A-Za-z0-9+/=_-]{8,500}$/;
+const JP_HOSTS = new Set(['amazon.co.jp', 'www.amazon.co.jp', 'amazon.jp', 'www.amazon.jp']);
+
+export function isAmazonJpHost(host: string): boolean {
+  return JP_HOSTS.has(host.toLowerCase());
+}
 
 export function amazonNeedsJapanDelivery(html: string): boolean {
   if (!html) return false;
@@ -27,7 +32,7 @@ export function readAmazonGlowCsrf(html: string): string | null {
 function deliveryUrls(productUrl: string): { change: URL; product: URL } | null {
   let product: URL;
   try { product = new URL(productUrl); } catch { return null; }
-  if (!isAmazonProductPage(product) || !isAmazonHost(product.hostname)) return null;
+  if (!isAmazonProductPage(product) || !isAmazonJpHost(product.hostname)) return null;
   return {
     change: new URL('/gp/delivery/ajax/address-change.html', product.origin),
     product,

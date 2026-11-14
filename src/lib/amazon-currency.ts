@@ -165,10 +165,15 @@ export async function switchedAmazonHtml(productUrl: string, exchange: AmazonExc
 
 export function allowedAmazonSessionUrl(url: URL): boolean {
   if (url.protocol !== 'https:' || !isAmazonHost(url.hostname)) return false;
+  const host = url.hostname.toLowerCase();
+  const japan = host === 'amazon.co.jp' || host === 'www.amazon.co.jp'
+    || host === 'amazon.jp' || host === 'www.amazon.jp';
+  if (japan && (url.pathname === '/gp/delivery/ajax/address-change.html'
+    || url.pathname === '/portal-migration/hz/glow/address-change')) {
+    return true;
+  }
   return url.pathname === '/customer-preferences/edit'
     || url.pathname === '/customer-preferences/ajax/save-preferences'
-    || url.pathname === '/gp/delivery/ajax/address-change.html'
-    || url.pathname === '/portal-migration/hz/glow/address-change'
     || isAmazonProductPage(url);
 }
 

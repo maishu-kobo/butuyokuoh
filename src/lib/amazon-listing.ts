@@ -1,6 +1,6 @@
 import { amazonUsdFallbackNote, extractAmazonListing, type AmazonListing } from './amazon-product';
 import { switchedAmazonHtml, type AmazonExchange } from './amazon-currency';
-import { amazonNeedsJapanDelivery, switchedAmazonDeliveryHtml } from './amazon-delivery';
+import { amazonNeedsJapanDelivery, isAmazonJpHost, switchedAmazonDeliveryHtml } from './amazon-delivery';
 import { BlockedTargetError } from './member-fetch';
 import type { ScrapedItem } from './scraper';
 
@@ -21,7 +21,12 @@ function mergeListing(base: AmazonListing, next: AmazonListing): AmazonListing {
     ...next,
     name: next.name && next.name !== '不明な商品' ? next.name : base.name,
     imageUrl: next.imageUrl ?? base.imageUrl,
+    usdPrice: next.usdPrice ?? base.usdPrice,
   };
+}
+
+function amazonJpProductUrl(productUrl: string): boolean {
+  try { return isAmazonJpHost(new URL(productUrl).hostname); } catch { return false; }
 }
 
 export async function resolveAmazonListing(
@@ -32,7 +37,7 @@ export async function resolveAmazonListing(
   let listing = extractAmazonListing(html);
   if (listing.price != null) return asItem(listing);
 
-  if (exchange && amazonNeedsJapanDelivery(html)) {
+  if (exchange && amazonJpProductUrl(productUrl) && amazonNeedsJapanDelivery(html)) {
     try {
       const switched = await switchedAmazonDeliveryHtml(productUrl, html, exchange);
       if (switched) {
