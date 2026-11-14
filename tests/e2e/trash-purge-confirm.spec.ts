@@ -140,9 +140,10 @@ test.describe('trash permanent delete confirmation', () => {
     });
 
     const dialog = await openItemPurgeConfirm(page, ITEM_A);
-    await page.waitForTimeout(1200);
-    await expect(dialog).toBeVisible();
+    // 自動で消える実装なら、次の UI アサーションまでに dialog が消える。壁時計 sleep は使わない。
     await expect(page.getByText(ITEM_A, { exact: true })).toBeVisible();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'キャンセル' })).toBeFocused();
     expect(deletes).toEqual([]);
   });
 
@@ -221,29 +222,85 @@ test.describe('trash permanent delete confirmation', () => {
   });
 
   test('double confirm while in flight sends only one DELETE', async ({ page }) => {
-    let release: (() => void) | undefined;
+    const deletes: string[] = [];
+    let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const deletes: string[] = [];
-    await page.route('**/api/trash/**', async (route: Route) => {
-      if (route.request().method() !== 'DELETE') {
-        await route.continue();
+    let purged = false;
+    await page.route(/\/api\/trash(\/\d+)?$/, async (route: Route) => {
+      const url = new URL(route.request().url());
+      const method = route.request().method();
+      if (method === 'DELETE' && /^\/api\/trash\/\d+$/.test(url.pathname)) {
+        deletes.push(url.pathname);
+        await gate;
+        purged = true;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: '{"success":true}',
+        });
         return;
       }
-      deletes.push(new URL(route.request().url()).pathname);
-      await gate;
+      if (method === 'GET' && url.pathname === '/api/trash' && purged) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+        return;
+      }
       await route.continue();
     });
 
     const dialog = await openItemPurgeConfirm(page, ITEM_A);
-    const confirm = dialog.getByRole('button', { name: '完全に削除' });
-    await confirm.click();
-    await confirm.click({ force: true }).catch(() => undefined);
+    // React の再描画前に同期で連打し、inFlight ガードを検証する。
+    await dialog.getByRole('button', { name: '完全に削除' }).evaluate((button) => {
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
     await expect.poll(() => deletes.length).toBe(1);
-    release!();
+    release();
     await expect(confirmDialog(page)).toHaveCount(0);
     await expect(page.getByText(ITEM_A, { exact: true })).toHaveCount(0);
     expect(deletes).toHaveLength(1);
+  });
+
+  test('empty-trash HTTP failure stays open and can retry', async ({ page }) => {
+    let mode: 'http' | 'ok' = 'http';
+    const deletes: string[] = [];
+    await page.route('**/api/trash', async (route: Route) => {
+      if (route.request().method() !== 'DELETE') {
+        await route.continue();
+        return;
+      }
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname !== '/api/trash') {
+        await route.continue();
+        return;
+      }
+      deletes.push(pathname);
+      if (mode === 'http') {
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'unavailable' }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.getByRole('button', { name: 'ゴミ箱を空にする' }).click();
+    const dialog = confirmDialog(page);
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'ゴミ箱を空にする' }).click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(/失敗|エラー|再試行|もう一度/);
+    await expect(page.getByText(ITEM_A, { exact: true })).toBeVisible();
+    expect(deletes).toEqual(['/api/trash']);
+
+    mode = 'ok';
+    await dialog.getByRole('button', { name: 'ゴミ箱を空にする' }).click();
+    await expect(confirmDialog(page)).toHaveCount(0);
+    await expect(page.getByText('ゴミ箱は空です')).toBeVisible();
+    expect(deletes).toEqual(['/api/trash', '/api/trash']);
   });
 });
