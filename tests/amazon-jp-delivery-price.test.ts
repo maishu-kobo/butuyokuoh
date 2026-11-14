@@ -184,7 +184,7 @@ test('amazon.com with a United States glow does not call address-change', async 
     lookup: (url, context?: ProductLookupContext) => {
       const method = (context?.method ?? 'GET').toUpperCase();
       hits.push({ method, href: url.href, cookie: '', body: context?.body ?? '' });
-      if (url.hostname.includes('amazon.com') && url.pathname.startsWith('/dp/')) {
+      if ((url.hostname === 'www.amazon.com' || url.hostname === 'amazon.com') && url.pathname.startsWith('/dp/')) {
         return fixture(usDeliveryPage().replace('アメリカ合衆国', 'United States'));
       }
       return undefined;
