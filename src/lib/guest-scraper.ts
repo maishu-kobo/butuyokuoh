@@ -8,14 +8,13 @@ import {
   PublicPageError,
   PRODUCT_FETCH_BLOCKED_HELP,
   PRODUCT_FETCH_BLOCKED_HELP_GUEST,
-  PRODUCT_FETCH_HELP,
   scrapeFailedHelp,
 } from './public-page';
 import { productAmazonExchange, productFetchGuestDeps } from './product-fetch-port';
 import { parseProductHtml, PRODUCT_WAITING_HELP, PRODUCT_WAITING_HELP_GUEST } from './product-html';
 import { amazonUsdFallbackNote, extractAmazonListing, isAmazonHost, isAmazonProductPage } from './amazon-product';
 import { liveAmazonExchange, switchedAmazonHtml } from './amazon-currency';
-import { AMAZON_BOT_NOTE, isUnusableScrape, type ScrapedItem } from './scraper';
+import { isUnusableScrape, type ScrapedItem } from './scraper';
 
 function guestScrapeFailedHelp(
   scraped: { name?: string | null; note?: string | null; failureCode?: string | null } | null,
@@ -70,11 +69,8 @@ export async function scrapeGuestUrl(url: string, userId: number) {
       throw new GuestError(422, 'SCRAPE_FAILED', 'Amazonの商品ページを確認できませんでした。商品ページをブラウザで開き、そのURLを貼り直してください。');
     }
     if (isBotChallengedHtml(page.html)) {
-      throw new GuestError(
-        422,
-        'SCRAPE_FAILED',
-        isAmazonHost(resolvedUrl.hostname) ? AMAZON_BOT_NOTE : PRODUCT_FETCH_BLOCKED_HELP_GUEST,
-      );
+      // 追加失敗時は未保存なので「編集」案内の AMAZON_BOT_NOTE は使わない（#408 Bugbot）。
+      throw new GuestError(422, 'SCRAPE_FAILED', PRODUCT_FETCH_BLOCKED_HELP_GUEST);
     }
     let result = isAmazonProductPage(resolvedUrl)
       ? await amazonGuestPrice(page.url, page.html)
@@ -99,15 +95,12 @@ export async function scrapeGuestUrl(url: string, userId: number) {
         const recovered = await recoverTsukumoImage(error.url);
         if (recovered) return recovered;
       }
-      let message = error.message;
-      const host = (() => {
-        try { return error.url ? new URL(error.url).hostname : ''; } catch { return ''; }
-      })();
-      if (isAmazonHost(host) && (message === PRODUCT_FETCH_HELP || message === PRODUCT_FETCH_BLOCKED_HELP)) {
-        message = AMAZON_BOT_NOTE;
-      } else if (message === PRODUCT_FETCH_BLOCKED_HELP) {
-        message = PRODUCT_FETCH_BLOCKED_HELP_GUEST;
-      }
+      // 一般の取得失敗（404・非HTML 等の PRODUCT_FETCH_HELP）はボット扱いにしない。
+      // 本物の制限文だけゲスト向け（手動追加）に差し替える（#408 Bugbot）。
+      const message =
+        error.message === PRODUCT_FETCH_BLOCKED_HELP
+          ? PRODUCT_FETCH_BLOCKED_HELP_GUEST
+          : error.message;
       throw new GuestError(error.status, 'SCRAPE_FAILED', message);
     }
     throw error;

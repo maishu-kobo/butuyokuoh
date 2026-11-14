@@ -8,6 +8,7 @@ import {
   scrapeFailedHelp,
 } from '../src/lib/public-page';
 import { AMAZON_BOT_NOTE } from '../src/lib/scraper';
+import { amazonUsdFallbackNote } from '../src/lib/amazon-product';
 
 test('scrapeFailureCaption distinguishes bot limits from generic price refresh failures', () => {
   assert.equal(scrapeFailureCaption(null), '価格を更新できていません');
@@ -20,14 +21,6 @@ test('scrapeFailureCaption distinguishes bot limits from generic price refresh f
     scrapeFailureCaption('待機ページが返された', 'other'),
     '販売サイト側で自動取得が制限されています',
   );
-  assert.equal(
-    scrapeFailureCaption('何かのエラー', 'amazon'),
-    '販売サイト側で自動取得が制限されています',
-  );
-  assert.equal(
-    scrapeFailureCaption('何かのエラー', 'rakuten'),
-    '販売サイト側で自動取得が制限されています',
-  );
   // 旧文言の残骸でもサイト側制限として扱う
   assert.equal(
     scrapeFailureCaption('自動取得が制限されています'),
@@ -37,6 +30,35 @@ test('scrapeFailureCaption distinguishes bot limits from generic price refresh f
     scrapeFailureCaption(AMAZON_BOT_NOTE, 'amazon', { forGuest: true }),
     '販売サイト側の制限（ゲストは簡易取得）',
   );
+  assert.equal(
+    scrapeFailureCaption(PRODUCT_FETCH_BLOCKED_HELP_GUEST, 'other', { forGuest: true }),
+    '販売サイト側の制限（ゲストは簡易取得）',
+  );
+});
+
+test('scrapeFailureCaption does not treat Amazon/Rakuten source alone as a site block (#408 Bugbot)', () => {
+  // USD フォールバックや一般的な価格欠落は「サイト側制限」にしない
+  assert.equal(
+    scrapeFailureCaption(amazonUsdFallbackNote(12.99), 'amazon'),
+    '価格を更新できていません',
+  );
+  assert.equal(
+    scrapeFailureCaption(amazonUsdFallbackNote(12.99), 'amazon', { forGuest: true }),
+    '価格を更新できていません',
+  );
+  assert.equal(
+    scrapeFailureCaption('価格は取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。', 'amazon'),
+    '価格を更新できていません',
+  );
+  assert.equal(
+    scrapeFailureCaption('何かのエラー', 'amazon'),
+    '価格を更新できていません',
+  );
+  assert.equal(
+    scrapeFailureCaption('何かのエラー', 'rakuten', { forGuest: true }),
+    '価格を更新できていません',
+  );
+  assert.equal(scrapeFailureCaption(null, 'amazon', { forGuest: true }), '価格を更新できていません');
 });
 
 test('blocked-help copy names the site (not guest mode) and points to manual add', () => {
@@ -61,9 +83,10 @@ test('scrapeFailedHelp picks guest-specific blocked copy when asked', () => {
     scrapeFailedHelp({ failureCode: 'BOT_CHALLENGE' }, { forGuest: true }),
     PRODUCT_FETCH_BLOCKED_HELP_GUEST,
   );
+  // ゲストの追加失敗では「編集」案内の Amazon note を手動追加向けに差し替える
   assert.equal(
     scrapeFailedHelp({ failureCode: 'BOT_CHALLENGE', note: AMAZON_BOT_NOTE }, { forGuest: true }),
-    AMAZON_BOT_NOTE,
+    PRODUCT_FETCH_BLOCKED_HELP_GUEST,
   );
   assert.equal(scrapeFailedHelp(null), PRODUCT_FETCH_HELP);
 });

@@ -57,12 +57,16 @@ export function scrapeFailedHelp(
   // failureCode 付き（待機ページ / AliExpress 挑戦など）は note を優先する。
   if (scraped?.failureCode === 'BOT_CHALLENGE') {
     if (!note) return blocked;
-    // 汎用の制限文だけ、ゲスト向けに差し替える（Amazon 固有 note 等は呼び出し側で扱う）。
-    if (
-      options?.forGuest &&
-      (note === PRODUCT_FETCH_BLOCKED_HELP || note === PRODUCT_FETCH_BLOCKED_HELP_GUEST)
-    ) {
-      return PRODUCT_FETCH_BLOCKED_HELP_GUEST;
+    if (options?.forGuest) {
+      // ゲストの追加失敗では「編集」案内（AMAZON_BOT_NOTE 等）を出さず、手動追加向けに揃える。
+      // AMAZON_BOT_NOTE は scraper 側定数なので文字列特徴で判定し、循環 import を避ける。
+      if (
+        note === PRODUCT_FETCH_BLOCKED_HELP ||
+        note === PRODUCT_FETCH_BLOCKED_HELP_GUEST ||
+        /Amazon側のボット対策|「編集」から入力/.test(note)
+      ) {
+        return PRODUCT_FETCH_BLOCKED_HELP_GUEST;
+      }
     }
     return note;
   }
