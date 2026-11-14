@@ -358,7 +358,7 @@ async function scrapeUrlFromPage(url: string, deps: ScrapeDeps | undefined, purp
 }
 
 export const AMAZON_BOT_NOTE =
-  'Amazonのボット対策により自動取得が制限されています。価格は手動で編集してください。';
+  'Amazon側のボット対策により、サーバーからの価格の自動取得が制限されています（ゲスト体験に限った制限ではありません）。価格は「編集」から入力してください。';
 const AMAZON_BOT_NAME = 'Amazonのボット対策により価格を取得できませんでした';
 
 function amazonBotFallback(): ScrapedItem {
