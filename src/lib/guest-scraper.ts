@@ -11,37 +11,13 @@ import {
 } from './public-page';
 import { productAmazonExchange, productFetchGuestDeps } from './product-fetch-port';
 import { parseProductHtml } from './product-html';
-import { amazonUsdFallbackNote, extractAmazonListing, isAmazonHost, isAmazonProductPage } from './amazon-product';
-import { liveAmazonExchange, switchedAmazonHtml } from './amazon-currency';
+import { isAmazonHost, isAmazonProductPage } from './amazon-product';
+import { liveAmazonExchange } from './amazon-currency';
+import { resolveAmazonListing } from './amazon-listing';
 import { isUnusableScrape, type ScrapedItem } from './scraper';
 
 async function amazonGuestPrice(productUrl: string, html: string): Promise<ScrapedItem> {
-  const listing = extractAmazonListing(html);
-  const result: ScrapedItem = {
-    name: listing.name,
-    price: listing.price,
-    imageUrl: listing.imageUrl,
-    source: listing.source,
-    sourceName: listing.sourceName,
-  };
-  if (result.price != null || listing.usdPrice == null) return result;
-  const exchange = productAmazonExchange() ?? liveAmazonExchange();
-  try {
-    const switched = await switchedAmazonHtml(productUrl, exchange);
-    if (!switched) return { ...result, note: amazonUsdFallbackNote(listing.usdPrice) };
-    const again = extractAmazonListing(switched);
-    if (again.price != null) {
-      return {
-        ...result,
-        name: again.name && again.name !== '不明な商品' ? again.name : result.name,
-        price: again.price,
-        imageUrl: again.imageUrl ?? result.imageUrl,
-      };
-    }
-    return { ...result, note: amazonUsdFallbackNote(again.usdPrice ?? listing.usdPrice) };
-  } catch {
-    return { ...result, note: amazonUsdFallbackNote(listing.usdPrice) };
-  }
+  return resolveAmazonListing(productUrl, html, productAmazonExchange() ?? liveAmazonExchange());
 }
 
 export async function scrapeGuestUrl(url: string, userId: number) {
