@@ -27,8 +27,13 @@ import {
 import { isCalendarDate, localCalendarDate } from '@/lib/local-date';
 import { BlockedTargetError, resolvedPublicAddress, type MemberFetchDeps } from '@/lib/member-fetch';
 import { annotateSpend, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
-import { PRODUCT_WAITING_HELP } from '@/lib/product-html';
-import { PRODUCT_FETCH_BLOCKED_HELP, PRODUCT_FETCH_HELP, publicPageUrl } from '@/lib/public-page';
+import { PRODUCT_WAITING_HELP, PRODUCT_WAITING_HELP_GUEST } from '@/lib/product-html';
+import {
+  PRODUCT_FETCH_BLOCKED_HELP,
+  PRODUCT_FETCH_BLOCKED_HELP_GUEST,
+  PRODUCT_FETCH_HELP,
+  publicPageUrl,
+} from '@/lib/public-page';
 import { amazonUsdFallbackNoteText } from '@/lib/amazon-product';
 import { AMAZON_BOT_NOTE, CONFIGURATOR_PRICE_NOTE, PRICE_LATER_NOTE } from '@/lib/scraper';
 import type { Item } from '@/types';
@@ -239,7 +244,9 @@ const AGENT_PRICE_ONLY_FAILED_MESSAGE = '価格を取得できませんでした
  */
 const KNOWN_FAILURE_MESSAGES: ReadonlyMap<string, AgentMediaFetchError['code']> = new Map([
   [PRODUCT_WAITING_HELP, 'BOT_CHALLENGE'],
+  [PRODUCT_WAITING_HELP_GUEST, 'BOT_CHALLENGE'],
   [PRODUCT_FETCH_BLOCKED_HELP, 'BOT_CHALLENGE'],
+  [PRODUCT_FETCH_BLOCKED_HELP_GUEST, 'BOT_CHALLENGE'],
   [AMAZON_BOT_NOTE, 'BOT_CHALLENGE'],
   [PRODUCT_FETCH_HELP, 'FETCH_FAILED'],
   [AGENT_FETCH_FAILED_MESSAGE, 'FETCH_FAILED'],

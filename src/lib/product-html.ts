@@ -3,7 +3,10 @@ import { isBotChallengedHtml, PRODUCT_FETCH_BLOCKED_HELP } from './public-page';
 import { tsukumoCatalogImage } from './tsukumo-catalog';
 import type { ScrapedItem } from './scraper';
 
-export const PRODUCT_WAITING_HELP = '販売サイトのボット対策による待機ページが返されたため、価格と画像を取得できませんでした。商品ページをブラウザで確認し、時間をおいて再試行するか、別の店のURLを使ってください。商品名を入力して手動で追加することもできます。';
+export const PRODUCT_WAITING_HELP = '販売サイトのボット対策による待機ページが返されたため、価格と画像を取得できませんでした（ゲスト体験だけの制限ではありません）。商品ページをブラウザで確認し、時間をおいて再試行するか、別の店のURLを使ってください。商品名を入力して手動で追加することもできます。';
+/** ゲスト向け待機ページ案内（#408）。 */
+export const PRODUCT_WAITING_HELP_GUEST =
+  '販売サイトのボット対策による待機ページが返されたため、価格と画像を取得できませんでした。ゲスト体験ではブラウザを使わない簡易取得のため、会員ログイン時より失敗しやすいことがあります。ログインしてもサイト側の制限は残ることがあります。別の店のURLを試すか、「手動で追加」で商品名を入力してください。';
 
 /** HTTP 200 でも商品ではない botfailover テンプレートを解析前に除外する。 */
 function isProductWaitingPage(html: string): boolean {
