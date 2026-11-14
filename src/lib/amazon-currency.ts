@@ -75,7 +75,7 @@ function preferencesUrls(productUrl: string): { edit: URL; save: URL; product: U
   return { edit, save, product };
 }
 
-function absorbCookies(jar: Map<string, string>, lines: string[]) {
+function absorbAmazonCookies(jar: Map<string, string>, lines: string[]) {
   for (const line of lines) {
     if (/[\r\n]/.test(line)) continue;
     const semi = line.indexOf(';');
@@ -93,7 +93,7 @@ function cookieHeader(jar: Map<string, string>): string {
   return [...jar.entries()].map(([name, value]) => `${name}=${value}`).join('; ');
 }
 
-function pageHeaders(jar: Map<string, string>): Record<string, string> {
+export function amazonPageHeaders(jar: Map<string, string>): Record<string, string> {
   return {
     'User-Agent': USER_AGENT,
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -102,16 +102,15 @@ function pageHeaders(jar: Map<string, string>): Record<string, string> {
   };
 }
 
-function nextCurrencyUrl(current: URL, location: string | undefined): URL | null {
+function nextSessionUrl(current: URL, location: string | undefined): URL | null {
   if (!location || /[\r\n]/.test(location)) return null;
   let next: URL;
   try { next = new URL(location, current); } catch { return null; }
   next.hash = '';
-  return allowedCurrencyUrl(next) ? next : null;
+  return allowedAmazonSessionUrl(next) ? next : null;
 }
 
-/** 3xx は許可した Amazon のパスだけ追う。外せないときは null（円は保存しない）。 */
-async function followCurrency(
+export async function followAmazonExchange(
   exchange: AmazonExchange,
   start: URL,
   method: 'GET' | 'POST',
@@ -127,15 +126,15 @@ async function followCurrency(
     const response = verb === 'POST'
       ? await exchange.post(current.href, hopHeaders, payload ?? '')
       : await exchange.get(current.href, hopHeaders);
-    absorbCookies(jar, response.setCookie);
+    absorbAmazonCookies(jar, response.setCookie);
     if (response.status < 300 || response.status >= 400) return response;
-    const next = nextCurrencyUrl(current, response.location);
+    const next = nextSessionUrl(current, response.location);
     if (!next || redirects === CURRENCY_REDIRECTS) return null;
     current = next;
     // 本番の取得と同じく、転送のあとは GET。POST の本文は送り直さない。
     verb = 'GET';
     payload = undefined;
-    hopHeaders = pageHeaders(jar);
+    hopHeaders = amazonPageHeaders(jar);
   }
   return null;
 }
@@ -145,12 +144,12 @@ export async function switchedAmazonHtml(productUrl: string, exchange: AmazonExc
   const urls = preferencesUrls(productUrl);
   if (!urls) return null;
   const jar = new Map<string, string>([['i18n-prefs', 'JPY'], ['lc-acbjp', 'ja_JP']]);
-  const edit = await followCurrency(exchange, urls.edit, 'GET', pageHeaders(jar), undefined, jar);
+  const edit = await followAmazonExchange(exchange, urls.edit, 'GET', amazonPageHeaders(jar), undefined, jar);
   if (!edit || edit.status < 200 || edit.status >= 300) return null;
   const choice = readAmazonCurrencyChoice(edit.body);
   if (!choice) return null;
-  const saved = await followCurrency(exchange, urls.save, 'POST', {
-    ...pageHeaders(jar),
+  const saved = await followAmazonExchange(exchange, urls.save, 'POST', {
+    ...amazonPageHeaders(jar),
     'Accept': 'application/json, text/javascript, */*; q=0.01',
     'Content-Type': 'application/json; charset=UTF-8',
     'anti-csrftoken-a2z': choice.csrf,
@@ -159,15 +158,17 @@ export async function switchedAmazonHtml(productUrl: string, exchange: AmazonExc
   if (!saved || saved.status < 200 || saved.status >= 300) return null;
   jar.set('i18n-prefs', 'JPY');
   jar.set('lc-acbjp', 'ja_JP');
-  const page = await followCurrency(exchange, urls.product, 'GET', pageHeaders(jar), undefined, jar);
+  const page = await followAmazonExchange(exchange, urls.product, 'GET', amazonPageHeaders(jar), undefined, jar);
   if (!page || page.status < 200 || page.status >= 300 || !page.body) return null;
   return page.body;
 }
 
-function allowedCurrencyUrl(url: URL): boolean {
+export function allowedAmazonSessionUrl(url: URL): boolean {
   if (url.protocol !== 'https:' || !isAmazonHost(url.hostname)) return false;
   return url.pathname === '/customer-preferences/edit'
     || url.pathname === '/customer-preferences/ajax/save-preferences'
+    || url.pathname === '/gp/delivery/ajax/address-change.html'
+    || url.pathname === '/portal-migration/hz/glow/address-change'
     || isAmazonProductPage(url);
 }
 
@@ -233,7 +234,7 @@ function requestAmazon(
 export function liveAmazonExchange(deps?: Pick<MemberFetchDeps, 'resolve' | 'timeoutMs'>): AmazonExchange {
   const call = async (urlString: string, method: 'GET' | 'POST', headers: Record<string, string>, body?: string) => {
     const url = new URL(urlString);
-    if (!allowedCurrencyUrl(url)) throw new BlockedTargetError();
+    if (!allowedAmazonSessionUrl(url)) throw new BlockedTargetError();
     const address = await resolvedPublicAddress(url, deps?.resolve);
     // 登録全体の待ち（Amazon は 45 秒）に収まるよう、切り替えの各要求は短く切る。
     const signal = AbortSignal.timeout(deps?.timeoutMs ?? 8000);
