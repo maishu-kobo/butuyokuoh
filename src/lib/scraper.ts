@@ -409,11 +409,6 @@ function amazonExchangeFor(deps?: ScrapeDeps): AmazonExchange | null {
   return liveAmazonExchange(deps);
 }
 
-/** 国外お届け先やドル表示を直したうえで、円の新品価格を取る。 */
-async function withYenNewPrice(productUrl: string, html: string, deps?: ScrapeDeps): Promise<ScrapedItem> {
-  return resolveAmazonListing(productUrl, html, amazonExchangeFor(deps));
-}
-
 /**
  * Puppeteer（ヘッドレスブラウザ）でAmazon商品ページを取得するフォールバック
  * 素のfetchがAmazonのボット対策に弾かれた場合に使用する
@@ -474,7 +469,7 @@ async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: ScrapeDeps
       return null;
     }
 
-    return withYenNewPrice(sanitizedUrl, html, deps);
+    return resolveAmazonListing(sanitizedUrl, html, amazonExchangeFor(deps));
   } finally {
     // ブラウザプロセスのリーク防止のため必ずクローズする
     await browser.close();
@@ -513,9 +508,8 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
       console.log('Amazon bot detection or error page detected');
       fallbackResult = amazonBotFallback();
     } else {
-      // 商品ページは取れている。円の新品が無いときだけ、画面の通貨設定で円を選んで取り直す。
-      // 在庫切れのように価格そのものが無いときはブラウザを起動しない。
-      return withYenNewPrice(sanitizedUrl, html, deps);
+      // 在庫切れのように価格そのものが無いときは、ここではブラウザを起動しない。
+      return resolveAmazonListing(sanitizedUrl, html, amazonExchangeFor(deps));
     }
   } catch (error) {
     if (error instanceof BlockedTargetError) {

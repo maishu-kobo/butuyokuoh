@@ -1,5 +1,3 @@
-// お届け先が国外のとき、Amazon.co.jp の買ボックス価格が空になる。
-// 日本の郵便番号へ切り替えたあとの円価格を保存すること。取得は fixture。
 import './regression-harness';
 import assert from 'node:assert/strict';
 import dns from 'node:dns/promises';
@@ -93,7 +91,6 @@ function installDeliverySwitch(hits: Hit[], yen: number) {
         );
       }
       if (url.pathname.startsWith('/dp/')) {
-        // After a successful glow change the jar carries ubid-acbjp (or equivalent).
         if (cookie.includes('ubid-acbjp=TESTUBID')) return fixture(jpDeliveryPage(yen));
         return fixture(usDeliveryPage());
       }

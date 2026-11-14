@@ -75,7 +75,7 @@ function preferencesUrls(productUrl: string): { edit: URL; save: URL; product: U
   return { edit, save, product };
 }
 
-export function absorbAmazonCookies(jar: Map<string, string>, lines: string[]) {
+function absorbAmazonCookies(jar: Map<string, string>, lines: string[]) {
   for (const line of lines) {
     if (/[\r\n]/.test(line)) continue;
     const semi = line.indexOf(';');
@@ -110,7 +110,6 @@ function nextSessionUrl(current: URL, location: string | undefined): URL | null 
   return allowedAmazonSessionUrl(next) ? next : null;
 }
 
-/** 3xx は許可した Amazon のパスだけ追う。外せないときは null。 */
 export async function followAmazonExchange(
   exchange: AmazonExchange,
   start: URL,
@@ -164,7 +163,6 @@ export async function switchedAmazonHtml(productUrl: string, exchange: AmazonExc
   return page.body;
 }
 
-/** 通貨・お届け先の切り替えと、そのあとの商品ページだけを許可する。 */
 export function allowedAmazonSessionUrl(url: URL): boolean {
   if (url.protocol !== 'https:' || !isAmazonHost(url.hostname)) return false;
   return url.pathname === '/customer-preferences/edit'

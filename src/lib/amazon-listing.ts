@@ -24,24 +24,18 @@ function mergeListing(base: AmazonListing, next: AmazonListing): AmazonListing {
   };
 }
 
-/**
- * 買ボックスの円価格を取る。国外お届け先なら日本の郵便番号へ切り替え、
- * 新品がドル表示なら通貨を円へ切り替えてから取り直す。
- */
 export async function resolveAmazonListing(
   productUrl: string,
   html: string,
   exchange: AmazonExchange | null,
 ): Promise<ScrapedItem> {
   let listing = extractAmazonListing(html);
-  let pageHtml = html;
   if (listing.price != null) return asItem(listing);
 
-  if (exchange && amazonNeedsJapanDelivery(pageHtml)) {
+  if (exchange && amazonNeedsJapanDelivery(html)) {
     try {
-      const switched = await switchedAmazonDeliveryHtml(productUrl, pageHtml, exchange);
+      const switched = await switchedAmazonDeliveryHtml(productUrl, html, exchange);
       if (switched) {
-        pageHtml = switched;
         listing = mergeListing(listing, extractAmazonListing(switched));
         if (listing.price != null) return asItem(listing);
       }
@@ -50,7 +44,6 @@ export async function resolveAmazonListing(
     }
   }
 
-  if (listing.price != null) return asItem(listing);
   if (listing.usdPrice == null) return asItem(listing);
   if (!exchange) return asItem(listing, amazonUsdFallbackNote(listing.usdPrice));
 
