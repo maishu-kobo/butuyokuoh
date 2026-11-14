@@ -4,18 +4,27 @@ import { apiFetch } from '@/lib/api-fetch';
 import { displayableItemImageUrl } from '@/lib/capture/image-hosts';
 import { linkableHttpUrl } from '@/lib/http-url';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Item } from '@/types';
 import { Trash2, Undo2, X, ExternalLink } from 'lucide-react';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 interface TrashItem extends Item {
   days_left: number;
 }
 
+type PendingPurge =
+  | { kind: 'item'; id: number; name: string }
+  | { kind: 'empty'; count: number };
+
 export default function TrashView() {
   const [items, setItems] = useState<TrashItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [pending, setPending] = useState<PendingPurge | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
+  const inFlightRef = useRef(false);
 
   const fetchItems = async () => {
     try {
@@ -51,16 +60,45 @@ export default function TrashView() {
     fetchItems();
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('完全に削除しますか？元に戻せません。')) return;
-    await apiFetch(`/api/trash/${id}`, { method: 'DELETE' });
-    fetchItems();
+  const openItemPurge = (item: TrashItem) => {
+    if (inFlightRef.current) return;
+    setPurgeError(null);
+    setPending({ kind: 'item', id: item.id, name: item.name });
   };
 
-  const handleEmptyTrash = async () => {
-    if (!confirm('ゴミ箱を空にしますか？全てのアイテムが完全に削除されます。')) return;
-    await apiFetch('/api/trash', { method: 'DELETE' });
-    fetchItems();
+  const openEmptyPurge = () => {
+    if (inFlightRef.current || items.length === 0) return;
+    setPurgeError(null);
+    setPending({ kind: 'empty', count: items.length });
+  };
+
+  const closePurge = () => {
+    if (inFlightRef.current) return;
+    setPending(null);
+    setPurgeError(null);
+  };
+
+  const confirmPurge = async () => {
+    if (!pending || inFlightRef.current) return;
+    inFlightRef.current = true;
+    setBusy(true);
+    setPurgeError(null);
+    try {
+      const path = pending.kind === 'item' ? `/api/trash/${pending.id}` : '/api/trash';
+      // 失敗案内はダイアログ内だけにする（バナーと二重にしない）。
+      const res = await apiFetch(path, { method: 'DELETE' }, { notifyError: false });
+      if (!res.ok) {
+        setPurgeError(`削除に失敗しました（HTTP ${res.status}）。もう一度試せます。`);
+        return;
+      }
+      setPending(null);
+      await fetchItems();
+    } catch {
+      setPurgeError('通信に失敗しました。接続を確認して、もう一度試せます。');
+    } finally {
+      inFlightRef.current = false;
+      setBusy(false);
+    }
   };
 
   if (loading) {
@@ -81,6 +119,22 @@ export default function TrashView() {
     );
   }
 
+  const dialogTitle = pending?.kind === 'empty' ? 'ゴミ箱を空にする' : '完全に削除しますか？';
+  const dialogConfirmLabel = pending?.kind === 'empty' ? 'ゴミ箱を空にする' : '完全に削除';
+  const dialogDescription = pending?.kind === 'empty' ? (
+    <>
+      <p>{pending.count}件のアイテムを全件削除します。</p>
+      <p className="font-medium text-red-600 dark:text-red-400">この操作は元に戻せません。</p>
+    </>
+  ) : pending ? (
+    <>
+      <p>
+        「{pending.name}」を完全に削除します。
+      </p>
+      <p className="font-medium text-red-600 dark:text-red-400">この操作は元に戻せません。</p>
+    </>
+  ) : null;
+
   return (
     <div className="space-y-4">
       {/* ヘッダー */}
@@ -91,8 +145,8 @@ export default function TrashView() {
         </div>
         {items.length > 0 && (
           <button
-            onClick={handleEmptyTrash}
-            className="px-3 py-1.5 text-sm text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+            onClick={openEmptyPurge}
+            className="px-3 py-1.5 text-sm text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors dark:bg-red-950/40 dark:hover:bg-red-900/50"
           >
             ゴミ箱を空にする
           </button>
@@ -174,7 +228,7 @@ export default function TrashView() {
                   <Undo2 size={18} />
                 </button>
                 <button
-                  onClick={() => handleDelete(item.id)}
+                  onClick={() => openItemPurge(item)}
                   className="text-red-400 hover:text-red-600 p-2"
                   title="完全に削除"
                 >
@@ -186,6 +240,17 @@ export default function TrashView() {
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={pending != null}
+        title={dialogTitle}
+        description={dialogDescription}
+        confirmLabel={dialogConfirmLabel}
+        busy={busy}
+        error={purgeError}
+        onConfirm={() => { void confirmPurge(); }}
+        onCancel={closePurge}
+      />
     </div>
   );
 }
