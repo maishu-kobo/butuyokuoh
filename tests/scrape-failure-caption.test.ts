@@ -59,6 +59,20 @@ test('scrapeFailureCaption does not treat Amazon/Rakuten source alone as a site 
     '価格を更新できていません',
   );
   assert.equal(scrapeFailureCaption(null, 'amazon', { forGuest: true }), '価格を更新できていません');
+  // 一般の PRODUCT_FETCH_HELP も source だけでは制限バッジにしない
+  assert.equal(
+    scrapeFailureCaption(PRODUCT_FETCH_HELP, 'amazon', { forGuest: true }),
+    '価格を更新できていません',
+  );
+  assert.equal(
+    scrapeFailureCaption(PRODUCT_FETCH_HELP, 'rakuten'),
+    '価格を更新できていません',
+  );
+  // エラー文がブロックを示すときだけ制限バッジ（source は問わない）
+  assert.equal(
+    scrapeFailureCaption('取得を制限されている', 'other', { forGuest: true }),
+    '販売サイト側の制限（ゲストは簡易取得）',
+  );
 });
 
 test('blocked-help copy names the site (not guest mode) and points to manual add', () => {
