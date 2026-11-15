@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Browser, type Page, type Route } from '@playwright/test';
 
 const ITEM = 'backdrop誤操作確認用の商品';
 
@@ -23,8 +23,10 @@ async function seedTrash(page: Page) {
     has: page.getByRole('heading', { name: ITEM, exact: true }),
   }).first();
   await card.getByRole('button', { name: '削除' }).click();
+  await expect(page.getByRole('heading', { name: ITEM, exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'ゴミ箱', exact: true }).click();
-  await expect(page.getByText(ITEM, { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /ゴミ箱/ })).toBeVisible();
+  await expect(page.locator('h4', { hasText: ITEM })).toBeVisible();
 }
 
 function confirmDialog(page: Page) {
@@ -32,13 +34,13 @@ function confirmDialog(page: Page) {
 }
 
 async function openPurge(page: Page) {
-  const row = page.locator('div.rounded-lg.shadow').filter({ hasText: ITEM }).first();
+  const row = page.locator('div.rounded-lg.shadow').filter({ has: page.locator('h4', { hasText: ITEM }) }).first();
   await row.getByTitle('完全に削除').click();
   await expect(confirmDialog(page)).toBeVisible();
   return row;
 }
 
-/** 背面コントロールの中心へ、ポインタの一連ジェスチャを送る（mousedown→mouseup→click）。 */
+/** mousedown → mouseup の一連（ブラウザの通常クリック相当）。 */
 async function pointerClickAt(page: Page, x: number, y: number) {
   await page.mouse.move(x, y);
   await page.mouse.down();
@@ -76,26 +78,47 @@ test.describe('confirm dialog backdrop must not click through', () => {
     const x = box!.x + box!.width / 2;
     const y = box!.y + box!.height / 2;
 
-    // ダイアログが背面ボタンの上に被さっていることを固定する。
     const overlayHit = await page.evaluate(({ px, py }) => {
       const el = document.elementFromPoint(px, py);
       return {
         tag: el?.tagName ?? null,
         role: el?.getAttribute?.('role') ?? null,
-        inDialog: !!el?.closest?.('[role="dialog"], [role="presentation"]'),
+        inOverlay: !!el?.closest?.('[role="presentation"]'),
       };
     }, { px: x, py: y });
-    expect(overlayHit.inDialog).toBe(true);
+    expect(overlayHit.inOverlay).toBe(true);
+
+    // mousedown 直後に portal が外れると、同じ座標の elementFromPoint が背面ボタンになる。
+    const afterMouseDown = await page.evaluate(({ px, py }) => {
+      const el = document.elementFromPoint(px, py);
+      el?.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: px,
+        clientY: py,
+      }));
+      const after = document.elementFromPoint(px, py);
+      return {
+        dialogCount: document.querySelectorAll('[role="dialog"]').length,
+        afterButtonTitle: after?.closest?.('button')?.getAttribute?.('title') ?? null,
+        afterStillOverlay: !!after?.closest?.('[role="presentation"]'),
+      };
+    }, { px: x, py: y });
+    expect(afterMouseDown, JSON.stringify(afterMouseDown)).toMatchObject({
+      dialogCount: 1,
+      afterStillOverlay: true,
+      afterButtonTitle: null,
+    });
 
     await pointerClickAt(page, x, y);
 
-    // 背面の復元が起動してはいけない。DELETE も走らない。
-    expect(restores).toEqual([]);
-    expect(deletes).toEqual([]);
-    await expect(page.getByText(ITEM, { exact: true })).toBeVisible();
-    // 背景ジェスチャでは閉じない（キャンセル / Esc のみ）。誤操作面を残さない。
+    expect(restores, `restore requests: ${JSON.stringify(restores)}`).toEqual([]);
+    expect(deletes, `delete requests: ${JSON.stringify(deletes)}`).toEqual([]);
+    await expect(page.locator('h4', { hasText: ITEM })).toBeVisible();
+    // 背景ジェスチャでは閉じない（キャンセル / Esc のみ）。
     await expect(confirmDialog(page)).toBeVisible();
-    await expect(page.getByRole('button', { name: 'ゴミ箱', exact: true })).toHaveClass(/bg-\[var\(--shu\)\]|shadow-md/);
+    await expect(page.getByRole('heading', { name: /ゴミ箱/ })).toBeVisible();
   });
 
   test('mouse gesture over purge × through the dimmed area does not re-trigger purge', async ({ page }) => {
@@ -116,7 +139,7 @@ test.describe('confirm dialog backdrop must not click through', () => {
     expect(deletes).toEqual([]);
     await expect(confirmDialog(page)).toBeVisible();
     await expect(confirmDialog(page)).toHaveCount(1);
-    await expect(page.getByText(ITEM, { exact: true })).toBeVisible();
+    await expect(page.locator('h4', { hasText: ITEM })).toBeVisible();
   });
 
   test('mouse gesture over a tab through the dimmed area does not switch tabs', async ({ page }) => {
@@ -127,7 +150,7 @@ test.describe('confirm dialog backdrop must not click through', () => {
 
     const hit = await page.evaluate(({ px, py }) => {
       const el = document.elementFromPoint(px, py);
-      return !!el?.closest?.('[role="presentation"], [role="dialog"]');
+      return !!el?.closest?.('[role="presentation"]');
     }, { px: box!.x + box!.width / 2, py: box!.y + box!.height / 2 });
     expect(hit).toBe(true);
 
@@ -135,11 +158,22 @@ test.describe('confirm dialog backdrop must not click through', () => {
 
     await expect(confirmDialog(page)).toBeVisible();
     await expect(page.getByRole('heading', { name: /ゴミ箱/ })).toBeVisible();
-    await expect(page.getByText(ITEM, { exact: true })).toBeVisible();
+    await expect(page.locator('h4', { hasText: ITEM })).toBeVisible();
   });
 
-  test('touch tap on dimmed area over restore does not restore (mobile)', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+  test('touch tap on dimmed area over restore does not restore (mobile)', async ({ browser }: { browser: Browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    const page = await context.newPage();
+    page.on('dialog', async (dialog) => {
+      await dialog.accept();
+    });
+    await member(page);
+    await seedTrash(page);
+
     const restores: string[] = [];
     await page.route(/\/api\/trash(\/\d+)?$/, async (route: Route) => {
       if (route.request().method() === 'POST' && /\/api\/trash\/\d+$/.test(new URL(route.request().url()).pathname)) {
@@ -152,17 +186,15 @@ test.describe('confirm dialog backdrop must not click through', () => {
     const restore = row.getByTitle('元に戻す');
     const box = await restore.boundingBox();
     expect(box).toBeTruthy();
-    const x = box!.x + box!.width / 2;
-    const y = box!.y + box!.height / 2;
-
-    await page.touchscreen.tap(x, y);
+    await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2);
 
     expect(restores).toEqual([]);
-    await expect(page.getByText(ITEM, { exact: true })).toBeVisible();
+    await expect(page.locator('h4', { hasText: ITEM })).toBeVisible();
     await expect(confirmDialog(page)).toBeVisible();
+    await context.close();
   });
 
-  test('busy blocks Esc and backdrop gestures; cancel keeps focus and Esc still works when idle', async ({ page }) => {
+  test('busy blocks Esc and backdrop gestures; cancel and Esc work when idle with cancel focus', async ({ page }) => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -185,7 +217,6 @@ test.describe('confirm dialog backdrop must not click through', () => {
     await dialog.getByRole('button', { name: '完全に削除' }).click();
     await expect.poll(() => deletes.length).toBe(1);
 
-    // busy 中: Esc と背景クリックで閉じない／背面操作しない。
     await page.keyboard.press('Escape');
     await expect(dialog).toBeVisible();
     const restoreBox = await row.getByTitle('元に戻す').boundingBox();
@@ -197,7 +228,6 @@ test.describe('confirm dialog backdrop must not click through', () => {
     release();
     await expect(confirmDialog(page)).toHaveCount(0);
 
-    // 再オープンしてキャンセル／Esc／フォーカス復帰の境界。
     await openPurge(page);
     const again = confirmDialog(page);
     await expect(again.getByRole('button', { name: 'キャンセル' })).toBeFocused();

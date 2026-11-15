@@ -83,13 +83,30 @@ export default function ConfirmDialog({
 
   if (!open || typeof document === 'undefined') return null;
 
+  // 背景は操作を遮るだけにする。mousedown で unmount すると mouseup/click が背面に届く
+  // （Bugbot #412）。不可逆の確認なので、閉じるのはキャンセルボタンと Esc のみ。
   return createPortal(
     <div
       className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 sm:items-center"
       role="presentation"
       onMouseDown={(event) => {
-        if (busy) return;
-        if (event.target === event.currentTarget) onCancel();
+        // 背面への伝播と既定フォーカス移動を抑える。ここでは閉じない。
+        if (event.target === event.currentTarget) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
       }}
     >
       <div
@@ -100,6 +117,8 @@ export default function ConfirmDialog({
         aria-describedby={descriptionId}
         className="w-full max-w-md rounded-lg bg-white p-4 shadow-lg dark:bg-slate-800 sm:p-5"
         onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
       >
         <h2 id={titleId} className="text-lg font-semibold text-slate-800 dark:text-slate-100">
           {title}
