@@ -37,18 +37,18 @@ test('scrapeFailureCaption distinguishes bot limits from generic price refresh f
 });
 
 test('scrapeFailureCaption does not treat Amazon/Rakuten source alone as a site block (#408 Bugbot)', () => {
-  // USD フォールバックや一般的な価格欠落は「サイト側制限」にしない
+  // USD フォールバックや一般的な価格欠落は「サイト側制限」にしない（#415 で理由別の短い文言へ）
   assert.equal(
     scrapeFailureCaption(amazonUsdFallbackNote(12.99), 'amazon'),
-    '価格を更新できていません',
+    '円の新品価格を取得できませんでした',
   );
   assert.equal(
     scrapeFailureCaption(amazonUsdFallbackNote(12.99), 'amazon', { forGuest: true }),
-    '価格を更新できていません',
+    '円の新品価格を取得できませんでした',
   );
   assert.equal(
     scrapeFailureCaption('価格は取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。', 'amazon'),
-    '価格を更新できていません',
+    '価格を取得できませんでした',
   );
   assert.equal(
     scrapeFailureCaption('何かのエラー', 'amazon'),

@@ -1,4 +1,6 @@
-/** 価格更新バッジ用。ボット制限と一般失敗を短く区別する（#368・#408）。 */
+import { amazonUsdFallbackNoteText } from './amazon-product';
+
+/** 価格更新バッジ用。ボット制限と一般失敗を短く区別する（#368・#408・#415）。 */
 export function scrapeFailureCaption(
   scrapeError: string | null | undefined,
   _source?: string | null,
@@ -12,6 +14,16 @@ export function scrapeFailureCaption(
     return options?.forGuest
       ? '販売サイト側の制限（ゲストは簡易取得）'
       : '販売サイト側で自動取得が制限されています';
+  }
+  // scraper.ts の定数は Puppeteer 経由でクライアントに載るので、文言先頭だけ見る（#415）。
+  if (err.startsWith('構成を選ぶページ')) {
+    return '構成ページのため価格未取得';
+  }
+  if (err.startsWith('価格は取得できませんでした')) {
+    return '価格を取得できませんでした';
+  }
+  if (amazonUsdFallbackNoteText(err)) {
+    return '円の新品価格を取得できませんでした';
   }
   return '価格を更新できていません';
 }
