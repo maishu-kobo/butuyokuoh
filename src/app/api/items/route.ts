@@ -5,8 +5,7 @@ import { assertOwnedRelations } from '@/lib/api-access';
 import { withAccess } from '@/lib/api-access';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { amazonUsdFallbackNoteText } from '@/lib/amazon-product';
-import { isUnusableScrape, scrapeUrl } from '@/lib/scraper';
+import { deriveScrapeOutcome, isUnusableScrape, scrapeUrl } from '@/lib/scraper';
 import { getCurrentUser } from '@/lib/auth';
 import { isStorableItemUrl, ITEM_URL_ERROR } from '@/lib/http-url';
 import {
@@ -211,7 +210,9 @@ async function handlePOST(request: NextRequest) {
     if (scraped.price) assertGuestCapacity(user, 'price_history', db);
     assertOwnedRelations(db, user.id, body);
 
-    const usdNote = amazonUsdFallbackNoteText(scraped.note);
+    // refresh / check-prices と同じく、価格 null は failed + note を残す。
+    // USD フォールバックだけ特別扱いすると、PRICE_LATER 等が裸の ¥--- になる（#415）。
+    const outcome = deriveScrapeOutcome(scraped);
     const stmt = db.prepare(`
       INSERT INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority, planned_purchase_date, comparison_group_id, category_id, notes, quantity, scrape_status, scrape_error)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -232,8 +233,8 @@ async function handlePOST(request: NextRequest) {
       category_id || null,
       notes || null,
       quantity,
-      usdNote ? 'failed' : null,
-      usdNote,
+      outcome.status === 'failed' ? 'failed' : null,
+      outcome.status === 'failed' ? outcome.error : null,
     );
 
     // 価格履歴に追加

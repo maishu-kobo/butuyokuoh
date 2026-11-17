@@ -16,7 +16,7 @@ process.env.GUEST_WRITES_PER_MINUTE = '1000';
 const sameOrigin = { origin: 'http://127.0.0.1:3000' } as const;
 
 const APPLE_BUY = 'https://www.apple.com/jp/shop/buy-mac/macbook-pro';
-const GENERIC_NO_PRICE = 'https://shop.example.test/goods/NO-PRICE-001/';
+const GENERIC_NO_PRICE = 'https://shop.example.com/goods/NO-PRICE-001/';
 
 const appleHtml = `<!doctype html><html><head>
 <title>Liquid Retina XDRディスプレイ搭載MacBook Proを購入 - Apple</title>

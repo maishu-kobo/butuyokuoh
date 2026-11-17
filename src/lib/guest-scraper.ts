@@ -11,11 +11,11 @@ import {
   scrapeFailedHelp,
 } from './public-page';
 import { productAmazonExchange, productFetchGuestDeps } from './product-fetch-port';
-import { parseProductHtml, PRODUCT_WAITING_HELP, PRODUCT_WAITING_HELP_GUEST } from './product-html';
+import { isAppleShopBuyPage, parseProductHtml, PRODUCT_WAITING_HELP, PRODUCT_WAITING_HELP_GUEST } from './product-html';
 import { isAmazonHost, isAmazonProductPage } from './amazon-product';
 import { liveAmazonExchange } from './amazon-currency';
 import { resolveAmazonListing } from './amazon-listing';
-import { isUnusableScrape, type ScrapedItem } from './scraper';
+import { CONFIGURATOR_PRICE_NOTE, isUnusableScrape, PRICE_LATER_NOTE, type ScrapedItem } from './scraper';
 
 function guestScrapeFailedHelp(
   scraped: { name?: string | null; note?: string | null; failureCode?: string | null } | null,
@@ -62,7 +62,9 @@ export async function scrapeGuestUrl(url: string, userId: number) {
     if (result.imageUrl) {
       try { result.imageUrl = publicPageUrl(result.imageUrl).href; } catch { result.imageUrl = null; }
     }
-    if (!result.price && !result.note) result.note = '価格は取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
+    if (!result.price && !result.note) {
+      result.note = isAppleShopBuyPage(url) ? CONFIGURATOR_PRICE_NOTE : PRICE_LATER_NOTE;
+    }
     return result;
   } catch (error) {
     if (error instanceof PublicPageError) {
