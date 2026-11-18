@@ -52,3 +52,20 @@ test('fetchServerItemMedia returns the Tsukumo CDN image when the shop page conn
     installProductFetchPort(null);
   }
 });
+
+test('fetchServerItemMedia keeps retrying a non-Tsukumo page when maxRetries is omitted', async () => {
+  let pageRequests = 0;
+  const media = await fetchServerItemMedia('https://shop.example.com/products/pen', {
+    deps: {
+      baseDelayMs: 0,
+      resolve: async () => [{ address: '8.8.8.8', family: 4 }],
+      request: async () => {
+        pageRequests += 1;
+        throw new Error('socket hang up');
+      },
+    },
+  });
+  assert.equal(media.imageUrl, null);
+  assert.equal(media.price, null);
+  assert.equal(pageRequests, 4);
+});
