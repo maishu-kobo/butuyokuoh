@@ -650,6 +650,12 @@ async function scrapeGeneric(sanitizedUrl: string, deps: MemberFetchDeps | undef
   // 取得に失敗したとき、画像の補完の基準にする URL。HTTP エラーに限らず、接続切断や
   // タイムアウトでも、転送後は入力した商品へ戻さない。
   const trace: { url: string | null } = { url: sanitizedUrl };
+  // 商品登録（purpose=item）だけ 1 回・短い待ちにする。価格チェックは従来どおり再試行する。
+  // 転送先が切れても、最後に検証した URL の画像補完が 20 秒の取得予算に間に合うようにする。
+  const tsukumoSingleAttempt =
+    purpose === 'item' &&
+    tsukumoCatalogImage(sanitizedUrl) !== null &&
+    deps?.maxRetries === undefined;
   try {
     const { response, url: pageUrl } = await fetchPublicMember(sanitizedUrl, {
       headers: {
@@ -658,7 +664,13 @@ async function scrapeGeneric(sanitizedUrl: string, deps: MemberFetchDeps | undef
         // Shopifyサイトで日本円価格を取得するためのクッキー
         'Cookie': 'localization=JP; cart_currency=JPY',
       },
-    }, { ...deps, trace });
+    }, {
+      ...deps,
+      ...(tsukumoSingleAttempt
+        ? { maxRetries: 0, timeoutMs: deps?.timeoutMs ?? 8_000 }
+        : {}),
+      trace,
+    });
     const html = await readHtmlResponse(response);
 
     // ツクモを経由した転送では、実際に商品情報を取得したページから写真と型番を選ぶ。
