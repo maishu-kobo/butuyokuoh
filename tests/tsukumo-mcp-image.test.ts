@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fetchServerItemMedia } from '../src/lib/item-input';
 import { installProductFetchPort } from '../src/lib/product-fetch-port';
@@ -10,15 +10,11 @@ const IMAGE = `https://cdn.tsukumo.co.jp/image/item/${CODE}_1.jpg`;
 
 // 会員のページ取得は接続失敗のあと 1s、5s、15s 待つ。合計はサーバ画像の 20s を超える。
 // ここでは 8s で打ち切る。画像と代替の商品名は 4s 未満で返り、ページへの接続は 1 回だけ。
+describe('Tsukumo MCP media budget', { concurrency: false }, () => {
 test('fetchServerItemMedia returns the Tsukumo CDN image when the shop page connection fails', async () => {
   let pageRequests = 0;
-  let releaseCdn = () => {};
-  const cdnChecked = new Promise<void>((resolve) => {
-    releaseCdn = resolve;
-  });
   installProductFetchPort({
     lookup(target) {
-      if (target.href === IMAGE) releaseCdn();
       return regressionLookup(target);
     },
   });
@@ -42,13 +38,6 @@ test('fetchServerItemMedia returns the Tsukumo CDN image when the shop page conn
     assert.equal(pageRequests, 1, detail);
     assert.ok(elapsed < 4_000, detail);
   } finally {
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, 25_000);
-      cdnChecked.then(() => {
-        clearTimeout(timer);
-        resolve();
-      });
-    });
     installProductFetchPort(null);
   }
 });
@@ -68,4 +57,5 @@ test('fetchServerItemMedia keeps retrying a non-Tsukumo page when maxRetries is 
   assert.equal(media.imageUrl, null);
   assert.equal(media.price, null);
   assert.equal(pageRequests, 4);
+});
 });
