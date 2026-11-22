@@ -1,0 +1,118 @@
+/* Neutral surfaces are shared; only interactive accents vary between proposals. */
+[data-light-palette], [data-tone] {
+  --lp-bg: #f5f5f5; --lp-surface: #ffffff; --lp-ink: #242424; --lp-muted: #686868;
+  --lp-soft: #f0f0f0; --lp-rule: #d9d9d9; --lp-control: #8a8a8a; --lp-on-accent: #ffffff;
+}
+[data-light-palette=paper], [data-tone=paper] { --lp-accent: #824526; --lp-hover: #62341e; }
+[data-light-palette=indigo], [data-tone=indigo] { --lp-accent: #254e86; --lp-hover: #19385f; }
+[data-light-palette=sage], [data-tone=sage] { --lp-accent: #356346; --lp-hover: #244c38; }
+html.dark[data-light-palette], [data-tone][data-appearance=dark] {
+  --lp-bg: #111111; --lp-surface: #1b1b1b; --lp-ink: #eeeeee; --lp-muted: #b0b0b0;
+  --lp-soft: #282828; --lp-rule: #404040; --lp-control: #858585; --lp-on-accent: #181818;
+}
+html.dark[data-light-palette=paper], [data-tone=paper][data-appearance=dark] { --lp-accent: #e1ae87; --lp-hover: #f1c5a4; }
+html.dark[data-light-palette=indigo], [data-tone=indigo][data-appearance=dark] { --lp-accent: #9dc2f2; --lp-hover: #c1daff; }
+html.dark[data-light-palette=sage], [data-tone=sage][data-appearance=dark] { --lp-accent: #accca1; --lp-hover: #c9e4bd; }
+html.agenda[data-light-palette] {
+  color-scheme: light;
+  --color-bg: var(--lp-bg); --color-card: var(--lp-surface); --color-text: var(--lp-ink);
+  --color-muted: var(--lp-muted); --color-muted-light: var(--lp-muted); --color-border: var(--lp-rule);
+  --color-primary: var(--lp-accent); --color-primary-hover: var(--lp-hover); --color-secondary: var(--lp-hover);
+  --color-accent: var(--lp-accent); --agenda-accent: var(--lp-accent); --agenda-soft: var(--lp-soft);
+  --color-white: var(--lp-surface); --color-gray-50: var(--lp-surface); --color-gray-100: var(--lp-soft);
+  --color-gray-200: var(--lp-rule); --color-gray-300: var(--lp-rule); --color-gray-500: var(--lp-muted);
+  --color-gray-600: var(--lp-muted); --color-gray-700: var(--lp-ink); --color-gray-800: var(--lp-ink); --color-gray-900: var(--lp-ink);
+  --color-amber-50: var(--lp-surface); --color-amber-100: var(--lp-soft); --color-amber-200: var(--lp-rule);
+  --color-amber-500: var(--lp-accent); --color-amber-600: var(--lp-accent); --color-amber-700: var(--lp-hover);
+  --color-orange-100: var(--lp-soft); --color-orange-500: var(--lp-accent); --color-orange-600: var(--lp-accent);
+  --color-blue-50: var(--lp-bg); --color-blue-100: var(--lp-soft); --color-blue-600: var(--lp-accent); --color-blue-700: var(--lp-hover);
+}
+html.agenda.dark[data-light-palette] {
+  color-scheme: dark;
+  --color-blue-500: var(--lp-accent); --color-blue-900: var(--lp-soft);
+  --color-slate-50: var(--lp-ink); --color-slate-100: var(--lp-ink); --color-slate-200: var(--lp-ink);
+  --color-slate-300: var(--lp-muted); --color-slate-400: var(--lp-muted); --color-slate-500: var(--lp-control);
+  --color-slate-600: var(--lp-rule); --color-slate-700: var(--lp-soft); --color-slate-800: var(--lp-surface); --color-slate-900: var(--lp-bg); --color-slate-950: var(--lp-bg);
+}
+html.agenda.dark[data-light-palette] :where(.dark\:text-white, .dark\:text-gray-100, .dark\:text-gray-200) { color: var(--lp-ink); }
+html.agenda.dark[data-light-palette] :where(.dark\:text-gray-300, .dark\:text-gray-400) { color: var(--lp-muted); }
+html.agenda.dark[data-light-palette] :where(.dark\:text-blue-100, .dark\:text-blue-200, .dark\:text-blue-300) { color: var(--lp-accent); }
+html.agenda[data-light-palette] .design-review { --rv-soft: var(--lp-soft); --rv-workspace: var(--lp-bg); --rv-on-accent: var(--lp-on-accent); }
+[data-light-palette] .combined-home .review-home-heading h1,
+[data-light-palette] .design-review .review-sheet > header h3 { color: var(--rv-ink); }
+html.agenda[data-light-palette] .agenda-add {
+  --ap-paper: var(--lp-bg); --ap-card: var(--lp-surface); --ap-ink: var(--lp-ink); --ap-muted: var(--lp-muted);
+  --ap-accent: var(--lp-accent); --ap-on-accent: var(--lp-on-accent); --ap-line: var(--lp-rule); --ap-control-line: var(--lp-control);
+  --ap-disabled-bg: var(--lp-soft); --ap-disabled-ink: var(--lp-muted); --ap-disabled-line: var(--lp-rule);
+}
+.palette-bar { --bar-bg: #fafafa; --bar-ink: #282828; --bar-rule: #d9d9d9; --bar-selected: #e8e8e8; height: 56px; background: var(--bar-bg); border-bottom: 1px solid var(--bar-rule); color: var(--bar-ink); }
+.palette-bar[data-appearance=dark] { --bar-bg: #1b1b1b; --bar-ink: #eeeeee; --bar-rule: #404040; --bar-selected: #333333; }
+.palette-bar-inner { display: flex; justify-content: space-between; align-items: center; height: 100%; width: min(100%,660px); margin: auto; gap: 8px; padding-inline: 12px; }
+.palette-bar a, .palette-bar button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; gap: 6px; color: inherit; text-decoration: none; }
+.palette-overview-link { font-size: .8rem; font-weight: 600; min-width: 44px; }
+.palette-buttons { display: flex; align-items: center; gap: 3px; }
+.palette-buttons button { position: relative; border-radius: 6px; padding-inline: 9px; font-size: .82rem; }
+.palette-buttons button[aria-pressed=true] { background: var(--bar-selected); font-weight: 700; }
+.palette-buttons button[aria-pressed=true]::after { content: ""; position: absolute; bottom: 3px; height: 2px; left: 9px; right: 9px; background: currentColor; }
+.palette-buttons i { display: inline-block; width: 13px; height: 13px; border-radius: 50%; background: var(--lp-accent); }
+.palette-close, .palette-mode { min-width: 44px; flex-shrink: 0; }
+.palette-mode:hover, .palette-close:hover { background: var(--bar-selected); border-radius: 6px; }
+.palette-bar + .combined-home { min-height: calc(100dvh - 56px); }
+.palette-bar + .combined-home .review-frame { height: min(920px,calc(100dvh - 88px)); min-height: 0; }
+@media(max-width:680px), (pointer:coarse) and (orientation:landscape) and (max-width:950px) and (max-height:520px) {
+  .palette-bar + .combined-home .review-frame { height: calc(100dvh - 56px); }
+}
+@media(max-width:480px) {
+  .palette-bar-inner { padding-inline: 4px; gap: 2px; }
+  .palette-overview-link span { display: none; }
+  .palette-buttons button { padding-inline: 6px; }
+}
+.color-gallery { --gallery-bg: #f5f5f5; --gallery-ink: #242424; --gallery-muted: #686868; --gallery-rule: #d9d9d9; --gallery-control: #e8e8e8; background: var(--gallery-bg); color: var(--gallery-ink); color-scheme: light; min-height: 100dvh; }
+.color-gallery[data-appearance=dark] { --gallery-bg: #111111; --gallery-ink: #eeeeee; --gallery-muted: #b0b0b0; --gallery-rule: #404040; --gallery-control: #282828; color-scheme: dark; }
+.color-gallery + .agenda-footer { display: none; }
+.gallery-inner { max-width: 1160px; margin: auto; padding: clamp(18px,3.1vw,45px) clamp(16px,3vw,42px); }
+.gallery-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 22px; }
+.gallery-brand, .gallery-head > a, .palette-card-action { display: inline-flex; align-items: center; gap: 7px; }
+.gallery-brand { font: 650 .92rem "Hiragino Mincho ProN","Yu Mincho",Georgia,serif; }
+.gallery-head h1 { margin-top: 9px; font: 650 clamp(1.5rem,3.2vw,2.45rem)/1.4 "Hiragino Mincho ProN","Yu Mincho",Georgia,serif; }
+.color-gallery .gallery-head h1 { color: var(--gallery-ink); }
+.gallery-head > a { min-height: 44px; color: var(--gallery-muted); font-size: .82rem; white-space: nowrap; text-decoration: none; }
+.gallery-appearance { display: flex; width: fit-content; gap: 3px; padding: 3px; border: 1px solid var(--gallery-rule); border-radius: 8px; margin: -5px 0 22px; }
+.gallery-appearance a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; gap: 7px; min-width: 102px; color: var(--gallery-muted); text-decoration: none; font-size: .9rem; border-radius: 5px; }
+.gallery-appearance a[aria-current] { background: var(--gallery-control); color: var(--gallery-ink); font-weight: 650; }
+.gallery-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: clamp(12px,2vw,25px); }
+.palette-card { display: flex; flex-direction: column; min-width: 0; background: var(--lp-surface); color: var(--lp-ink); text-decoration: none; border-radius: 10px; border: 1px solid var(--lp-rule); overflow: hidden; }
+.palette-card:focus-visible, .palette-card:hover { outline: 2px solid var(--lp-accent); outline-offset: 2px; }
+.palette-card-image { background: var(--lp-surface); overflow: hidden; }
+.palette-card-image img { width: 100%; display: block; height: auto; }
+.palette-card-caption { display: grid; align-content: start; gap: 7px; padding: 13px 16px; background: var(--lp-soft); border-top: 1px solid var(--lp-rule); }
+.palette-card-caption h2 { font: 650 clamp(1.13rem,1.8vw,1.45rem)/1.4 "Hiragino Mincho ProN","Yu Mincho",Georgia,serif; }
+.palette-card-caption h2 { display: flex; align-items: center; gap: 8px; }
+.palette-card-caption h2 i { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--lp-accent); }
+.palette-card-caption p { font-size: .86rem; line-height: 1.55; }
+.color-gallery .palette-card-caption :is(h2,p) { color: var(--lp-ink); }
+.palette-card-action { margin-top: 3px; font-size: .82rem; font-weight: 650; color: var(--lp-accent); }
+@media(min-width:681px) {
+  .gallery-options { grid-template-rows: auto auto; row-gap: 0; }
+  .palette-card { display: grid; grid-template-rows: subgrid; grid-row: span 2; }
+  .palette-card-image { grid-row: 2; }
+  .palette-card-caption { grid-row: 1; border-top: 0; border-bottom: 1px solid var(--lp-rule); min-height: 122px; }
+}
+@media(max-width:680px) {
+  .gallery-options { grid-template-columns: 1fr; }
+  .palette-card { display: grid; grid-template-columns: minmax(116px,35%) 1fr; }
+  .palette-card-caption { border-top: 0; border-left: 1px solid var(--lp-rule); align-content: center; padding: 12px; }
+  .gallery-head { align-items: center; }
+}
+
+html.agenda[data-light-palette] .review-scrim { background: #00000055; }
+html.agenda[data-light-palette] .review-sheet { box-shadow: 0 -5px 25px #00000020; }
+html.agenda[data-light-palette] .review-frame { box-shadow: 0 2px 5px #00000006, 0 12px 32px #00000007; }
+
+.settings-palette-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.settings-palette-options button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 8px 6px; border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text); font-size: .875rem; }
+.settings-palette-options button[aria-pressed=true] { border-color: var(--lp-accent); box-shadow: inset 0 0 0 1px var(--lp-accent); font-weight: 600; }
+.settings-palette-options button:focus-visible { outline: 2px solid var(--lp-accent); outline-offset: 3px; }
+.settings-palette-swatch { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; background: var(--lp-accent); }
+.settings-ai-panel > section { padding: 0; border: 0; box-shadow: none; }
+.agenda-settings .settings-ai-panel h2 { font-family: inherit; font-size: 1rem; line-height: 1.5; }

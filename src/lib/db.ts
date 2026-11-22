@@ -71,6 +71,16 @@ export function deleteExpiredCaptureCandidates(db: Database.Database, now = Date
   return result.changes;
 }
 
+// Optional purchase timing is independent of a definite day and the item's notes.
+const BUY_GUIDE_SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS item_buy_guides (
+    item_id INTEGER PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
+    month TEXT NOT NULL,
+    timing TEXT NOT NULL CHECK (timing IN ('by', 'around')),
+    condition TEXT NOT NULL
+  );
+`;
+
 let db: Database.Database | null = null;
 
 // いまの migrateDb を適用し終えた版。手順は足すだけで、開くたびに同じ結果になる。
@@ -208,6 +218,7 @@ function initDb(db: Database.Database) {
   `);
 
   db.exec(CAPTURE_SCHEMA_SQL);
+  db.exec(BUY_GUIDE_SCHEMA_SQL);
   migrateDb(db);
 }
 
@@ -215,6 +226,7 @@ function initDb(db: Database.Database) {
 // CREATE TABLE IF NOT EXISTS は既存テーブルを変更しないため、
 // 後から追加されたカラムはここで ALTER TABLE により追従させる
 function migrateDb(db: Database.Database) {
+  db.exec(BUY_GUIDE_SCHEMA_SQL);
   addColumnIfNotExists(db, 'users', 'account_type', "TEXT NOT NULL DEFAULT 'member'");
   // パスワードを消しても会員 id は残る。発行済みトークンを失効させる世代。
   addColumnIfNotExists(db, 'users', 'session_generation', 'INTEGER NOT NULL DEFAULT 0');

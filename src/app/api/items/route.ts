@@ -1,3 +1,4 @@
+import { attachBuyGuides } from '@/lib/item-ranking';
 import { scrapeGuestUrl } from '@/lib/guest-scraper';
 import { randomUUID } from 'node:crypto';
 import { assertGuestCapacity, assertGuestSessionActive } from '@/lib/guest';
@@ -19,7 +20,7 @@ import {
 import { scrapeFailedHelp } from '@/lib/public-page';
 import { annotateSpend, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
 
-async function handleGET() {
+async function handleGET(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
@@ -62,7 +63,8 @@ async function handleGET() {
   `).all(user.id) as { id: number }[];
 
   const [spendItems, spendGroups] = userSpendInput(db, user.id);
-  return NextResponse.json(annotateSpend(items, photoSpendDecisions(spendItems, spendGroups)));
+  const annotated = annotateSpend(items, photoSpendDecisions(spendItems, spendGroups));
+  return NextResponse.json(request.nextUrl.searchParams.get('with') === 'buy-guide' ? attachBuyGuides(db, user.id, annotated) : annotated);
 }
 
 async function handlePOST(request: NextRequest) {

@@ -14,7 +14,7 @@ export default function GuestBanner() {
     try { await signIn('google', { callbackUrl: '/' }); }
     catch { setError('ログインを開始できませんでした。体験データは引き続き利用できます。'); setBusy(false); }
   };
-  return <aside aria-label="ゲスト体験" className="bg-amber-50 dark:bg-amber-950 border-b border-amber-300 px-4 py-3 text-sm">
+  return <aside data-app-banner aria-label="ゲスト体験" className="bg-amber-50 dark:bg-amber-950 border-b border-amber-300 px-4 py-3 text-sm">
     <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
       <div><p className="font-bold">ゲスト体験中 · サンプル商品・価格はデモです</p>
         <p>期限: {new Date(user.expiresAt!).toLocaleString('ja-JP')}。期限・体験終了後に削除され、ログイン後には引き継がれません。</p>

@@ -59,15 +59,15 @@ export default function StatsView() {
   const maxCategoryTotal = Math.max(...stats.byCategory.map(c => c.total || 0), 1);
 
   return (
-    <div className="space-y-6">
+    <div className="agenda-stats space-y-6">
       <div className="flex items-center gap-2">
         <BarChart3 className="text-orange-500" size={24} />
         <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-200">統計ダッシュボード</h2>
       </div>
 
       {/* 概要カード */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
+      <div className="agenda-stats-overview grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="agenda-ledger-panel bg-white dark:bg-slate-800 rounded-lg shadow p-4">
           <div className="flex items-center gap-2 text-blue-500 mb-2">
             <Package size={20} />
             <span className="text-sm text-gray-500 dark:text-gray-400">ほしいもの</span>
@@ -75,7 +75,7 @@ export default function StatsView() {
           <p className="text-2xl font-bold">{stats.overview.wishlistCount}<span className="text-sm text-gray-400">件</span></p>
           <p className="text-sm text-gray-500 dark:text-gray-400">¥{stats.overview.wishlistTotal.toLocaleString()}</p>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
+        <div className="agenda-ledger-panel bg-white dark:bg-slate-800 rounded-lg shadow p-4">
           <div className="flex items-center gap-2 text-green-500 mb-2">
             <ShoppingCart size={20} />
             <span className="text-sm text-gray-500 dark:text-gray-400">購入済み</span>
@@ -83,7 +83,7 @@ export default function StatsView() {
           <p className="text-2xl font-bold">{stats.overview.purchasedCount}<span className="text-sm text-gray-400">件</span></p>
           <p className="text-sm text-gray-500 dark:text-gray-400">¥{stats.overview.purchasedTotal.toLocaleString()}</p>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
+        <div className="agenda-ledger-panel bg-white dark:bg-slate-800 rounded-lg shadow p-4">
           <div className="flex items-center gap-2 text-orange-500 mb-2">
             <TrendingUp size={20} />
             <span className="text-sm text-gray-500 dark:text-gray-400">平均価格</span>
@@ -95,7 +95,7 @@ export default function StatsView() {
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400">ほしいものリスト</p>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
+        <div className="agenda-ledger-panel bg-white dark:bg-slate-800 rounded-lg shadow p-4">
           <div className="flex items-center gap-2 text-purple-500 mb-2">
             <PieChart size={20} />
             <span className="text-sm text-gray-500 dark:text-gray-400">カテゴリ数</span>
@@ -106,7 +106,7 @@ export default function StatsView() {
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* カテゴリ別 */}
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
+        <div className="agenda-ledger-panel bg-white dark:bg-slate-800 rounded-lg shadow p-4">
           <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-4">カテゴリ別</h3>
           {stats.byCategory.length === 0 ? (
             <p className="text-gray-400 text-sm">データがありません</p>
@@ -134,7 +134,7 @@ export default function StatsView() {
         </div>
 
         {/* 優先度別 */}
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
+        <div className="agenda-ledger-panel bg-white dark:bg-slate-800 rounded-lg shadow p-4">
           <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-4">優先度別</h3>
           {stats.byPriority.length === 0 ? (
             <p className="text-gray-400 text-sm">データがありません</p>
@@ -158,7 +158,7 @@ export default function StatsView() {
         </div>
 
         {/* ソース別 */}
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
+        <div className="agenda-ledger-panel bg-white dark:bg-slate-800 rounded-lg shadow p-4">
           <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-4">サイト別</h3>
           {stats.bySource.length === 0 ? (
             <p className="text-gray-400 text-sm">データがありません</p>
@@ -183,7 +183,7 @@ export default function StatsView() {
         </div>
 
         {/* 価格帯分布 */}
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
+        <div className="agenda-ledger-panel bg-white dark:bg-slate-800 rounded-lg shadow p-4">
           <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-4">価格帯分布</h3>
           {stats.priceRanges.length === 0 ? (
             <p className="text-gray-400 text-sm">データがありません</p>
@@ -202,7 +202,7 @@ export default function StatsView() {
 
       {/* 月別購入履歴 */}
       {stats.monthlyPurchased.length > 0 && (
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
+        <div className="agenda-ledger-panel bg-white dark:bg-slate-800 rounded-lg shadow p-4">
           <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-4">月別購入履歴</h3>
           <div className="space-y-2">
             {stats.monthlyPurchased.map((m) => (

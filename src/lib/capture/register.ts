@@ -107,6 +107,7 @@ export function registerCapturedCandidates(
   userId: number,
   candidateIds: unknown,
   now = Date.now(),
+  plan?: { date: string | null; notes: string | null },
 ): RegisterCaptureResult {
   const parsed = parseStoredCandidateIds(candidateIds);
   if (!parsed.ok) return parsed;
@@ -115,7 +116,14 @@ export function registerCapturedCandidates(
     return { ok: false, status: 403, error: { code: 'INVALID_INPUT', error: MEMBER_ONLY } };
   }
 
-  const run = db.transaction(() => registerLocked(db, userId, parsed.ids, now));
+  const run = db.transaction(() => {
+    const result = registerLocked(db, userId, parsed.ids, now);
+    if (result.ok && result.created && plan) {
+      const update = db.prepare('UPDATE items SET planned_purchase_date = COALESCE(?,planned_purchase_date), notes = COALESCE(?,notes) WHERE id = ? AND user_id = ?');
+      for (const id of result.itemIds) update.run(plan.date,plan.notes,id,userId);
+    }
+    return result;
+  });
   return run.immediate();
 }
 

@@ -1,0 +1,10 @@
+@font-face { font-family: 'Zen Kaku Gothic New'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/zenkakugothicnew-400.woff2') format('woff2'); }
+@font-face { font-family: 'Zen Kaku Gothic New'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/zenkakugothicnew-500.woff2') format('woff2'); }
+@font-face { font-family: 'Zen Kaku Gothic New'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/zenkakugothicnew-700.woff2') format('woff2'); }
+html.agenda { --app-font: "Zen Kaku Gothic New", "Hiragino Sans", sans-serif; }
+html.agenda body { font-family: var(--app-font); }
+html.agenda .design-review { --rv-serif: var(--app-font); font-family: var(--app-font); }
+html.agenda .agenda-home { --agenda-serif: var(--app-font); }
+html.agenda :is(.agenda-settings h2,.agenda-reading h1,.agenda-brand-bar a,.review-subheader span,.agenda-add h1,.ap-empty-photo h2,.agenda-consent h1,.agenda-login h1) { font-family: var(--app-font); }
+html.agenda :is(.review-month-head h3 small,.review-line-price.price-pending,.rank-number small,.spend-month h2 small,.spend-formatted-price > span,.settings-ai-panel h2) { font-family: var(--app-font); }
+html.agenda .spend-grand-total > strong { line-height: 1.5; }
