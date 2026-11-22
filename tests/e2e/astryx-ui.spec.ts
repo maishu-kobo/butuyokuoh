@@ -49,7 +49,8 @@ test('invalid stored dates keep the new list and budget usable without rewriting
   const rows = await (await page.request.get('/api/items')).json();
   expect(rows.find((entry: {id: number}) => entry.id === saved.id).planned_purchase_date).toBe('2027-13-01');
   await page.getByRole('switch').click();
-  await expect(page.getByRole('heading', {name: '以前の日付の商品', exact: true})).toBeVisible();
+  await expect(page).toHaveURL(url => url.pathname === '/' && url.searchParams.get('tab') === 'budget');
+  await expect(page.getByText('以前の日付の商品', {exact: true})).toBeVisible();
 });
 
 for (const width of [320, 390, 1440]) {
