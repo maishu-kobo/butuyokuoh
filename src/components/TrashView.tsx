@@ -82,7 +82,7 @@ export default function TrashView() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="agenda-trash space-y-4">
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -113,7 +113,7 @@ export default function TrashView() {
           {items.map((item) => {
             const image = displayableItemImageUrl(item.image_url);
             return (
-            <div key={item.id} className="bg-white dark:bg-slate-800 rounded-lg shadow p-4 flex items-center gap-4">
+            <div key={item.id} className="agenda-history-row bg-white dark:bg-slate-800 rounded-lg shadow p-4 flex items-center gap-4">
               {/* 画像 */}
               <div className="w-16 h-16 flex-shrink-0 bg-slate-100 dark:bg-slate-700 rounded">
                 {image ? (

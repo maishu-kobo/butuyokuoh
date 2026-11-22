@@ -1,5 +1,14 @@
 'use client';
 
+import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
+import DesignWorkbench from '@/components/design/DesignWorkbench';
+import { readListPreview } from '@/lib/design-list-preview';
+import UiVersionSwitch from '@/components/design/UiVersionSwitch';
+import { readReviewView, reviewHref, reviewSettingsHref } from '@/lib/design-home';
+import { useTheme } from '@/components/ThemeProvider';
+import ListManagementView from '@/components/home/ListManagementView';
+import { useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api-fetch';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -23,6 +32,7 @@ import HomeTabNav from '@/components/home/HomeTabNav';
 import McpConnectionCard from '@/components/mcp/McpConnectionCard';
 import { useHomeSwipeRef } from '@/lib/home-tab-swipe';
 import {
+  HOME_TABS,
   filterHomeItems,
   homeDragEnabled,
   homeTabAnimation,
@@ -33,13 +43,22 @@ import {
   type HomeTab,
 } from '@/lib/home-wishlist';
 
-export default function HomeClient({ mcpUrl }: { mcpUrl: string }) {
+export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: string; designReview?: boolean }) {
   const { user, isGuest, loading: authLoading, logout } = useAuth();
   const [items, setItems] = useState<Item[]>([]);
+  const [budgetRevision, setBudgetRevision] = useState(0);
   const [purchasedItems, setPurchasedItems] = useState<Item[]>([]);
   const [groups, setGroups] = useState<ComparisonGroup[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [activeTab, setActiveTab] = useState<HomeTab>('list');
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const designTab = designReview ? requestedTab : null;
+  const reviewView = readReviewView(searchParams.get('view'));
+  const { palette, resolvedTheme: appearance } = useTheme();
+  const ListView = designReview ? ListManagementView : HomeListView;
+  const listPreview = readListPreview(searchParams.get('list'));
+  const fromSettings=designReview && designTab==='agents' && searchParams.get('from')==='settings';
+  const activeTab: HomeTab = HOME_TABS.find(tab => tab === requestedTab) ?? 'list';
   const [animationClass, setAnimationClass] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -56,7 +75,7 @@ export default function HomeClient({ mcpUrl }: { mcpUrl: string }) {
 
   const fetchItems = useCallback(async () => {
     try {
-      const res = await apiFetch('/api/items');
+      const res = await apiFetch(designReview ? '/api/items?with=buy-guide' : '/api/items');
       if (!res.ok) throw new Error(`Failed to fetch items: ${res.status}`);
       const data = await res.json();
       // 非配列レスポンス（エラーJSON等）を配列stateに入れない
@@ -69,7 +88,17 @@ export default function HomeClient({ mcpUrl }: { mcpUrl: string }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [designReview]);
+
+  useEffect(() => {
+    if (!user) return;
+    const refreshListOnBack = () => {
+      const tab = new URL(window.location.href).searchParams.get('tab');
+      if (!tab || tab === 'list') void fetchItems();
+    };
+    window.addEventListener('popstate', refreshListOnBack);
+    return () => window.removeEventListener('popstate', refreshListOnBack);
+  }, [user, fetchItems]);
 
   // 補助データ: 失敗しても空配列のままにしてクラッシュを防ぐ（エラーUIは出さない）
   const fetchPurchased = useCallback(async () => {
@@ -123,11 +152,13 @@ export default function HomeClient({ mcpUrl }: { mcpUrl: string }) {
     void (async () => { await fetchPurchased(); })();
     void (async () => { await fetchGroups(); })();
     void (async () => { await fetchCategories(); })();
-  }, [user, fetchItems, fetchPurchased, fetchGroups, fetchCategories]);
+  }, [user, fetchItems, fetchPurchased, fetchGroups, fetchCategories, designTab]);
 
   const handleDelete = useCallback(async (id: number) => {
-    await apiFetch(`/api/items/${id}`, { method: 'DELETE' });
-    fetchItems();
+    const response = await apiFetch(`/api/items/${id}`, { method: 'DELETE' });
+    if (!response.ok) return;
+    await fetchItems();
+    setBudgetRevision(value => value + 1);
   }, [fetchItems]);
 
   const handleRefreshAll = async () => {
@@ -156,6 +187,8 @@ export default function HomeClient({ mcpUrl }: { mcpUrl: string }) {
     () => wishlistRows(filteredItems, groups, purchasedItems),
     [filteredItems, groups, purchasedItems],
   );
+
+  const productCount = useMemo(() => wishlistRows(items, groups, purchasedItems).length, [items, groups, purchasedItems]);
 
   // ドラッグ終了時のハンドラ
   const handleDragEnd = async (event: DragEndEvent) => {
@@ -290,7 +323,10 @@ export default function HomeClient({ mcpUrl }: { mcpUrl: string }) {
     const animation = homeTabAnimation(activeTab, newTab, direction);
     if (!animation) return;
     setAnimationClass(animation);
-    setActiveTab(newTab);
+    const url = new URL(window.location.href);
+    if (newTab === 'list') url.searchParams.delete('tab');
+    else url.searchParams.set('tab', newTab);
+    window.history.pushState(null, '', url.pathname + url.search + url.hash);
     setTimeout(() => setAnimationClass(''), 200);
   };
 
@@ -333,6 +369,18 @@ export default function HomeClient({ mcpUrl }: { mcpUrl: string }) {
     void fetchPurchased();
   }, [fetchItems, fetchPurchased]);
 
+  const reloadReview = useCallback(async () => {
+    await Promise.all([fetchItems(), fetchPurchased(), fetchGroups(), fetchCategories()]);
+    setBudgetRevision(value => value + 1);
+  }, [fetchItems, fetchPurchased, fetchGroups, fetchCategories]);
+
+  useEffect(() => {
+    if (!user || !designReview) return;
+    const resume = () => { if (document.visibilityState === 'visible') void reloadReview(); };
+    document.addEventListener('visibilitychange', resume);
+    return () => document.removeEventListener('visibilitychange', resume);
+  }, [user, designReview, reloadReview]);
+
   // 認証チェック
   if (authLoading) {
     return (
@@ -346,20 +394,25 @@ export default function HomeClient({ mcpUrl }: { mcpUrl: string }) {
     return <LoginForm />;
   }
 
-  return (
-    <div ref={swipeRef} className="min-h-screen bg-[var(--kinari)] dark:bg-slate-900">
-      <HomeHeader user={user} onLogout={logout} />
-      <HomeTabNav activeTab={activeTab} onChange={changeTab} onOpenList={fetchItems} />
+  if (designReview && ((activeTab === 'list' && designTab !== 'manage' && designTab !== 'agents') || designTab === 'budget')) {
+    return <DesignWorkbench budgetRevision={budgetRevision} view={designTab === 'budget' ? 'plan' : reviewView} palette={palette} appearance={appearance} items={items} purchased={purchasedItems} groups={groups}
+      categories={categories} loading={loading} loadError={loadError} onRetry={handleRetry}
+      onReload={reloadReview} onDelete={handleDelete} onLogout={logout} isGuest={isGuest} />;
+  }
 
-      <main className="max-w-4xl mx-auto px-4 py-6">
-        {activeTab === 'list' && (
-          <McpConnectionCard
-            url={mcpUrl}
-            guest={isGuest}
-            variant="home"
-            className="mb-4"
-          />
-        )}
+  return (
+    <div ref={swipeRef} className={(designReview ? "agenda-home " : "") + "min-h-screen bg-[var(--kinari)] dark:bg-slate-900"}>
+      {designReview ? <header className="review-subheader">
+        <Link href={fromSettings ? reviewSettingsHref(reviewView,palette,appearance) : reviewHref(reviewView,undefined,palette,appearance,listPreview)}><ArrowLeft size={17} /> {fromSettings?'設定に戻る':'ホームへ戻る'}</Link>
+        <span>{designTab === 'manage' ? 'リストの管理' : designTab === 'agents' ? 'AI連携' : '物欲王'}</span>
+        <UiVersionSwitch enabled />
+      </header> : <>
+        <HomeHeader user={user} onLogout={logout} />
+        <HomeTabNav activeTab={activeTab} onChange={changeTab} onOpenList={fetchItems} />
+      </>}
+
+      <main className={(designReview ? "agenda-main" : "max-w-4xl") + " mx-auto px-4 py-6"}>
+        {!designReview && activeTab === 'list' && <McpConnectionCard url={mcpUrl} guest={isGuest} variant="home" className="mb-4" />}
         {/*
           overflow-clip は親、スライドは子。同じ要素だと transform が
           文書の横スクロール幅を押し広げる（モバイルの出費予定 E2E が落ちる）。
@@ -367,12 +420,15 @@ export default function HomeClient({ mcpUrl }: { mcpUrl: string }) {
         */}
         <div className="overflow-clip">
           <div className={animationClass || undefined}>
-            {activeTab === 'list' && (
-              <HomeListView
+            {activeTab === 'list' && designTab !== 'agents' && (
+              <ListView
+                managementOnly={designReview}
+                returnView={designReview ? reviewView : undefined}
                 items={items}
                 filteredItems={filteredItems}
                 wishlist={wishlist}
                 totalAmount={totalAmount}
+                productCount={productCount}
                 loading={loading}
                 loadError={loadError}
                 categories={categories}
@@ -401,6 +457,7 @@ export default function HomeClient({ mcpUrl }: { mcpUrl: string }) {
                 onToggleSelect={toggleItemSelection}
                 onItemsChanged={fetchItems}
                 onPhotoChanged={refreshPhotoCard}
+                onBudget={() => changeTab('budget')}
                 onImport={() => setShowImportModal(true)}
                 onRefreshAll={handleRefreshAll}
                 onViewRegistered={(location) => {
@@ -425,6 +482,14 @@ export default function HomeClient({ mcpUrl }: { mcpUrl: string }) {
             {activeTab === 'trash' && <TrashView />}
           </div>
         </div>
+        {activeTab === 'list' && designReview && designTab === 'agents' && (
+          <McpConnectionCard
+            url={mcpUrl}
+            guest={isGuest}
+            variant="home"
+            className="agenda-mcp mt-6"
+          />
+        )}
       </main>
 
       {selectionMode && selectedItems.size > 0 && (

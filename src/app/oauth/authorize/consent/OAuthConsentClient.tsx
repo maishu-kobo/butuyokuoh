@@ -61,7 +61,7 @@ export default function OAuthConsentClient({
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)] p-6">
+      <main className="agenda-consent min-h-screen bg-[var(--color-bg)] text-[var(--color-text)] p-6">
         <p role="status">読み込み中...</p>
       </main>
     );
@@ -79,7 +79,7 @@ export default function OAuthConsentClient({
   }
 
   return (
-    <main className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)] flex items-center justify-center p-4">
+    <main className="agenda-consent min-h-screen bg-[var(--color-bg)] text-[var(--color-text)] flex items-center justify-center p-4">
       <div className="w-full max-w-lg space-y-4">
         <h1 className="text-2xl font-bold">エージェント連携の許可</h1>
         <p>
