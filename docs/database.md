@@ -131,6 +131,19 @@ CREATE INDEX idx_items_planned_date ON items(planned_purchase_date);
 | is_purchased | INTEGER | 購入済みフラグ (0/1) |
 | deleted_at | TEXT | ソフトデリート日時 |
 
+### item_buy_guides
+
+確定した購入日やメモと独立した、任意の購入目安（#256）。既存DBには起動時にこの表だけを追加する。
+
+| 列 | 型 | 内容 |
+| --- | --- | --- |
+| item_id | INTEGER PRIMARY KEY | items.idへの外部キー。商品を完全削除すると一緒に削除 |
+| month | TEXT NOT NULL | YYYY-MM、または時期未定なら空文字 |
+| timing | TEXT NOT NULL | by（までに）／around（ごろに） |
+| condition | TEXT NOT NULL | 買う条件、240文字以内 |
+
+写真比較グループでは、所有者の全店舗に同じ購入目安・優先度・順位を保存する。ゴミ箱や購入済みの店舗も同期するので、復元しても古い目安に戻らない。購入済み・削除状態は変更しない。CSVには買いたい月・時期の表し方・買う条件を追加する。
+
 ### categories
 
 ユーザー定義のカテゴリ。

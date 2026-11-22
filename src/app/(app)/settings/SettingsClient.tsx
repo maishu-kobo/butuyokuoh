@@ -5,12 +5,14 @@ import { apiFetch } from '@/lib/api-fetch';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
-import { Crown, ArrowLeft, Copy, Check, Key, Bell, Loader2, Download, Tag, Layers, Plus, Pencil, X, ChevronDown, ChevronUp, Sun, Moon, Monitor, Palette, Bot, Lock } from 'lucide-react';
+import { ArrowLeft, Copy, Check, Key, Bell, Loader2, Download, Tag, Layers, Plus, Pencil, X, ChevronDown, ChevronUp, Sun, Moon, Monitor, Palette, Bot, Lock } from 'lucide-react';
+import AgendaBrandBar from '@/components/AgendaBrandBar';
 import { useTheme } from '@/components/ThemeProvider';
 import Link from 'next/link';
 import LegalLinks from '@/components/LegalLinks';
 import McpConnectionCard from '@/components/mcp/McpConnectionCard';
 import { Category, ComparisonGroup } from '@/types';
+import { lightPalettes } from '@/lib/design-palettes';
 
 type AgentScope = 'read' | 'write' | 'extension';
 
@@ -27,9 +29,12 @@ type AgentTokenRecord = {
   undoable_count?: number;
 };
 
-export default function SettingsClient({ mcpUrl }: { mcpUrl: string }) {
+export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string; back?: string }) {
   const { user, isGuest, loading, logout } = useAuth();
-  const { theme, setTheme, colorScheme, setColorScheme } = useTheme();
+  const { theme, setTheme, resolvedTheme, colorScheme, setColorScheme, palette: selectedPalette, setPalette, isNewUi } = useTheme();
+  const isDesignSettings = isNewUi;
+  const backHref = isNewUi ? (back.startsWith('/design') ? back : '/design') : '/';
+  const choosePalette = setPalette;
   const router = useRouter();
   const [notifySettings, setNotifySettings] = useState({
     slack_webhook: '',
@@ -91,6 +96,8 @@ export default function SettingsClient({ mcpUrl }: { mcpUrl: string }) {
     categories: false,
     groups: false,
     theme: false,
+    palette: false,
+    ai: false,
     notify: false,
     token: false,
     agentTokens: false,
@@ -462,20 +469,13 @@ export default function SettingsClient({ mcpUrl }: { mcpUrl: string }) {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)]">
+    <div className="agenda-settings min-h-screen bg-[var(--color-bg)]">
       {/* ヘッダー */}
-      <header className="bg-[var(--color-secondary)] text-white">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex items-center gap-2">
-            <Crown size={24} className="text-[var(--color-accent)]" />
-            <h1 className="text-lg font-medium tracking-wide">物欲王</h1>
-          </div>
-        </div>
-      </header>
+      <AgendaBrandBar />
 
       <main className="max-w-4xl mx-auto px-4 py-6">
         <Link 
-          href="/" 
+          href={backHref}
           className="inline-flex items-center gap-2 text-[var(--color-muted)] hover:text-[var(--color-text)] mb-6"
         >
           <ArrowLeft size={18} />
@@ -484,7 +484,7 @@ export default function SettingsClient({ mcpUrl }: { mcpUrl: string }) {
 
         <h2 className="text-xl font-bold text-[var(--color-text)] mb-6">設定</h2>
 
-        <div className="space-y-4">
+        <div className="agenda-settings-stack space-y-4">
           {/* アカウント情報 (折りたたみなし) */}
           <div className="bg-[var(--color-card)] rounded-lg shadow p-6">
             <h3 className="font-semibold text-[var(--color-text)] mb-4">アカウント情報</h3>
@@ -502,14 +502,162 @@ export default function SettingsClient({ mcpUrl }: { mcpUrl: string }) {
             </div>
           </div>
 
-          <div className="bg-[var(--color-card)] rounded-lg shadow p-6">
-            <h3 className="font-semibold text-[var(--color-text)] mb-2">プライバシーと利用規約</h3>
-            <LegalLinks />
+          {/* パスワード変更（Google のみの会員は出さない） */}
+          {!isGuest && hasPassword && (
+          <div className="bg-[var(--color-card)] rounded-lg shadow">
+            <button aria-expanded={Boolean(openSections.password)} onClick={() => toggleSection('password')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
+              <div className="flex items-center gap-2">
+                <Lock size={20} className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">パスワード変更</h3>
+              </div>
+              {openSections.password ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </button>
+            {openSections.password && (
+              <div className="px-4 pb-4 border-t pt-4 space-y-3">
+                <p className="text-sm text-[var(--color-muted)]">変更するとエージェント用・拡張用トークンはすべて失効します。ログアウトでは失効しません。</p>
+                <p className="text-sm text-[var(--color-muted)]">他の端末からログアウトされます。Chrome 拡張は新しい拡張用トークンを作り直してください。</p>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="現在のパスワード"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+                  autoComplete="current-password"
+                />
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="新しいパスワード（6文字以上）"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
+                  autoComplete="new-password"
+                />
+                {passwordError && <p className="text-sm text-red-600">{passwordError}</p>}
+                {passwordMessage && <p className="text-sm text-green-700">{passwordMessage}</p>}
+                <button
+                  type="button"
+                  onClick={changePassword}
+                  disabled={savingPassword || !currentPassword || newPassword.length < 6}
+                  className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-md disabled:opacity-50 flex items-center gap-2"
+                >
+                  {savingPassword ? <Loader2 size={18} className="animate-spin" /> : null}
+                  変更する
+                </button>
+              </div>
+            )}
+          </div>
+          )}
+
+          {isDesignSettings && <div className="bg-[var(--color-card)] rounded-lg shadow">
+            <button type="button" id="settings-palette-toggle" aria-expanded={Boolean(openSections.palette)} aria-controls="settings-palette-panel" onClick={() => toggleSection('palette')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
+              <div className="flex items-center gap-2">
+                <Palette size={20} aria-hidden className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">配色を変更</h3>
+              </div>
+              {openSections.palette ? <ChevronUp size={20} aria-hidden /> : <ChevronDown size={20} aria-hidden />}
+            </button>
+            {openSections.palette && <div id="settings-palette-panel" role="region" aria-labelledby="settings-palette-toggle" className="px-4 pb-4 pt-4 border-t border-[var(--color-border)]">
+              <div role="group" aria-label="配色" className="settings-palette-options">
+                {lightPalettes.map(palette => <button type="button" key={palette.id} aria-pressed={(selectedPalette ?? 'paper') === palette.id} onClick={() => choosePalette(palette.id)} data-tone={palette.id} data-appearance={resolvedTheme}>
+                  <span aria-hidden className="settings-palette-swatch" />
+                  {palette.name}
+                </button>)}
+              </div>
+            </div>}
+          </div>}
+
+          {/* テーマ設定 */}
+          <div className="bg-[var(--color-card)] rounded-lg shadow">
+            <button aria-expanded={Boolean(openSections.theme)} onClick={() => toggleSection('theme')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
+              <div className="flex items-center gap-2">
+                <Sun size={20} className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">テーマ</h3>
+              </div>
+              {openSections.theme ? <ChevronUp size={20} className="text-[var(--color-muted)]" /> : <ChevronDown size={20} className="text-[var(--color-muted)]" />}
+            </button>
+            {openSections.theme && (
+              <div className="px-4 pb-4 border-t border-[var(--color-border)]">
+                {/* カラースキーム */}
+                {!isDesignSettings && <div className="pt-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Palette size={16} className="text-[var(--color-muted)]" />
+                    <span className="text-sm font-medium text-[var(--color-text)]">カラースキーム</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      aria-pressed={colorScheme === 'wa-modern'} onClick={() => setColorScheme('wa-modern')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        colorScheme === 'wa-modern'
+                          ? 'bg-[var(--color-primary)] text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      <span className="w-4 h-4 rounded-full bg-[#c53d43]"></span>
+                      和モダン
+                    </button>
+                    <button
+                      aria-pressed={colorScheme === 'default'} onClick={() => setColorScheme('default')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        colorScheme === 'default'
+                          ? 'bg-[var(--color-primary)] text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      <span className="w-4 h-4 rounded-full bg-[#f97316]"></span>
+                      デフォルト
+                    </button>
+                  </div>
+                </div>}
+
+                {/* 明るさ */}
+                <div className="pt-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sun size={16} className="text-[var(--color-muted)]" />
+                    <span className="text-sm font-medium text-[var(--color-text)]">明るさ</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      aria-pressed={theme === 'light'} onClick={() => setTheme('light')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        theme === 'light'
+                          ? 'bg-[var(--color-primary)] text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      <Sun size={16} />
+                      ライト
+                    </button>
+                    <button
+                      aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        theme === 'dark'
+                          ? 'bg-[var(--color-primary)] text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      <Moon size={16} />
+                      ダーク
+                    </button>
+                    <button
+                      aria-pressed={theme === 'system'} onClick={() => setTheme('system')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                        theme === 'system'
+                          ? 'bg-[var(--color-primary)] text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      <Monitor size={16} />
+                      自動
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* カテゴリ管理 */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('categories')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
+            <button aria-expanded={Boolean(openSections.categories)} onClick={() => toggleSection('categories')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Tag size={20} className="text-[var(--color-primary)]" />
                 <h3 className="font-semibold text-[var(--color-text)]">カテゴリ管理</h3>
@@ -553,7 +701,7 @@ export default function SettingsClient({ mcpUrl }: { mcpUrl: string }) {
 
           {/* 比較グループ管理 */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('groups')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
+            <button aria-expanded={Boolean(openSections.groups)} onClick={() => toggleSection('groups')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Layers size={20} className="text-[var(--color-primary)]" />
                 <h3 className="font-semibold text-[var(--color-text)]">比較グループ管理</h3>
@@ -594,100 +742,11 @@ export default function SettingsClient({ mcpUrl }: { mcpUrl: string }) {
             )}
           </div>
 
-          {/* テーマ設定 */}
-          <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('theme')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
-              <div className="flex items-center gap-2">
-                <Sun size={20} className="text-[var(--color-primary)]" />
-                <h3 className="font-semibold text-[var(--color-text)]">テーマ</h3>
-              </div>
-              {openSections.theme ? <ChevronUp size={20} className="text-[var(--color-muted)]" /> : <ChevronDown size={20} className="text-[var(--color-muted)]" />}
-            </button>
-            {openSections.theme && (
-              <div className="px-4 pb-4 border-t border-[var(--color-border)]">
-                {/* カラースキーム */}
-                <div className="pt-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Palette size={16} className="text-[var(--color-muted)]" />
-                    <span className="text-sm font-medium text-[var(--color-text)]">カラースキーム</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setColorScheme('wa-modern')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                        colorScheme === 'wa-modern'
-                          ? 'bg-[var(--color-primary)] text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      <span className="w-4 h-4 rounded-full bg-[#c53d43]"></span>
-                      和モダン
-                    </button>
-                    <button
-                      onClick={() => setColorScheme('default')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                        colorScheme === 'default'
-                          ? 'bg-[var(--color-primary)] text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      <span className="w-4 h-4 rounded-full bg-[#f97316]"></span>
-                      デフォルト
-                    </button>
-                  </div>
-                </div>
-                
-                {/* 明るさ */}
-                <div className="pt-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Sun size={16} className="text-[var(--color-muted)]" />
-                    <span className="text-sm font-medium text-[var(--color-text)]">明るさ</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setTheme('light')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                        theme === 'light'
-                          ? 'bg-[var(--color-primary)] text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      <Sun size={16} />
-                      ライト
-                    </button>
-                    <button
-                      onClick={() => setTheme('dark')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                        theme === 'dark'
-                          ? 'bg-[var(--color-primary)] text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      <Moon size={16} />
-                      ダーク
-                    </button>
-                    <button
-                      onClick={() => setTheme('system')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                        theme === 'system'
-                          ? 'bg-[var(--color-primary)] text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      <Monitor size={16} />
-                      自動
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
           {isGuest && <p className="p-4 rounded bg-amber-50 text-amber-900">通知設定と拡張機能はログイン後に利用できます。</p>}
           {!isGuest && <>
           {/* 価格通知設定 */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('notify')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
+            <button aria-expanded={Boolean(openSections.notify)} onClick={() => toggleSection('notify')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Bell size={20} className="text-[var(--color-primary)]" />
                 <h3 className="font-semibold text-[var(--color-text)]">価格通知設定</h3>
@@ -714,10 +773,25 @@ export default function SettingsClient({ mcpUrl }: { mcpUrl: string }) {
               </div>
             )}
           </div>
+          </>}
 
+          {isDesignSettings && <div className="bg-[var(--color-card)] rounded-lg shadow">
+            <button type="button" id="settings-ai-toggle" aria-expanded={Boolean(openSections.ai)} aria-controls="settings-ai-panel" onClick={() => toggleSection('ai')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
+              <div className="flex items-center gap-2">
+                <Bot size={20} aria-hidden className="text-[var(--color-primary)]" />
+                <h3 className="font-semibold text-[var(--color-text)]">AI連携</h3>
+              </div>
+              {openSections.ai ? <ChevronUp size={20} aria-hidden /> : <ChevronDown size={20} aria-hidden />}
+            </button>
+            {openSections.ai && <div id="settings-ai-panel" role="region" aria-labelledby="settings-ai-toggle" className="settings-ai-panel px-4 pb-4 pt-4 border-t border-[var(--color-border)]">
+              <McpConnectionCard url={mcpUrl} guest={isGuest} variant="settings" />
+            </div>}
+          </div>}
+
+          {!isGuest && <>
           {/* エージェント用トークン */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('agentTokens')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
+            <button aria-expanded={Boolean(openSections.agentTokens)} onClick={() => toggleSection('agentTokens')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Bot size={20} className="text-[var(--color-primary)]" />
                 <h3 className="font-semibold text-[var(--color-text)]">エージェント用トークン</h3>
@@ -863,55 +937,9 @@ export default function SettingsClient({ mcpUrl }: { mcpUrl: string }) {
             )}
           </div>
 
-          {/* パスワード変更（Google のみの会員は出さない） */}
-          {hasPassword && (
-          <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('password')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
-              <div className="flex items-center gap-2">
-                <Lock size={20} className="text-[var(--color-primary)]" />
-                <h3 className="font-semibold text-[var(--color-text)]">パスワード変更</h3>
-              </div>
-              {openSections.password ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-            </button>
-            {openSections.password && (
-              <div className="px-4 pb-4 border-t pt-4 space-y-3">
-                <p className="text-sm text-[var(--color-muted)]">変更するとエージェント用・拡張用トークンはすべて失効します。ログアウトでは失効しません。</p>
-                <p className="text-sm text-[var(--color-muted)]">他の端末からログアウトされます。Chrome 拡張は新しい拡張用トークンを作り直してください。</p>
-                <input
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  placeholder="現在のパスワード"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
-                  autoComplete="current-password"
-                />
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="新しいパスワード（6文字以上）"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm"
-                  autoComplete="new-password"
-                />
-                {passwordError && <p className="text-sm text-red-600">{passwordError}</p>}
-                {passwordMessage && <p className="text-sm text-green-700">{passwordMessage}</p>}
-                <button
-                  type="button"
-                  onClick={changePassword}
-                  disabled={savingPassword || !currentPassword || newPassword.length < 6}
-                  className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-md disabled:opacity-50 flex items-center gap-2"
-                >
-                  {savingPassword ? <Loader2 size={18} className="animate-spin" /> : null}
-                  変更する
-                </button>
-              </div>
-            )}
-          </div>
-          )}
-
           {/* Chrome拡張機能用トークン（extension スコープ。ログイン用 JWT は出さない） */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('token')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
+            <button aria-expanded={Boolean(openSections.token)} onClick={() => toggleSection('token')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Key size={20} className="text-[var(--color-primary)]" />
                 <h3 className="font-semibold text-[var(--color-text)]">Chrome拡張機能用トークン</h3>
@@ -1012,25 +1040,11 @@ export default function SettingsClient({ mcpUrl }: { mcpUrl: string }) {
               </div>
             )}
           </div>
-
-          <div className="bg-[var(--color-card)] rounded-lg shadow p-6">
-            <h3 className="font-semibold text-[var(--color-text)] mb-2">退会</h3>
-            <p className="text-sm text-[var(--color-muted)] mb-4">アカウントと登録したデータを削除します。元に戻せません。</p>
-            {accountError && <p className="text-sm text-red-600 mb-3">{accountError}</p>}
-            <button
-              type="button"
-              onClick={deleteAccount}
-              disabled={deletingAccount}
-              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
-            >
-              {deletingAccount ? '退会しています...' : '退会する'}
-            </button>
-          </div>
-
           </>}
+
           {/* データエクスポート */}
           <div className="bg-[var(--color-card)] rounded-lg shadow">
-            <button onClick={() => toggleSection('export')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
+            <button aria-expanded={Boolean(openSections.export)} onClick={() => toggleSection('export')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Download size={20} className="text-[var(--color-primary)]" />
                 <h3 className="font-semibold text-[var(--color-text)]">データエクスポート</h3>
@@ -1048,6 +1062,27 @@ export default function SettingsClient({ mcpUrl }: { mcpUrl: string }) {
               </div>
             )}
           </div>
+          <div className="bg-[var(--color-card)] rounded-lg shadow p-6">
+            <h3 className="font-semibold text-[var(--color-text)] mb-2">プライバシーと利用規約</h3>
+            <LegalLinks />
+          </div>
+
+          {!isGuest && <>
+          <div className="bg-[var(--color-card)] rounded-lg shadow p-6">
+            <h3 className="font-semibold text-[var(--color-text)] mb-2">退会</h3>
+            <p className="text-sm text-[var(--color-muted)] mb-4">アカウントと登録したデータを削除します。元に戻せません。</p>
+            {accountError && <p className="text-sm text-red-600 mb-3">{accountError}</p>}
+            <button
+              type="button"
+              onClick={deleteAccount}
+              disabled={deletingAccount}
+              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+            >
+              {deletingAccount ? '退会しています...' : '退会する'}
+            </button>
+          </div>
+          </>}
+
         </div>
       </main>
     </div>

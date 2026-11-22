@@ -64,6 +64,10 @@ export default function HomeListView({
   dragEnabled,
   lowestPriceInGroup,
 }: {
+  managementOnly?: boolean;
+  returnView?: import('@/lib/design-home').ReviewView;
+  productCount?: number;
+  onBudget?: () => void;
   items: Item[];
   filteredItems: Item[];
   wishlist: WishlistRow<Item>[];

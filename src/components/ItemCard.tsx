@@ -265,8 +265,8 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
   );
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-      <div className="flex">
+    <div className="agenda-item bg-white dark:bg-slate-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+      <div className="agenda-item-body flex">
         {/* 画像（商品URLがあるときだけリンク。ドラッグハンドル・操作バーとは別領域） */}
         {productUrl ? (
           <a
@@ -285,7 +285,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
         )}
 
         {/* 情報 */}
-        <div className="flex-1 p-4 min-w-0">
+        <div className="agenda-item-copy flex-1 p-4 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             {shopTags && shopTags.length > 0 ? shopTags.map((tag) => (
               <span key={tag.label} className={`text-xs px-2 py-0.5 rounded ${sourceBadgeClass(tag.source)}`}>
@@ -430,7 +430,7 @@ export default function ItemCard({ item, onUpdate, onDelete, categories = [], co
       </div>
 
       {/* アクション */}
-      <div className="px-4 py-2 bg-gray-50 dark:bg-slate-700 flex items-center justify-between border-t">
+      <div className="agenda-item-actions px-4 py-2 bg-gray-50 dark:bg-slate-700 flex items-center justify-between border-t">
         <div className="flex gap-2">
           {offerPriceRefresh && (
             <button

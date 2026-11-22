@@ -1,37 +1,51 @@
 'use client';
 
+import type { ReviewView } from '@/lib/design-home';
+
 import { apiFetch } from '@/lib/api-fetch';
 import { safeImgSrc } from '@/lib/capture/image-hosts';
 
 import { useAuth } from './AuthProvider';
-import { useCallback, useEffect, useState, useRef } from 'react';
-import { Plus, X, Upload, Link, Edit3 } from 'lucide-react';
+import { useCallback, useEffect, useId, useState, useRef } from 'react';
+import { ChevronRight, Plus, X, Upload, Link, Edit3 } from 'lucide-react';
 import { ComparisonGroup, Category } from '@/types';
 import { showPhotoPicker } from '@/lib/capture/photo-pick';
 import { CapturePhotoControls, useCapturePhotoPick } from './CapturePhotoPicker';
 import type { RegisteredLocation } from '@/lib/capture/register';
 import { CaptureSearchPanel } from './CaptureSearchPanel';
+import RegistrationActions from './RegistrationActions';
 
 // 手動画像のプレビューはアップロード API の戻りだけを src にする（DOM 入力の XSS 経路を断つ）。
 
 interface AddItemFormProps {
-  onAdd: () => void;
+  initialUrl?: string;
+  onAdd: (message?:string) => void;
+  compact?: boolean;
+  onSavingChange?: (busy:boolean) => void;
+  onOpenRegistration?: () => void;
+  standaloneManual?: boolean;
+  returnView?: ReviewView;
+  onCancel?: () => void;
   onViewRegistered?: (location: RegisteredLocation) => void;
   comparisonGroups: ComparisonGroup[];
   categories: Category[];
 }
 
-export default function AddItemForm({ onAdd, comparisonGroups, categories, onViewRegistered }: AddItemFormProps) {
+export default function AddItemForm({ initialUrl, onAdd, comparisonGroups, categories, onViewRegistered, standaloneManual = false, onCancel, compact=false, onSavingChange, onOpenRegistration }: AddItemFormProps) {
+  const formId=useId();
   const { isGuest } = useAuth();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(standaloneManual);
+  const [showDetails,setShowDetails] = useState(false);
+  const writing = useRef(false);
+  const detailsHidden = compact && !showDetails;
   const [captureEnabled, setCaptureEnabled] = useState(false);
-  const captureOpen = isOpen && !isGuest;
+  const captureOpen = isOpen && !isGuest && !standaloneManual;
   if (!captureOpen && captureEnabled) setCaptureEnabled(false);
   const [photoRevision, setPhotoRevision] = useState(0);
   const [pickedFile, setPickedFile] = useState<File | null>(null);
   const [serverPreview, setServerPreview] = useState<string | null>(null);
   const [isPhotoMode, setIsPhotoMode] = useState(false);
-  const [isManualMode, setIsManualMode] = useState(false);
+  const [isManualMode, setIsManualMode] = useState(standaloneManual);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [canAddManually, setCanAddManually] = useState(false);
@@ -54,7 +68,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState({
-    url: '',
+    url: initialUrl || '',
     priority: 3,
     planned_purchase_date: '',
     notes: '',
@@ -66,6 +80,10 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
     price: '',
     image_url: '',
   });
+
+  useEffect(() => {
+    if (initialUrl !== undefined) queueMicrotask(() => setFormData(current => ({...current, url: initialUrl})));
+  }, [initialUrl]);
 
   useEffect(() => {
     if (!captureOpen) return;
@@ -136,7 +154,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
       }
 
       const { url } = await res.json();
-      setFormData({ ...formData, image_url: url });
+      setFormData(current => ({ ...current, image_url: url }));
       setUploadPreviewSrc(safeImgSrc(typeof url === 'string' ? url : null));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'アップロードエラー');
@@ -147,6 +165,8 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (writing.current || uploading) return;
+    writing.current=true; onSavingChange?.(true);
     setLoading(true);
     setError('');
     setCanAddManually(false);
@@ -203,10 +223,11 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
 
       resetForm();
       setIsOpen(false);
-      onAdd();
+      onAdd(data.restoreMessage || data.scrapeNote || undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'エラーが発生しました');
     } finally {
+      writing.current=false; onSavingChange?.(false);
       setLoading(false);
     }
   };
@@ -233,12 +254,9 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
             </div>
           </div>
         )}
-        <button
-          onClick={() => { setPhotoSuccess(''); setIsOpen(true); }}
-          className="w-full py-4 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-lg text-gray-600 dark:text-gray-300 hover:border-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors flex items-center justify-center gap-2"
-        >
-          <Plus size={20} />
-          新しいアイテムを追加
+        <button type="button" onClick={() => { if (onOpenRegistration) onOpenRegistration(); else { setPhotoSuccess(''); setIsOpen(true); } }}
+          className="w-full py-4 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-lg text-gray-600 dark:text-gray-300 hover:border-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors flex items-center justify-center gap-2">
+          <Plus size={20} />新しいアイテムを追加
         </button>
       </>
     );
@@ -251,12 +269,12 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
       onDrop={photoPick.onDrop}
       className="bg-white dark:bg-slate-800 rounded-lg shadow-md p-4"
     >
-      <div className="flex justify-between items-center mb-4">
+      {!standaloneManual && <div className="flex justify-between items-center mb-4">
         <h3 className="font-semibold text-lg">新しいアイテムを追加</h3>
         <button onClick={() => { setIsOpen(false); resetForm(); }} aria-label="追加フォームを閉じる" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100">
           <X size={20} />
         </button>
-      </div>
+      </div>}
       <CapturePhotoControls pick={photoPick} file={pickedFile} previewSrc={serverPreview} />
       {photoPick.enabled && pickedFile && (
         <CaptureSearchPanel
@@ -285,7 +303,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
         </div>
       ) : <>
       {/* モード切り替え */}
-      <div className="mb-4 flex items-center justify-end">
+      {!standaloneManual && <div className="mb-4 flex items-center justify-end">
         <button
           type="button"
           onClick={() => { setIsManualMode(!isManualMode); setError(''); setCanAddManually(false); }}
@@ -297,9 +315,9 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
             <><Edit3 size={12} /> 手動で追加</>
           )}
         </button>
-      </div>
+      </div>}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form id={formId} onSubmit={handleSubmit} className="space-y-4">
         {isManualMode ? (
           /* 手動追加モード */
           <>
@@ -309,7 +327,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
               </label>
               <input
                 type="text"
-                value={formData.name}
+                aria-label="商品名" value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="商品名を入力"
                 className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -322,7 +340,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">価格</label>
                 <input
                   type="number"
-                  value={formData.price}
+                  aria-label="価格" value={formData.price}
                   onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                   placeholder="例: 3990"
                   className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -332,7 +350,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">URL（任意）</label>
                 <input
                   type="url"
-                  value={formData.url}
+                  aria-label="商品URL" value={formData.url}
                   onChange={(e) => setFormData({ ...formData, url: e.target.value })}
                   placeholder="https://..."
                   className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -340,13 +358,14 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
               </div>
             </div>
 
+            {compact && <button type="button" className="registration-options" aria-expanded={showDetails} onClick={()=>setShowDetails(!showDetails)}><ChevronRight size={14} aria-hidden/>画像・優先度・購入予定など</button>}
             {/* 画像アップロード */}
-            {!isGuest && <div>
+            {!isGuest && <div hidden={detailsHidden}>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">画像</label>
               <div className="flex gap-2">
                 <input
                   type="text"
-                  value={formData.image_url}
+                  aria-label="画像URL" value={formData.image_url}
                   onChange={(e) => {
                     setFormData({ ...formData, image_url: e.target.value });
                     setUploadPreviewSrc(null);
@@ -377,7 +396,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
                 </div>
               )}
             </div>}
-            {isGuest && <p className="text-sm text-gray-500">画像の手動追加はログイン後に利用できます。</p>}
+            {isGuest && <p hidden={detailsHidden} className="text-sm text-gray-500">画像の手動追加はログイン後に利用できます。</p>}
           </>
         ) : (
           /* URLモード（通常） */
@@ -387,7 +406,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
             </label>
             <input
               type="url"
-              value={formData.url}
+              aria-label="商品URL" value={formData.url}
               onChange={(e) => setFormData({ ...formData, url: e.target.value })}
               placeholder="https://www.amazon.co.jp/..."
               className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -396,11 +415,11 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <div hidden={detailsHidden} className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">優先度</label>
             <select
-              value={formData.priority}
+              aria-label="優先度" value={formData.priority}
               onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) })}
               className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
@@ -416,7 +435,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">購入予定日</label>
             <input
               type="date"
-              value={formData.planned_purchase_date}
+              aria-label="購入予定日" value={formData.planned_purchase_date}
               onChange={(e) => setFormData({ ...formData, planned_purchase_date: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
@@ -427,19 +446,19 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
             <input
               type="number"
               min="1"
-              value={formData.quantity}
+              aria-label="個数" value={formData.quantity}
               onChange={(e) => setFormData({ ...formData, quantity: Math.max(1, Number(e.target.value) || 1) })}
               className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div hidden={detailsHidden} className="grid grid-cols-2 gap-4">
           {categories.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">カテゴリ</label>
               <select
-                value={formData.category_id}
+                aria-label="カテゴリ" value={formData.category_id}
                 onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -455,7 +474,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">比較グループ</label>
               <select
-                value={formData.comparison_group_id}
+                aria-label="比較グループ" value={formData.comparison_group_id}
                 onChange={(e) => setFormData({ ...formData, comparison_group_id: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -468,10 +487,10 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
           )}
         </div>
 
-        <div>
+        <div hidden={detailsHidden}>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">メモ</label>
           <textarea
-            value={formData.notes}
+            aria-label="メモ" value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
             placeholder="購入理由や比較ポイントなど"
             className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -479,6 +498,7 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
           />
         </div>
 
+        <RegistrationActions>
         {error && (
           <div role="alert" aria-label="商品追加エラー" className="rounded-md bg-red-50 dark:bg-red-950/40 p-3 text-red-700 dark:text-red-300 text-sm">
             <p>{error}</p>
@@ -490,22 +510,24 @@ export default function AddItemForm({ onAdd, comparisonGroups, categories, onVie
           </div>
         )}
 
-        <div className="flex gap-2 justify-end">
-          <button
+        <div className={compact ? 'registration-action' : 'flex gap-2 justify-end'}>
+          {!compact && <button
             type="button"
-            onClick={() => { setIsOpen(false); resetForm(); }}
+            onClick={() => { if (standaloneManual) { onCancel?.(); return; } setIsOpen(false); resetForm(); }}
             className="px-4 py-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
           >
             キャンセル
-          </button>
+          </button>}
           <button
             type="submit"
-            disabled={loading}
+            form={formId}
+            disabled={loading || uploading}
             className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50"
           >
-            {loading ? '追加中...' : '追加'}
+            {loading ? '追加中...' : compact ? '登録する' : '追加'}
           </button>
         </div>
+        </RegistrationActions>
       </form>
       </>}
     </div>
