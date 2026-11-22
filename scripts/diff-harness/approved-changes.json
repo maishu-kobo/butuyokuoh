@@ -2,6 +2,12 @@
   "version": 1,
   "changes": [
     {
+      "id": "item-buy-guides",
+      "reason": "採用した新UIの購入目安（買いたい月・時期・条件）を保存する表（#256、PR #423）。既存のURL登録・一覧・価格再取得・ログインでは行を作らず、既存の商品や購入予定日は変えない。",
+      "tablesAdded": ["item_buy_guides"],
+      "requireEmpty": true
+    },
+    {
       "id": "active-wishlist-url-conflict",
       "required": true,
       "reason": "ほしいものリストにある URL の再登録は、登録先が分かる 409 URL_TAKEN で拒否する（#364、PR #366）。",
