@@ -69,7 +69,7 @@ export default function PurchasedHistory() {
   return (
     <div className="agenda-history space-y-6">
       {/* 全体統計 */}
-      <div className="agenda-history-total">
+      <div className="agenda-history-total bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg p-6 text-white">
         <div className="flex items-center gap-2 mb-2">
           <ShoppingBag size={24} />
           <h2 className="text-lg font-semibold">購入済み合計</h2>

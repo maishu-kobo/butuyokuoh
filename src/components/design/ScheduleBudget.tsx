@@ -5,10 +5,10 @@ import { CalendarPlus, Check, CheckSquare, ChevronDown, ChevronRight, Square, Sq
 import type { Category, Item } from '@/types';
 import { formatYen } from '@/lib/capture/list-card';
 import { lineAmount } from '@/lib/photo-spend';
-import { budgetSelectionState, scheduleBudgetRows, toggleBudgetSelection, type ScheduleBudgetData, type ScheduleBudgetRow } from '@/lib/design-budget';
+import { budgetSelectionState, scheduleBudgetRows, scheduleCalendarDate, toggleBudgetSelection, type ScheduleBudgetData, type ScheduleBudgetRow } from '@/lib/design-budget';
 import './schedule-budget.css';
 
-const weekday = new Intl.DateTimeFormat('ja-JP', {weekday:'short'});
+const weekday = new Intl.DateTimeFormat('ja-JP', {weekday:'short',timeZone:'UTC'});
 interface Props {
   budget:ScheduleBudgetData; allItems:Item[]; categories:Category[]; period:string; query:string;
   total:number; selectedIds:Set<number>;
@@ -47,14 +47,14 @@ export default function ScheduleBudget(props:Props) {
 
   function rowView(row:ScheduleBudgetRow) {
     const {item}=row;
-    const date=item.planned_purchase_date;
+    const date=scheduleCalendarDate(item.planned_purchase_date);
     const override=row.offers.some(offer=>offer.budget_selected_item_id!=null);
     return <li key={row.key} className="spend-line">
       <div className="spend-line-date">
         <SelectionCheck checked={selectedIds.has(item.id)} label={row.name+'を選択'} onChange={()=>props.onSelect(item.id)}/>
         <button type="button" id={'agenda-date-'+item.id} className="review-day" aria-label={row.name+'の予定日を変更'}
           onClick={event=>props.onDate(item,event.currentTarget)}>
-          {date ? <><strong>{Number(date.slice(8,10))}</strong><small>{weekday.format(new Date(date+'T12:00:00'))}曜</small></>
+          {date ? <><strong>{date.getUTCDate()}</strong><small>{weekday.format(date)}曜</small></>
             : <><CalendarPlus size={20}/><small>決める</small></>}
         </button>
       </div>
