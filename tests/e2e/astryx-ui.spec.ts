@@ -34,6 +34,25 @@ test('new UI preserves login and guest entry from an unauthenticated visit', asy
   await expect(page.locator('html')).not.toHaveAttribute('data-astryx-theme');
 });
 
+test('invalid stored dates keep the new list and budget usable without rewriting saved values', async ({page}) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await member(page);
+  const saved = await item(page, '以前の日付の商品', {planned_purchase_date: '2027-13-01'});
+  await newHome(page);
+  await expect(page.getByRole('button', {name: '以前の日付の商品の詳細'})).toBeVisible();
+  await page.getByRole('link', {name: '出費予定', exact: true}).click();
+  await expect(page.getByTestId('spend-selected-total')).toHaveText('¥1,200');
+  await expect(page.getByRole('button', {name: '以前の日付の商品の詳細'})).toBeVisible();
+  await expect(page.getByRole('button', {name: '以前の日付の商品の予定日を変更'})).toContainText('決める');
+  expect(errors).toEqual([]);
+  const rows = await (await page.request.get('/api/items')).json();
+  expect(rows.find((entry: {id: number}) => entry.id === saved.id).planned_purchase_date).toBe('2027-13-01');
+  await page.getByRole('switch').click();
+  await expect(page).toHaveURL(url => url.pathname === '/' && url.searchParams.get('tab') === 'budget');
+  await expect(page.getByText('以前の日付の商品', {exact: true})).toBeVisible();
+});
+
 for (const width of [320, 390, 1440]) {
   test(`adopted list, registration, budget and legacy switch keep real data at ${width}px`, async ({page}, info) => {
     await page.setViewportSize({width, height: width < 500 ? 844 : 1000});

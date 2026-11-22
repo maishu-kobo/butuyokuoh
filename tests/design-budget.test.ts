@@ -1,10 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import fc from 'fast-check';
 import type { Item } from '../src/types';
-import { budgetSelectionState, reconcileBudgetSelection, scheduleBudgetRows, toggleBudgetSelection } from '../src/lib/design-budget';
+import { budgetSelectionState, reconcileBudgetSelection, scheduleBudgetRows, scheduleCalendarDate, toggleBudgetSelection } from '../src/lib/design-budget';
 
 const item = (id: number, props: Partial<Item> = {}) => ({ id, name: '商品'+id, current_price: 1000, quantity: 1,
   comparison_group_id: null, planned_purchase_date: '2026-11-15', ...props } as Item);
+
+test('schedule calendar dates reject invalid saved values instead of throwing or rolling into another day', () => {
+  for (const value of [null, '', 'not-a-date', '2027-13-01', '2027-00-01', '2027-02-29', '2028-02-30', '2027-04-31', '2027-01-00', '2027-01-32', '2027-2-01', '2027-02-01T00:00:00Z']) {
+    assert.equal(scheduleCalendarDate(value), null, String(value));
+  }
+  assert.equal(scheduleCalendarDate('2028-02-29')?.toISOString(), '2028-02-29T12:00:00.000Z');
+  fc.assert(fc.property(fc.integer({min: 100, max: 9999}), fc.integer({min: 1, max: 12}), fc.integer({min: 1, max: 28}), (year, month, day) => {
+    const value = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const date = scheduleCalendarDate(value);
+    assert.ok(date);
+    assert.deepEqual([date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate()], [year, month, day]);
+  }), {seed: 256, numRuns: 100});
+});
 
 test('photo offers share one dated row while preserving every offer and the counted choice', () => {
   const cheap = item(1, { comparison_group_id: 4, group_origin: 'photo', countsInTotal: false, comparison_group_name: 'カメラ' });

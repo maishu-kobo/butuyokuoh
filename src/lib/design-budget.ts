@@ -1,6 +1,14 @@
 import type { Item } from '@/types';
 import { idsForSelectAll } from './photo-spend';
 
+// Stored dates can predate UI validation. Keep their value intact while rendering safely.
+export function scheduleCalendarDate(value: string | null): Date | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(value + 'T12:00:00Z');
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) return null;
+  return date;
+}
+
 export function budgetSelectionState(items: readonly Item[], selected: ReadonlySet<number>): boolean | 'mixed' {
   const checked = items.filter(item => selected.has(item.id));
   if (!checked.length) return false;
