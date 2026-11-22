@@ -31,13 +31,21 @@ export function CaptureSearchPanel({
   onManual,
   onSearching,
   onRegistered,
+  onRegisteringChange,
   onViewRegistered,
   onPreview,
+  plannedDate,
+  notes,
+  allowManualSearchOnFallback = false,
 }: {
   file: File | null;
+  plannedDate?: string;
+  notes?: string;
+  allowManualSearchOnFallback?: boolean;
   onManual: (name: string) => void;
   onSearching: () => void;
   onRegistered: (summary: string) => void;
+  onRegisteringChange?: (busy:boolean) => void;
   onViewRegistered?: (location: RegisteredLocation) => void;
   onPreview?: (src: string) => void;
 }) {
@@ -216,13 +224,14 @@ export function CaptureSearchPanel({
     if (selected.length === 0 || busy || registeringRef.current) return;
     registeringRef.current = true;
     setRegistering(true);
+    onRegisteringChange?.(true);
     const version = searchVersionRef.current;
     setNotice('');
     try {
       const response = await apiFetch('/api/capture/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ candidateIds: selected }),
+        body: JSON.stringify({ candidateIds: selected, ...(plannedDate && {plannedDate}), ...(notes && {notes}) }),
       }, { notifyError: false });
       const data = await response.json().catch(() => null);
       if (version !== searchVersionRef.current) return;
@@ -248,6 +257,7 @@ export function CaptureSearchPanel({
     } finally {
       registeringRef.current = false;
       setRegistering(false);
+      onRegisteringChange?.(false);
     }
   }
 
@@ -314,7 +324,7 @@ export function CaptureSearchPanel({
             className="mt-2 min-h-[44px] rounded-md border px-3 py-2 disabled:opacity-50">この品番で探す</button>
         </div>
       )}
-      {(chosen || name) && (
+      {(chosen || name || (allowManualSearchOnFallback && file && status && !busy)) && (
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1" htmlFor="capture-search-name">
             探す商品名

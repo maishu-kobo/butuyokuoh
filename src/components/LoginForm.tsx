@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useState } from 'react';
 import { useAuth } from './AuthProvider';
 import { signIn } from 'next-auth/react';
-import { Crown, Mail, Lock, User, Loader2 } from 'lucide-react';
+import { Mail, Lock, User, Loader2 } from 'lucide-react';
 import LegalLinks from './LegalLinks';
 
 export default function LoginForm({
@@ -56,21 +57,19 @@ export default function LoginForm({
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-slate-900 flex items-center justify-center p-4">
+    <div className="agenda-login min-h-screen bg-gray-100 dark:bg-slate-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* ヘッダー */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center gap-3 mb-4">
-            <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-3 rounded-full">
-              <Crown size={32} className="text-yellow-300" />
-            </div>
+            <Image src="/icons/icon-192.png" width={52} height={52} alt="" unoptimized />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">物欲王</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">すべてのほしいものを一つに</p>
         </div>
 
         {/* フォーム */}
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
+        <div className="agenda-login-panel bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
           {showGuest && <div className="mb-6">
             <button disabled={loading} onClick={async () => {
               setLoading(true); setError('');
@@ -220,7 +219,7 @@ export default function LoginForm({
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-medium rounded-md hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="agenda-login-submit w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-medium rounded-md hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>

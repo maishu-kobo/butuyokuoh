@@ -902,3 +902,22 @@ test('a registered capture without a recorded item does not return every item ma
     db.close();
   }
 });
+
+
+test('photo registration saves optional timing and memo once, without overwriting an existing registration', () => {
+  const database = openDatabase(':memory:');
+  try {
+    const user = member(database, 'agenda-photo@example.test');
+    const photo = capture(database, user);
+    const choice = candidate(database, user, photo);
+    const first = registerCapturedCandidates(database, user, [choice], NOW, {date: '2027-02-03', notes: '店頭で確認する'});
+    assert.equal(first.ok, true);
+    if (!first.ok) return;
+    assert.deepEqual(database.prepare('SELECT planned_purchase_date,notes FROM items WHERE id=?').get(first.itemIds[0]),
+      {planned_purchase_date: '2027-02-03', notes: '店頭で確認する'});
+    const repeated = registerCapturedCandidates(database, user, [choice], NOW, {date: '2027-04-05', notes: '上書きしない'});
+    assert.equal(repeated.ok, true);
+    assert.deepEqual(database.prepare('SELECT planned_purchase_date,notes FROM items WHERE id=?').get(first.itemIds[0]),
+      {planned_purchase_date: '2027-02-03', notes: '店頭で確認する'});
+  } finally { database.close(); }
+});

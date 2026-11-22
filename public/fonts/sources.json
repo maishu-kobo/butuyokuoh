@@ -1,0 +1,23 @@
+[
+  {
+    "family": "Zen Kaku Gothic New",
+    "weight": "400",
+    "file": "zenkakugothicnew-400.woff2",
+    "source": "https://raw.githubusercontent.com/google/fonts/main/ofl/zenkakugothicnew/ZenKakuGothicNew-Regular.ttf",
+    "original_sha256": "b840cd07a67d89cacca44249ae49aa99ee7640eb5ce623be8d8983d6aabac801"
+  },
+  {
+    "family": "Zen Kaku Gothic New",
+    "weight": "500",
+    "file": "zenkakugothicnew-500.woff2",
+    "source": "https://raw.githubusercontent.com/google/fonts/main/ofl/zenkakugothicnew/ZenKakuGothicNew-Medium.ttf",
+    "original_sha256": "651a3f7280b7f36262601ee76d8388a8dc4372dcc67aff025a608939a562b525"
+  },
+  {
+    "family": "Zen Kaku Gothic New",
+    "weight": "700",
+    "file": "zenkakugothicnew-700.woff2",
+    "source": "https://raw.githubusercontent.com/google/fonts/main/ofl/zenkakugothicnew/ZenKakuGothicNew-Bold.ttf",
+    "original_sha256": "0081cedabc4921982fcd061f845a005664ac7fb642af2dd34b4007bc63ccd235"
+  }
+]

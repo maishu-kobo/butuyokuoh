@@ -119,3 +119,14 @@
 - 名前解決の前に、所有（404）・ゴミ箱（409 `ITEM_TRASHED`）・埋めようとした価格や画像に値がある（409 `MEDIA_ALREADY_SET`）を先に返す。外部ホストが解決できなくても順序は同じ。同じ検査は書き込みトランザクションの中でも繰り返す（競合対策はそのまま）。`tests/e2e/agent.spec.ts` の「値がある品目へ `.example` の画像 URL で 409」と同じ形を、DNS 呼び出しゼロの確認つきでユニットテストに足した。
 - 定型の失敗文は、それを出す側の実際の種別で分類する。`PRODUCT_FETCH_BLOCKED_HELP`（product-html の isBotChallengedHtml）と `AMAZON_BOT_NOTE`（scraper）は `BOT_CHALLENGE`、`PRODUCT_FETCH_HELP` は `FETCH_FAILED`。add の `media_fetch_errors`、`get_item`、`list_items` で同じ分類になることをボット対策ページの fixture で確認。
 - OpenAPI 3.1 の新しい null 許容プロパティ（`scrape_status` / `scrape_error_code` / `scrape_error`、root と stores）は `nullable` ではなく `type: [string, 'null']` と null を含む `enum` で書いた。view の `scrape_status` も `success` / `failed` / null 以外は出さない。`image_url` の pattern は実装（スキームの大文字小文字を問わない）に合わせて `^[Hh][Tt][Tt][Pp][Ss]://` にし、MCP スキーマと OpenAPI で同じ値にした。
+
+
+## 2026-11-22 — #256 採用デザインを本体に取り込む変更
+
+- 採用した Astryx の予定テイスト・コンパクト一覧と Zen Kaku Gothic New を、本体の通常認証・商品APIにつないだ。URLが初期表示の登録シート、写真・手入力、商品詳細、出費予定、設定を実装し、旧UI・新旧切り替え・既存の管理操作を維持した。通常ホームは選択済みUIへ戻る。
+- 購入目安は既存の購入日・メモと分離して item_buy_guides に保存する加算的な移行。写真グループの非表示店舗にも目安・優先度・順位を同期し、復元時の逆戻りを防ぐ。CSVの既存列を保って購入目安の3列を追加。写真検索のメモ・予定日は新規登録だけに適用する。
+- 統合先は develop の 5810bb5 から作った feature/ui-refresh-256。作業ブランチは codex/ui-refresh-256-integration。テストのみの 45dff003571202ff9a38535e18275744b1a2a00b で新API・順位処理が未実装の失敗を再現した。
+- 作者が npm test（838/838）、npx tsc --noEmit、npm run lint（エラー0・既存警告17）、npm run build を確認。旧/addは内容を変えずLegacyAddPageへ移動し、警告基準は対応する2件のパスだけを移した。Next.jsの初回更新案内による停止後に同じコマンドを再実行した結果を記録した。
+- ブラウザ検査は新UI12件を含む89件中87成功・1スキップ・従来画面の初期読み込みで1件タイムアウト。同じ検査を個別に再実行して1件成功。全体はテスト限定でwebpack起動を使用。TurbopackではOAuth検査後の匿名ページに開発用HMR restartが続いたためで、変更起因かは未確定。WebKit・実機Safari・VoiceOverは未確認。
+- 320/390/1440px、文字拡大、写真検索から登録、URL取得失敗時の復元・手入力、購入目安と確定日・優先度の独立、同じ優先度内の並べ替え、選択による自動試算、削除・別タブ変更後の合計、配色・UI選択の保存を確認。独立した2名の最終レビューは修正必須なし。
+- 本番用ビルドのローカル確認でもゲスト開始・手入力登録・自動試算・新旧往復と選択保存が成功。確認用DBのプレビューは http://127.0.0.1:4178/design 、従来のデザイン検討用4177も維持。本番への反映・develop/mainへのマージは未実施。依存とDB追加を含むため機能ブランチへのマージも人間の承認待ち。

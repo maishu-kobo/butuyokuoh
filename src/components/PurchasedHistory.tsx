@@ -67,9 +67,9 @@ export default function PurchasedHistory() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="agenda-history space-y-6">
       {/* 全体統計 */}
-      <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg p-6 text-white">
+      <div className="agenda-history-total">
         <div className="flex items-center gap-2 mb-2">
           <ShoppingBag size={24} />
           <h2 className="text-lg font-semibold">購入済み合計</h2>
@@ -88,7 +88,7 @@ export default function PurchasedHistory() {
 
       {/* 月別集計 */}
       {data.monthlySummary.length > 0 && (
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow p-4">
+        <div className="agenda-ledger-panel bg-white dark:bg-slate-800 rounded-lg shadow p-4">
           <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-3">月別購入履歴</h3>
           <div className="space-y-2">
             {data.monthlySummary.map((m) => (
@@ -116,7 +116,7 @@ export default function PurchasedHistory() {
             {data.items.map((item) => {
               const image = displayableItemImageUrl(item.image_url);
               return (
-              <div key={item.id} className="bg-white dark:bg-slate-800 rounded-lg shadow p-4 flex items-center gap-4">
+              <div key={item.id} className="agenda-history-row bg-white dark:bg-slate-800 rounded-lg shadow p-4 flex items-center gap-4">
                 {/* 画像 */}
                 <div className="w-16 h-16 flex-shrink-0 bg-gray-100 rounded">
                   {image ? (
@@ -129,7 +129,7 @@ export default function PurchasedHistory() {
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">
-                        No Image
+                        写真未登録
                       </div>
                     )}
                 </div>
@@ -139,7 +139,7 @@ export default function PurchasedHistory() {
                   <h4 className="font-medium text-gray-900 dark:text-gray-100 truncate">{item.name}</h4>
                   <div className="flex items-center gap-3 mt-1 text-sm text-gray-500 dark:text-gray-400">
                     <span className="font-semibold text-gray-900 dark:text-gray-100">
-                      ¥{item.current_price?.toLocaleString() || '---'}
+                      {item.current_price == null ? '価格未取得' : `¥${item.current_price.toLocaleString()}`}
                     </span>
                     {item.purchased_at && (
                       <span className="flex items-center gap-1">

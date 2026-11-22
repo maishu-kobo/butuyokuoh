@@ -1,12 +1,12 @@
 [
   {
-    "file": "src/app/(app)/add/page.tsx",
+    "file": "src/app/(app)/add/LegacyAddPage.tsx",
     "ruleId": "@next/next/no-img-element",
     "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element",
     "count": 1
   },
   {
-    "file": "src/app/(app)/add/page.tsx",
+    "file": "src/app/(app)/add/LegacyAddPage.tsx",
     "ruleId": "react-hooks/exhaustive-deps",
     "message": "React Hook useEffect has missing dependencies: 'fetchProductInfo' and 'productInfo'. Either include them or remove the dependency array.",
     "count": 1

@@ -1,0 +1,27 @@
+.ui-version-switch, .agenda-header .ui-version-switch {
+  display: inline-flex; flex: none; align-items: center; justify-content: center;
+  width: 44px; min-width: 44px; min-height: 44px; padding: 0;
+  color: var(--color-text); background: transparent; border: 0; border-radius: 8px;
+  font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  white-space: nowrap; cursor: pointer; touch-action: manipulation;
+}
+.ui-version-switch > span { font: inherit; }
+.ui-version-switch:hover { background: var(--agenda-soft, #80808012); }
+.ui-version-switch:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.ui-version-switch .ui-version-track {
+  display: flex; align-items: center; flex: none; width: 28px; height: 18px; padding: 2px;
+  border: 1px solid currentColor; border-radius: 999px; color: var(--color-muted);
+}
+.ui-version-track > span { width: 12px; height: 12px; border-radius: 50%; background: currentColor; }
+.ui-version-switch[aria-checked=true] .ui-version-track { color: var(--color-primary); background: currentColor; }
+.ui-version-switch[aria-checked=true] .ui-version-track > span { transform: translateX(10px); background: var(--color-card); }
+.agenda-header-actions { gap: 6px; }
+.agenda-header-actions > :is(a,button):not(.ui-version-switch) { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.review-subheader { flex-wrap: wrap; }
+.review-subheader .ui-version-switch { margin-left: auto; }
+@media (max-width: 359px) {
+  .agenda-header-inner { padding-inline: 10px; }
+  .agenda-header-actions { gap: 2px; }
+  .agenda-header-brand { gap: 6px; }
+  .agenda-header-brand h1 { font-size: 18px; }
+}
