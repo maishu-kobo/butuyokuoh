@@ -17,6 +17,9 @@ interface ExportItem {
   created_at: string;
   is_purchased: number;
   purchased_at: string | null;
+  buy_month: string | null;
+  buy_timing: string | null;
+  buy_condition: string | null;
 }
 
 async function handleGET(request: NextRequest) {
@@ -51,9 +54,13 @@ async function handleGET(request: NextRequest) {
       i.notes,
       i.created_at,
       i.is_purchased,
-      i.purchased_at
+      i.purchased_at,
+      guide.month AS buy_month,
+      guide.timing AS buy_timing,
+      guide.condition AS buy_condition
     FROM items i
     LEFT JOIN categories cat ON i.category_id = cat.id
+    LEFT JOIN item_buy_guides guide ON guide.item_id = i.id
     ${whereClause}
     ORDER BY i.created_at DESC
   `).all(user.id) as ExportItem[];
@@ -72,6 +79,9 @@ async function handleGET(request: NextRequest) {
     '登録日',
     'ステータス',
     '購入日',
+    '買いたい月',
+    '時期の表し方',
+    '買う条件',
   ];
 
   const priorityLabels: Record<number, string> = {
@@ -95,6 +105,9 @@ async function handleGET(request: NextRequest) {
     item.created_at,
     item.is_purchased ? '購入済み' : '未購入',
     item.purchased_at || '',
+    item.buy_month || '',
+    item.buy_month ? (item.buy_timing === 'around' ? 'ごろに' : 'までに') : '',
+    item.buy_condition || '',
   ]);
 
   const csvContent = [

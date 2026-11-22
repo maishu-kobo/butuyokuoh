@@ -307,6 +307,55 @@ test('required security behavior remains mandatory after develop already contain
   assert.match(formatReport(report), /維持/);
 });
 
+function withEmptyBuyGuides(snapshot: Snapshot): Snapshot {
+  snapshot.db.columns.item_buy_guides = ['item_id', 'month', 'timing', 'condition'];
+  snapshot.db.rows.item_buy_guides = [];
+  return snapshot;
+}
+
+test('the adopted UI may add an empty buy-guide table without changing existing behavior', () => {
+  const baseline = candidateSnapshot();
+  const candidate = withEmptyBuyGuides(structuredClone(baseline));
+  const report = compareSnapshots(baseline, candidate, loadApprovals(approvalsPath.pathname));
+  assert.equal(report.ok, true, formatReport(report));
+});
+
+test('buy-guide approval still detects writes, other tables and changes to existing items', () => {
+  const baseline = candidateSnapshot();
+  baseline.db.columns.items = ['id', 'user_id', 'url', 'name', 'current_price'];
+  baseline.db.rows.items = [{id: 1, user_id: 1, url: 'https://example.test/item', name: '既存商品', current_price: 1000}];
+  const cases: Array<[string, (snapshot: Snapshot) => void, string]> = [
+    ['unexpected guide write', snapshot => {
+      snapshot.db.rows.item_buy_guides.push({item_id: 1, month: '2027-02', timing: 'around', condition: '値下がりしたら'});
+    }, 'db.rows.item_buy_guides'],
+    ['unrelated table', snapshot => {
+      snapshot.db.columns.unrelated_table = ['id'];
+      snapshot.db.rows.unrelated_table = [];
+    }, 'db.rows.unrelated_table'],
+    ['existing item changed', snapshot => {
+      snapshot.db.rows.items[0].current_price = 999;
+    }, 'db.rows.items'],
+  ];
+  const rules = loadApprovals(approvalsPath.pathname);
+  for (const [label, mutate, expectedPath] of cases) {
+    const candidate = withEmptyBuyGuides(structuredClone(baseline));
+    mutate(candidate);
+    const report = compareSnapshots(baseline, candidate, rules);
+    assert.equal(report.ok, false, label);
+    assert.ok(report.unexpected.some(entry => entry.path.startsWith(expectedPath)), formatReport(report));
+  }
+});
+
+test('buy guides remain compared after develop contains the table', () => {
+  const baseline = withEmptyBuyGuides(candidateSnapshot());
+  baseline.db.rows.item_buy_guides.push({item_id: 1, month: '2027-02', timing: 'around', condition: '値下がりしたら'});
+  const candidate = structuredClone(baseline);
+  candidate.db.rows.item_buy_guides = [];
+  const report = compareSnapshots(baseline, candidate, loadApprovals(approvalsPath.pathname));
+  assert.equal(report.ok, false);
+  assert.ok(report.unexpected.some(entry => entry.path.startsWith('db.rows.item_buy_guides')), formatReport(report));
+});
+
 test('identical insecure snapshots still fail each required invariant', () => {
   const mutations: Array<[string, (snapshot: Snapshot) => void]> = [
     ['verified-link-retires-password', (snapshot) => { snapshot.db.rows.users.find((row) => row.email === 'linked@example.test')!.password_hash = HASH; }],

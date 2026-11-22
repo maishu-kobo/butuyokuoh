@@ -1,0 +1,102 @@
+html.agenda {
+  color-scheme: light;
+  --color-bg: #f5f5f5;
+  --color-card: #ffffff;
+  --color-text: #242424;
+  --color-muted: #686868;
+  --color-muted-light: #686868;
+  --color-primary: #793e28;
+  --color-primary-hover: #62311f;
+  --color-secondary: #593629;
+  --color-accent: #975435;
+  --color-border: #d9d9d9;
+  --agenda-soft: #f0f0f0;
+  --agenda-accent: #793e28;
+  --color-success-bg: #e8eee0;
+  --color-success-text: #3b5836;
+  --color-warning-bg: #faedd3;
+  --color-warning-text: #765324;
+  --color-error-bg: #f8e6e2;
+  --color-error-text: #93382e;
+  --color-priority-high-bg: #f5e6da;
+  --color-priority-high-text: #843d24;
+  --color-priority-normal-bg: #efebe3;
+  --color-priority-normal-text: #5e574e;
+  --color-priority-low-bg: #eeeae3;
+  --color-priority-low-text: #6e6257;
+  --sumi: var(--color-text); --kinari: var(--color-bg); --shiro: var(--color-card);
+  --shu: var(--color-primary); --shu-light: var(--color-primary-hover); --ai: var(--color-secondary);
+  --matcha: var(--color-success-text); --kitsune: var(--color-warning-text);
+  --sakura: var(--color-error-bg); --wasurenagusa: var(--agenda-soft); --wakakusa: var(--color-success-bg);
+  --nezumi: var(--color-muted); --hai: var(--color-muted-light); --gofun: var(--color-border);
+  --color-gray-50: #fafafa; --color-gray-100: #f0f0f0; --color-gray-200: #e5e5e5;
+  --color-gray-300: #d4d4d4; --color-gray-400: #909090; --color-gray-500: #737373;
+  --color-gray-600: #666666; --color-gray-700: #515151; --color-gray-800: #404040; --color-gray-900: #242424;
+  --color-amber-50: #faf1e5; --color-amber-100: #f0dfc9; --color-amber-200: #e6cfb3;
+  --color-amber-500: #975435; --color-amber-600: #793e28; --color-amber-700: #62311f;
+  --color-orange-50: #faf1e5; --color-orange-100: #f3e4d6; --color-orange-500: #905337; --color-orange-600: #793e28;
+  --color-blue-50: #f3efe8; --color-blue-100: #eee5d9; --color-blue-600: #75452e; --color-blue-700: #68432e;
+  --color-white: #ffffff;
+}
+html.agenda.dark {
+  color-scheme: dark;
+  --color-bg: #111111; --color-card: #1b1b1b; --color-text: #eeeeee;
+  --color-muted: #b0b0b0; --color-muted-light: #a0a0a0; --color-border: #404040;
+  --color-primary: #945130; --color-primary-hover: #a35a39; --color-secondary: #633f30;
+  --color-accent: #e9b293; --agenda-accent: #ecbc9c; --agenda-soft: #282828;
+  --color-success-bg: #253a2a; --color-success-text: #bbd9a8;
+  --color-warning-bg: #47351d; --color-warning-text: #f0ca89;
+  --color-error-bg: #472b27; --color-error-text: #f2b0a3;
+  --color-priority-high-bg: #482e22; --color-priority-high-text: #e9b293;
+  --color-priority-normal-bg: #38312b; --color-priority-normal-text: #d5c9bc;
+  --color-priority-low-bg: #342e29; --color-priority-low-text: #b0b0b0;
+  --color-slate-950: #111111; --color-slate-900: #111111;
+  --color-slate-800: #1b1b1b; --color-slate-700: #282828; --color-slate-600: #404040;
+  --color-slate-400: #b0b0b0; --color-slate-300: #d0d0d0; --color-slate-100: #eeeeee;
+}
+.agenda body {
+  background: var(--color-bg); color: var(--color-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.agenda :where(button:not([disabled]),summary,select) { cursor: pointer; }
+.agenda :where(a,button,input,select,textarea,summary):focus-visible {
+  outline: 2px solid var(--agenda-accent); outline-offset: 3px;
+}
+.agenda :where(input,select,textarea) { accent-color: var(--agenda-accent); }
+.agenda :where(dialog,[role="dialog"]) { border-color: var(--color-border); }
+.agenda [aria-label="検索サービスのクレジット"] p { font: inherit; }
+.agenda-brand-bar { background: var(--color-card); color: var(--color-text); border-bottom: 1px solid var(--color-border); }
+.agenda-brand-bar > div { max-width: 1160px; margin: auto; padding: 14px clamp(16px,4vw,40px); }
+.agenda-brand-bar a { display: inline-flex; gap: 10px; align-items: center; color: inherit; font-size: 1.16rem; font-weight: 700; }
+.agenda-brand-bar img { width: 36px; height: 36px; object-fit: contain; }
+.agenda .agenda-settings main { max-width: 54rem; padding: clamp(22px,5vw,54px) clamp(16px,4vw,36px); }
+.agenda .agenda-settings h2, .agenda .agenda-reading h1, .agenda .agenda-consent h1 {
+  font-size: clamp(1.65rem,4vw,2.45rem); line-height: 1.35; letter-spacing: -.035em;
+}
+.agenda .agenda-settings-stack > div {
+  border: 1px solid var(--color-border); border-radius: 14px; box-shadow: none;
+  color: var(--color-text); background: var(--color-card);
+}
+.agenda .agenda-settings-stack > div > button:first-child { min-height: 60px; border-radius: 14px; }
+.agenda .agenda-settings-stack > div > button:first-child:hover { background: var(--agenda-soft); }
+.agenda .agenda-settings-stack svg { flex-shrink: 0; }
+.agenda .agenda-settings-stack :where(pre,code) { overflow-wrap: anywhere; }
+.agenda .agenda-reading { padding: clamp(24px,5vw,52px) clamp(18px,4vw,40px) 72px; line-height: 1.85; overflow-wrap: anywhere; }
+.agenda .agenda-reading h1 { margin-block: 22px; font-weight: 750; }
+.agenda .agenda-reading h2 { margin-block: 32px 12px; padding-top: 24px; border-top: 1px solid var(--color-border); }
+.agenda .agenda-reading a { color: var(--agenda-accent); text-underline-offset: 3px; }
+.agenda .agenda-reading :where(pre,code) { white-space: pre-wrap; }
+.agenda .agenda-consent > div { background: var(--color-card); border: 1px solid var(--color-border); border-radius: 18px; padding: clamp(18px,4vw,34px); }
+.agenda .agenda-footer { background: var(--color-bg); border-color: var(--color-border); color: var(--color-muted); }
+.agenda .agenda-login { background: var(--color-bg); color: var(--color-text); }
+.agenda .agenda-login-panel { background: var(--color-card); border: 1px solid var(--color-border); border-radius: 18px; box-shadow: none; padding: clamp(18px,4vw,32px); }
+.agenda .agenda-login-submit { background: var(--color-primary); }
+.agenda .agenda-login-submit:hover { background: var(--color-primary-hover); }
+@media (max-width: 560px) {
+  .agenda .agenda-settings-stack > div { min-width: 0; }
+  .agenda .agenda-settings-stack input, .agenda .agenda-settings-stack select { min-width: 0; max-width: 100%; }
+  .agenda .agenda-settings-stack > div > .flex { flex-wrap: wrap; }
+}
+
+.agenda .agenda-settings h2, .agenda .agenda-reading h1, .agenda .agenda-consent h1, .agenda .agenda-login h1, .agenda .agenda-brand-bar a { font-family: "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif; }

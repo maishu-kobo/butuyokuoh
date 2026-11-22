@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import UiVersionSwitch from '@/components/design/UiVersionSwitch';
 import { Crown, LogOut, Settings, User } from 'lucide-react';
 
 export default function HomeHeader({
@@ -19,6 +20,7 @@ export default function HomeHeader({
             <h1 className="text-xl font-bold">物欲王</h1>
           </div>
           <div className="flex items-center gap-3">
+            <UiVersionSwitch enabled={false} />
             <div className="hidden sm:flex items-center gap-2 text-amber-100 text-sm">
               <User size={16} />
               <span>{user.name || user.email}</span>

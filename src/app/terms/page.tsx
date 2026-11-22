@@ -1,3 +1,4 @@
+import AgendaBrandBar from '@/components/AgendaBrandBar';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import LegalLinks from '@/components/LegalLinks';
@@ -15,7 +16,8 @@ export const metadata: Metadata = {
 export default function TermsPage() {
   return (
     <main className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)]">
-      <article className="max-w-3xl mx-auto px-4 py-8 space-y-4">
+      <AgendaBrandBar />
+      <article className="agenda-reading max-w-3xl mx-auto px-4 py-8 space-y-4">
         <p className="text-sm">
           <Link href="/" className="underline underline-offset-2">アプリへ戻る</Link>
         </p>
