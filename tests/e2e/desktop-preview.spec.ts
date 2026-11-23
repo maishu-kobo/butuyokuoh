@@ -171,6 +171,48 @@ test('a delayed statistics response cannot replace the totals after registration
 });
 
 for (const width of [1280, 1440, 1920]) {
+  test(`reading layout groups product information and uses the full height at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 1200 });
+    await prepare(page);
+    await page.getByRole('button', { name: '縦リスト', exact: true }).click();
+    const sidebar = page.getByRole('navigation', { name: 'PCナビゲーション' });
+    await expect(sidebar).toBeVisible();
+    const frame = await page.locator('.review-frame').boundingBox();
+    expect(frame!.height).toBeGreaterThan(1180);
+    const list = await page.locator('.focused-list').boundingBox();
+    expect(list!.width).toBeLessThanOrEqual(681);
+    expect(list!.x).toBeGreaterThan(208);
+    const product = page.getByRole('button', { name: '読書灯の詳細', exact: true });
+    const name = await product.locator('strong').boundingBox();
+    const price = await product.locator('.rank-price').boundingBox();
+    expect(Math.abs(name!.x - price!.x)).toBeLessThan(2);
+    expect(price!.y).toBeGreaterThanOrEqual(name!.y + name!.height);
+    const guide = await page.getByRole('button', { name: '読書灯の優先度・買いどきを編集', exact: true }).boundingBox();
+    expect(Math.abs(name!.x - guide!.x)).toBeLessThan(2);
+    const picture = await page.getByRole('button', { name: '読書灯の写真を拡大', exact: true }).boundingBox();
+    expect(picture!.width).toBe(64);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+    await page.screenshot({ path: info.outputPath(`reading-${width}.png`) });
+    const search = page.getByRole('searchbox', { name: '商品名・メモ・お店で検索' });
+    await search.fill('読書灯');
+    await page.getByRole('button', { name: 'PC専用', exact: true }).click();
+    await expect(search).toHaveValue('読書灯');
+    await page.getByRole('button', { name: '縦リスト', exact: true }).click();
+    await expect(search).toHaveValue('読書灯');
+    await sidebar.getByRole('link', { name: '設定', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '設定', exact: true })).toBeVisible();
+    await sidebar.getByRole('link', { name: 'ほしいものリスト', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'ほしいものリスト', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '縦リスト', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'ほしいものリスト', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '縦リスト', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(sidebar).toBeHidden();
+    await expect(page.getByRole('navigation', { name: '主な操作' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  });
+
   test(`desktop preview uses the window and keeps data when comparing at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 1000 });
     await prepare(page);
@@ -209,6 +251,9 @@ test('registration draft, budget selection and old/new UI survive desktop compar
   await sheet.getByRole('tab', { name: '手入力', exact: true }).click();
   await sheet.getByRole('textbox', { name: '商品名', exact: true }).fill('PCで登録する本');
   await sheet.getByRole('spinbutton', { name: '価格', exact: true }).fill('3500');
+  await sheet.getByRole('button', { name: '縦リスト', exact: true }).click();
+  await expect(sheet.getByRole('textbox', { name: '商品名', exact: true })).toHaveValue('PCで登録する本');
+  await expect(sheet.getByRole('button', { name: '登録する', exact: true })).toBeInViewport();
   await sheet.getByRole('button', { name: '今のPC表示', exact: true }).click();
   await expect(sheet).toHaveAttribute('aria-modal', 'true');
   await expect(sheet.getByRole('textbox', { name: '商品名', exact: true })).toHaveValue('PCで登録する本');

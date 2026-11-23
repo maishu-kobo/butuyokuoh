@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
-type DesktopLayout = 'current' | 'workspace';
+type DesktopLayout = 'current' | 'workspace' | 'reading';
 const storageKey = 'butuyokuoh:desktop-preview';
 const desktopQuery = '(min-width: 1100px)';
 function subscribeWidth(listener: () => void) {
@@ -20,7 +20,7 @@ export function useDesktopPreview() {
     const restore = () => {
       let value = new URLSearchParams(window.location.search).get('pc');
       try { value ||= localStorage.getItem(storageKey); } catch { /* The URL still works without storage. */ }
-      const next = value === 'workspace' ? 'workspace' : 'current';
+      const next = value === 'workspace' || value === 'reading' ? value : 'current';
       setLayout(next);
       try { localStorage.setItem(storageKey, next); } catch { /* Keep the current session usable. */ }
     };
@@ -35,12 +35,13 @@ export function useDesktopPreview() {
     url.searchParams.set('pc', next);
     window.history.replaceState(window.history.state, '', url);
   }
-  return { layout, active: wide && layout === 'workspace', choose };
+  return { layout, active: wide && layout !== 'current', choose };
 }
 
 export default function DesktopLayoutToggle({value,onChange}: {value:DesktopLayout;onChange:(value:DesktopLayout)=>void}) {
   return <div className="desktop-layout-toggle" role="group" aria-label="PCの表示を比較">
     <button type="button" aria-pressed={value==='current'} onClick={()=>onChange('current')}>今のPC表示</button>
     <button type="button" aria-pressed={value==='workspace'} onClick={()=>onChange('workspace')}>PC専用</button>
+    <button type="button" aria-pressed={value==='reading'} onClick={()=>onChange('reading')}>縦リスト</button>
   </div>;
 }

@@ -93,7 +93,8 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
     <div className="review-empty" role="alert">リストを読み込めませんでした。<Button label="再読み込み" onClick={onRetry}/></div> :
     !visible.length ? <div className="review-empty">{term?'条件に合う商品がありません。':'登録した商品がここに並びます。'}
       {term && <button type="button" onClick={()=>setSearch('')}>検索をクリア</button>}</div> : null;
-  return <main className="design-review combined-home" data-screen={isBudget?'budget':'list'} data-desktop-layout={desktop.active?'workspace':'current'}>
+  return <main className="design-review combined-home" data-screen={isBudget?'budget':'list'} data-desktop-layout={desktop.active?'workspace':'current'}
+    data-list-layout={desktop.active&&desktop.layout==='reading'?'reading':undefined}>
     <div className="review-frame" ref={frame} tabIndex={-1} data-panel-open={!!panel}>
       <div className="review-app-surface" inert={(panel!==null&&!desktop.active)||panelBusy}>
         <header className="review-app-bar"><div className="review-brand">
