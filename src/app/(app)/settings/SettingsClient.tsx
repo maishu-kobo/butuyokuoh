@@ -7,6 +7,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Copy, Check, Key, Bell, Loader2, Download, Tag, Layers, Plus, Pencil, X, ChevronDown, ChevronUp, Sun, Moon, Monitor, Palette, Bot, Lock } from 'lucide-react';
 import AgendaBrandBar from '@/components/AgendaBrandBar';
+import DesktopPage from '@/components/design/DesktopPage';
 import { useTheme } from '@/components/ThemeProvider';
 import Link from 'next/link';
 import LegalLinks from '@/components/LegalLinks';
@@ -469,6 +470,7 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
   }
 
   return (
+    <DesktopPage page="settings" title="設定" enabled={isNewUi} categories={categories} groups={groups} isGuest={isGuest}>
     <div className="agenda-settings min-h-screen bg-[var(--color-bg)]">
       {/* ヘッダー */}
       <AgendaBrandBar />
@@ -486,7 +488,7 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
 
         <div className="agenda-settings-stack space-y-4">
           {/* アカウント情報 (折りたたみなし) */}
-          <div className="bg-[var(--color-card)] rounded-lg shadow p-6">
+          <div data-settings-section="account" className="bg-[var(--color-card)] rounded-lg shadow p-6">
             <h3 className="font-semibold text-[var(--color-text)] mb-4">アカウント情報</h3>
             <div className="space-y-2 text-sm">
               <div className="flex">
@@ -504,7 +506,7 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
 
           {/* パスワード変更（Google のみの会員は出さない） */}
           {!isGuest && hasPassword && (
-          <div className="bg-[var(--color-card)] rounded-lg shadow">
+          <div data-settings-section="password" className="bg-[var(--color-card)] rounded-lg shadow">
             <button aria-expanded={Boolean(openSections.password)} onClick={() => toggleSection('password')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Lock size={20} className="text-[var(--color-primary)]" />
@@ -548,7 +550,7 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
           </div>
           )}
 
-          {isDesignSettings && <div className="bg-[var(--color-card)] rounded-lg shadow">
+          {isDesignSettings && <div data-settings-section="palette" className="bg-[var(--color-card)] rounded-lg shadow">
             <button type="button" id="settings-palette-toggle" aria-expanded={Boolean(openSections.palette)} aria-controls="settings-palette-panel" onClick={() => toggleSection('palette')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Palette size={20} aria-hidden className="text-[var(--color-primary)]" />
@@ -567,7 +569,7 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
           </div>}
 
           {/* テーマ設定 */}
-          <div className="bg-[var(--color-card)] rounded-lg shadow">
+          <div data-settings-section="theme" className="bg-[var(--color-card)] rounded-lg shadow">
             <button aria-expanded={Boolean(openSections.theme)} onClick={() => toggleSection('theme')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Sun size={20} className="text-[var(--color-primary)]" />
@@ -656,7 +658,7 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
           </div>
 
           {/* カテゴリ管理 */}
-          <div className="bg-[var(--color-card)] rounded-lg shadow">
+          <div data-settings-section="categories" className="bg-[var(--color-card)] rounded-lg shadow">
             <button aria-expanded={Boolean(openSections.categories)} onClick={() => toggleSection('categories')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Tag size={20} className="text-[var(--color-primary)]" />
@@ -700,7 +702,7 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
           </div>
 
           {/* 比較グループ管理 */}
-          <div className="bg-[var(--color-card)] rounded-lg shadow">
+          <div data-settings-section="groups" className="bg-[var(--color-card)] rounded-lg shadow">
             <button aria-expanded={Boolean(openSections.groups)} onClick={() => toggleSection('groups')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Layers size={20} className="text-[var(--color-primary)]" />
@@ -745,7 +747,7 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
           {isGuest && <p className="p-4 rounded bg-amber-50 text-amber-900">通知設定と拡張機能はログイン後に利用できます。</p>}
           {!isGuest && <>
           {/* 価格通知設定 */}
-          <div className="bg-[var(--color-card)] rounded-lg shadow">
+          <div data-settings-section="notify" className="bg-[var(--color-card)] rounded-lg shadow">
             <button aria-expanded={Boolean(openSections.notify)} onClick={() => toggleSection('notify')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Bell size={20} className="text-[var(--color-primary)]" />
@@ -775,7 +777,7 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
           </div>
           </>}
 
-          {isDesignSettings && <div className="bg-[var(--color-card)] rounded-lg shadow">
+          {isDesignSettings && <div data-settings-section="ai" className="bg-[var(--color-card)] rounded-lg shadow">
             <button type="button" id="settings-ai-toggle" aria-expanded={Boolean(openSections.ai)} aria-controls="settings-ai-panel" onClick={() => toggleSection('ai')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Bot size={20} aria-hidden className="text-[var(--color-primary)]" />
@@ -790,7 +792,7 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
 
           {!isGuest && <>
           {/* エージェント用トークン */}
-          <div className="bg-[var(--color-card)] rounded-lg shadow">
+          <div data-settings-section="tokens" className="bg-[var(--color-card)] rounded-lg shadow">
             <button aria-expanded={Boolean(openSections.agentTokens)} onClick={() => toggleSection('agentTokens')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Bot size={20} className="text-[var(--color-primary)]" />
@@ -938,7 +940,7 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
           </div>
 
           {/* Chrome拡張機能用トークン（extension スコープ。ログイン用 JWT は出さない） */}
-          <div className="bg-[var(--color-card)] rounded-lg shadow">
+          <div data-settings-section="extension" className="bg-[var(--color-card)] rounded-lg shadow">
             <button aria-expanded={Boolean(openSections.token)} onClick={() => toggleSection('token')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Key size={20} className="text-[var(--color-primary)]" />
@@ -1043,7 +1045,7 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
           </>}
 
           {/* データエクスポート */}
-          <div className="bg-[var(--color-card)] rounded-lg shadow">
+          <div data-settings-section="export" className="bg-[var(--color-card)] rounded-lg shadow">
             <button aria-expanded={Boolean(openSections.export)} onClick={() => toggleSection('export')} className="w-full p-4 flex items-center justify-between hover:bg-[var(--color-border)] rounded-lg">
               <div className="flex items-center gap-2">
                 <Download size={20} className="text-[var(--color-primary)]" />
@@ -1062,13 +1064,13 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
               </div>
             )}
           </div>
-          <div className="bg-[var(--color-card)] rounded-lg shadow p-6">
+          <div data-settings-section="legal" className="bg-[var(--color-card)] rounded-lg shadow p-6">
             <h3 className="font-semibold text-[var(--color-text)] mb-2">プライバシーと利用規約</h3>
             <LegalLinks />
           </div>
 
           {!isGuest && <>
-          <div className="bg-[var(--color-card)] rounded-lg shadow p-6">
+          <div data-settings-section="retire" className="bg-[var(--color-card)] rounded-lg shadow p-6">
             <h3 className="font-semibold text-[var(--color-text)] mb-2">退会</h3>
             <p className="text-sm text-[var(--color-muted)] mb-4">アカウントと登録したデータを削除します。元に戻せません。</p>
             {accountError && <p className="text-sm text-red-600 mb-3">{accountError}</p>}
@@ -1086,5 +1088,6 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
         </div>
       </main>
     </div>
+    </DesktopPage>
   );
 }

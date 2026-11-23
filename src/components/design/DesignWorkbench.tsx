@@ -21,9 +21,9 @@ import UiVersionSwitch from './UiVersionSwitch';
 import { ListDisplayOptions } from './ListPreviewControls';
 import { rankItem } from '@/lib/design-rank';
 import type { ListDisplay } from '@/lib/design-list-preview';
-import DesktopLayoutToggle, { useDesktopPreview } from './DesktopPreviewControls';
+import DesktopLayoutToggle from './DesktopPreviewControls';
+import { useDesktopWorkspace, useDesktopPageActions } from './DesktopWorkspace';
 import './focused-list.css';
-import './desktop-preview.css';
 
 interface Props {
   budgetRevision:number; view:ReviewView; palette:LightPalette|null; appearance:PreviewAppearance; items:Item[]; purchased:Item[]; groups:ComparisonGroup[]; categories:Category[];
@@ -49,7 +49,7 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
   const [notice,setNotice]=useState('');
   const [listDisplay,setListDisplay]=useState<ListDisplay>('all');
   const [panelBusy,setPanelBusy]=useState(false);
-  const desktop=useDesktopPreview();
+  const desktop=useDesktopWorkspace();
   const comparison=<DesktopLayoutToggle value={desktop.layout} onChange={desktop.choose}/>;
   const isBudget=view==='plan';
   useLayoutEffect(() => {
@@ -78,6 +78,7 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
     if (!panel || !trigger?.closest('.review-sheet')) invoker.current=trigger;
     setNotice('');setPanel(next);
   }
+  useDesktopPageActions(()=>openPanel({kind:'add'}), panelBusy);
   function restoreFocus(target:HTMLElement|null) {
     requestAnimationFrame(()=>(target?.isConnected&&target.getClientRects().length ? target : frame.current)?.focus({preventScroll:true}));
   }
@@ -93,22 +94,6 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
     !visible.length ? <div className="review-empty">{term?'条件に合う商品がありません。':'登録した商品がここに並びます。'}
       {term && <button type="button" onClick={()=>setSearch('')}>検索をクリア</button>}</div> : null;
   return <main className="design-review combined-home" data-screen={isBudget?'budget':'list'} data-desktop-layout={desktop.active?'workspace':'current'}>
-    <nav className="desktop-sidebar" aria-label="PCナビゲーション" inert={panelBusy}>
-      <Link className="desktop-brand" href={designHref('rank')}><Image unoptimized alt="" src="/icons/icon-192.png" width={31} height={31}/><span>物欲王</span></Link>
-      <Button type="button" variant="primary" className="desktop-register" icon={<Plus size={19}/>} label="登録" onClick={()=>openPanel({kind:'add'})}/>
-      <div className="desktop-nav-primary">
-        <Link href={designHref('rank')} aria-current={!isBudget?'page':undefined}><ListChecks size={19}/><span>ほしいものリスト</span></Link>
-        <Link href={designHref('rank','budget')} aria-current={isBudget?'page':undefined}><Wallet size={19}/><span>出費予定</span></Link>
-        <Link href={designHref(view,'manage')}><SlidersHorizontal size={18}/><span>リストの管理</span></Link>
-      </div>
-      <div className="desktop-nav-secondary">
-        {menu.map(({tab,label,Icon})=><Link href={designHref(view,tab)} key={tab}><Icon size={18}/><span>{label}</span></Link>)}
-      </div>
-      <div className="desktop-nav-bottom">
-        <Link href={reviewSettingsHref(view,palette,appearance)}><Settings size={18}/><span>設定</span></Link>
-        <button type="button" onClick={async()=>{await onLogout();router.push('/');}}><LogOut size={18}/><span>ログアウト</span></button>
-      </div>
-    </nav>
     <div className="review-frame" ref={frame} tabIndex={-1} data-panel-open={!!panel}>
       <div className="review-app-surface" inert={(panel!==null&&!desktop.active)||panelBusy}>
         <header className="review-app-bar"><div className="review-brand">

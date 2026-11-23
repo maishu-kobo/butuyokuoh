@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import DesignWorkbench from '@/components/design/DesignWorkbench';
+import DesktopPage from '@/components/design/DesktopPage';
 import { readListPreview } from '@/lib/design-list-preview';
 import UiVersionSwitch from '@/components/design/UiVersionSwitch';
 import { readReviewView, reviewHref, reviewSettingsHref } from '@/lib/design-home';
@@ -400,7 +401,7 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
       onReload={reloadReview} onDelete={handleDelete} onLogout={logout} isGuest={isGuest} />;
   }
 
-  return (
+  const content = (
     <div ref={swipeRef} className={(designReview ? "agenda-home " : "") + "min-h-screen bg-[var(--kinari)] dark:bg-slate-900"}>
       {designReview ? <header className="review-subheader">
         <Link href={fromSettings ? reviewSettingsHref(reviewView,palette,appearance) : reviewHref(reviewView,undefined,palette,appearance,listPreview)}><ArrowLeft size={17} /> {fromSettings?'設定に戻る':'ホームへ戻る'}</Link>
@@ -475,11 +476,11 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
 
             {activeTab === 'budget' && <BudgetView />}
 
-            {activeTab === 'purchased' && <PurchasedHistory />}
+            {activeTab === 'purchased' && <PurchasedHistory revision={designReview ? budgetRevision : 0} />}
 
-            {activeTab === 'stats' && <StatsView />}
+            {activeTab === 'stats' && <StatsView revision={designReview ? budgetRevision : 0} />}
 
-            {activeTab === 'trash' && <TrashView />}
+            {activeTab === 'trash' && <TrashView revision={designReview ? budgetRevision : 0} />}
           </div>
         </div>
         {activeTab === 'list' && designReview && designTab === 'agents' && (
@@ -511,4 +512,9 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
       />
     </div>
   );
+  const page = designTab || activeTab;
+  const titles: Record<string, string> = { manage: 'リストの管理', purchased: '購入履歴', stats: '統計', trash: 'ゴミ箱', agents: 'AI連携' };
+  return designReview ? <DesktopPage page={page} title={titles[page] || 'ほしいものリスト'}
+    groups={groups} categories={categories} isGuest={isGuest} onReload={reloadReview}>{content}</DesktopPage> : content;
+
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { useDesktopWorkspace } from '../design/DesktopWorkspace';
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import RegistrationSheet from '@/components/design/RegistrationSheet';
@@ -117,6 +118,7 @@ export default function ListManagementView({
   dragEnabled: boolean;
   lowestPriceInGroup: number | null;
 }) {
+  const desktop = useDesktopWorkspace();
   const [layout, setLayout] = useState<'list' | 'shelf'>('list');
   const [registrationOpen,setRegistrationOpen]=useState(false);
   const [registered,setRegistered]=useState('');
@@ -248,7 +250,7 @@ export default function ListManagementView({
         onSaved={message=>{closeRegistration();setRegistered(message);onPhotoChanged();}}
         onExisting={location=>{closeRegistration();onViewRegistered(location);}}/></div>,document.body)}
       <AddItemForm
-        onOpenRegistration={managementOnly ? ()=>{trigger.current=document.activeElement as HTMLElement;setRegistered('');setRegistrationOpen(true);} : undefined}
+        onOpenRegistration={managementOnly ? ()=>{if(desktop.active){desktop.openRegistration();return;}trigger.current=document.activeElement as HTMLElement;setRegistered('');setRegistrationOpen(true);} : undefined}
         returnView={returnView}
         onViewRegistered={onViewRegistered}
         onAdd={onItemsChanged}
