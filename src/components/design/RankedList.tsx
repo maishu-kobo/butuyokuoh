@@ -156,7 +156,7 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
   </div>;
 }
 
-export function GuideEditor({product,onSaved,onDate}: {product:ReviewProduct; onSaved:() => Promise<void>;onDate?:(item:Item,trigger:HTMLButtonElement)=>void}) {
+export function GuideEditor({product,onSaved,onDate,onSavingChange}: {product:ReviewProduct; onSaved:() => Promise<void>;onDate?:(item:Item,trigger:HTMLButtonElement)=>void;onSavingChange?:(busy:boolean)=>void}) {
   const item = rankItem(product);
   const guide = item.buy_guide ?? product.active.buy_guide;
   const [priority,setPriority] = useState(item.priority);
@@ -168,12 +168,12 @@ export function GuideEditor({product,onSaved,onDate}: {product:ReviewProduct; on
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState('');
   async function save(e:React.FormEvent) {
-    e.preventDefault(); setBusy(true); setError('');
+    e.preventDefault(); setBusy(true); onSavingChange?.(true); setError('');
     try {
       await writeRank({action:'guide',itemId:item.id,priority,month,timing,condition});
       await onSaved();
     } catch (e) { setError(e instanceof Error ? e.message : '保存に失敗しました。'); }
-    finally { setBusy(false); }
+    finally { setBusy(false); onSavingChange?.(false); }
   }
   return <form className="rank-editor" onSubmit={save}>
     <h4>{product.name}</h4>
