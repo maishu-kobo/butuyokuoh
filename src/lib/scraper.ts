@@ -1,11 +1,13 @@
-import { extractAmazonProduct, isAmazonProductPage } from './amazon-product';
+import { isAmazonProductPage } from './amazon-product';
+import { liveAmazonExchange, type AmazonExchange } from './amazon-currency';
+import { resolveAmazonListing } from './amazon-listing';
+import { productAmazonExchange, productFetchDeps } from './product-fetch-port';
 import { isAppleShopBuyPage, parseProductHtml } from './product-html';
 import { readHtmlResponse } from './html-encoding';
 import { launchPageBrowser } from './page-browser';
 import { validateAndSanitizeUrl, sanitizeGenericUrl } from './url-validator';
 import { canonicalRakutenAffiliateUrl, rakutenProductIdentity } from './capture/rakuten-link';
 import { BlockedTargetError, fetchPublicMember, HttpError, resolvedPublicAddress, type MemberFetchDeps } from './member-fetch';
-import { productFetchDeps } from './product-fetch-port';
 
 import { tsukumoCatalogImage } from './tsukumo-catalog';
 import { recoverTsukumoImage } from './tsukumo-image';
@@ -39,6 +41,8 @@ export interface AmazonBrowser {
 
 export type ScrapeDeps = MemberFetchDeps & {
   launchBrowser?: (options: { headless: true }) => Promise<AmazonBrowser>;
+  /** テストが円への切り替えを答える。無いとき、差し替え fetch では店へ出さない。 */
+  amazonExchange?: AmazonExchange;
 };
 
 export interface ScrapedItem {
@@ -259,8 +263,8 @@ export function isUnusableScrape(scraped: { name?: string | null; failureCode?: 
   );
 }
 
-const PRICE_LATER_NOTE = '価格は取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
-const CONFIGURATOR_PRICE_NOTE =
+export const PRICE_LATER_NOTE = '価格は取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
+export const CONFIGURATOR_PRICE_NOTE =
   '構成を選ぶページのため単一の価格を取得できませんでした。商品は保存できます。価格は「編集」から入力・変更できます。';
 
 type ScrapePurpose = 'item' | 'price';
@@ -354,7 +358,7 @@ async function scrapeUrlFromPage(url: string, deps: ScrapeDeps | undefined, purp
 }
 
 export const AMAZON_BOT_NOTE =
-  'Amazonのボット対策により自動取得が制限されています。価格は手動で編集してください。';
+  'Amazon側のボット対策により、サーバーからの価格の自動取得が制限されています（ゲスト体験に限った制限ではありません）。価格は「編集」から入力してください。';
 const AMAZON_BOT_NAME = 'Amazonのボット対策により価格を取得できませんでした';
 
 function amazonBotFallback(): ScrapedItem {
@@ -396,6 +400,15 @@ function isAmazonSoftBlockStatus(status: number): boolean {
 // 価格の抽出に要らない。定期取得の待ちと転送を減らす。
 const PUPPETEER_SKIPPED_RESOURCES = new Set(['image', 'font', 'media']);
 
+function amazonExchangeFor(deps?: ScrapeDeps): AmazonExchange | null {
+  if (deps?.amazonExchange) return deps.amazonExchange;
+  const ported = productAmazonExchange();
+  if (ported) return ported;
+  // テストが HTTP を差し替えているときは、円の切り替えで本番の店へ出ない。
+  if (deps?.request) return null;
+  return liveAmazonExchange(deps);
+}
+
 /**
  * Puppeteer（ヘッドレスブラウザ）でAmazon商品ページを取得するフォールバック
  * 素のfetchがAmazonのボット対策に弾かれた場合に使用する
@@ -420,6 +433,7 @@ async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: ScrapeDeps
     );
     await page.setExtraHTTPHeaders({
       'Accept-Language': 'ja-JP,ja;q=0.9',
+      'Cookie': 'i18n-prefs=JPY; lc-acbjp=ja_JP',
     });
     await page.setRequestInterception(true);
     page.on('request', async (request) => {
@@ -455,15 +469,7 @@ async function scrapeAmazonWithPuppeteer(sanitizedUrl: string, deps?: ScrapeDeps
       return null;
     }
 
-    const { name, price, imageUrl } = extractAmazonProduct(html);
-
-    return {
-      name,
-      price,
-      imageUrl,
-      source: 'amazon',
-      sourceName: 'Amazon',
-    };
+    return resolveAmazonListing(sanitizedUrl, html, amazonExchangeFor(deps));
   } finally {
     // ブラウザプロセスのリーク防止のため必ずクローズする
     await browser.close();
@@ -502,20 +508,8 @@ async function scrapeAmazon(sanitizedUrl: string, deps?: ScrapeDeps): Promise<Sc
       console.log('Amazon bot detection or error page detected');
       fallbackResult = amazonBotFallback();
     } else {
-      const { name, price, imageUrl } = extractAmazonProduct(html);
-
-      const result: ScrapedItem = {
-        name,
-        price,
-        imageUrl,
-        source: 'amazon',
-        sourceName: 'Amazon',
-      };
-
-      // 商品ページは取れている。価格があっても無くてもここで返す。
-      // 価格が無い（在庫切れ、未発売、バリエーション未選択）ときも、ボット検知でも
-      // HTTP 失敗でもないのでブラウザは起動しない。
-      return result;
+      // 在庫切れのように価格そのものが無いときは、ここではブラウザを起動しない。
+      return resolveAmazonListing(sanitizedUrl, html, amazonExchangeFor(deps));
     }
   } catch (error) {
     if (error instanceof BlockedTargetError) {
@@ -656,6 +650,12 @@ async function scrapeGeneric(sanitizedUrl: string, deps: MemberFetchDeps | undef
   // 取得に失敗したとき、画像の補完の基準にする URL。HTTP エラーに限らず、接続切断や
   // タイムアウトでも、転送後は入力した商品へ戻さない。
   const trace: { url: string | null } = { url: sanitizedUrl };
+  // 商品登録（purpose=item）だけ 1 回・短い待ちにする。価格チェックは従来どおり再試行する。
+  // 転送先が切れても、最後に検証した URL の画像補完が 20 秒の取得予算に間に合うようにする。
+  const tsukumoSingleAttempt =
+    purpose === 'item' &&
+    tsukumoCatalogImage(sanitizedUrl) !== null &&
+    deps?.maxRetries === undefined;
   try {
     const { response, url: pageUrl } = await fetchPublicMember(sanitizedUrl, {
       headers: {
@@ -664,7 +664,13 @@ async function scrapeGeneric(sanitizedUrl: string, deps: MemberFetchDeps | undef
         // Shopifyサイトで日本円価格を取得するためのクッキー
         'Cookie': 'localization=JP; cart_currency=JPY',
       },
-    }, { ...deps, trace });
+    }, {
+      ...deps,
+      ...(tsukumoSingleAttempt
+        ? { maxRetries: 0, timeoutMs: deps?.timeoutMs ?? 8_000 }
+        : {}),
+      trace,
+    });
     const html = await readHtmlResponse(response);
 
     // ツクモを経由した転送では、実際に商品情報を取得したページから写真と型番を選ぶ。

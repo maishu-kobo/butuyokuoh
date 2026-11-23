@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { guestErrorResponse } from '@/lib/api-access';
 import { addAgentItemByUrl, assertAgentUrlAddPreflight } from '@/lib/agent-items';
+import { withMemoFollowUp } from '@/lib/agent-memo';
 import { withAgentNotice } from '@/lib/agent-response';
 import { consumeAgentRates, recordAgentAudit, requireAgentToken, touchAgentToken } from '@/lib/agent-token';
 import { GuestError } from '@/lib/guest';
@@ -31,7 +32,10 @@ export async function POST(request: NextRequest) {
     });
 
     const result = await addAgentItemByUrl(auth, body);
-    return NextResponse.json(withAgentNotice(result), {
+    return NextResponse.json(withAgentNotice(withMemoFollowUp(result, {
+      kind: 'add',
+      requestedNotes: body.notes,
+    })), {
       status: 201,
       headers: { 'Cache-Control': 'no-store' },
     });

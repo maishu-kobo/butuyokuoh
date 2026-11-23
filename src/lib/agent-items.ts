@@ -27,9 +27,15 @@ import {
 import { isCalendarDate, localCalendarDate } from '@/lib/local-date';
 import { BlockedTargetError, resolvedPublicAddress, type MemberFetchDeps } from '@/lib/member-fetch';
 import { annotateSpend, photoSpendDecisions, userSpendInput } from '@/lib/photo-spend';
-import { PRODUCT_WAITING_HELP } from '@/lib/product-html';
-import { PRODUCT_FETCH_BLOCKED_HELP, PRODUCT_FETCH_HELP, publicPageUrl } from '@/lib/public-page';
-import { AMAZON_BOT_NOTE } from '@/lib/scraper';
+import { PRODUCT_WAITING_HELP, PRODUCT_WAITING_HELP_GUEST } from '@/lib/product-html';
+import {
+  PRODUCT_FETCH_BLOCKED_HELP,
+  PRODUCT_FETCH_BLOCKED_HELP_GUEST,
+  PRODUCT_FETCH_HELP,
+  publicPageUrl,
+} from '@/lib/public-page';
+import { amazonUsdFallbackNoteText } from '@/lib/amazon-product';
+import { AMAZON_BOT_NOTE, CONFIGURATOR_PRICE_NOTE, PRICE_LATER_NOTE } from '@/lib/scraper';
 import type { Item } from '@/types';
 
 export const AGENT_NOTES_MAX = 2000;
@@ -224,8 +230,11 @@ function normalizeManualImageUrl(raw: unknown): string {
   return canonical;
 }
 
-/** 取得失敗時の既定文（media_fetch_errors と view の scrape_error で共有）。 */
+/** 取得失敗時の既定文（価格も画像も無いとき。media_fetch_errors と view の scrape_error で共有）。 */
 const AGENT_FETCH_FAILED_MESSAGE = '価格と画像を取得できませんでした。時間をおいて再試行するか、別の店のURLを使ってください。';
+
+/** 画像は取れているのに価格だけ無いとき。両方失敗したように言わない。 */
+const AGENT_PRICE_ONLY_FAILED_MESSAGE = '価格を取得できませんでした。時間をおいて再試行するか、別の店のURLを使ってください。';
 
 /**
  * そのまま出してよい定型の失敗文と、それを出す側が付けている実際の種別。
@@ -235,10 +244,15 @@ const AGENT_FETCH_FAILED_MESSAGE = '価格と画像を取得できませんで�
  */
 const KNOWN_FAILURE_MESSAGES: ReadonlyMap<string, AgentMediaFetchError['code']> = new Map([
   [PRODUCT_WAITING_HELP, 'BOT_CHALLENGE'],
+  [PRODUCT_WAITING_HELP_GUEST, 'BOT_CHALLENGE'],
   [PRODUCT_FETCH_BLOCKED_HELP, 'BOT_CHALLENGE'],
+  [PRODUCT_FETCH_BLOCKED_HELP_GUEST, 'BOT_CHALLENGE'],
   [AMAZON_BOT_NOTE, 'BOT_CHALLENGE'],
   [PRODUCT_FETCH_HELP, 'FETCH_FAILED'],
   [AGENT_FETCH_FAILED_MESSAGE, 'FETCH_FAILED'],
+  [AGENT_PRICE_ONLY_FAILED_MESSAGE, 'FETCH_FAILED'],
+  [PRICE_LATER_NOTE, 'FETCH_FAILED'],
+  [CONFIGURATOR_PRICE_NOTE, 'FETCH_FAILED'],
 ]);
 
 /** view に出す scrape_status。コードが書く値は success / failed だけで、それ以外は出さない。 */
@@ -252,20 +266,32 @@ function agentScrapeStatus(status: unknown): AgentScrapeStatus | null {
  * view 用に scrape_status / scrape_error を利用者向けの形にする。
  * 定型文はその出し手の種別のまま通す。定期の価格チェックや Web の再取得は内部の例外文
  * （接続エラーや URL）を scrape_error に残すことがあるので、それ以外の文字列はボット制限か
- * 一般失敗かに分類した定型文に置き換える。失敗以外は null。
+ * 一般失敗かに分類した定型文に置き換える。画像が残っているときは「価格と画像」とは書かない。
+ * 失敗以外は null。
  */
 export function agentScrapeFailure(
   status: unknown,
   rawError: unknown,
+  hints?: { hasImage?: boolean },
 ): { code: AgentMediaFetchError['code']; message: string } | null {
   if (agentScrapeStatus(status) !== 'failed') return null;
   const raw = typeof rawError === 'string' ? rawError : '';
+  const usd = amazonUsdFallbackNoteText(raw);
+  if (usd) return { code: 'FETCH_FAILED' as const, message: usd };
   const known = KNOWN_FAILURE_MESSAGES.get(raw);
-  if (known) return { code: known, message: raw };
+  if (known) {
+    // 画像が残っているのに「価格と画像」と書く定型文だけ、価格だけの文に替える。
+    if (hints?.hasImage && raw === AGENT_FETCH_FAILED_MESSAGE) {
+      return { code: 'FETCH_FAILED', message: AGENT_PRICE_ONLY_FAILED_MESSAGE };
+    }
+    return { code: known, message: raw };
+  }
   const bot = /ボット|待機ページ|自動取得が制限|取得を制限|BOT_CHALLENGE/i.test(raw);
-  return bot
-    ? { code: 'BOT_CHALLENGE', message: PRODUCT_FETCH_BLOCKED_HELP }
-    : { code: 'FETCH_FAILED', message: AGENT_FETCH_FAILED_MESSAGE };
+  if (bot) return { code: 'BOT_CHALLENGE', message: PRODUCT_FETCH_BLOCKED_HELP };
+  return {
+    code: 'FETCH_FAILED',
+    message: hints?.hasImage ? AGENT_PRICE_ONLY_FAILED_MESSAGE : AGENT_FETCH_FAILED_MESSAGE,
+  };
 }
 
 /** update_item / PATCH の current_price / image_url を構文だけ検査する（ネットワークは使わない）。 */
@@ -443,8 +469,15 @@ function storeLabel(source: string, sourceName: string | null | undefined): stri
   return source || 'その他';
 }
 
+function scrapeFailureForRow(row: Record<string, unknown>) {
+  const image = row.image_url;
+  return agentScrapeFailure(row.scrape_status, row.scrape_error, {
+    hasImage: typeof image === 'string' && image.trim() !== '',
+  });
+}
+
 function toStoreView(row: Record<string, unknown>): AgentStoreView {
-  const failure = agentScrapeFailure(row.scrape_status, row.scrape_error);
+  const failure = scrapeFailureForRow(row);
   return {
     item_id: Number(row.id),
     url: String(row.url ?? ''),
@@ -533,7 +566,7 @@ function rowToView(
 ): AgentItemView {
   const url = String(row.url ?? '');
   const cleaned = sanitizeStoredItemUrl(url) ?? url;
-  const failure = agentScrapeFailure(row.scrape_status, row.scrape_error);
+  const failure = scrapeFailureForRow(row);
   return {
     id: Number(row.id),
     name: String(row.name ?? ''),
@@ -772,7 +805,10 @@ export type PreparedStore = {
 export type AgentMediaFetchError = { url: string; code: 'BOT_CHALLENGE' | 'FETCH_FAILED'; message: string };
 
 export function mediaFetchErrors(url: string, media: ServerItemMedia): AgentMediaFetchError[] {
-  if (url.startsWith('manual://') || media.price != null || media.imageUrl != null) return [];
+  if (url.startsWith('manual://') || media.price != null) return [];
+  const usd = amazonUsdFallbackNoteText(media.scraped?.note);
+  if (usd) return [{ url, code: 'FETCH_FAILED', message: usd }];
+  if (media.imageUrl != null) return [];
   return [{
     url,
     code: media.scraped?.failureCode ?? 'FETCH_FAILED',
@@ -904,6 +940,8 @@ export async function addAgentItemByUrl(
   media_fetch_errors: AgentMediaFetchError[];
   restored_from_trash?: boolean;
   restore_message?: string;
+  /** 既存品目へ店を足したとき true。メモは既存のまま（リクエスト notes は適用しない） */
+  store_attached?: boolean;
 }> {
   rejectAgentClientMediaFields(body);
   const urls = parseAgentProductUrls(body);
@@ -992,9 +1030,10 @@ export async function addAgentItemByUrl(
   const quantity = body.quantity !== undefined
     ? normalizeQuantity(body.quantity)
     : (existing ? Number(existing.quantity) || 1 : 1);
-  const notes = body.notes !== undefined
-    ? normalizeNotes(body.notes)
-    : (existing ? ((existing.notes as string | null) ?? null) : null);
+  // 既存品目への店追加ではメモを変えない（DEFAULT ALWAYS の notes 送信で上書きしない。変更は update_item）
+  const notes = existing
+    ? ((existing.notes as string | null) ?? null)
+    : normalizeNotes(body.notes);
   const planned = body.planned_purchase_date !== undefined
     ? (normalizeOptionalDate(body.planned_purchase_date, 'planned_purchase_date') ?? null)
     : (existing ? ((existing.planned_purchase_date as string | null) ?? null) : null);
@@ -1123,8 +1162,11 @@ export async function addAgentItemByUrl(
     (prepared) => prepared.media.price != null || prepared.media.imageUrl != null,
   );
   return {
-    item, stores: item.stores, media_fetched: mediaFetched,
+    item,
+    stores: item.stores,
+    media_fetched: mediaFetched,
     media_fetch_errors: toInsert.flatMap(prepared => mediaFetchErrors(prepared.url, prepared.media)),
+    ...(existing ? { store_attached: true as const } : {}),
   };
 }
 

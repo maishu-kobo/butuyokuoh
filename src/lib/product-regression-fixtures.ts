@@ -55,6 +55,8 @@ export type ProductFixture = {
   body?: Buffer;
   contentType?: string;
   hang?: boolean;
+  /** 通貨切り替えの応答が付ける Set-Cookie。テストのフィクスチャだけが使う。 */
+  setCookie?: string[];
 };
 
 const html = (value: string): ProductFixture => ({

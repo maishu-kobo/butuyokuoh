@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fc from 'fast-check';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { isPublicAddress, publicPageUrl, fetchPublicPage, requestPage, PublicPageError, MAX_PAGE_BYTES, MAX_AMAZON_PAGE_BYTES, PRODUCT_FETCH_HELP } from '../src/lib/public-page';
-import { isAppleShopBuyPage, parseProductHtml } from '../src/lib/product-html';
+import { isAppleShopBuyPage, parseProductHtml, parseYenPrice } from '../src/lib/product-html';
 import { extractAmazonProduct, isAmazonProductPage } from '../src/lib/amazon-product';
 
 test('product titles decode HTML entities exactly once', () => {
@@ -152,7 +153,9 @@ test('Tsukumo keeps the model suffix with or without its storefront title', () =
 });
 
 test('Apple shop buy pages and installment copy do not become a product price', () => {
-  assert.equal(isAppleShopBuyPage('https://www.apple.com/jp/shop/buy-mac/macbook-pro-proled-xdr'), true);
+  // テスター報告の保存 URL（構成／多モデルのランディング。単一の売価が無い）
+  const testerMacBookPro = 'https://www.apple.com/jp/shop/buy-mac/macbook-pro-proled-xdr';
+  assert.equal(isAppleShopBuyPage(testerMacBookPro), true);
   assert.equal(isAppleShopBuyPage('https://www.apple.com/jp/macbook-pro/'), false);
   assert.equal(isAppleShopBuyPage('https://evil.example/shop/buy-mac/x'), false);
 
@@ -167,11 +170,15 @@ test('Apple shop buy pages and installment copy do not become a product price', 
   assert.equal(air.price, null);
   assert.match(air.name, /MacBook Air/);
 
-  const pro = parseProductHtml(
-    appleBuy.replace('MacBook Air', 'MacBook Pro'),
-    'https://www.apple.com/jp/shop/buy-mac/macbook-pro-proled-xdr',
-  );
+  const pro = parseProductHtml(appleBuy.replace('MacBook Air', 'MacBook Pro'), testerMacBookPro);
   assert.equal(pro.price, null);
+
+  // 構成ページでは JSON-LD / og:price の 3,000 も売価として残さない（#397）
+  const withStructured = `${appleBuy.replace('MacBook Air', 'MacBook Pro')}
+    <script type="application/ld+json">{"@type":"Product","offers":{"price":3000,"priceCurrency":"JPY"}}</script>
+    <meta property="og:price:currency" content="JPY" />
+    <meta property="og:price:amount" content="3000" />`;
+  assert.equal(parseProductHtml(withStructured, testerMacBookPro).price, null);
 
   // 通常の商品ページでは、分割の近傍だけ飛ばして本体価格を取る
   const shop = parseProductHtml(
@@ -179,6 +186,29 @@ test('Apple shop buy pages and installment copy do not become a product price', 
     'https://shop.example/products/note',
   );
   assert.equal(shop.price, 89800);
+});
+
+test('incomplete yen fragments are not saved as product prices', () => {
+  assert.equal(parseYenPrice('4,'), null);
+  assert.equal(parseYenPrice('12,34'), null);
+  assert.equal(parseYenPrice('1,234'), 1234);
+  assert.equal(parseYenPrice(398800), 398800);
+  assert.equal(parseYenPrice(0), null);
+  assert.equal(parseYenPrice(-1), null);
+
+  // 切り途中の "¥4," だけが price クラスにある HTML は価格未取得（Amazon の implied ガードと同趣旨）
+  const truncated = parseProductHtml(
+    `<title>ケース</title><div class="price">¥4,</div>`,
+    'https://shop.example/products/case',
+  );
+  assert.equal(truncated.price, null);
+
+  // 完全な本体価格があればそちらを使う
+  const complete = parseProductHtml(
+    `<title>ケース</title><div class="price">¥4,</div><p>販売価格: 4,980円</p>`,
+    'https://shop.example/products/case',
+  );
+  assert.equal(complete.price, 4980);
 });
 
 const amazonProduct = `<img src="https://m.media-amazon.com/images/I/case.jpg" id="landingImage">
@@ -196,6 +226,62 @@ test('Amazon parser uses the buy-box price and main image, independent of attrib
   const mobile = `<span id='productTitle'>モバイル商品</span><div id='corePrice_mobile_feature_div'><span class='a-price'><span>￥</span><span>2,999</span></span></div>`;
   assert.equal(extractAmazonProduct(mobile).price,2999);
   assert.equal(extractAmazonProduct(`<span id="productTitle">旧形式</span><span id="priceblock_dealprice">￥1,999</span>`).price,1999);
+});
+
+const bookCover = 'https://m.media-amazon.com/images/I/81am5vH8G-L._SL1262_.jpg';
+
+function bookPage(newPrice: string): string {
+  return `<img id="imgBlkFront" data-old-hires="${bookCover}" src="https://m.media-amazon.com/images/I/81am5vH8G-L.jpg">
+<span id="productTitle">半島を出よ 上 (幻冬舎文庫 む 1-25)</span>
+<div id="tmmSwatches">
+  <span class="a-color-price">￥1,650</span>
+  <span>80 Used from ￥1</span>
+  <span class="a-color-price">￥9,999</span>
+</div>
+<div id="desktop_buybox"><div id="buybox">
+  <div id="newBooksSingleBuyingOptionHeader_feature_div"><div id="booksHeaderSection">
+    <span id="newBuyingOption">Buy new:</span>
+    <span id="price" class="a-size-medium a-color-price header-price a-text-normal">${newPrice}</span>
+  </div></div>
+</div></div>
+<div id="usedAccordionRow"><span id="usedPrice" class="a-color-price">￥1</span></div>
+<div id="recommendations"><span class="a-price">￥999</span></div>`;
+}
+
+test('Amazon book pages keep the new header price, not a used or other-format price', () => {
+  const parsed = extractAmazonProduct(bookPage('￥796'));
+  assert.equal(parsed.name, '半島を出よ 上 (幻冬舎文庫 む 1-25)');
+  assert.equal(parsed.price, 796);
+  assert.equal(parsed.imageUrl, bookCover);
+
+  // 新品のアコーディオンと corePrice_feature_div。中古行は見ない。
+  assert.equal(extractAmazonProduct(`<span id="productTitle">文庫</span>
+    <div id="newAccordionRow_0"><span class="a-price priceToPay"><span class="a-offscreen">￥880</span></span></div>
+    <div id="usedAccordionRow"><span id="usedPrice" class="a-price"><span class="a-offscreen">￥50</span></span></div>`).price, 880);
+  assert.equal(extractAmazonProduct(`<span id="productTitle">文庫</span>
+    <div id="corePrice_feature_div">
+      <span class="a-price a-text-price" data-a-strike="true"><span class="a-offscreen">￥1,100</span></span>
+      <span class="a-price a-text-price apexPriceToPay" data-a-color="price"><span class="a-offscreen">￥880</span></span>
+    </div>
+    <div id="usedOnlyBuybox"><span id="usedPrice" class="a-color-price">￥50</span></div>`).price, 880);
+  assert.equal(extractAmazonProduct(`<span id="productTitle">文庫</span>
+    <div id="desktop_buybox"><span class="a-size-base a-color-price offer-price">￥792</span></div>
+    <div id="usedAccordionRow"><span id="usedPrice">￥1</span></div>`).price, 792);
+
+  // 中古・マーケットプレイスだけの表示は新品価格として保存しない。
+  assert.equal(extractAmazonProduct(`<span id="productTitle">中古のみ</span>
+    <img id="imgBlkFront" data-old-hires="${bookCover}">
+    <div id="usedAccordionRow"><span id="usedPrice" class="a-price"><span class="a-offscreen">￥120</span></span></div>
+    <div id="tmmSwatches"><span>54 Used from ￥1</span><span class="a-color-price">￥1</span></div>`).price, null);
+});
+
+test('Amazon new prices are the buy-box amount for any whole yen, ignoring used offers', () => {
+  fc.assert(fc.property(fc.integer({ min: 1, max: 999_999 }), (yen) => {
+    const shown = `￥${yen.toLocaleString('en-US')}`;
+    const parsed = extractAmazonProduct(bookPage(shown));
+    assert.equal(parsed.price, yen);
+    assert.equal(parsed.imageUrl, bookCover);
+  }));
 });
 
 test('missing price is not replaced by recommendations, foreign currency or incomplete HTML', () => {

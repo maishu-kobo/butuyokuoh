@@ -31,6 +31,22 @@ test('AliExpress PPC query is stripped to the item path (short fake params only)
   assert.ok((sanitizeStoredItemUrl(dirty) || '').length < 80);
 });
 
+// テスター報告（2026-11-02 Slack）の実 URL。広告パラメータ付きでも商品パスだけ残す（#328 / #398）。
+test('tester AliExpress ad URL normalizes to the item path', () => {
+  const testerUrl =
+    'https://ja.aliexpress.com/item/1005009497617522.html' +
+    '?osf=ppc_ug&guideModule=ppc_ug&src=google&albch=search&acnt=479-062-3723&isdl=y' +
+    '&aff_short_key=UneMJZVf&albcp=23180586172&albag=184393879141&slnk=&trgt=kwl-1642801257570' +
+    '&plac=&crea=780586392898&albad=780586392898&netw=g&device=m&mtctp=a&memo1=' +
+    '&albbt=Google_7_search&aff_platform=google&albagn=888888&isSmbActive=false' +
+    '&isSmbAutoCall=false&needSmbHouyi=false&gad_source=1&gad_campaignid=23180586172' +
+    '&gbraid=0AAAAAD2chG4Pjrt2uyjTrUcoVworgLJ7W' +
+    '&gclid=CjwKCAiAhqHXBhAXEiwATbksUxPoXicpQEWtKKCNWKRiEQbRimztK9r3eRiQ2qkJR4h1vfNorfhyihoCGm8QAvD_BwE' +
+    '&gatewayAdapt=glo2jpn';
+  assert.ok(testerUrl.length > 600, `tester URL length ${testerUrl.length}`);
+  assert.equal(sanitizeStoredItemUrl(testerUrl), ALIEXPRESS_ITEM);
+});
+
 test('bot challenge HTML is unusable and maps to the blocked help message', () => {
   assert.equal(isBotChallengedHtml(punishHtml), true);
   const scraped = parseProductHtml(punishHtml, ALIEXPRESS_ITEM);

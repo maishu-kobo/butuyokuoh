@@ -503,8 +503,16 @@ export async function fetchServerItemMedia(
       );
     });
     if (isUnusableScrape(scraped)) return emptyMedia(url, scraped);
+    // スクレイプ価格の最終ガード（不完全・非有限・範囲外は未取得）。guest 経路と同じ上限。
+    const price =
+      typeof scraped.price === 'number' &&
+      Number.isFinite(scraped.price) &&
+      scraped.price > 0 &&
+      scraped.price <= 1_000_000_000
+        ? Math.round(scraped.price)
+        : null;
     return {
-      price: typeof scraped.price === 'number' && Number.isFinite(scraped.price) ? scraped.price : null,
+      price,
       imageUrl: scraped.imageUrl || null,
       source: scraped.source || getSourceFromUrl(url),
       sourceName: scraped.sourceName ?? emptyMedia(url).sourceName,
