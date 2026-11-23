@@ -56,7 +56,8 @@ export default function DesktopWorkspace({ children }: { children: React.ReactNo
   const action = useRef<(() => void) | null>(null);
   const [busy, setBusy] = useState(false);
   const enabled = Boolean(user && isNewUi && desktop.active && (pathname === '/design' || pathname === '/settings'));
-  const selected = params?.get('tab') || (params?.get('view') === 'plan' ? 'budget' : undefined);
+  const requested = params?.get('tab');
+  const selected = desktop.layout === 'reading' && requested === 'manage' ? undefined : requested || (params?.get('view') === 'plan' ? 'budget' : undefined);
   const registerAction = useCallback((next: () => void) => {
     action.current = next;
     return () => { if (action.current === next) action.current = null; };
@@ -82,7 +83,7 @@ export default function DesktopWorkspace({ children }: { children: React.ReactNo
       <nav className="desktop-sidebar" aria-label="PCナビゲーション" inert={busy || !enabled}>
         <Link className="desktop-brand" href={reviewHref('rank', undefined, palette, resolvedTheme)}><Image unoptimized alt="" src="/icons/icon-192.png" width={31} height={31}/><span>物欲王</span></Link>
         <Button type="button" variant="primary" className="desktop-register" icon={<Plus size={19}/>} label="登録" onClick={openRegistration}/>
-        <div className="desktop-nav-primary">{links(primary)}</div>
+        <div className="desktop-nav-primary">{links(desktop.layout === 'reading' ? primary.filter(entry => entry.tab !== 'manage') : primary)}</div>
         <div className="desktop-nav-secondary">{links(secondary)}</div>
         <div className="desktop-nav-bottom">
           <Link href={reviewSettingsHref('rank', palette, resolvedTheme)} aria-current={pathname === '/settings' ? 'page' : undefined}><Settings size={18} aria-hidden/><span>設定</span></Link>

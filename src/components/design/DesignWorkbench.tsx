@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -8,7 +8,8 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@astryxdesign/core/Button';
 import { BarChart3, Check, ChevronRight, Ellipsis, ListChecks, LogOut, Plus, Search, Settings, ShoppingBag, SlidersHorizontal, Trash2, Wallet, X } from 'lucide-react';
 import type { Category, ComparisonGroup, Item } from '@/types';
-import { buildReviewProducts, reviewHref, reviewSettingsHref, type ReviewTab, type ReviewView } from '@/lib/design-home';
+import { buildReviewProducts, managedProducts, reviewHref, reviewSettingsHref, type ReviewTab, type ReviewView } from '@/lib/design-home';
+import type { HomeSortBy } from '@/lib/home-wishlist';
 import type { LightPalette, PreviewAppearance } from '@/lib/design-palettes';
 import BudgetDateEditor from '../BudgetDateEditor';
 import SiteFooter from '../SiteFooter';
@@ -29,6 +30,8 @@ interface Props {
   budgetRevision:number; view:ReviewView; palette:LightPalette|null; appearance:PreviewAppearance; items:Item[]; purchased:Item[]; groups:ComparisonGroup[]; categories:Category[];
   loading:boolean; loadError:boolean; isGuest:boolean;
   onRetry:() => void; onReload:() => Promise<void>; onDelete:(id:number) => Promise<void>; onLogout:() => Promise<void>;
+  management: { search:string; onSearch:(value:string)=>void; matching:Item[]; sortBy:HomeSortBy; filterOpen:boolean; onToggleFilter:()=>void;
+    selection?:{ids:Set<number>;toggle:(ids:number[])=>void}; render:(list:ReactNode,visibleIds:number[],active:boolean)=>ReactNode; };
 }
 const menu: {tab:ReviewTab;label:string;Icon:typeof ListChecks}[] = [
   {tab:'purchased',label:'購入履歴',Icon:ShoppingBag},{tab:'stats',label:'統計',Icon:BarChart3},
@@ -36,7 +39,7 @@ const menu: {tab:ReviewTab;label:string;Icon:typeof ListChecks}[] = [
 ];
 type Panel = {kind:'menu'|'add'|'display'} | {kind:'product'|'guide';key:string};
 
-export default function DesignWorkbench({budgetRevision,view,palette,appearance,items,purchased,groups,categories,loading,loadError,isGuest,onRetry,onReload,onDelete,onLogout}:Props) {
+export default function DesignWorkbench({budgetRevision,view,palette,appearance,items,purchased,groups,categories,loading,loadError,isGuest,onRetry,onReload,onDelete,onLogout,management}:Props) {
   const router=useRouter();
   const frame=useRef<HTMLDivElement>(null);
   const searchField=useRef<HTMLInputElement>(null);
@@ -44,7 +47,7 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
   const dateInvoker=useRef<HTMLElement|null>(null);
   const [panel,setPanel]=useState<Panel|null>(null);
   const [dateItem,setDateItem]=useState<Item|null>(null);
-  const [search,setSearch]=useState('');
+  const {search,onSearch:setSearch}=management;
   const [searchOpen,setSearchOpen]=useState(false);
   const [notice,setNotice]=useState('');
   const [listDisplay,setListDisplay]=useState<ListDisplay>('all');
@@ -52,6 +55,7 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
   const desktop=useDesktopWorkspace();
   const comparison=<DesktopLayoutToggle value={desktop.layout} onChange={desktop.choose}/>;
   const isBudget=view==='plan';
+  const integrated=desktop.active&&desktop.layout==='reading'&&!isBudget;
   useLayoutEffect(() => {
     const banner = document.querySelector<HTMLElement>('[data-app-banner]');
     const main = frame.current?.closest('main');
@@ -66,12 +70,15 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
   async function reload() { await onReload(); }
   const products=useMemo(()=>buildReviewProducts(items,groups,purchased),[items,groups,purchased]);
   const term=search.trim().toLocaleLowerCase('ja-JP');
-  const visible=useMemo(()=>!term?products:products.filter(p=>
+  const visible=useMemo(()=>integrated ? managedProducts(products,management.matching,management.sortBy) : !term?products:products.filter(p=>
     [p.name,p.active.category_name,p.active.notes,p.active.buy_guide?.condition,...p.offers.map(i=>i.source_name)]
-      .some(value=>value?.toLocaleLowerCase('ja-JP').includes(term))),[products,term]);
+      .some(value=>value?.toLocaleLowerCase('ja-JP').includes(term))),[products,term,integrated,management.matching,management.sortBy]);
   const selected=panel && 'key' in panel ? products.find(p=>p.key===panel.key) : undefined;
   const priorityFilter=!isBudget&&listDisplay.startsWith('priority-') ? Number(listDisplay.slice(-1)) : null;
   const visibleCount=priorityFilter ? visible.filter(p=>rankItem(p).priority===priorityFilter).length : visible.length;
+  const matchingIds=new Set(management.matching.map(item=>item.id));
+  const selectableIds=visible.filter(product=>!priorityFilter||rankItem(product).priority===priorityFilter)
+    .flatMap(product=>product.offers.filter(item=>matchingIds.has(item.id)).map(item=>item.id));
   function openPanel(next:Panel) {
     if (panelBusy) return;
     const trigger=document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -93,6 +100,11 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
     <div className="review-empty" role="alert">リストを読み込めませんでした。<Button label="再読み込み" onClick={onRetry}/></div> :
     !visible.length ? <div className="review-empty">{term?'条件に合う商品がありません。':'登録した商品がここに並びます。'}
       {term && <button type="button" onClick={()=>setSearch('')}>検索をクリア</button>}</div> : null;
+  const ranked=loading||loadError||!products.length ? empty : <RankedList products={products} visible={visible} onReload={reload}
+    focused display={listDisplay} onDisplay={setListDisplay} openDisplay={()=>openPanel({kind:'display'})} onDate={openDate} empty={empty}
+    orderedProducts={integrated&&management.sortBy!=='priority'?visible:undefined}
+    selection={integrated&&management.selection?{...management.selection,matchingIds}:undefined}
+    openProduct={p=>openPanel({kind:'product',key:p.key})} openGuide={p=>openPanel({kind:'guide',key:p.key})}/>;
   return <main className="design-review combined-home" data-screen={isBudget?'budget':'list'} data-desktop-layout={desktop.active?'workspace':'current'}
     data-list-layout={desktop.active&&desktop.layout==='reading'?'reading':undefined}>
     <div className="review-frame" ref={frame} tabIndex={-1} data-panel-open={!!panel}>
@@ -106,12 +118,12 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
         <header className="review-home-heading"><h1>{isBudget?'出費予定':'ほしいものリスト'}</h1><span>{loading?'':visibleCount+(priorityFilter?' / '+products.length:'')+'商品'}</span></header>
         {(searchOpen||desktop.active) && <div className="review-search"><label><Search aria-hidden size={16}/>
           <input aria-label="商品名・メモ・お店で検索" type="search" ref={searchField} placeholder="商品名・メモ・お店" value={search} onChange={e=>setSearch(e.target.value)}/></label>
-          <Link href={designHref(view,'manage')} aria-label="絞り込み・並べ替え"><SlidersHorizontal size={18}/></Link></div>}
+          {desktop.active&&desktop.layout==='reading' ? <button type="button" aria-label="絞り込み・並べ替え" aria-expanded={integrated?management.filterOpen:undefined}
+            onClick={()=>{if(integrated)management.onToggleFilter();else{if(!management.filterOpen)management.onToggleFilter();router.push(designHref('rank'));}}}><SlidersHorizontal size={18}/></button>
+            : <Link href={designHref(view,'manage')} aria-label="絞り込み・並べ替え"><SlidersHorizontal size={18}/></Link>}</div>}
         {notice && <div className="review-notice" role="status"><Check size={14}/>{notice}</div>}
         <section aria-label="買う候補" className="review-scroll" tabIndex={0} hidden={isBudget}>
-          {loading||loadError||!products.length ? empty : <RankedList products={products} visible={visible} onReload={reload}
-            focused display={listDisplay} onDisplay={setListDisplay} openDisplay={()=>openPanel({kind:'display'})} onDate={openDate} empty={empty}
-            openProduct={p=>openPanel({kind:'product',key:p.key})} openGuide={p=>openPanel({kind:'guide',key:p.key})}/>}
+          <div className="agenda-home integrated-list-surface" data-integrated={integrated}>{management.render(ranked,selectableIds,integrated)}</div>
         </section>
         <section aria-label="出費予定" className="review-scroll" tabIndex={0} hidden={!isBudget}>
           <BudgetView presentation="schedule" query={search} revision={budgetRevision} categories={categories} onChanged={reload}

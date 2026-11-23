@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import Database from 'better-sqlite3';
 
 test.beforeEach(async ({page}) => {
   await page.clock.setFixedTime(new Date('2026-11-23T03:00:00Z'));
@@ -19,6 +20,191 @@ async function prepare(page: Page) {
   await page.goto('/design?pc=workspace');
   await expect(page.getByRole('heading', { name: 'ほしいものリスト', exact: true })).toBeVisible({ timeout: 20_000 });
 }
+
+for (const width of [1280, 1920]) {
+  test(`reading menus keep a single content column at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 1100 });
+    await prepare(page);
+    await page.getByRole('button', { name: '縦リスト', exact: true }).click();
+    const nav = page.getByRole('navigation', { name: 'PCナビゲーション' });
+    const original = await nav.elementHandle();
+    for (const [index, name] of ['出費予定', '購入履歴', '統計', 'ゴミ箱', '設定'].entries()) {
+      await nav.getByRole('link', { name, exact: true }).click();
+      await expect(page.getByRole('heading', { name, exact: true }).first()).toBeVisible();
+      const content = name === '出費予定' ? page.locator('.spend-view') : page.locator('.desktop-page-content main');
+      await expect(content).toBeVisible();
+      expect((await content.boundingBox())!.width).toBeLessThanOrEqual(721);
+      expect(await original!.evaluate(node => node.isConnected)).toBeTruthy();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+      await page.screenshot({ path: info.outputPath(`reading-menu-${index}-${width}.png`) });
+    }
+    const account = await page.getByRole('heading', { name: 'アカウント情報', exact: true }).boundingBox();
+    const password = await page.getByRole('button', { name: 'パスワード変更', exact: true }).boundingBox();
+    const palette = await page.getByRole('button', { name: '配色を変更', exact: true }).boundingBox();
+    expect(password!.y).toBeGreaterThan(account!.y);
+    expect(palette!.y).toBeGreaterThan(password!.y);
+    await page.getByRole('button', { name: '配色を変更', exact: true }).click();
+    await expect(page.getByRole('group', { name: '配色', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'PC専用', exact: true }).click();
+    expect((await page.locator('.desktop-page-content main').boundingBox())!.width).toBeGreaterThan(1000);
+    await expect(page.getByRole('group', { name: '配色', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '縦リスト', exact: true }).click();
+    await nav.getByRole('link', { name: '出費予定', exact: true }).click();
+    await page.getByRole('button', { name: '絞り込み・並べ替え', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'ほしいものリスト', exact: true })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: '並び順', exact: true })).toBeVisible();
+    await expect(page).toHaveURL(url => !url.searchParams.has('tab'));
+  });
+}
+
+test('reading list integrates filters, shelf and bulk actions without leaving the list', async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await prepare(page);
+  const category = await page.request.post('/api/categories', { headers: { Origin: 'http://localhost:3107' }, data: { name: '部屋のもの', color: '#775544' } });
+  expect(category.ok()).toBeTruthy();
+  const savedCategory = await category.json();
+  const items = await (await page.request.get('/api/items')).json();
+  await page.reload();
+  await page.getByRole('button', { name: '縦リスト', exact: true }).click();
+  const nav = page.getByRole('navigation', { name: 'PCナビゲーション' });
+  await expect(nav.getByRole('link', { name: 'リストの管理', exact: true })).toHaveCount(0);
+  const url = page.url();
+  await page.getByRole('button', { name: '絞り込み・並べ替え', exact: true }).click();
+  await page.getByRole('combobox', { name: '並び順', exact: true }).selectOption('price_desc');
+  await expect(page.locator('.rank-product strong')).toHaveText(['小さなカメラ', '折りたたみ傘', '読書灯']);
+  await page.getByRole('combobox', { name: '並び順', exact: true }).selectOption('priority');
+  await page.getByRole('button', { name: '絞り込み・並べ替え', exact: true }).click();
+  await page.getByRole('button', { name: '選択', exact: true }).click();
+  await page.getByRole('checkbox', { name: '読書灯を選択', exact: true }).check();
+  await page.getByRole('combobox', { name: 'カテゴリ変更', exact: true }).selectOption(String(savedCategory.id));
+  await expect(page.getByText('1件選択中', { exact: true })).toHaveCount(0);
+  const updated = await (await page.request.get('/api/items')).json();
+  expect(updated.find((item: {name:string}) => item.name === '読書灯').category_id).toBe(savedCategory.id);
+  expect(updated.find((item: {name:string}) => item.name === '折りたたみ傘').category_id).toBeNull();
+  await page.getByRole('button', { name: '選択を終了', exact: true }).click();
+  await page.getByRole('button', { name: '絞り込み・並べ替え', exact: true }).click();
+  await page.getByRole('button', { name: '部屋のもの', exact: true }).click();
+  await expect(page.locator('.rank-product strong')).toHaveText(['読書灯']);
+  await page.getByRole('button', { name: '条件をクリア', exact: true }).click();
+  await expect(page.locator('.rank-product strong')).toHaveCount(3);
+  await page.getByRole('button', { name: '写真棚', exact: true }).click();
+  await expect(page.locator('.agenda-product-grid')).toBeVisible();
+  await page.getByRole('button', { name: '一覧', exact: true }).click();
+  await expect(page.locator('.rank-product strong')).toHaveCount(3);
+  await page.getByRole('button', { name: 'リストの操作', exact: true }).click();
+  await page.getByRole('button', { name: 'インポート', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'リストをインポート', exact: true })).toBeVisible();
+  expect(page.url()).toBe(url);
+  expect((await (await page.request.get('/api/items')).json()).length).toBe(items.length);
+  await page.screenshot({ path: info.outputPath('integrated-list-import.png') });
+});
+
+test('reading comparison preserves a registration draft opened from the previous management route', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await prepare(page);
+  const nav = page.getByRole('navigation', { name: 'PCナビゲーション' });
+  await nav.getByRole('link', { name: 'リストの管理', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'リストの管理', exact: true })).toBeVisible();
+  await nav.getByRole('button', { name: '登録', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'ほしいものを登録', exact: true });
+  await sheet.getByRole('tab', { name: '手入力', exact: true }).click();
+  await sheet.getByRole('textbox', { name: '商品名', exact: true }).fill('比較中の登録');
+  await sheet.getByRole('button', { name: '縦リスト', exact: true }).click();
+  await expect(sheet.getByRole('textbox', { name: '商品名', exact: true })).toHaveValue('比較中の登録');
+  await expect(sheet.getByRole('button', { name: '登録する', exact: true })).toBeInViewport();
+});
+
+test('integrated select-all respects the priority display and price refresh stays in the list', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await prepare(page);
+  const items = await (await page.request.get('/api/items')).json();
+  const lamp = items.find((item: {name:string}) => item.name === '読書灯');
+  await page.request.patch(`/api/items/${lamp.id}`, { headers: { Origin: 'http://localhost:3107' }, data: { priority: 2 } });
+  await page.reload();
+  await page.getByRole('button', { name: '縦リスト', exact: true }).click();
+  await page.getByRole('button', { name: 'リストの表示: すべて', exact: true }).click();
+  await page.getByRole('button', { name: '優先度 高のみ', exact: false }).click();
+  await expect(page.locator('.rank-product strong')).toHaveText(['読書灯']);
+  await page.getByRole('button', { name: '選択', exact: true }).click();
+  await page.getByRole('button', { name: '全選択', exact: true }).click();
+  await expect(page.getByRole('region', { name: '選択した商品の操作' })).toContainText('1件選択中');
+  await expect(page.getByRole('checkbox', { name: '読書灯を選択', exact: true })).toBeChecked();
+  await page.getByRole('button', { name: '選択を終了', exact: true }).click();
+  const requests: string[] = [];
+  await page.route('**/api/items/*/refresh', route => { requests.push(route.request().url()); return route.fulfill({ json: { success: true } }); });
+  await page.getByRole('button', { name: 'リストの操作', exact: true }).click();
+  await page.getByRole('button', { name: '価格を更新', exact: true }).click();
+  await expect.poll(() => requests.length).toBe(3);
+  await expect(page.getByRole('heading', { name: 'ほしいものリスト', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(url => !url.searchParams.has('tab'));
+  await page.getByRole('button', { name: '選択', exact: true }).click();
+  await page.getByRole('checkbox', { name: '読書灯を選択', exact: true }).check();
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('region', { name: '選択した商品の操作' }).getByRole('button', { name: '購入済み', exact: true }).click();
+  await expect(page.getByRole('region', { name: '選択した商品の操作' })).toHaveCount(0);
+  await page.getByRole('navigation', { name: 'PCナビゲーション' }).getByRole('link', { name: '出費予定', exact: true }).click();
+  await expect(page.getByTestId('spend-selected-total')).toHaveText('¥5,000');
+  await expect(page.getByRole('button', { name: '読書灯の詳細', exact: true })).toHaveCount(0);
+});
+
+test('photo group bulk selection changes only the shops matching the search', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await prepare(page);
+  const origin = { Origin: 'http://localhost:3107' };
+  const group = await (await page.request.post('/api/comparison-groups', { headers: origin, data: { name: '机の照明' } })).json();
+  const category = await (await page.request.post('/api/categories', { headers: origin, data: { name: '一括変更の確認', color: '#775544' } })).json();
+  const items = await (await page.request.get('/api/items')).json();
+  const face = items.find((item: {name:string}) => item.name === '読書灯');
+  const match = items.find((item: {name:string}) => item.name === '折りたたみ傘');
+  for (const item of [face, match]) {
+    expect((await page.request.patch(`/api/items/${item.id}`, { headers: origin, data: { comparison_group_id: group.id } })).ok()).toBeTruthy();
+  }
+  const db = new Database(process.env.E2E_DB_PATH!);
+  db.prepare("UPDATE comparison_groups SET origin = 'photo' WHERE id = ?").run(group.id);
+  db.close();
+  await page.reload();
+  await page.getByRole('button', { name: '縦リスト', exact: true }).click();
+  await page.getByRole('searchbox', { name: '商品名・メモ・お店で検索' }).fill('折りたたみ傘');
+  await expect(page.locator('.rank-product strong')).toHaveText(['机の照明']);
+  await page.getByRole('button', { name: '選択', exact: true }).click();
+  await page.getByRole('checkbox', { name: '机の照明を選択', exact: true }).check();
+  await page.getByRole('combobox', { name: 'カテゴリ変更', exact: true }).selectOption(String(category.id));
+  await expect(page.getByRole('region', { name: '選択した商品の操作' })).toHaveCount(0);
+  const updated = await (await page.request.get('/api/items')).json();
+  expect(updated.find((item: {id:number}) => item.id === match.id).category_id).toBe(category.id);
+  expect(updated.find((item: {id:number}) => item.id === face.id).category_id).toBeNull();
+  await page.getByRole('button', { name: '全選択', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: '机の照明を選択', exact: true })).toBeChecked();
+  await expect(page.getByRole('region', { name: '選択した商品の操作' })).toContainText('1件選択中');
+});
+
+test('a shelf edit survives desktop comparisons and resizing before saving', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await prepare(page);
+  const items = await (await page.request.get('/api/items')).json();
+  const db = new Database(process.env.E2E_DB_PATH!);
+  db.prepare('UPDATE items SET source_name = ? WHERE id = ?').run('お気に入りのお店', items[0].id);
+  db.close();
+  await page.reload();
+  await page.getByRole('button', { name: '縦リスト', exact: true }).click();
+  await page.getByRole('searchbox', { name: '商品名・メモ・お店で検索' }).fill('お気に入りのお店');
+  await page.getByRole('button', { name: '写真棚', exact: true }).click();
+  const shelf = page.locator('.agenda-product-grid');
+  await shelf.getByRole('button', { name: '編集', exact: true }).first().click();
+  const name = shelf.getByPlaceholder('商品名', { exact: true });
+  await name.fill('編集を続ける読書灯');
+  await page.getByRole('button', { name: 'PC専用', exact: true }).click();
+  await page.getByRole('button', { name: '縦リスト', exact: true }).click();
+  await expect(shelf).toBeVisible();
+  await expect(name).toHaveValue('編集を続ける読書灯');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(name).toHaveValue('編集を続ける読書灯');
+  await shelf.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(shelf.getByRole('heading', { name: '編集を続ける読書灯', exact: true })).toBeVisible();
+  const saved = await (await page.request.get('/api/items')).json();
+  expect(saved.some((item: {name:string}) => item.name === '編集を続ける読書灯')).toBeTruthy();
+});
 
 test('all desktop menus share the same sidebar, including settings', async ({ page }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });

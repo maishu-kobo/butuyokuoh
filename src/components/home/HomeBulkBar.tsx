@@ -11,6 +11,7 @@ export default function HomeBulkBar({
   onGroupChange,
   onPurchased,
   onDelete,
+  inline = false,
 }: {
   count: number;
   categories: Category[];
@@ -19,15 +20,17 @@ export default function HomeBulkBar({
   onGroupChange: (groupId: number | null) => void;
   onPurchased: () => void;
   onDelete: () => void;
+  inline?: boolean;
 }) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shadow-lg z-50">
+    <div className={inline ? 'integrated-bulk-bar' : 'fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shadow-lg z-50'} role="region" aria-label="選択した商品の操作">
       <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
         <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
           {count}件選択中
         </span>
         <div className="flex items-center gap-2 flex-wrap">
           <select
+            aria-label="カテゴリ変更"
             onChange={(event) => {
               const value = event.target.value;
               if (value === '') return;
@@ -44,6 +47,7 @@ export default function HomeBulkBar({
             ))}
           </select>
           <select
+            aria-label="グループ変更"
             onChange={(event) => {
               const value = event.target.value;
               if (value === '') return;
