@@ -33,6 +33,7 @@
 .focused-list .focused-date { min-width: 0; min-height: 44px; width: 6rem; gap: 4px; text-align: left; font-size: .72rem; }
 .focused-date-text { display: flex; flex-wrap: wrap; flex: 1; min-width: 0; }
 .focused-date-text > span { white-space: nowrap; }
+.focused-date-year[data-current-year=true],.rank-month-year { display: none; }
 .focused-date:hover { color: var(--rv-accent); }
 .focused-list .rank-move { display: grid; grid-template-columns: minmax(0,1fr) 44px 44px; gap: 5px; }
 .focused-list .rank-move label { min-width: 0; white-space: nowrap; }

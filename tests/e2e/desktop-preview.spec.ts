@@ -356,6 +356,69 @@ test('a delayed statistics response cannot replace the totals after registration
   await expect(overview.getByText('3件', { exact: true })).toHaveCount(0);
 });
 
+for (const width of [1100, 1440]) {
+  test(`reading rows center images and stabilize dates with optional conditions at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 1100 });
+    await prepare(page);
+    const items = await (await page.request.get('/api/items')).json();
+    for (const [name, date, month, condition] of [
+      ['読書灯', '2026-12-10', '2026-12', ''],
+      ['折りたたみ傘', '2027-12-10', '2027-12', 'セールになったら買う'],
+      ['小さなカメラ', null, '', ''],
+    ]) {
+      const item = items.find((entry: {name:string}) => entry.name === name);
+      expect((await page.request.patch(`/api/items/${item.id}`, { headers: { Origin: 'http://localhost:3107' }, data: { planned_purchase_date: date } })).ok()).toBeTruthy();
+      expect((await page.request.post('/api/items/ranking', { headers: { Origin: 'http://localhost:3107' }, data: { action: 'guide', itemId: item.id, priority: 3, month, timing: 'by', condition } })).ok()).toBeTruthy();
+    }
+    const longName = '持ち運びやすさと画質をお店で比べてから選ぶ、旅行用ミラーレスカメラと交換レンズのセット。'.repeat(2);
+    const longCondition = 'お店で重さと持ちやすさを確認し、今の機材を下取りしたあとの金額と保証の範囲を比べてから買う。'.repeat(3);
+    const added = await page.request.post('/api/items', { headers: { Origin: 'http://localhost:3107' }, data: { manual: true, name: longName, price: 128000, priority: 3, planned_purchase_date: '2027-12-10', image_url: '/demo/wishlist.svg' } });
+    expect(added.ok()).toBeTruthy();
+    const longItem = await added.json();
+    expect((await page.request.post('/api/items/ranking', { headers: { Origin: 'http://localhost:3107' }, data: { action: 'guide', itemId: longItem.id, priority: 3, month: '2027-12', timing: 'by', condition: longCondition } })).ok()).toBeTruthy();
+    await page.reload();
+    await page.getByRole('button', { name: '縦リスト', exact: true }).click();
+    const rows = page.locator('.rank-row');
+    await expect(rows).toHaveCount(4);
+    for (const row of await rows.all()) {
+      const bounds = (await row.boundingBox())!;
+      const picture = (await row.locator('.rank-picture').boundingBox())!;
+      const handle = (await row.locator('.rank-grip').boundingBox())!;
+      const center = bounds.y + (bounds.height - 1) / 2;
+      expect(Math.abs(picture.y + picture.height / 2 - center)).toBeLessThan(1);
+      expect(Math.abs(handle.y + handle.height / 2 - center)).toBeLessThan(1);
+      expect(picture.width).toBe(96);
+    }
+    const first = rows.filter({ has: page.getByRole('button', { name: '読書灯の詳細', exact: true }) });
+    const second = rows.filter({ has: page.getByRole('button', { name: '折りたたみ傘の詳細', exact: true }) });
+    for (const selector of ['.rank-product', '.rank-meta', '.focused-date']) {
+      const firstTop = (await first.locator(selector).boundingBox())!.y - (await first.boundingBox())!.y;
+      const secondTop = (await second.locator(selector).boundingBox())!.y - (await second.boundingBox())!.y;
+      expect(Math.abs(firstTop - secondTop)).toBeLessThan(1);
+    }
+    await expect(first.locator('.focused-date')).toHaveText('2026年12月10日');
+    await expect(second.locator('.focused-date')).toHaveText('2027年12月10日');
+    await expect(first.locator('.rank-month')).toHaveText('2026年12月まで');
+    const dateBoxes = await rows.locator('.focused-date-text').evaluateAll(elements => elements.map(element => ({ height: element.getBoundingClientRect().height, lineHeight: parseFloat(getComputedStyle(element).lineHeight) })));
+    for (const box of dateBoxes) expect(box.height).toBeLessThanOrEqual(box.lineHeight + 1);
+    await expect(rows.filter({ has: page.getByRole('button', { name: '小さなカメラの詳細', exact: true }) }).locator('.focused-date')).toHaveCount(0);
+    const longRow = rows.filter({ has: page.getByRole('button', { name: longName + 'の詳細', exact: true }) });
+    const clippedName = await longRow.locator('.rank-product strong').evaluate(element => ({ height: element.getBoundingClientRect().height, lineHeight: parseFloat(getComputedStyle(element).lineHeight), fullText: element.textContent }));
+    expect(clippedName.height).toBeLessThanOrEqual(clippedName.lineHeight * 2 + 1);
+    expect(clippedName.fullText).toBe(longName);
+    const clipped = await longRow.locator('.focused-condition > span').evaluate(element => ({ height: element.getBoundingClientRect().height, lineHeight: parseFloat(getComputedStyle(element).lineHeight), fullText: element.textContent }));
+    expect(clipped.height).toBeLessThanOrEqual(clipped.lineHeight * 2 + 1);
+    expect(clipped.fullText).toBe(longCondition);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+    await page.screenshot({ path: info.outputPath(`aligned-rows-${width}.png`) });
+    await longRow.getByRole('button', { name: longName + 'の詳細', exact: true }).click();
+    await expect(page.getByRole('heading', { name: longName, exact: true })).toBeVisible();
+    await longRow.getByRole('button', { name: longName + 'の買う条件を編集', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: /どんなときに買う/ })).toHaveValue(longCondition);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  });
+}
+
 for (const width of [1280, 1440, 1920]) {
   test(`reading layout groups product information and uses the full height at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 1200 });

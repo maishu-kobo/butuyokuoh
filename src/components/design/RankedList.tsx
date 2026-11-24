@@ -38,6 +38,7 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
   const [result,setResult] = useState('');
   const [photo,setPhoto] = useState<ReviewProduct|null>(null);
   const photoTrigger = useRef<HTMLButtonElement|null>(null);
+  const currentYear = String(new Date().getFullYear());
   const ordered = rankedProducts(products);
   const numbers = new Map(ordered.map((p,i) => [p.key,i+1]));
   const matches = new Set(visible.map(p => p.key));
@@ -117,24 +118,24 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
             <div className="rank-body">
               <div className="rank-product-head">
                 <button type="button" className="rank-product" aria-label={product.name+'の詳細'} onClick={() => openProduct(product)}>
-                  <strong>{product.name}</strong><span className="rank-price">{amountText(product.active)}</span>
+                  <strong title={product.name}>{product.name}</strong><span className="rank-price">{amountText(product.active)}</span>
                 </button>
                 {!focused && picture(product)}
               </div>
               <div className="rank-meta" data-has-date={!!date}>
               <button type="button" className="rank-guide" aria-label={product.name+'の優先度・買いどきを編集'} onClick={() => openGuide(product)}>
                 <span className="rank-guide-line">{showPriority && <span className={'rank-priority rank-level-'+item.priority}><i aria-hidden/>優先度 {priorityNames[item.priority]}</span>}
-                  {caption && <span className="rank-month">{caption}</span>}
+                  {caption && <span className="rank-month">{guide?.month.startsWith(currentYear+'-') && <span className="rank-month-year">{currentYear}年</span>}{caption}</span>}
                   {!caption && (focused&&!showPriority || !guide?.condition&&!date) && <span className="rank-no-guide">{focused&&!showPriority?'優先度と時期':guide?.condition?'買う条件':'買いどきを決める'}</span>}
                   <ChevronRight aria-hidden size={12}/></span>
                 {!focused && guide?.condition && <span className="rank-condition"><CircleDollarSign aria-hidden size={14}/>{guide.condition}</span>}
               </button>
               {date && (focused ? <button type="button" className="rank-date focused-date" aria-label={product.name+'の予定日を変更'} onClick={event=>onDate(product.active,event.currentTarget)}>
-                <CalendarCheck2 aria-hidden size={14}/><span className="focused-date-text">{date.slice(0,4)!==String(new Date().getFullYear())&&<span>{date.slice(0,4)}年</span>}<span>{Number(date.slice(5,7))}月{Number(date.slice(8,10))}日</span></span><ChevronRight aria-hidden size={12}/>
+                <CalendarCheck2 aria-hidden size={14}/><time className="focused-date-text" dateTime={date}><span className="focused-date-year" data-current-year={date.slice(0,4)===currentYear || undefined}>{date.slice(0,4)}年</span><span>{Number(date.slice(5,7))}月{Number(date.slice(8,10))}日</span></time><ChevronRight aria-hidden size={12}/>
               </button> : <span className="rank-date"><CalendarCheck2 aria-hidden size={13}/> 購入予定 {date.slice(0,4) === String(new Date().getFullYear()) ? '' : date.slice(0,4)+'年'}{Number(date.slice(5,7))}月{Number(date.slice(8,10))}日</span>)}
               </div>
               {focused && guide?.condition && <button type="button" className="rank-condition focused-condition"
-                aria-label={product.name+'の買う条件を編集'} onClick={()=>openGuide(product)}>
+                aria-label={product.name+'の買う条件を編集'} title={guide.condition} onClick={()=>openGuide(product)}>
                 <CircleDollarSign aria-hidden size={14}/><span>{guide.condition}</span>
               </button>}
               {editing && !orderedProducts && !selection && <div className="rank-move">
