@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowDownUp, ArrowUp, CalendarCheck2, Check, ChevronDown, ChevronRight, CircleDollarSign, ListFilter, SlidersHorizontal } from 'lucide-react';
+import { CalendarCheck2, ChevronDown, ChevronRight, CircleDollarSign, ListFilter, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@astryxdesign/core/Button';
 import { Lightbox } from '@astryxdesign/core/Lightbox';
 import { apiFetch } from '@/lib/api-fetch';
@@ -31,7 +31,6 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
   selection?:{ids:Set<number>;matchingIds:Set<number>;toggle:(ids:number[])=>void};
 }) {
   const [scope,setScope] = useState<RankScope>('all');
-  const [editing,setEditing] = useState(false);
   const [busy,setBusy] = useState(false);
   const writing = useRef(false);
   const [error,setError] = useState('');
@@ -51,14 +50,13 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
   }
   const sections = focused ? focusedListSections(orderedProducts ?? ordered,visible,display) : scope === 'all' ? [{level:0,entries:ordered}] :
     priorityLevels.map(level => ({level,entries:ordered.filter(p => rankItem(p).priority === level)}));
-  const moveScope:RankScope=focused ? display==='all' ? 'all':'priority' : scope;
   const showPriority=!focused || display==='all';
-  async function move(source:ReviewProduct,target:ReviewProduct,side:'before'|'after',requestedScope = moveScope) {
+  async function move(source:ReviewProduct,target:ReviewProduct,side:'before'|'after') {
     if (writing.current || source === target) return;
     writing.current = true;
     setBusy(true); setError('');
     try {
-      await writeRank({action:'move',itemId:rankItem(source).id,targetId:rankItem(target).id,side,scope:requestedScope});
+      await writeRank({action:'move',itemId:rankItem(source).id,targetId:rankItem(target).id,side,scope:'priority'});
       await onReload(); setResult(source.name+'の順位を変更しました。');
     } catch (e) { setError(e instanceof Error ? e.message : '並べ替えに失敗しました。'); }
     finally { writing.current = false; setBusy(false); }
@@ -67,7 +65,7 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
     const source = ordered.find(p => p.key === sourceKey);
     const target = ordered.find(p => p.key === targetKey);
     if (!source || !target || rankItem(source).priority !== rankItem(target).priority) return;
-    void move(source,target,numbers.get(sourceKey)! < numbers.get(targetKey)! ? 'after' : 'before','priority');
+    void move(source,target,numbers.get(sourceKey)! < numbers.get(targetKey)! ? 'after' : 'before');
   }
   function picture(product:ReviewProduct) {
     return product.image ? <button type="button" className="rank-picture" aria-label={product.name+'の写真を拡大'} aria-haspopup="dialog"
@@ -82,11 +80,8 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
         <button type="button" aria-pressed={scope==='all'} onClick={() => setScope('all')}>買いそうな順</button>
         <button type="button" aria-pressed={scope==='priority'} onClick={() => setScope('priority')}>優先度別</button>
       </div>}
-      {!orderedProducts && !selection && <button type="button" className="rank-reorder" aria-pressed={editing} onClick={() => setEditing(!editing)}>
-        {editing ? <Check size={15}/> : <ArrowDownUp size={15}/>} {editing ? '完了' : '順位を編集'}
-      </button>}
     </div>
-    {focused && <p className="focused-order-note">全体順位{display==='all'?'で表示':'を表示'}<span>{editing?'ドラッグは同じ優先度の中で':'優先度と順位は別々に調整できます'}</span></p>}
+    {focused && <p className="focused-order-note">全体順位{display==='all'?'で表示':'を表示'}<span>優先度と順位は別々に調整できます</span></p>}
     {focused && <div className="rank-desktop-head" aria-hidden="true"><span>写真 / 順位</span><span>商品</span><span>価格</span><span>優先度・買いどき / 予定日</span></div>}
     {error && <p className="rank-error" role="alert">{error}</p>}
     <p className="sr-only" role="status">{result}</p>
@@ -138,15 +133,6 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
                 aria-label={product.name+'の買う条件を編集'} title={guide.condition} onClick={()=>openGuide(product)}>
                 <CircleDollarSign aria-hidden size={14}/><span>{guide.condition}</span>
               </button>}
-              {editing && !orderedProducts && !selection && <div className="rank-move">
-                <label>{moveScope==='priority' ? '優先度内' : '全体'}<select aria-label={product.name+'の移動先順位'} disabled={busy} value={place}
-                  onChange={e => { const to = Number(e.target.value); void move(product,entries[to],to < place ? 'before' : 'after'); }}>
-                  {entries.map((p,i) => <option key={p.key} value={i}>{i+1}位</option>)}</select></label>
-                <button type="button" aria-label={product.name+'を一つ上へ'} disabled={busy || place === 0}
-                  onClick={() => void move(product,entries[place-1],'before')}><ArrowUp size={16}/></button>
-                <button type="button" aria-label={product.name+'を一つ下へ'} disabled={busy || place === entries.length-1}
-                  onClick={() => void move(product,entries[place+1],'after')}><ArrowDown size={16}/></button>
-              </div>}
             </div>
           </PriorityRow>;
         })}</ol>
@@ -163,33 +149,53 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
   </div>;
 }
 
-export function GuideEditor({product,onSaved,onDate,onSavingChange}: {product:ReviewProduct; onSaved:() => Promise<void>;onDate?:(item:Item,trigger:HTMLButtonElement)=>void;onSavingChange?:(busy:boolean)=>void}) {
+export function GuideEditor({product,products,onSaved,onDate,onSavingChange}: {product:ReviewProduct;products:ReviewProduct[]; onSaved:() => Promise<void>;onDate?:(item:Item,trigger:HTMLButtonElement)=>void;onSavingChange?:(busy:boolean)=>void}) {
   const item = rankItem(product);
   const guide = item.buy_guide ?? product.active.buy_guide;
   const [priority,setPriority] = useState(item.priority);
+  const [rankScope,setRankScope] = useState<RankScope>('all');
+  const [positionKey,setPositionKey] = useState(product.key);
+  const entries = rankedProducts(products).filter(entry=>rankScope==='all' || entry.key===product.key || rankItem(entry).priority===priority);
   const [year,setYear] = useState(guide?.month.slice(0,4) || String(new Date().getFullYear()));
   const [monthNumber,setMonthNumber] = useState(guide?.month.slice(5,7) || '');
   const month = monthNumber ? year+'-'+monthNumber : '';
   const [timing,setTiming] = useState<Timing>(guide?.timing || 'by');
   const [condition,setCondition] = useState(guide?.condition || '');
   const [busy,setBusy] = useState(false);
+  const writing = useRef(false);
   const [error,setError] = useState('');
   async function save(e:React.FormEvent) {
-    e.preventDefault(); setBusy(true); onSavingChange?.(true); setError('');
+    e.preventDefault();
+    if (writing.current) return;
+    writing.current=true;setBusy(true);onSavingChange?.(true);setError('');
     try {
-      await writeRank({action:'guide',itemId:item.id,priority,month,timing,condition});
+      const target = entries.find(entry=>entry.key===positionKey);
+      if (!target) throw new Error('商品が移動しました。順位を選び直してください。');
+      const guide = {action:'guide' as const,itemId:item.id,priority,month,timing,condition};
+      await writeRank(target.key===product.key ? guide : {...guide,targetId:rankItem(target).id,
+        side:entries.indexOf(target)<entries.findIndex(entry=>entry.key===product.key)?'before':'after',scope:rankScope});
       await onSaved();
     } catch (e) { setError(e instanceof Error ? e.message : '保存に失敗しました。'); }
-    finally { setBusy(false); onSavingChange?.(false); }
+    finally { writing.current=false;setBusy(false);onSavingChange?.(false); }
   }
   return <form className="rank-editor" onSubmit={save}>
     <h4>{product.name}</h4>
-    <fieldset><legend>優先度</legend>
+    <fieldset disabled={busy}><legend>優先度</legend>
       <div className="rank-levels">{priorityLevels.map(level =>
-        <label key={level}><input type="radio" name="priority" value={level} checked={priority===level} onChange={() => setPriority(level)}/>
+        <label key={level}><input type="radio" name="priority" value={level} checked={priority===level} onChange={() => {setPriority(level);if(rankScope==='priority')setPositionKey(product.key);}}/>
           <span>{priorityNames[level]}</span></label>)}</div>
     </fieldset>
-    <fieldset><legend>買いたい時期 <small>任意</small></legend>
+    <fieldset disabled={busy}><legend>順位</legend>
+      <div className="rank-position-input">
+        <select aria-label="順位の範囲" value={rankScope} onChange={event=>{setRankScope(event.target.value as RankScope);setPositionKey(product.key);}}>
+          <option value="all">全体</option><option value="priority">同じ優先度内</option>
+        </select>
+        <select aria-label="移動先の順位" value={positionKey} onChange={event=>setPositionKey(event.target.value)}>
+          {entries.map((entry,index)=><option key={entry.key} value={entry.key}>{index+1}位</option>)}
+        </select>
+      </div>
+    </fieldset>
+    <fieldset disabled={busy}><legend>買いたい時期 <small>任意</small></legend>
       <div className="rank-month-input">
         <label className="rank-year"><input type="text" inputMode="numeric" aria-label="目安の年" maxLength={4}
           pattern={monthNumber ? '[1-9][0-9]{3}' : undefined} required={!!monthNumber} value={year} onChange={e => setYear(e.target.value)}/> 年</label>
@@ -200,9 +206,9 @@ export function GuideEditor({product,onSaved,onDate,onSavingChange}: {product:Re
           <option value="by">までに</option><option value="around">ごろに</option></select></div>
     </fieldset>
     <label className="rank-condition-input"><span>どんなときに買う？ <small>任意</small></span>
-      <textarea rows={2} maxLength={240} placeholder="例：状態のよい中古が7,000円以内で見つかったら" value={condition} onChange={e => setCondition(e.target.value)}/>
+      <textarea rows={2} maxLength={240} disabled={busy} placeholder="例：状態のよい中古が7,000円以内で見つかったら" value={condition} onChange={e => setCondition(e.target.value)}/>
     </label>
-    {onDate ? <button type="button" className="focused-editor-date" onClick={event=>onDate(product.active,event.currentTarget)}>
+    {onDate ? <button type="button" className="focused-editor-date" disabled={busy} onClick={event=>onDate(product.active,event.currentTarget)}>
       <CalendarCheck2 size={17}/><span>購入予定日<small>{product.active.planned_purchase_date || '日程未定'}</small></span><ChevronRight size={16}/>
     </button> : <p className="rank-date-info">購入日が決まったら、商品詳細の「購入予定日」に登録できます。</p>}
     {error && <p className="rank-error" role="alert">{error}</p>}

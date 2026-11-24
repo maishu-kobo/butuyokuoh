@@ -144,7 +144,7 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
         presentation={desktop.active?'aside':'modal'} toolbar={comparison} lockDismiss={panelBusy}>
         {panel.kind==='display'&&<ListDisplayOptions value={listDisplay} products={products} onChange={value=>{setListDisplay(value);closePanel();}}/>}
         {panel.kind==='product' && (selected?<ProductDetails key={selected.key} product={selected} groups={groups} categories={categories} onReload={reload} onDelete={onDelete} onDate={openDate}/>:<p>この商品はリストから移動しました。</p>)}
-        {panel.kind==='guide' && (selected?<GuideEditor key={selected.key} product={selected} onDate={openDate} onSavingChange={setPanelBusy} onSaved={async()=>{await reload();closePanel();setNotice('優先度と買いどきを保存しました');}}/>:<p>この商品はリストから移動しました。</p>)}
+        {panel.kind==='guide' && (selected?<GuideEditor key={selected.key} product={selected} products={products} onDate={openDate} onSavingChange={setPanelBusy} onSaved={async()=>{await reload();closePanel();setNotice('優先度・順位・買いどきを保存しました');}}/>:<p>この商品はリストから移動しました。</p>)}
         {panel.kind==='menu' && <><div className="review-menu-list">
           {menu.map(({tab,label,Icon})=><Link href={designHref(view,tab)} key={tab} onClick={closePanel}><Icon size={19}/><span>{label}</span><ChevronRight size={15}/></Link>)}
           <Link href={reviewSettingsHref(view,palette,appearance)}><Settings size={19}/><span>設定</span><ChevronRight size={15}/></Link>

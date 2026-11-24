@@ -21,6 +21,80 @@ async function prepare(page: Page) {
   await expect(page.getByRole('heading', { name: 'ほしいものリスト', exact: true })).toBeVisible({ timeout: 20_000 });
 }
 
+for (const width of [320, 390, 1440]) {
+  test(`item guide saves rank and priority together without a list edit mode at ${width}px`, async ({page}, info) => {
+    await page.setViewportSize({width,height:900});
+    await prepare(page);
+    if (width >= 1100) await page.getByRole('button',{name:'縦リスト',exact:true}).click();
+    await expect(page.getByRole('button',{name:'順位を編集',exact:true})).toHaveCount(0);
+    const orderedNames = page.locator('.rank-product strong');
+    await expect(orderedNames).toHaveText(['読書灯','折りたたみ傘','小さなカメラ']);
+    await page.getByRole('button',{name:'小さなカメラの優先度・買いどきを編集',exact:true}).click();
+    const editor=page.getByRole('dialog',{name:'優先度と買いどき',exact:true});
+    const position=editor.getByRole('combobox',{name:'移動先の順位',exact:true});
+    await expect(position.locator('option:checked')).toHaveText('3位');
+    await editor.getByRole('radio',{name:'低',exact:true}).check();
+    await position.selectOption({label:'1位'});
+    await editor.getByRole('textbox',{name:/どんなときに買う/}).fill('セールになったら');
+    // Draft controls do not write until Save, and comparisons keep the draft.
+    expect((await (await page.request.get('/api/items')).json()).find((item:{name:string})=>item.name==='小さなカメラ').priority).toBe(3);
+    if (width >= 1100) {
+      await editor.getByRole('button',{name:'今のPC表示',exact:true}).click();
+      await expect(position.locator('option:checked')).toHaveText('1位');
+      await editor.getByRole('button',{name:'縦リスト',exact:true}).click();
+    }
+    expect(await editor.evaluate(node=>node.scrollWidth<=node.clientWidth+1)).toBeTruthy();
+    await editor.getByRole('button',{name:'保存',exact:true}).scrollIntoViewIfNeeded();
+    await expect(editor.getByRole('button',{name:'保存',exact:true})).toBeInViewport();
+    await page.screenshot({path:info.outputPath(`guide-rank-${width}.png`)});
+    const requests:unknown[]=[];
+    await page.route('**/api/items/ranking',async route=>{requests.push(route.request().postDataJSON());await route.continue();});
+    await editor.getByRole('button',{name:'保存',exact:true}).click();
+    await expect(editor).toHaveCount(0);
+    await expect(orderedNames).toHaveText(['小さなカメラ','読書灯','折りたたみ傘']);
+    expect(requests).toHaveLength(1);
+    const saved=await (await page.request.get('/api/items?with=buy-guide')).json();
+    expect(saved.find((item:{name:string})=>item.name==='小さなカメラ')).toMatchObject({priority:4,planned_purchase_date:'2027-02-10',buy_guide:{condition:'セールになったら'}});
+    await page.getByRole('button',{name:'読書灯の優先度・買いどきを編集',exact:true}).click();
+    await editor.getByRole('combobox',{name:'順位の範囲',exact:true}).selectOption('priority');
+    await expect(position.locator('option')).toHaveCount(2);
+    await position.selectOption({label:'2位'});
+    await editor.getByRole('button',{name:'保存',exact:true}).click();
+    await expect(editor).toHaveCount(0);
+    await expect(orderedNames).toHaveText(['小さなカメラ','折りたたみ傘','読書灯']);
+    await page.reload();
+    await expect(orderedNames).toHaveText(['小さなカメラ','折りたたみ傘','読書灯']);
+  });
+}
+
+test('rank editor keeps a rejected draft, cancels without saving, and uses all products when filtered', async ({page}) => {
+  await page.setViewportSize({width:1440,height:900});
+  await prepare(page);
+  await page.getByRole('button',{name:'縦リスト',exact:true}).click();
+  await page.getByRole('searchbox',{name:'商品名・メモ・お店で検索'}).fill('小さなカメラ');
+  await expect(page.locator('.rank-product strong')).toHaveCount(1);
+  await page.getByRole('button',{name:'小さなカメラの優先度・買いどきを編集',exact:true}).click();
+  const editor=page.getByRole('dialog',{name:'優先度と買いどき',exact:true});
+  const position=editor.getByRole('combobox',{name:'移動先の順位',exact:true});
+  await expect(position.locator('option')).toHaveCount(3);
+  await position.selectOption({label:'1位'});
+  await editor.getByRole('radio',{name:'低',exact:true}).check();
+  await page.route('**/api/items/ranking',route=>route.fulfill({status:409,json:{error:'商品が移動しました。リストを読み直してください。'}}),{times:1});
+  await editor.getByRole('button',{name:'保存',exact:true}).click();
+  await expect(editor.getByRole('alert')).toContainText('商品が移動しました');
+  await expect(position.locator('option:checked')).toHaveText('1位');
+  await expect(editor.getByRole('radio',{name:'低',exact:true})).toBeChecked();
+  await editor.getByRole('button',{name:'優先度と買いどきを閉じる',exact:true}).click();
+  await page.getByRole('button',{name:'小さなカメラの優先度・買いどきを編集',exact:true}).click();
+  await expect(position.locator('option:checked')).toHaveText('3位');
+  await expect(editor.getByRole('radio',{name:'普通',exact:true})).toBeChecked();
+  await position.selectOption({label:'1位'});
+  await editor.getByRole('button',{name:'保存',exact:true}).click();
+  await expect(editor).toHaveCount(0);
+  await page.getByRole('searchbox',{name:'商品名・メモ・お店で検索'}).clear();
+  await expect(page.locator('.rank-product strong')).toHaveText(['小さなカメラ','読書灯','折りたたみ傘']);
+});
+
 for (const width of [1280, 1920]) {
   test(`reading menus keep a single content column at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 1100 });

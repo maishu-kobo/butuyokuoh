@@ -134,7 +134,6 @@
   .combined-home[data-desktop-layout=workspace] [data-panel-open=true] .rank-body { display: block; }
   .combined-home[data-desktop-layout=workspace] [data-panel-open=true] .rank-product { grid-template-columns: minmax(0,1fr) 7rem; gap: 14px; }
   .combined-home[data-desktop-layout=workspace] [data-panel-open=true] .rank-meta { max-width: 390px; }
-  .combined-home[data-desktop-layout=workspace] [data-panel-open=true] .rank-move { max-width: 390px; }
 
   .combined-home[data-desktop-layout=workspace] .spend-view { grid-template-columns: minmax(0,1fr) clamp(260px,21vw,330px); gap: 36px; padding: 0 var(--desktop-gutter) 32px; }
   .combined-home[data-desktop-layout=workspace] .spend-overview { padding: 20px 24px; border: 1px solid var(--rv-line); border-radius: 9px; background: var(--rv-bg); }
@@ -175,7 +174,6 @@
   .combined-home[data-screen=list][data-list-layout=reading] .focused-date-text { flex-wrap: nowrap; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .combined-home[data-screen=list][data-list-layout=reading] :is(.focused-date-year,.rank-month-year) { display: inline; }
   .combined-home[data-screen=list][data-list-layout=reading] .focused-condition { min-height: 28px; padding: 2px 0; }
-  .combined-home[data-screen=list][data-list-layout=reading] .rank-move { max-width: 380px; }
 
   /* The reading comparison follows one column across every menu. */
   .desktop-secondary-page[data-reading-layout=true] .desktop-page-heading { position: relative; display: block; min-height: 112px; padding: 54px 0 16px; }
