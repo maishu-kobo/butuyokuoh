@@ -43,7 +43,7 @@ export default function DesktopPage({ title, page, enabled = true, children, gro
     setBusy(false);
     requestAnimationFrame(() => (invoker.current?.isConnected && invoker.current.getClientRects().length ? invoker.current : frame.current)?.focus({ preventScroll: true }));
   }
-  const comparison = <DesktopLayoutToggle value={desktop.layout} onChange={desktop.choose}/>;
+  const comparison = desktop.preview ? <DesktopLayoutToggle value={desktop.layout} onChange={desktop.choose}/> : undefined;
   return <div className={`desktop-secondary-page${enabled ? ' design-review' : ''}`} data-page={page} data-desktop-layout={active ? 'workspace' : 'current'}
     data-reading-layout={active && desktop.layout === 'reading' || undefined}>
     <div className="desktop-page-frame" ref={frame} tabIndex={-1} data-panel-open={open}>

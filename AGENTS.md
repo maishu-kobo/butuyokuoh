@@ -110,6 +110,7 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 ## 作業の前後
 
 始める前に、`git log`、開いている Issue と PR、`npm test` を確認する。同じ失敗を2回したら、再発を防ぐ1行をこのファイルに足す PR を開く。
+zshで未確認のファイル名をglob指定せず、`rg --files`で存在を確認するか、`rg --glob`へ引用符付きで渡す。
 
 Next.js の更新通知による初回停止はアプリの失敗と分けて記録し、同じ条件ですぐ一度再実行してからビルド・ブラウザテストの結果を判定する。
 `security-headers.test.ts` が `fetch failed` で止まったときは、確認用 Next dev の終了と更新通知を切り分け、テストサーバーを同時起動せずに再確認する。

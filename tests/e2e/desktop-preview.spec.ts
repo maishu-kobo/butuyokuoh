@@ -1,11 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import Database from 'better-sqlite3';
+import sharp from 'sharp';
 
 test.beforeEach(async ({page}) => {
   await page.clock.setFixedTime(new Date('2026-11-23T03:00:00Z'));
 });
 
-async function prepare(page: Page) {
+async function prepare(page: Page, url = '/design?pc=workspace') {
   const member = await page.request.post('/api/auth/register', {
     data: { email: `desktop-${crypto.randomUUID()}@example.test`, password: 'test-password' },
   });
@@ -17,9 +18,55 @@ async function prepare(page: Page) {
     });
     expect(item.ok()).toBeTruthy();
   }
-  await page.goto('/design?pc=workspace');
+  await page.goto(url);
   await expect(page.getByRole('heading', { name: 'ほしいものリスト', exact: true })).toBeVisible({ timeout: 20_000 });
 }
+
+test('the released desktop defaults to reading across menus without comparison controls', async ({page}) => {
+  await page.setViewportSize({width:1440,height:900});
+  await page.addInitScript(()=>localStorage.setItem('butuyokuoh:desktop-preview','current'));
+  await prepare(page,'/design');
+  const nav=page.getByRole('navigation',{name:'PCナビゲーション'});
+  await expect(nav).toBeVisible();
+  await expect(page.locator('.combined-home')).toHaveAttribute('data-list-layout','reading');
+  await expect(page.getByRole('group',{name:'PCの表示を比較'})).toHaveCount(0);
+  await expect(nav.getByRole('link',{name:'リストの管理',exact:true})).toHaveCount(0);
+  await nav.getByRole('button',{name:'登録',exact:true}).click();
+  const registration=page.getByRole('dialog',{name:'ほしいものを登録',exact:true});
+  await expect(registration.getByRole('textbox',{name:'商品URL',exact:true})).toBeVisible();
+  await expect(registration.getByRole('group',{name:'PCの表示を比較'})).toHaveCount(0);
+  await registration.getByRole('button',{name:'ほしいものを登録を閉じる',exact:true}).click();
+  await nav.getByRole('link',{name:'出費予定',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'出費予定',exact:true})).toBeVisible();
+  await expect(page.locator('.combined-home')).toHaveAttribute('data-list-layout','reading');
+  await nav.getByRole('link',{name:'設定',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'設定',exact:true})).toBeVisible();
+  await page.reload();
+  await expect(nav).toBeVisible();
+  await expect(page.locator('.desktop-secondary-page')).toHaveAttribute('data-reading-layout','true');
+  await expect(page.getByRole('group',{name:'PCの表示を比較'})).toHaveCount(0);
+  await nav.getByRole('link',{name:'ほしいものリスト',exact:true}).click();
+  await page.getByRole('switch',{name:'新しい表示を使う'}).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(nav).toBeHidden();
+  await page.getByRole('switch').click();
+  await expect(page).toHaveURL(/\/design$/);
+  await expect(page.locator('.combined-home')).toHaveAttribute('data-list-layout','reading');
+  await expect(page.getByRole('group',{name:'PCの表示を比較'})).toHaveCount(0);
+});
+
+test('explicit desktop comparison remains available across menus and reloads', async ({page}) => {
+  await page.setViewportSize({width:1440,height:900});
+  await prepare(page);
+  await expect(page.getByRole('group',{name:'PCの表示を比較'})).toBeVisible();
+  await page.getByRole('button',{name:'縦リスト',exact:true}).click();
+  await page.getByRole('navigation',{name:'PCナビゲーション'}).getByRole('link',{name:'設定',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'設定',exact:true})).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('button',{name:'縦リスト',exact:true})).toHaveAttribute('aria-pressed','true');
+  await page.getByRole('button',{name:'今のPC表示',exact:true}).click();
+  await expect(page.getByRole('navigation',{name:'PCナビゲーション'})).toBeHidden();
+});
 
 for (const width of [320, 390, 1440]) {
   test(`item guide saves rank and priority together without a list edit mode at ${width}px`, async ({page}, info) => {
@@ -375,6 +422,36 @@ test('secondary pages keep registration drafts and settings controls during comp
     await expect(page.getByRole('group', { name: 'PCの表示を比較' })).toBeHidden();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
   }
+});
+
+test('photo registration from settings refreshes comparison groups without reloading', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const jpeg = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#a47750' } }).jpeg().toBuffer();
+  await page.route('https://item-shopping.c.yimg.jp/**', route => route.fulfill({ contentType: 'image/jpeg', body: jpeg }));
+  await page.route('https://thumbnail.image.rakuten.co.jp/**', route => route.abort());
+  await prepare(page, '/design');
+  const nav = page.getByRole('navigation', { name: 'PCナビゲーション' });
+  await nav.getByRole('link', { name: '設定', exact: true }).click();
+  const groups = page.locator('[data-settings-section="groups"]');
+  await groups.getByRole('button', { name: '比較グループ管理 (0)' }).click();
+  await nav.getByRole('button', { name: '登録', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'ほしいものを登録', exact: true });
+  await sheet.getByRole('tab', { name: '写真', exact: true }).click();
+  await sheet.getByLabel('登録する画像ファイル').setInputFiles({ name: 'photo.jpg', mimeType: 'image/jpeg', buffer: jpeg });
+  await sheet.getByRole('button', { name: 'この写真から商品を検索' }).click();
+  const candidates = sheet.getByRole('checkbox', { name: '候補を選ぶ テスト用ゲルボールペン 0.5', exact: true });
+  await expect(candidates).toHaveCount(2);
+  await candidates.nth(0).check();
+  await candidates.nth(1).check();
+  await sheet.getByRole('button', { name: '選んだ候補を登録' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(groups.getByRole('button', { name: '比較グループ管理 (1)' })).toBeVisible();
+  await expect(groups.getByText('テスト用ゲルボールペン 0.5', { exact: true })).toBeVisible();
+  await nav.getByRole('button', { name: '登録', exact: true }).click();
+  await sheet.getByRole('tab', { name: '手入力', exact: true }).click();
+  await sheet.getByRole('button', { name: '画像・優先度・購入予定など', exact: true }).click();
+  await expect(sheet.getByRole('combobox', { name: '比較グループ', exact: true }).locator('option')).toHaveText(['なし', 'テスト用ゲルボールペン 0.5']);
+  await expect(nav.getByRole('link', { name: '設定', exact: true })).toHaveAttribute('aria-current', 'page');
 });
 
 test('registering from statistics refreshes the visible totals without leaving the page', async ({ page }) => {

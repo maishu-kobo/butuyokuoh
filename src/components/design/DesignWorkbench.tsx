@@ -53,7 +53,7 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
   const [listDisplay,setListDisplay]=useState<ListDisplay>('all');
   const [panelBusy,setPanelBusy]=useState(false);
   const desktop=useDesktopWorkspace();
-  const comparison=<DesktopLayoutToggle value={desktop.layout} onChange={desktop.choose}/>;
+  const comparison=desktop.preview?<DesktopLayoutToggle value={desktop.layout} onChange={desktop.choose}/>:undefined;
   const isBudget=view==='plan';
   const integrated=desktop.active&&desktop.layout==='reading'&&!isBudget;
   useLayoutEffect(() => {

@@ -470,7 +470,7 @@ export default function SettingsClient({ mcpUrl, back = '/' }: { mcpUrl: string;
   }
 
   return (
-    <DesktopPage page="settings" title="設定" enabled={isNewUi} categories={categories} groups={groups} isGuest={isGuest}>
+    <DesktopPage page="settings" title="設定" enabled={isNewUi} categories={categories} groups={groups} isGuest={isGuest} onReload={fetchGroups}>
     <div className="agenda-settings min-h-screen bg-[var(--color-bg)]">
       {/* ヘッダー */}
       <AgendaBrandBar />
