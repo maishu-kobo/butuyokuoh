@@ -5,7 +5,6 @@ import { useTheme } from '../ThemeProvider';
 import { readReviewTab, readReviewView, reviewHref } from '@/lib/design-home';
 import { readLightPalette, readPreviewAppearance } from '@/lib/design-palettes';
 import { readListPreview } from '@/lib/design-list-preview';
-import './ui-version-switch.css';
 
 const savedLocationKey = 'butuyokuoh:new-ui-location';
 

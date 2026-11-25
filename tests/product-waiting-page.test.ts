@@ -51,6 +51,17 @@ test('Web registration/preview and the bounded guest scraper explain the waiting
     const { scrapeGuestUrl } = await import('../src/lib/guest-scraper');
     await assert.rejects(() => scrapeGuestUrl(url, user.id), error =>
       error instanceof Error && messagePattern.test(error.message));
+    // ゲスト向け文言: 簡易取得・ログインの限界・手動追加が分かる（#408）
+    await assert.rejects(
+      () => scrapeGuestUrl(url, user.id),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /ゲスト体験では/);
+        assert.match(error.message, /ブラウザを使わない|簡易取得/);
+        assert.match(error.message, /手動で追加/);
+        return true;
+      },
+    );
     const database = await db();
     assert.equal((database.prepare('SELECT COUNT(*) AS count FROM items WHERE user_id = ?').get(user.id) as { count: number }).count, 0);
   } finally { installProductFetchPort(null); }

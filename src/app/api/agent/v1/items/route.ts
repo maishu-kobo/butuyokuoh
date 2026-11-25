@@ -6,6 +6,7 @@ import {
   listAgentItems,
   type AgentItemStatus,
 } from '@/lib/agent-items';
+import { withMemoFollowUp } from '@/lib/agent-memo';
 import { withAgentNotice } from '@/lib/agent-response';
 import { requireAgentToken } from '@/lib/agent-token';
 import { GuestError } from '@/lib/guest';
@@ -56,7 +57,10 @@ export async function POST(request: NextRequest) {
       auditAction: 'items.add',
     });
     const result = await addAgentItem(auth, body);
-    return NextResponse.json(withAgentNotice(result), {
+    return NextResponse.json(withAgentNotice(withMemoFollowUp(result, {
+      kind: 'add',
+      requestedNotes: body.notes,
+    })), {
       status: 201,
       headers: { 'Cache-Control': 'no-store' },
     });

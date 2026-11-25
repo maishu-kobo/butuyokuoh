@@ -23,7 +23,7 @@ Agent API の fixture テストは商品応答に加えて DNS もテスト内�
 
 ### ランナー（GitHub-hosted）
 
-すべての実行可能な workflow ジョブは `ubuntu-24.04` を使う。`Select CI runner`、`github_hosted_only`、Blacksmith Environment / CLI / API 呼び出しは通常 CI から外した（緊急移行。関連 #287 / #232。経緯は `docs/WORKLOG.md`）。検査内容・ジョブ名（`test, types, build`、`npm audit`、`playwright`、`analyze`、`dependency review`、`gitleaks`、`quarantined tests`）・権限・main 配備のゲート条件は変えない。`scripts/blacksmith-*.mjs` と対応テストは履歴用に残すが、workflow からは呼ばない。
+すべての実行可能な workflow ジョブは `ubuntu-24.04` を使う。`Select CI runner`、`github_hosted_only`、Blacksmith Environment / CLI / API 呼び出しは通常 CI から外した（緊急移行。関連 #287 / #232。経緯はそれらの Issue / 対応 PR）。検査内容・ジョブ名（`test, types, build`、`npm audit`、`playwright`、`analyze`、`dependency review`、`gitleaks`、`quarantined tests`）・権限・main 配備のゲート条件は変えない。`scripts/blacksmith-*.mjs` と対応テストは履歴用に残すが、workflow からは呼ばない。
 
 公開リポジトリの GitHub-hosted Linux は無料枠の標準ランナーであり、private リポジトリ向けの 2-core 制限とは別である。
 

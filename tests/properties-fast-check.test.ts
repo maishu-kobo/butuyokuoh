@@ -296,6 +296,8 @@ test('Yahoo! と楽天の価格は負にも NaN にもならず、正の価格�
   // 性質: createYahooSearch / createRakutenSearch が返す価格は 0 以上の安全な整数で、負でも NaN でもない。
   // その正の価格を formatYen で表示し、parseProductHtml が Yahoo! / 楽天のページとして読むと元の整数に戻る。
   // 0 は検索側が受け取る。ページの価格読みは 0 円を欠落として捨てる（既存の仕様）ので、0 の往復は要求しない。
+  // スクレイプの円ガードは 1〜1e9（#397）。それより大きい検索価格の HTML 往復は未取得になる。
+  const SCRAPED_YEN_MAX = 1_000_000_000;
   const priceArb = fc.oneof(
     fc.integer({ min: -50_000, max: 2_000_000_000 }),
     fc.double(),
@@ -361,10 +363,15 @@ test('Yahoo! と楽天の価格は負にも NaN にもならず、正の価格�
           const page = `<title>商品</title>${formatted}`;
           const fromYahoo = parseProductHtml(page, 'https://store.shopping.yahoo.co.jp/example/pen').price;
           const fromRakuten = parseProductHtml(page, 'https://item.rakuten.co.jp/example/pen').price;
-          assert.equal(fromYahoo, candidate.price);
-          assert.equal(fromRakuten, candidate.price);
-          assert.equal(Number.isNaN(fromYahoo), false);
-          assert.ok((fromYahoo ?? 0) >= 0);
+          if (candidate.price <= SCRAPED_YEN_MAX) {
+            assert.equal(fromYahoo, candidate.price);
+            assert.equal(fromRakuten, candidate.price);
+            assert.equal(Number.isNaN(fromYahoo), false);
+            assert.ok((fromYahoo ?? 0) >= 0);
+          } else {
+            assert.equal(fromYahoo, null);
+            assert.equal(fromRakuten, null);
+          }
         } else {
           assert.equal(formatted, '¥0');
           assert.equal(parseProductHtml(`<title>商品</title>${formatted}`, 'https://store.shopping.yahoo.co.jp/example/pen').price, null);

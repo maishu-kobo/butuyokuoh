@@ -34,19 +34,22 @@ const sourceLabels: Record<string, string> = {
   other: 'その他',
 };
 
-export default function StatsView() {
+export default function StatsView({ revision = 0 }: { revision?: number }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchStats = async () => {
       const res = await apiFetch('/api/stats');
       const data = await res.json();
+      if (cancelled) return;
       setStats(data);
       setLoading(false);
     };
     fetchStats();
-  }, []);
+    return () => { cancelled = true; };
+  }, [revision]);
 
   if (loading) {
     return <div className="text-center py-8 text-gray-500 dark:text-gray-400">読み込み中...</div>;
@@ -60,7 +63,7 @@ export default function StatsView() {
 
   return (
     <div className="agenda-stats space-y-6">
-      <div className="flex items-center gap-2">
+      <div className="agenda-stats-title flex items-center gap-2">
         <BarChart3 className="text-orange-500" size={24} />
         <h2 className="text-lg font-semibold text-gray-700 dark:text-gray-200">統計ダッシュボード</h2>
       </div>
@@ -104,7 +107,7 @@ export default function StatsView() {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="agenda-stats-breakdown grid md:grid-cols-2 gap-6">
         {/* カテゴリ別 */}
         <div className="agenda-ledger-panel bg-white dark:bg-slate-800 rounded-lg shadow p-4">
           <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-4">カテゴリ別</h3>

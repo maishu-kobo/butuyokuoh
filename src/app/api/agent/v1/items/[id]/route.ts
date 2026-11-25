@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { guestErrorResponse } from '@/lib/api-access';
 import { getAgentItem, updateAgentItem } from '@/lib/agent-items';
+import { withMemoFollowUp } from '@/lib/agent-memo';
 import { withAgentNotice } from '@/lib/agent-response';
 import { requireAgentToken } from '@/lib/agent-token';
 import { GuestError } from '@/lib/guest';
@@ -52,7 +53,10 @@ export async function PATCH(
     }
     // 画像ホストの名前解決は updateAgentItem の中。認証（requireAgentToken）のあとにだけ走る。
     const item = await updateAgentItem(auth, parseId(raw), body);
-    return NextResponse.json(withAgentNotice(item), {
+    const payload = Object.prototype.hasOwnProperty.call(body, 'notes')
+      ? withMemoFollowUp(item, { kind: 'update' })
+      : item;
+    return NextResponse.json(withAgentNotice(payload), {
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch (error) {

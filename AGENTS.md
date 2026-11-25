@@ -12,7 +12,6 @@ Next.js 16 / React 19 は、古い学習データと違うことがある。迷�
 
 - スキーマは `src/lib/db.ts`。API は `src/app/api/`
 - 単体テストは `tests/*.test.ts`。e2e は `tests/e2e/`
-- `looper/state.md` はループの状態ファイル
 - `data/`（SQLite）と `.env*` は gitignore
 
 ## コマンド
@@ -41,6 +40,19 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 レビューは `REVIEW.md` に従う。本文はここへ複製しない。
 
 作者のエージェントは、`.github/pull_request_template.md` の証拠を PR に書く。「終わった」だけでは完了にしない。`npm test`、`npx tsc --noEmit`、`npm run lint`、`npm run build` は、そのセッションの中で自分で実行し、結果を PR に書く。CI を待つためだけに、実行を終わらせない。
+
+## PR の説明
+
+本文の先頭は 1〜2 文にする。何をする PR か、レビューでよく見る必要があるかを書く。UI が変わるときはスクリーンショットを置く。`Closes #N` は折りたたみの外に残す。
+
+背景、変更、確認手順、テスト結果、リスクは次の折りたたみに入れる。`</summary>` の直後は空行にする。要約の行には、書いたモデル名と、その文面が対応するコミットの短い SHA を書く。レビューで差分が変わったら、先頭の文と折りたたみ（または SHA）を更新する。確認項目の見出しは `.github/pull_request_template.md` から動かさない。
+
+```html
+<details>
+<summary>エージェントによる詳細（モデル名 / コミットの短い SHA 時点）</summary>
+
+</details>
+```
 
 ## 開発の進め方
 
@@ -98,13 +110,17 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 ## 作業の前後
 
 始める前に、`git log`、開いている Issue と PR、`npm test` を確認する。同じ失敗を2回したら、再発を防ぐ1行をこのファイルに足す PR を開く。
+zshで未確認のファイル名をglob指定せず、`rg --files`で存在を確認するか、`rg --glob`へ引用符付きで渡す。
 
 Next.js の更新通知による初回停止はアプリの失敗と分けて記録し、同じ条件ですぐ一度再実行してからビルド・ブラウザテストの結果を判定する。
+`security-headers.test.ts` が `fetch failed` で止まったときは、確認用 Next dev の終了と更新通知を切り分け、テストサーバーを同時起動せずに再確認する。
+E2E が「読み込み中」で止まるときは、サーバの停止・再起動と HMR の接続元エラーをログで切り分け、同じ失敗の再実行だけを繰り返さない。
+モーダルを閉じた直後のキー操作が失敗したら、自動フォーカス復元との競合を確認し、表示変更の不具合と切り分ける。
 
 新しいUIのテーマは適用範囲を限定し、旧UIと匿名状態からのログインもブラウザで確認する。
 認証テストの会員・ゲストを切り替えるときは、account_type だけを変えず各ユーザー型の必須項目を確認してから作る。
 
-日付付きの決定・結果・残件は `docs/WORKLOG.md` に追記する（仕様の正本ではない）。
+経緯・進捗・確認結果は PR の説明（と必要なら Issue）に書く。利用者に見える変更は `CHANGELOG.md` の `[Unreleased]` へ。耐久する設計判断だけを、適切な `docs/` の仕様ファイルに残す。`docs/WORKLOG.md` への追記はしない（重複と並行 PR のコンフリクトを避ける）。
 
 <!-- BEGIN:nextjs-agent-rules -->
 

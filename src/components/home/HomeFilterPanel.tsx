@@ -19,6 +19,7 @@ export default function HomeFilterPanel({
   groups,
   selectedGroup,
   onSelectedGroup,
+  inline = false,
 }: {
   isOpen: boolean;
   onToggle: () => void;
@@ -34,12 +35,13 @@ export default function HomeFilterPanel({
   groups: ComparisonGroup[];
   selectedGroup: number | null;
   onSelectedGroup: (value: number | null) => void;
+  inline?: boolean;
 }) {
   const filtering = Boolean(searchQuery || selectedCategory || selectedPriority || selectedGroup || sortBy !== 'priority');
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm">
-      <button
+    <div className={inline ? 'integrated-filters' : 'bg-white dark:bg-slate-800 rounded-2xl shadow-sm'}>
+      {!inline && <button
         onClick={onToggle}
         className="w-full px-4 py-3 flex items-center justify-between text-slate-600 dark:text-slate-300 hover:bg-[var(--kinari)] dark:hover:bg-slate-700 transition-colors rounded-2xl"
       >
@@ -53,11 +55,11 @@ export default function HomeFilterPanel({
           )}
         </div>
         {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-      </button>
+      </button>}
 
       {isOpen && (
         <div className="px-4 pb-4 space-y-3 border-t border-slate-100 dark:border-slate-700">
-          <div className="relative pt-3">
+          {!inline && <div className="relative pt-3">
             <Search className="absolute left-3 top-1/2 translate-y-0.5 text-slate-400" size={18} />
             <input
               type="text"
@@ -66,12 +68,13 @@ export default function HomeFilterPanel({
               placeholder="商品名、メモ、カテゴリで検索..."
               className="w-full pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
-          </div>
+          </div>}
 
           <div className="flex flex-wrap gap-3">
             <div className="flex items-center gap-2">
               <ArrowUpDown size={16} className="text-slate-500 dark:text-slate-400" />
               <select
+                aria-label="並び順"
                 value={sortBy}
                 onChange={(event) => onSortBy(event.target.value as HomeSortBy)}
                 className="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -88,6 +91,7 @@ export default function HomeFilterPanel({
             <div className="flex items-center gap-2">
               <span className="text-sm text-slate-500 dark:text-slate-400">優先度:</span>
               <select
+                aria-label="優先度"
                 value={selectedPriority || ''}
                 onChange={(event) => onSelectedPriority(event.target.value ? Number(event.target.value) : null)}
                 className="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"

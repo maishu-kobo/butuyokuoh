@@ -7,7 +7,6 @@
 .focused-display > span { overflow-wrap: anywhere; text-align: left; }
 .focused-display > svg { flex: none; }
 .focused-display > svg:first-child { color: var(--rv-accent); }
-.focused-list .rank-reorder { min-height: 44px; flex: none; }
 .focused-order-note { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 3px 8px; padding: 9px 0 3px; margin: 0; font-size: .64rem; line-height: 1.5; color: var(--rv-muted); }
 .rank-list.focused-list .rank-row { grid-template-columns: 64px minmax(0,1fr); align-items: start; gap: 14px; padding: 8px 0; transition: background .1s,opacity .1s; }
 .focused-list .rank-position { gap: 0; }
@@ -33,12 +32,8 @@
 .focused-list .focused-date { min-width: 0; min-height: 44px; width: 6rem; gap: 4px; text-align: left; font-size: .72rem; }
 .focused-date-text { display: flex; flex-wrap: wrap; flex: 1; min-width: 0; }
 .focused-date-text > span { white-space: nowrap; }
+.focused-date-year[data-current-year=true],.rank-month-year { display: none; }
 .focused-date:hover { color: var(--rv-accent); }
-.focused-list .rank-move { display: grid; grid-template-columns: minmax(0,1fr) 44px 44px; gap: 5px; }
-.focused-list .rank-move label { min-width: 0; white-space: nowrap; }
-.focused-list .rank-move :is(select,button) { min-height: 44px; }
-.focused-list .rank-move button { width: 44px; }
-.focused-list .rank-move select { width: 100%; min-width: 0; font-size: max(16px,1rem); }
 .focused-list .rank-row[data-compatible=false] { opacity: .35; }
 .focused-list .rank-row[data-compatible=true]:not([data-dragging]) { background: var(--rv-soft); outline: 1px dashed var(--rv-line); outline-offset: -1px; }
 .focused-empty { padding: 25px 0; color: var(--rv-muted); font-size: .82rem; line-height: 1.7; }
@@ -59,8 +54,6 @@
   .focused-list { padding-inline: 12px; }
   .rank-list.focused-list .rank-row { gap: 10px; }
   .focused-order-note { font-size: .61rem; }
-  .focused-list .rank-move { align-items: end; padding: 4px 5px; }
-  .focused-list .rank-move label { display: grid; gap: 2px; font-size: .68rem; }
 }
 @media(prefers-reduced-motion:reduce) { .focused-list .rank-row { transition: none; } }
 
@@ -87,5 +80,4 @@
   .focused-list .rank-guide-line,.focused-list .focused-date { font-size: .8rem; }
   .focused-list .focused-date { width: 6.5rem; }
   .focused-list .focused-condition { grid-column: 1; grid-row: 2; align-self: start; font-size: .8rem; padding-top: 4px; }
-  .focused-list .rank-move { grid-column: 2; grid-row: 2; align-self: start; width: 100%; margin-top: 4px; }
 }
