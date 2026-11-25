@@ -87,11 +87,12 @@ export function PriorityDrag({ children, onMove }: {
   </DndContext></RankDragState.Provider>;
 }
 
-export function PriorityRow({product,priority,position,peers,busy,rank,leading,rankInHandle=false,children}: {
+export function PriorityRow({product,priority,position,peers,busy,rank,leading,rankInHandle=false,children,disableDrag=false}: {
   product:ReviewProduct; priority:number; position:number; peers:ReviewProduct[]; busy:boolean; rank:ReactNode;leading?:ReactNode;rankInHandle?:boolean; children:ReactNode;
+  disableDrag?:boolean;
 }) {
   const keyboard = useContext(RankDragState)!;
-  const canDrag = peers.length > 1;
+  const canDrag = !disableDrag && peers.length > 1;
   const data = {priority, position, name:product.name};
   const disabled = busy || !canDrag;
   const {attributes,listeners,isDragging,setNodeRef:setDragNode,setActivatorNodeRef} =

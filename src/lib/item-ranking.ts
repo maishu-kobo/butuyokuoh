@@ -73,5 +73,8 @@ export function saveBuyGuide(db:Database.Database,userId:number,action:GuideActi
       else clear.run(offer.id);
     }
     if (group !== null) db.prepare('UPDATE comparison_groups SET priority=? WHERE id=? AND user_id=?').run(action.priority,group,userId);
+    // Keep the guide and rank in one transaction. A stale destination must roll back both.
+    if (action.targetId !== undefined) moveProduct(db,userId,{action:'move',itemId:action.itemId,
+      targetId:action.targetId,side:action.side,scope:action.scope});
   }).immediate();
 }

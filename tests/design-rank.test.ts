@@ -87,3 +87,68 @@ test('restoring a hidden shop cannot resurrect a stale guide or priority', () =>
     }
   } finally { db.close(); }
 });
+
+test('a guide can save a global rank across priorities in one action', () => {
+  const db = fixture();
+  try {
+    const action = parseRankAction({action:'guide',itemId:3,priority:5,month:'2027-02',timing:'around',condition:'値下がりしたら',
+      targetId:2,side:'before',scope:'all'});
+    assert.ok(action?.action === 'guide');
+    saveBuyGuide(db,1,action);
+    assert.deepEqual(db.prepare('SELECT id FROM items WHERE user_id=1 ORDER BY sort_order,id').all(),[{id:3},{id:1},{id:2},{id:4}]);
+    assert.deepEqual(db.prepare('SELECT priority,notes,planned_purchase_date FROM items WHERE id=3').get(),
+      {priority:5,notes:'メモ\nそのまま',planned_purchase_date:null});
+    assert.deepEqual(attachBuyGuides(db,1,[{id:3}])[0].buy_guide,{month:'2027-02',timing:'around',condition:'値下がりしたら'});
+  } finally { db.close(); }
+});
+
+test('combined guide movement uses the new priority and keeps a photo product together', () => {
+  for (const hidden of ["deleted_at='2026-11-22'",'is_purchased=1']) {
+    const db = fixture();
+    try {
+      db.exec(`UPDATE items SET ${hidden} WHERE id=1`);
+      const action = parseRankAction({action:'guide',itemId:2,priority:4,month:'2027-03',timing:'by',condition:'試着してから',
+        targetId:3,side:'after',scope:'priority'});
+      assert.ok(action?.action === 'guide');
+      saveBuyGuide(db,1,action);
+      assert.deepEqual(db.prepare('SELECT id,sort_order,priority FROM items WHERE user_id=1 ORDER BY sort_order,id').all(),
+        [{id:3,sort_order:1,priority:4},{id:1,sort_order:2,priority:4},{id:2,sort_order:2,priority:4},{id:4,sort_order:3,priority:2}]);
+      assert.deepEqual(db.prepare('SELECT priority FROM comparison_groups WHERE id=7').get(),{priority:4});
+      db.exec('UPDATE items SET deleted_at=NULL,is_purchased=0 WHERE id=1');
+      assert.deepEqual(attachBuyGuides(db,1,[{id:1},{id:2}]).map(item=>item.buy_guide),
+        [1,2].map(()=>({month:'2027-03',timing:'by',condition:'試着してから'})));
+    } finally { db.close(); }
+  }
+});
+
+test('an invalid move rolls back every guide, priority and rank change', () => {
+  for (const move of [
+    {targetId:5,side:'before',scope:'all'},
+    {targetId:999,side:'after',scope:'all'},
+    {targetId:4,side:'before',scope:'priority'},
+  ]) {
+    const db = fixture();
+    try {
+      saveBuyGuide(db,1,{action:'guide',itemId:2,priority:2,month:'2027-01',timing:'by',condition:'元の条件'});
+      const snapshot = () => ['items','item_buy_guides','comparison_groups'].map(table=>db.prepare('SELECT * FROM '+table+' ORDER BY rowid').all());
+      const before = snapshot();
+      const action = parseRankAction({action:'guide',itemId:2,priority:4,month:'2027-03',timing:'around',condition:'新しい条件',...move});
+      assert.ok(action?.action === 'guide');
+      assert.throws(()=>saveBuyGuide(db,1,action));
+      assert.deepEqual(snapshot(),before);
+    } finally { db.close(); }
+  }
+});
+
+test('guide parsing preserves valid moves and rejects malformed rank changes', () => {
+  const base = {action:'guide',itemId:2,priority:4,month:'',timing:'by',condition:''};
+  for (const scope of ['all','priority']) for (const side of ['before','after']) {
+    const input = {...base,targetId:3,side,scope};
+    assert.deepEqual(parseRankAction(input),input);
+  }
+  for (const move of [{targetId:null},{targetId:[]},{targetId:{}},{targetId:3},{scope:'all'},{targetId:0,side:'before',scope:'all'},
+    {targetId:3,side:'first',scope:'all'},{targetId:3,side:'before',scope:'other'},
+    {targetId:'3',side:'before',scope:'all'}]) {
+    assert.equal(parseRankAction({...base,...move}),null);
+  }
+});

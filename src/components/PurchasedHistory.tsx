@@ -28,7 +28,7 @@ async function requestPurchased(): Promise<PurchasedData> {
   return res.json();
 }
 
-export default function PurchasedHistory() {
+export default function PurchasedHistory({ revision = 0 }: { revision?: number }) {
   const [data, setData] = useState<PurchasedData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -47,7 +47,7 @@ export default function PurchasedHistory() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [revision]);
 
   const handleUndo = async (id: number) => {
     await apiFetch(`/api/items/${id}`, {
@@ -88,7 +88,7 @@ export default function PurchasedHistory() {
 
       {/* 月別集計 */}
       {data.monthlySummary.length > 0 && (
-        <div className="agenda-ledger-panel bg-white dark:bg-slate-800 rounded-lg shadow p-4">
+        <div className="agenda-history-months agenda-ledger-panel bg-white dark:bg-slate-800 rounded-lg shadow p-4">
           <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-3">月別購入履歴</h3>
           <div className="space-y-2">
             {data.monthlySummary.map((m) => (
@@ -105,7 +105,7 @@ export default function PurchasedHistory() {
       )}
 
       {/* 購入済みアイテム一覧 */}
-      <div>
+      <div className="agenda-history-items">
         <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-3">購入済みアイテム ({data.items.length}件)</h3>
         {data.items.length === 0 ? (
           <div className="text-center py-8 text-gray-500 dark:text-gray-400">

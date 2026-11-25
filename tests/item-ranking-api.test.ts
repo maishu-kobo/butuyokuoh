@@ -52,3 +52,20 @@ test('opening an existing database adds the guide table, preserves rows and is r
     database.close();
   }
 });
+
+test('a combined guide request saves rank and rejects a foreign target without a partial save', async () => {
+  const owner = await createMember('combined-ranking-owner');
+  process.env.AUTH_URL = 'http://127.0.0.1';
+  const database = await db();
+  const add = database.prepare('INSERT INTO items(user_id,name,url,priority,sort_order) VALUES(?,?,?,?,?)');
+  const first = Number(add.run(owner.id,'先頭','manual://combined-first',2,1).lastInsertRowid);
+  const second = Number(add.run(owner.id,'次','manual://combined-second',3,2).lastInsertRowid);
+  assert.equal((await call(route,'POST',path,{...guide,itemId:second,targetId:first,side:'before',scope:'all'},undefined,origin)).status,200);
+  assert.deepEqual(database.prepare('SELECT id FROM items WHERE user_id=? ORDER BY sort_order,id').all(owner.id),[{id:second},{id:first}]);
+  const other = await createMember('combined-ranking-other');
+  const foreign = Number(add.run(other.id,'別の利用者','manual://combined-foreign',4,1).lastInsertRowid);
+  await setTestUser(owner);
+  assert.equal((await call(route,'POST',path,{...guide,itemId:second,priority:1,condition:'保存されない条件',targetId:foreign,side:'before',scope:'all'},undefined,origin)).status,404);
+  assert.deepEqual(database.prepare('SELECT priority FROM items WHERE id=?').get(second),{priority:4});
+  assert.deepEqual(database.prepare('SELECT condition FROM item_buy_guides WHERE item_id=?').get(second),{condition:guide.condition});
+});
