@@ -299,6 +299,59 @@ test('photo group bulk selection changes only the shops matching the search', as
   await expect(page.getByRole('region', { name: '選択した商品の操作' })).toContainText('1件選択中');
 });
 
+for (const layout of ['list', 'shelf', 'legacy', 'filtered'] as const) {
+  test(`photo bulk purchase records one selected shop in ${layout}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await prepare(page, '/design');
+    const origin = { Origin: 'http://localhost:3107' };
+    const group = await (await page.request.post('/api/comparison-groups', {
+      headers: origin, data: { name: '机の照明' },
+    })).json();
+    const items = await (await page.request.get('/api/items')).json();
+    const cheaper = items.find((item: { name: string }) => item.name === '読書灯');
+    const budgeted = items.find((item: { name: string }) => item.name === '折りたたみ傘');
+    const camera = items.find((item: { name: string }) => item.name === '小さなカメラ');
+    for (const item of [cheaper, budgeted]) {
+      expect((await page.request.patch(`/api/items/${item.id}`, {
+        headers: origin, data: { comparison_group_id: group.id },
+      })).ok()).toBeTruthy();
+    }
+    const db = new Database(process.env.E2E_DB_PATH!);
+    db.prepare("UPDATE comparison_groups SET origin = 'photo', budget_item_id = ? WHERE id = ?")
+      .run(budgeted.id, group.id);
+    db.close();
+    await page.reload();
+    await expect(page.locator('.rank-product strong')).toHaveText(['机の照明', '小さなカメラ']);
+    if (layout === 'legacy') {
+      await page.getByRole('switch', { name: '新しい表示を使う' }).click();
+      await expect(page).toHaveURL(/\/$/);
+    } else if (layout === 'shelf') {
+      await page.getByRole('button', { name: '写真棚', exact: true }).click();
+    } else if (layout === 'filtered') {
+      await page.getByRole('searchbox', { name: '商品名・メモ・お店で検索' }).fill('読書灯');
+      await expect(page.locator('.rank-product strong')).toHaveText(['机の照明']);
+    }
+    await page.getByRole('button', { name: '選択', exact: true }).click();
+    if (layout === 'list' || layout === 'filtered') {
+      await page.getByRole('checkbox', { name: '机の照明を選択', exact: true }).check();
+      if (layout === 'list') await page.getByRole('checkbox', { name: '小さなカメラを選択', exact: true }).check();
+    } else {
+      await page.getByRole('button', { name: '全選択', exact: true }).click();
+    }
+    let confirmation = '';
+    page.once('dialog', async dialog => { confirmation = dialog.message(); await dialog.accept(); });
+    await page.getByRole('region', { name: '選択した商品の操作' })
+      .getByRole('button', { name: '購入済み', exact: true }).click();
+    await expect(page.getByRole('region', { name: '選択した商品の操作' })).toHaveCount(0);
+    const purchased = await (await page.request.get('/api/purchased')).json();
+    const expectedIds = layout === 'filtered' ? [cheaper.id] : [budgeted.id, camera.id];
+    expect(purchased.items.map((item: { id: number }) => item.id).sort((a: number, b: number) => a - b))
+      .toEqual(expectedIds.sort((a, b) => a - b));
+    expect(purchased.totalStats).toEqual({ count: expectedIds.length, total: layout === 'filtered' ? 1000 : 5000 });
+    expect(confirmation).toBe(`${expectedIds.length}件のアイテムを購入済みにしますか？`);
+  });
+}
+
 test('a shelf edit survives desktop comparisons and resizing before saving', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await prepare(page);
