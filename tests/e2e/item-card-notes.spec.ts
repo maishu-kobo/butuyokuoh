@@ -1,8 +1,8 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
-// 本番 item 343 のメモ（78字）。保存は足りていて、カードの表示だけが欠ける。
-const reportedMemo =
-  '11/10、SotaさんがAmazon.co.jpの商品ページ（ASIN 4344410009、ほしいものリスト経由のリンク）を送り、物欲王への登録を依頼。';
+// カードで末尾まで読めることを確認する78字の架空メモ。
+const syntheticMemo =
+  '試作用の折りたたみ傘を登録。雨の日の持ち歩きやすさと収納時の長さを比較し、送料を含めた価格が予算に収まったら購入する予定。これは表示確認専用の架空メモです。';
 
 const multilineMemo = '一行目のメモです。\n二行目もカードの中で読める。';
 
@@ -12,7 +12,7 @@ const packedTail = 'END';
 const packedMemo = `${'W'.repeat(2000 - packedTail.length)}${packedTail}`;
 
 test.beforeAll(() => {
-  expect(reportedMemo.length).toBe(78);
+  expect(syntheticMemo.length).toBe(78);
   expect(longMemo.length).toBe(2000);
   expect(packedMemo.length).toBe(2000);
   expect(packedMemo.includes(' ')).toBe(false);
@@ -112,13 +112,13 @@ async function expectMemoFullyVisible(notes: Locator, expected: string) {
 test('item card shows the full memo, including long notes on a narrow screen', async ({ page }) => {
   test.setTimeout(90_000);
   await member(page);
-  await addManual(page, '報告どおりのメモ', reportedMemo);
+  await addManual(page, '78字のメモ', syntheticMemo);
   await addManual(page, '改行のあるメモ', multilineMemo);
   await addManual(page, '長いメモ', longMemo);
   await addManual(page, '区切りのないメモ', packedMemo);
 
   const cases = [
-    ['報告どおりのメモ', reportedMemo],
+    ['78字のメモ', syntheticMemo],
     ['改行のあるメモ', multilineMemo],
     ['長いメモ', longMemo],
     ['区切りのないメモ', packedMemo],
