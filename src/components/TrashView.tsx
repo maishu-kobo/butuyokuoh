@@ -17,7 +17,7 @@ type PendingPurge =
   | { kind: 'item'; id: number; name: string }
   | { kind: 'empty'; count: number };
 
-export default function TrashView() {
+export default function TrashView({ revision = 0 }: { revision?: number }) {
   const [items, setItems] = useState<TrashItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -26,27 +26,31 @@ export default function TrashView() {
   const [purgeError, setPurgeError] = useState<string | null>(null);
   const inFlightRef = useRef(false);
 
-  const fetchItems = async () => {
+  const fetchItems = async (isCurrent = () => true) => {
     try {
       const res = await apiFetch('/api/trash');
       if (!res.ok) throw new Error(`Failed to fetch trash: ${res.status}`);
       const data = await res.json();
       // 非配列レスポンス（エラーJSON等）を配列stateに入れない
       if (!Array.isArray(data)) throw new Error('Unexpected response format');
+      if (!isCurrent()) return;
       setItems(data);
       setLoadError(false);
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('Failed to fetch trash:', error);
       setLoadError(true);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   };
 
   useEffect(() => {
+    let cancelled = false;
     // 取得関数の中の setState は await のあと。effect から直接呼ぶと新しい react-hooks が同期 setState と誤認する。
-    void (async () => { await fetchItems(); })();
-  }, []);
+    void (async () => { await fetchItems(() => !cancelled); })();
+    return () => { cancelled = true; };
+  }, [revision]);
 
   // 読み込み失敗時の再試行
   const handleRetry = () => {

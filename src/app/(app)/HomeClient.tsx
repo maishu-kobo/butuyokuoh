@@ -3,15 +3,17 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import DesignWorkbench from '@/components/design/DesignWorkbench';
+import DesktopPage from '@/components/design/DesktopPage';
 import { readListPreview } from '@/lib/design-list-preview';
 import UiVersionSwitch from '@/components/design/UiVersionSwitch';
-import { readReviewView, reviewHref, reviewSettingsHref } from '@/lib/design-home';
+import { filterReviewItems, readReviewView, reviewHref, reviewSettingsHref } from '@/lib/design-home';
+import { useDesktopWorkspace } from '@/components/design/DesktopWorkspace';
 import { useTheme } from '@/components/ThemeProvider';
 import ListManagementView from '@/components/home/ListManagementView';
 import { useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api-fetch';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ComponentProps } from 'react';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useSwipeable } from 'react-swipeable';
 import { Item, ComparisonGroup, Category } from '@/types';
@@ -55,6 +57,8 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
   const designTab = designReview ? requestedTab : null;
   const reviewView = readReviewView(searchParams.get('view'));
   const { palette, resolvedTheme: appearance } = useTheme();
+  const desktop = useDesktopWorkspace();
+  const integrated = designReview && desktop.active && desktop.layout === 'reading';
   const ListView = designReview ? ListManagementView : HomeListView;
   const listPreview = readListPreview(searchParams.get('list'));
   const fromSettings=designReview && designTab==='agents' && searchParams.get('from')==='settings';
@@ -167,7 +171,8 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
       await Promise.all(items.map((item) =>
         apiFetch(`/api/items/${item.id}/refresh`, { method: 'POST' })
       ));
-      fetchItems();
+      if (integrated) await reloadReview();
+      else await fetchItems();
     } finally {
       setRefreshing(false);
     }
@@ -180,7 +185,7 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
     searchQuery,
     sortBy,
   }), [selectedCategory, selectedPriority, selectedGroup, searchQuery, sortBy]);
-  const filteredItems = useMemo(() => filterHomeItems(items, listQuery), [items, listQuery]);
+  const filteredItems = useMemo(() => designReview ? filterReviewItems(items, groups, listQuery) : filterHomeItems(items, listQuery), [items, groups, listQuery, designReview]);
   // ドラッグ&ドロップが有効かどうか（優先度順で、絞り込みが無いときだけ）
   const dragEnabled = homeDragEnabled(listQuery);
   const wishlist = useMemo(
@@ -240,6 +245,14 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
       return next;
     });
   }, []);
+  const toggleMatchingSelection = useCallback((ids: number[]) => {
+    setSelectedItems(current => {
+      const next = new Set(current);
+      if (ids.every(id => current.has(id))) ids.forEach(id => next.delete(id));
+      else ids.forEach(id => next.add(id));
+      return next;
+    });
+  }, []);
 
   // 全選択。画面に出ていない絞り込み結果も含む。
   const selectAll = () => {
@@ -262,7 +275,8 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
       )
     );
     setSelectedItems(new Set());
-    fetchItems();
+    if (integrated) await reloadReview();
+    else await fetchItems();
   };
 
   // 一括カテゴリ変更
@@ -279,7 +293,8 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
       )
     );
     setSelectedItems(new Set());
-    fetchItems();
+    if (integrated) await reloadReview();
+    else await fetchItems();
   };
 
   // 一括グループ変更
@@ -296,7 +311,8 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
       )
     );
     setSelectedItems(new Set());
-    fetchItems();
+    if (integrated) await reloadReview();
+    else await fetchItems();
   };
 
   // 一括購入済み
@@ -315,7 +331,8 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
     );
     setSelectedItems(new Set());
     setSelectionMode(false);
-    fetchItems();
+    if (integrated) await reloadReview();
+    else await fetchItems();
   };
 
   // タブ切り替え関数
@@ -394,13 +411,36 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
     return <LoginForm />;
   }
 
+  const listProps: ComponentProps<typeof ListManagementView> = {
+    managementOnly: designReview, returnView: designReview ? reviewView : undefined,
+    items, filteredItems, wishlist, totalAmount, productCount, loading, loadError, categories, groups,
+    searchQuery, onSearchQuery: setSearchQuery, sortBy, onSortBy: setSortBy,
+    selectedPriority, onSelectedPriority: setSelectedPriority, selectedCategory, onSelectedCategory: setSelectedCategory,
+    selectedGroup, onSelectedGroup: setSelectedGroup, isFilterOpen, onToggleFilter: () => setIsFilterOpen(!isFilterOpen),
+    selectionMode, selectedCount: selectedItems.size, selectedItems, onToggleSelectionMode: toggleSelectionMode,
+    onSelectAll: selectAll, onDeselectAll: deselectAll, onClearFilters: clearFilters, onRetry: handleRetry,
+    onDelete: handleDelete, onToggleSelect: toggleItemSelection, onItemsChanged: integrated ? reloadReview : fetchItems, onPhotoChanged: integrated ? reloadReview : refreshPhotoCard,
+    onBudget: () => changeTab('budget'), onImport: () => setShowImportModal(true), onRefreshAll: handleRefreshAll,
+    onViewRegistered: location => { clearFilters(); changeTab(location); if (location === 'list') void fetchItems(); },
+    onDragEnd: handleDragEnd, refreshing, isGuest, dragEnabled, lowestPriceInGroup,
+  };
+  const bulkBar = (inline = false) => selectionMode && selectedItems.size > 0 ? <HomeBulkBar
+    inline={inline} count={selectedItems.size} categories={categories} groups={groups}
+    onCategoryChange={handleBulkCategoryChange} onGroupChange={handleBulkGroupChange}
+    onPurchased={handleBulkPurchased} onDelete={handleBulkDelete}/> : null;
+  const importModal = <ImportWishlistModal isOpen={showImportModal} onClose={() => setShowImportModal(false)} onImported={reloadReview}/>;
+
   if (designReview && ((activeTab === 'list' && designTab !== 'manage' && designTab !== 'agents') || designTab === 'budget')) {
-    return <DesignWorkbench budgetRevision={budgetRevision} view={designTab === 'budget' ? 'plan' : reviewView} palette={palette} appearance={appearance} items={items} purchased={purchasedItems} groups={groups}
+    return <><DesignWorkbench budgetRevision={budgetRevision} view={designTab === 'budget' ? 'plan' : reviewView} palette={palette} appearance={appearance} items={items} purchased={purchasedItems} groups={groups}
       categories={categories} loading={loading} loadError={loadError} onRetry={handleRetry}
-      onReload={reloadReview} onDelete={handleDelete} onLogout={logout} isGuest={isGuest} />;
+      onReload={reloadReview} onDelete={handleDelete} onLogout={logout} isGuest={isGuest}
+      management={{ search: searchQuery, onSearch: setSearchQuery, matching: filteredItems, sortBy, filterOpen: isFilterOpen,
+        onToggleFilter: () => setIsFilterOpen(!isFilterOpen), selection: selectionMode ? { ids: selectedItems, toggle: toggleMatchingSelection } : undefined,
+        render: (compactList,visibleIds,active) => <ListManagementView {...listProps} embedded activeIntegration={active} compactList={compactList}
+          onSelectCompact={() => setSelectedItems(new Set(visibleIds))} bulkActions={bulkBar(true)}/> }}/>{importModal}</>;
   }
 
-  return (
+  const content = (
     <div ref={swipeRef} className={(designReview ? "agenda-home " : "") + "min-h-screen bg-[var(--kinari)] dark:bg-slate-900"}>
       {designReview ? <header className="review-subheader">
         <Link href={fromSettings ? reviewSettingsHref(reviewView,palette,appearance) : reviewHref(reviewView,undefined,palette,appearance,listPreview)}><ArrowLeft size={17} /> {fromSettings?'設定に戻る':'ホームへ戻る'}</Link>
@@ -421,65 +461,16 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
         <div className="overflow-clip">
           <div className={animationClass || undefined}>
             {activeTab === 'list' && designTab !== 'agents' && (
-              <ListView
-                managementOnly={designReview}
-                returnView={designReview ? reviewView : undefined}
-                items={items}
-                filteredItems={filteredItems}
-                wishlist={wishlist}
-                totalAmount={totalAmount}
-                productCount={productCount}
-                loading={loading}
-                loadError={loadError}
-                categories={categories}
-                groups={groups}
-                searchQuery={searchQuery}
-                onSearchQuery={setSearchQuery}
-                sortBy={sortBy}
-                onSortBy={setSortBy}
-                selectedPriority={selectedPriority}
-                onSelectedPriority={setSelectedPriority}
-                selectedCategory={selectedCategory}
-                onSelectedCategory={setSelectedCategory}
-                selectedGroup={selectedGroup}
-                onSelectedGroup={setSelectedGroup}
-                isFilterOpen={isFilterOpen}
-                onToggleFilter={() => setIsFilterOpen(!isFilterOpen)}
-                selectionMode={selectionMode}
-                selectedCount={selectedItems.size}
-                selectedItems={selectedItems}
-                onToggleSelectionMode={toggleSelectionMode}
-                onSelectAll={selectAll}
-                onDeselectAll={deselectAll}
-                onClearFilters={clearFilters}
-                onRetry={handleRetry}
-                onDelete={handleDelete}
-                onToggleSelect={toggleItemSelection}
-                onItemsChanged={fetchItems}
-                onPhotoChanged={refreshPhotoCard}
-                onBudget={() => changeTab('budget')}
-                onImport={() => setShowImportModal(true)}
-                onRefreshAll={handleRefreshAll}
-                onViewRegistered={(location) => {
-                  clearFilters();
-                  changeTab(location);
-                  if (location === 'list') void fetchItems();
-                }}
-                onDragEnd={handleDragEnd}
-                refreshing={refreshing}
-                isGuest={isGuest}
-                dragEnabled={dragEnabled}
-                lowestPriceInGroup={lowestPriceInGroup}
-              />
+              <ListView {...listProps}/>
             )}
 
             {activeTab === 'budget' && <BudgetView />}
 
-            {activeTab === 'purchased' && <PurchasedHistory />}
+            {activeTab === 'purchased' && <PurchasedHistory revision={designReview ? budgetRevision : 0} />}
 
-            {activeTab === 'stats' && <StatsView />}
+            {activeTab === 'stats' && <StatsView revision={designReview ? budgetRevision : 0} />}
 
-            {activeTab === 'trash' && <TrashView />}
+            {activeTab === 'trash' && <TrashView revision={designReview ? budgetRevision : 0} />}
           </div>
         </div>
         {activeTab === 'list' && designReview && designTab === 'agents' && (
@@ -492,23 +483,13 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
         )}
       </main>
 
-      {selectionMode && selectedItems.size > 0 && (
-        <HomeBulkBar
-          count={selectedItems.size}
-          categories={categories}
-          groups={groups}
-          onCategoryChange={handleBulkCategoryChange}
-          onGroupChange={handleBulkGroupChange}
-          onPurchased={handleBulkPurchased}
-          onDelete={handleBulkDelete}
-        />
-      )}
-
-      <ImportWishlistModal
-        isOpen={showImportModal}
-        onClose={() => setShowImportModal(false)}
-        onImported={fetchItems}
-      />
+      {bulkBar()}
+      {importModal}
     </div>
   );
+  const page = designTab || activeTab;
+  const titles: Record<string, string> = { manage: 'リストの管理', purchased: '購入履歴', stats: '統計', trash: 'ゴミ箱', agents: 'AI連携' };
+  return designReview ? <DesktopPage page={page} title={titles[page] || 'ほしいものリスト'}
+    groups={groups} categories={categories} isGuest={isGuest} onReload={reloadReview}>{content}</DesktopPage> : content;
+
 }
