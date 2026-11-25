@@ -20,6 +20,7 @@ import { Item, ComparisonGroup, Category } from '@/types';
 import { sumCountedPrices } from '@/lib/photo-spend';
 import { wishlistRows } from '@/lib/capture/list-card';
 import { homeListDragOrders, selectAllFilteredIds } from '@/lib/home-list-page';
+import { bulkPurchaseItems } from '@/lib/bulk-purchase';
 import BudgetView from '@/components/BudgetView';
 import PurchasedHistory from '@/components/PurchasedHistory';
 import StatsView from '@/components/StatsView';
@@ -317,11 +318,12 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
 
   // 一括購入済み
   const handleBulkPurchased = async () => {
-    if (selectedItems.size === 0) return;
-    if (!confirm(`${selectedItems.size}件のアイテムを購入済みにしますか？`)) return;
+    const purchaseItems = bulkPurchaseItems(items, groups, selectedItems);
+    if (purchaseItems.length === 0) return;
+    if (!confirm(`${purchaseItems.length}件のアイテムを購入済みにしますか？`)) return;
 
     await Promise.all(
-      Array.from(selectedItems).map(id =>
+      purchaseItems.map(({ id }) =>
         apiFetch(`/api/items/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
