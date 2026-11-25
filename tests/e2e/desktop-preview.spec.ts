@@ -98,7 +98,8 @@ for (const width of [320, 390, 1440]) {
     await page.route('**/api/items/ranking',async route=>{requests.push(route.request().postDataJSON());await route.continue();});
     await editor.getByRole('button',{name:'保存',exact:true}).click();
     await expect(editor).toHaveCount(0);
-    await expect(orderedNames).toHaveText(['小さなカメラ','読書灯','折りたたみ傘']);
+    await expect(orderedNames).toHaveText(['読書灯','折りたたみ傘','小さなカメラ']);
+    await expect(page.getByLabel('全体1位',{exact:true})).toBeVisible();
     expect(requests).toHaveLength(1);
     const saved=await (await page.request.get('/api/items?with=buy-guide')).json();
     expect(saved.find((item:{name:string})=>item.name==='小さなカメラ')).toMatchObject({priority:4,planned_purchase_date:'2027-02-10',buy_guide:{condition:'セールになったら'}});
@@ -108,9 +109,9 @@ for (const width of [320, 390, 1440]) {
     await position.selectOption({label:'2位'});
     await editor.getByRole('button',{name:'保存',exact:true}).click();
     await expect(editor).toHaveCount(0);
-    await expect(orderedNames).toHaveText(['小さなカメラ','折りたたみ傘','読書灯']);
+    await expect(orderedNames).toHaveText(['折りたたみ傘','読書灯','小さなカメラ']);
     await page.reload();
-    await expect(orderedNames).toHaveText(['小さなカメラ','折りたたみ傘','読書灯']);
+    await expect(orderedNames).toHaveText(['折りたたみ傘','読書灯','小さなカメラ']);
   });
 }
 
@@ -243,8 +244,9 @@ test('integrated select-all respects the priority display and price refresh stay
   await page.request.patch(`/api/items/${lamp.id}`, { headers: { Origin: 'http://localhost:3107' }, data: { priority: 2 } });
   await page.reload();
   await page.getByRole('button', { name: '縦リスト', exact: true }).click();
-  await page.getByRole('button', { name: 'リストの表示: すべて', exact: true }).click();
-  await page.getByRole('button', { name: '優先度 高のみ', exact: false }).click();
+  await page.getByRole('button', { name: 'リストの表示: 優先度順', exact: true }).click();
+  await page.getByRole('checkbox', { name: '高', exact: true }).check();
+  await page.getByRole('button', { name: '1商品を表示', exact: true }).click();
   await expect(page.locator('.rank-product strong')).toHaveText(['読書灯']);
   await page.getByRole('button', { name: '選択', exact: true }).click();
   await page.getByRole('button', { name: '全選択', exact: true }).click();

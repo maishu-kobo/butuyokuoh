@@ -20,8 +20,6 @@ import RankedList, { GuideEditor } from './RankedList';
 import RegistrationSheet from './RegistrationSheet';
 import UiVersionSwitch from './UiVersionSwitch';
 import { ListDisplayOptions } from './ListPreviewControls';
-import { rankItem } from '@/lib/design-rank';
-import type { ListDisplay } from '@/lib/design-list-preview';
 import DesktopLayoutToggle from './DesktopPreviewControls';
 import { useDesktopWorkspace, useDesktopPageActions } from './DesktopWorkspace';
 import './focused-list.css';
@@ -30,7 +28,9 @@ interface Props {
   budgetRevision:number; view:ReviewView; palette:LightPalette|null; appearance:PreviewAppearance; items:Item[]; purchased:Item[]; groups:ComparisonGroup[]; categories:Category[];
   loading:boolean; loadError:boolean; isGuest:boolean;
   onRetry:() => void; onReload:() => Promise<void>; onDelete:(id:number) => Promise<void>; onLogout:() => Promise<void>;
-  management: { search:string; onSearch:(value:string)=>void; matching:Item[]; sortBy:HomeSortBy; filterOpen:boolean; onToggleFilter:()=>void;
+  management: { search:string; onSearch:(value:string)=>void; matching:Item[]; priorityOptionsItems:Item[];
+    sortBy:HomeSortBy; onSortBy:(value:HomeSortBy)=>void; priorities:number[]; onPriorities:(values:number[])=>void;
+    filterOpen:boolean; onToggleFilter:()=>void;
     selection?:{ids:Set<number>;toggle:(ids:number[])=>void}; render:(list:ReactNode,visibleIds:number[],active:boolean)=>ReactNode; };
 }
 const menu: {tab:ReviewTab;label:string;Icon:typeof ListChecks}[] = [
@@ -50,7 +50,7 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
   const {search,onSearch:setSearch}=management;
   const [searchOpen,setSearchOpen]=useState(false);
   const [notice,setNotice]=useState('');
-  const [listDisplay,setListDisplay]=useState<ListDisplay>('all');
+  const listDisplay=management.sortBy;
   const [panelBusy,setPanelBusy]=useState(false);
   const desktop=useDesktopWorkspace();
   const comparison=desktop.preview?<DesktopLayoutToggle value={desktop.layout} onChange={desktop.choose}/>:undefined;
@@ -70,14 +70,16 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
   async function reload() { await onReload(); }
   const products=useMemo(()=>buildReviewProducts(items,groups,purchased),[items,groups,purchased]);
   const term=search.trim().toLocaleLowerCase('ja-JP');
-  const visible=useMemo(()=>integrated ? managedProducts(products,management.matching,management.sortBy) : !term?products:products.filter(p=>
+  const visible=useMemo(()=>!isBudget ? managedProducts(products,management.matching,listDisplay) : !term?products:products.filter(p=>
     [p.name,p.active.category_name,p.active.notes,p.active.buy_guide?.condition,...p.offers.map(i=>i.source_name)]
-      .some(value=>value?.toLocaleLowerCase('ja-JP').includes(term))),[products,term,integrated,management.matching,management.sortBy]);
+      .some(value=>value?.toLocaleLowerCase('ja-JP').includes(term))),[products,term,isBudget,management.matching,listDisplay]);
+  const ordered=useMemo(()=>managedProducts(products,items,listDisplay),[products,items,listDisplay]);
+  const priorityOptions=useMemo(()=>managedProducts(products,management.priorityOptionsItems,'priority'),[products,management.priorityOptionsItems]);
   const selected=panel && 'key' in panel ? products.find(p=>p.key===panel.key) : undefined;
-  const priorityFilter=!isBudget&&listDisplay.startsWith('priority-') ? Number(listDisplay.slice(-1)) : null;
-  const visibleCount=priorityFilter ? visible.filter(p=>rankItem(p).priority===priorityFilter).length : visible.length;
+  const priorityFilter=!isBudget&&management.priorities.length>0;
+  const visibleCount=visible.length;
   const matchingIds=new Set(management.matching.map(item=>item.id));
-  const selectableIds=visible.filter(product=>!priorityFilter||rankItem(product).priority===priorityFilter)
+  const selectableIds=visible
     .flatMap(product=>product.offers.filter(item=>matchingIds.has(item.id)).map(item=>item.id));
   function openPanel(next:Panel) {
     if (panelBusy) return;
@@ -98,11 +100,12 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
   }
   const empty=loading ? <p className="review-empty" role="status">読み込み中…</p> : loadError ?
     <div className="review-empty" role="alert">リストを読み込めませんでした。<Button label="再読み込み" onClick={onRetry}/></div> :
-    !visible.length ? <div className="review-empty">{term?'条件に合う商品がありません。':'登録した商品がここに並びます。'}
+    !visible.length ? <div className="review-empty">{products.length?'条件に合う商品がありません。':'登録した商品がここに並びます。'}
+      {priorityFilter && <button type="button" onClick={()=>management.onPriorities([])}>優先度の絞り込みを解除</button>}
       {term && <button type="button" onClick={()=>setSearch('')}>検索をクリア</button>}</div> : null;
   const ranked=loading||loadError||!products.length ? empty : <RankedList products={products} visible={visible} onReload={reload}
-    focused display={listDisplay} onDisplay={setListDisplay} openDisplay={()=>openPanel({kind:'display'})} onDate={openDate} empty={empty}
-    orderedProducts={integrated&&management.sortBy!=='priority'?visible:undefined}
+    focused display={listDisplay} priorities={management.priorities} openDisplay={()=>openPanel({kind:'display'})} onDate={openDate} empty={empty}
+    orderedProducts={ordered}
     selection={integrated&&management.selection?{...management.selection,matchingIds}:undefined}
     openProduct={p=>openPanel({kind:'product',key:p.key})} openGuide={p=>openPanel({kind:'guide',key:p.key})}/>;
   return <main className="design-review combined-home" data-screen={isBudget?'budget':'list'} data-desktop-layout={desktop.active?'workspace':'current'}
@@ -142,7 +145,8 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
         onExisting={location=>{closePanel();if(location==='list'){setSearch('');void reload();router.push(designHref('rank'));}else router.push(designHref(view,location));}}/>}
       {panel && panel.kind!=='add' && <ReviewSheet key={panel.kind} title={panel.kind==='menu'?'メニュー':panel.kind==='display'?'リストの表示':panel.kind==='guide'?'優先度と買いどき':'商品と販売候補'} onClose={closePanel}
         presentation={desktop.active?'aside':'modal'} toolbar={comparison} lockDismiss={panelBusy}>
-        {panel.kind==='display'&&<ListDisplayOptions value={listDisplay} products={products} onChange={value=>{setListDisplay(value);closePanel();}}/>}
+        {panel.kind==='display'&&<ListDisplayOptions value={listDisplay} products={priorityOptions} onChange={management.onSortBy}
+          priorities={management.priorities} onPriorities={management.onPriorities} visibleCount={visibleCount} onDone={closePanel}/>}
         {panel.kind==='product' && (selected?<ProductDetails key={selected.key} product={selected} groups={groups} categories={categories} onReload={reload} onDelete={onDelete} onDate={openDate}/>:<p>この商品はリストから移動しました。</p>)}
         {panel.kind==='guide' && (selected?<GuideEditor key={selected.key} product={selected} products={products} onDate={openDate} onSavingChange={setPanelBusy} onSaved={async()=>{await reload();closePanel();setNotice('優先度・順位・買いどきを保存しました');}}/>:<p>この商品はリストから移動しました。</p>)}
         {panel.kind==='menu' && <><div className="review-menu-list">

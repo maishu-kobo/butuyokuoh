@@ -9,16 +9,16 @@ const product=(id:number,priority:number):ReviewProduct=>({key:'item-'+id,offers
 const ordered=[product(1,4),product(2,2),product(3,3),product(4,2)];
 
 test('a low-priority first choice keeps its global rank while the priority filter is applied',()=>{
-  const all=focusedListSections(ordered,ordered,'all');
+  const all=focusedListSections(ordered,ordered,'date_new');
   assert.deepEqual(all.flatMap(section=>section.rows.map(row=>[row.product.key,row.rank])),[['item-1',1],['item-2',2],['item-3',3],['item-4',4]]);
-  const high=focusedListSections(ordered,ordered,'priority-2');
+  const high=focusedListSections(ordered,ordered.filter(p=>p.offers[0].priority===2),'priority');
   assert.deepEqual(high[0].rows.map(row=>row.rank),[2,4]);
   assert.deepEqual(high[0].entries.map(p=>p.key),['item-2','item-4']);
-  assert.deepEqual(focusedListSections(ordered,ordered,'priority-1'),[]);
+  assert.deepEqual(focusedListSections(ordered,[],'priority'),[]);
 });
 
 test('grouped viewing and search retain the global ranks and the complete same-priority move scope',()=>{
-  const sections=focusedListSections(ordered,[ordered[0],ordered[3]],'grouped');
+  const sections=focusedListSections(ordered,[ordered[0],ordered[3]],'priority');
   assert.deepEqual(sections.map(section=>[section.level,section.rows.map(row=>row.rank)]),[[2,[4]],[4,[1]]]);
   assert.deepEqual(sections[0].entries.map(p=>p.key),['item-2','item-4']);
   assert.deepEqual(ordered.map(p=>p.key),['item-1','item-2','item-3','item-4']);

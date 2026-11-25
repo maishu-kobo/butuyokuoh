@@ -22,10 +22,10 @@ async function writeRank(action: GuideAction | MoveAction) {
   }
 }
 
-export default function RankedList({products,visible,openGuide,openProduct,onReload,focused=false,display='all',openDisplay,onDisplay,onDate,empty,orderedProducts,selection}: {
+export default function RankedList({products,visible,openGuide,openProduct,onReload,focused=false,display='priority',priorities=[],openDisplay,onDate,empty,orderedProducts,selection}: {
   products:ReviewProduct[]; visible:ReviewProduct[]; openGuide:(p:ReviewProduct) => void; openProduct:(p:ReviewProduct) => void;
   onReload:() => Promise<void>;
-  focused?:boolean;display?:ListDisplay;openDisplay:()=>void;onDisplay:(display:ListDisplay)=>void;
+  focused?:boolean;display?:ListDisplay;priorities?:number[];openDisplay:()=>void;
   onDate:(item:Item,trigger:HTMLButtonElement)=>void;empty?:ReactNode;
   orderedProducts?:ReviewProduct[];
   selection?:{ids:Set<number>;matchingIds:Set<number>;toggle:(ids:number[])=>void};
@@ -50,7 +50,7 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
   }
   const sections = focused ? focusedListSections(orderedProducts ?? ordered,visible,display) : scope === 'all' ? [{level:0,entries:ordered}] :
     priorityLevels.map(level => ({level,entries:ordered.filter(p => rankItem(p).priority === level)}));
-  const showPriority=!focused || display==='all';
+  const showPriority=!focused || display!=='priority';
   async function move(source:ReviewProduct,target:ReviewProduct,side:'before'|'after') {
     if (writing.current || source === target) return;
     writing.current = true;
@@ -76,17 +76,17 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
     <div className="rank-controls">
       {focused ? <button type="button" className="focused-display" aria-label={'リストの表示: '+listDisplayLabel(display)} aria-haspopup="dialog" onClick={openDisplay}>
         <ListFilter size={17}/><span>{listDisplayLabel(display)}</span><ChevronDown size={14}/>
+        {priorities.length>0&&<span className="focused-active-priorities">{priorities.map(level=>priorityNames[level]).join('・')}</span>}
       </button> : <div className="rank-tabs" role="group" aria-label="リストの見方">
         <button type="button" aria-pressed={scope==='all'} onClick={() => setScope('all')}>買いそうな順</button>
         <button type="button" aria-pressed={scope==='priority'} onClick={() => setScope('priority')}>優先度別</button>
       </div>}
     </div>
-    {focused && <p className="focused-order-note">全体順位{display==='all'?'で表示':'を表示'}<span>優先度と順位は別々に調整できます</span></p>}
+    {focused && <p className="focused-order-note">全体順位を表示<span>優先度と順位は別々に調整できます</span></p>}
     {focused && <div className="rank-desktop-head" aria-hidden="true"><span>写真 / 順位</span><span>商品</span><span>価格</span><span>優先度・買いどき / 予定日</span></div>}
     {error && <p className="rank-error" role="alert">{error}</p>}
     <p className="sr-only" role="status">{result}</p>
-    {!visible.length ? empty : focused && !sections.length && <div className="focused-empty" role="status">
-      <p>{listDisplayLabel(display)}に該当する商品はありません。</p><button type="button" onClick={()=>onDisplay('all')}>すべてを見る</button></div>}
+    {!visible.length ? empty : null}
     <PriorityDrag onMove={dropPeer}>{sections.map(({level,entries}) => {
       const shown = entries.filter(p => matches.has(p.key));
       if (!shown.length) return null;
@@ -102,7 +102,7 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
           const checked = !!selection && selectedIds.length>0 && selectedIds.every(id=>selection.ids.has(id));
           const partial = !!selection && !checked && selectedIds.some(id=>selection.ids.has(id));
           return <PriorityRow key={product.key} product={product} priority={item.priority} position={numbers.get(product.key)!}
-            peers={visiblePeers.get(item.priority)!} busy={busy} disableDrag={!!orderedProducts || !!selection}
+            peers={visiblePeers.get(item.priority)!} busy={busy} disableDrag={(focused&&display!=='priority') || !!selection}
             rankInHandle={focused}
             leading={focused?picture(product):undefined}
             rank={selection ? <input type="checkbox" className="integrated-select-item" aria-label={product.name+'を選択'} checked={checked}

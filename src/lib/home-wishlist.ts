@@ -4,7 +4,7 @@ export const HOME_TABS = ['list', 'budget', 'purchased', 'stats', 'trash'] as co
 
 export type HomeTab = (typeof HOME_TABS)[number];
 
-export type HomeSortBy = 'priority' | 'price_asc' | 'price_desc' | 'date_new' | 'date_old' | 'name';
+export type HomeSortBy = 'priority' | 'price_asc' | 'price_desc' | 'date_new' | 'date_old' | 'name' | 'planned_date';
 
 export type HomeListQuery = {
   selectedCategory: number | null;
@@ -23,6 +23,7 @@ type HomeFilterItem = {
   comparison_group_id: number | null;
   current_price?: number | null;
   created_at: string;
+  planned_purchase_date?: string | null;
   sort_order?: number;
 };
 
@@ -46,6 +47,8 @@ export function filterHomeItems<T extends HomeFilterItem>(items: readonly T[], q
     })
     .sort((a, b) => {
       switch (sortBy) {
+        case 'planned_date':
+          return (a.planned_purchase_date || '9999-99-99').localeCompare(b.planned_purchase_date || '9999-99-99');
         case 'price_asc':
         case 'price_desc': {
           const av = a.current_price;

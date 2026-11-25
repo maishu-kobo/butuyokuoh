@@ -80,6 +80,7 @@ export default function HomeFilterPanel({
                 className="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
               >
                 <option value="priority">優先度順</option>
+                {(inline || sortBy==='planned_date') && <option value="planned_date">購入日順</option>}
                 <option value="price_asc">価格が安い順</option>
                 <option value="price_desc">価格が高い順</option>
                 <option value="date_new">新しい順</option>
@@ -88,7 +89,7 @@ export default function HomeFilterPanel({
               </select>
             </div>
 
-            <div className="flex items-center gap-2">
+            {!inline && <div className="flex items-center gap-2">
               <span className="text-sm text-slate-500 dark:text-slate-400">優先度:</span>
               <select
                 aria-label="優先度"
@@ -103,7 +104,7 @@ export default function HomeFilterPanel({
                 <option value="4">低</option>
                 <option value="5">最低</option>
               </select>
-            </div>
+            </div>}
           </div>
 
           {categories.length > 0 && (
