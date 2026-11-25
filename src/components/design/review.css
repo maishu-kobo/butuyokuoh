@@ -180,11 +180,10 @@ html.dark .design-review { --rv-on-accent: #2b211b; }
 .rank-list { padding: 0 18px 16px; }
 .rank-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 0 7px; border-bottom: 2px solid var(--rv-ink); }
 .rank-tabs { display: flex; gap: 12px; }
-.rank-tabs button, .rank-reorder { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 40px; font-size: .78rem; white-space: nowrap; color: var(--rv-muted); }
+.rank-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 40px; font-size: .78rem; white-space: nowrap; color: var(--rv-muted); }
 .rank-tabs button { position: relative; }
 .rank-tabs [aria-pressed=true] { color: var(--rv-ink); font-weight: 700; }
 .rank-tabs [aria-pressed=true]::after { content: ""; position: absolute; bottom: 3px; height: 2px; background: var(--rv-accent); left: 0; right: 0; }
-.rank-reorder { color: var(--rv-accent); }
 .rank-section > h3 { display: flex; align-items: baseline; gap: 5px; margin: 17px 0 0; color: var(--rv-muted); font-size: .75rem; line-height: 1.5; font-weight: 500; }
 .rank-section > h3 strong { color: var(--rv-ink); font: 650 1.16rem var(--rv-serif); }
 .rank-section > h3 small { margin-left: auto; font-size: .7rem; }
@@ -231,11 +230,6 @@ html.dark .design-review { --rv-on-accent: #2b211b; }
 .rank-condition svg { align-self: flex-start; margin-top: 2px; }
 .rank-condition svg, .rank-date svg { flex: none; color: var(--rv-muted); }
 .rank-product:hover strong, .rank-guide:hover .rank-guide-line { color: var(--rv-accent); }
-.rank-move { display: flex; align-items: center; gap: 4px; margin-top: 3px; background: var(--rv-soft); border-radius: 5px; padding: 2px 5px; }
-.rank-move label { flex: 1; display: flex; align-items: center; gap: 5px; font-size: .73rem; }
-.rank-move select { min-height: 38px; background: var(--rv-paper); border: 1px solid var(--rv-line); border-radius: 4px; padding: 1px 3px; }
-.rank-move button { width: 40px; min-height: 40px; display: grid; place-items: center; color: var(--rv-accent); }
-.rank-move button:disabled { opacity: .33; }
 .rank-editor { display: grid; gap: 17px; padding: 3px 0 4px; }
 .rank-editor h4 { font: 600 1.04rem/1.4 var(--rv-serif); }
 .rank-editor legend, .rank-condition-input > span { font-size: .84rem; font-weight: 650; margin-bottom: 7px; }
@@ -247,7 +241,9 @@ html.dark .design-review { --rv-on-accent: #2b211b; }
 .rank-levels input:checked + span { border-color: var(--rv-accent); background: var(--rv-soft); color: var(--rv-accent); font-weight: 700; }
 .rank-levels input:focus-visible + span { outline: 2px solid var(--rv-accent); outline-offset: 1px; }
 .rank-month-input { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-.rank-month-input :is(input,select), .rank-condition-input textarea { min-width: 0; min-height: 41px; padding: 6px 8px; border: 1px solid var(--rv-line); border-radius: 5px; background: var(--rv-paper); color: var(--rv-ink); font: inherit; font-size: .88rem; }
+.rank-month-input :is(input,select), .rank-position-input select, .rank-condition-input textarea { min-width: 0; min-height: 41px; padding: 6px 8px; border: 1px solid var(--rv-line); border-radius: 5px; background: var(--rv-paper); color: var(--rv-ink); font: inherit; font-size: .88rem; }
+.rank-position-input { display: grid; grid-template-columns: minmax(0,1fr) minmax(76px,.45fr); gap: 8px; }
+.rank-position-input select { width: 100%; min-height: 44px; font-size: max(16px,.88rem); }
 .rank-year { display: inline-flex; align-items: center; gap: 3px; font-size: .82rem; }
 .rank-month-input .rank-year input { width: 4.1rem; }
 .rank-month-input select:disabled { color: var(--rv-muted); }

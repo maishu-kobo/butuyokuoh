@@ -1,11 +1,12 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useDesktopWorkspace } from '../design/DesktopWorkspace';
+import { useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import RegistrationSheet from '@/components/design/RegistrationSheet';
 import { useSensors, useSensor, PointerSensor, KeyboardSensor, DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { CheckSquare, GalleryVerticalEnd, Rows3, RefreshCw, Upload, X } from 'lucide-react';
+import { CheckSquare, Ellipsis, GalleryVerticalEnd, Rows3, RefreshCw, Upload, X } from 'lucide-react';
 import AddItemForm from '@/components/AddItemForm';
 import PhotoGroupCard from '@/components/PhotoGroupCard';
 import SortableItemCard from '@/components/SortableItemCard';
@@ -71,6 +72,11 @@ export default function ListManagementView({
   isGuest,
   dragEnabled,
   lowestPriceInGroup,
+  embedded = false,
+  activeIntegration = true,
+  compactList,
+  bulkActions,
+  onSelectCompact,
 }: {
   managementOnly?: boolean;
   returnView?: ReviewView;
@@ -116,11 +122,18 @@ export default function ListManagementView({
   isGuest: boolean;
   dragEnabled: boolean;
   lowestPriceInGroup: number | null;
+  embedded?: boolean;
+  activeIntegration?: boolean;
+  compactList?: ReactNode;
+  bulkActions?: ReactNode;
+  onSelectCompact?: () => void;
 }) {
+  const desktop = useDesktopWorkspace();
   const [layout, setLayout] = useState<'list' | 'shelf'>('list');
   const [registrationOpen,setRegistrationOpen]=useState(false);
   const [registered,setRegistered]=useState('');
   const trigger=useRef<HTMLElement|null>(null);
+  const toolsMenu=useRef<HTMLDetailsElement|null>(null);
   function closeRegistration() {
     setRegistrationOpen(false);
     requestAnimationFrame(()=>trigger.current?.focus({preventScroll:true}));
@@ -159,10 +172,11 @@ export default function ListManagementView({
   };
 
   return (
-    <div className="agenda-list space-y-4">
+    <div className={embedded&&!activeIntegration ? 'integrated-list-pass-through' : 'agenda-list space-y-4'+(embedded?' integrated-list':'')}>
       {!managementOnly && !loading && !loadError && <HomeAgendaSummary items={items} productCount={productCount ?? items.length} total={totalAmount} onBudget={onBudget} />}
 
-      <HomeFilterPanel
+      {(!embedded || (activeIntegration && isFilterOpen)) && <HomeFilterPanel
+        inline={embedded}
         isOpen={isFilterOpen}
         onToggle={onToggleFilter}
         searchQuery={searchQuery}
@@ -177,9 +191,32 @@ export default function ListManagementView({
         groups={groups}
         selectedGroup={selectedGroup}
         onSelectedGroup={onSelectedGroup}
-      />
+      />}
 
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+      {embedded && activeIntegration && <div className="integrated-list-tools">
+        <div role="group" aria-label="商品の表示" className="agenda-layout-choices">
+          <button type="button" aria-pressed={layout==='list'} onClick={()=>setLayout('list')}><Rows3 size={16}/>一覧</button>
+          <button type="button" aria-pressed={layout==='shelf'} onClick={()=>setLayout('shelf')}><GalleryVerticalEnd size={16}/>写真棚</button>
+        </div>
+        <div className="integrated-list-actions">
+          {selectionMode ? <>
+            <button type="button" onClick={layout==='list' ? onSelectCompact : onSelectAll}>全選択</button>
+            <button type="button" onClick={onDeselectAll}>選択解除</button>
+            <button type="button" onClick={onToggleSelectionMode} aria-label="選択を終了"><X size={16}/>完了</button>
+          </> : <button type="button" onClick={onToggleSelectionMode} disabled={!items.length}><CheckSquare size={16}/>選択</button>}
+          <details ref={toolsMenu} className="integrated-tools-menu" onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();toolsMenu.current?.removeAttribute('open');toolsMenu.current?.querySelector('summary')?.focus();}}}>
+            <summary role="button" aria-label="リストの操作"><Ellipsis size={20}/></summary>
+            <div>
+              <button type="button" onClick={()=>{toolsMenu.current?.removeAttribute('open');onImport();}} disabled={isGuest}><Upload size={16}/>インポート</button>
+              <button type="button" onClick={()=>{toolsMenu.current?.removeAttribute('open');onRefreshAll();}} disabled={isGuest||refreshing||!items.length}><RefreshCw size={16}/>価格を更新</button>
+            </div>
+          </details>
+        </div>
+      </div>}
+      {embedded && activeIntegration && (searchQuery || selectedCategory || selectedPriority || selectedGroup || sortBy!=='priority') &&
+        <div className="integrated-filter-status"><span>{wishlist.length}商品</span><button type="button" onClick={onClearFilters}><X size={14}/>条件をクリア</button></div>}
+
+      {!embedded && <><div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
         <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-200">
           {selectionMode
             ? `${selectedCount}件選択中`
@@ -248,7 +285,7 @@ export default function ListManagementView({
         onSaved={message=>{closeRegistration();setRegistered(message);onPhotoChanged();}}
         onExisting={location=>{closeRegistration();onViewRegistered(location);}}/></div>,document.body)}
       <AddItemForm
-        onOpenRegistration={managementOnly ? ()=>{trigger.current=document.activeElement as HTMLElement;setRegistered('');setRegistrationOpen(true);} : undefined}
+        onOpenRegistration={managementOnly ? ()=>{if(desktop.active){desktop.openRegistration();return;}trigger.current=document.activeElement as HTMLElement;setRegistered('');setRegistrationOpen(true);} : undefined}
         returnView={returnView}
         onViewRegistered={onViewRegistered}
         onAdd={onItemsChanged}
@@ -268,7 +305,10 @@ export default function ListManagementView({
           </select>
         </label>}
       </div>
+      </>}
 
+      {embedded && <div hidden={activeIntegration&&layout!=='list'}>{compactList}</div>}
+      <div hidden={embedded&&(!activeIntegration||layout==='list')}>
       {loading ? (
         <div className="text-center py-12 text-slate-500 dark:text-slate-400">読み込み中...</div>
       ) : loadError ? (
@@ -352,6 +392,8 @@ export default function ListManagementView({
           )}
         </>
       )}
+      </div>
+      {embedded && activeIntegration && bulkActions}
     </div>
   );
 }

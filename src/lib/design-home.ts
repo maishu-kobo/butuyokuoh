@@ -5,6 +5,8 @@ import { displayableItemImageUrl } from './capture/image-hosts';
 import { photoFaceItemId, photoImageUrl } from './capture/photo-card-view';
 import { lineAmount, sumCountedPrices } from './photo-spend';
 import type { ListPreview } from './design-list-preview';
+import { filterHomeItems, type HomeListQuery, type HomeSortBy } from './home-wishlist';
+import { rankedProducts } from './design-rank';
 
 export type ReviewView = 'rank' | 'plan';
 const reviewTabs = ['budget','manage','purchased','stats','trash','agents'] as const;
@@ -64,6 +66,25 @@ export function buildReviewProducts(items: Item[], groups: ComparisonGroup[], pu
 
 export function newestFirst(products: ReviewProduct[]): ReviewProduct[] {
   return [...products].sort((a, b) => b.addedAt.localeCompare(a.addedAt));
+}
+
+export function filterReviewItems(items: Item[], groups: ComparisonGroup[], query: HomeListQuery): Item[] {
+  const needle = query.searchQuery.trim().toLocaleLowerCase('ja-JP');
+  const groupNames = new Map(groups.map(group => [group.id, group.name]));
+  return filterHomeItems(items, { ...query, searchQuery: '' }).filter(item => !needle ||
+    [item.name, item.notes, item.category_name, item.source_name, item.buy_guide?.condition,
+      item.comparison_group_id && groupNames.get(item.comparison_group_id)]
+      .some(value => typeof value === 'string' && value.toLocaleLowerCase('ja-JP').includes(needle)));
+}
+
+// Filter products without discarding their other shops or changing the budgeted offer.
+export function managedProducts(products: ReviewProduct[], matchingItems: Item[], sortBy: HomeSortBy): ReviewProduct[] {
+  const ids = new Set(matchingItems.map(item => item.id));
+  const visible = products.filter(product => product.offers.some(offer => ids.has(offer.id)));
+  if (sortBy === 'priority') return rankedProducts(visible);
+  return filterHomeItems(visible.map(product => ({ ...product.active, product, name: product.name, created_at: product.addedAt })), {
+    sortBy, searchQuery: '', selectedCategory: null, selectedPriority: null, selectedGroup: null,
+  }).map(entry => entry.product);
 }
 
 export function amountText(item: Item): string {

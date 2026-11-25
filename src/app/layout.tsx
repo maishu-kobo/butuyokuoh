@@ -8,6 +8,8 @@ import "./(app)/add/agenda-add.css";
 import "@/components/design/review.css";
 import "@/components/design/palettes.css";
 import "@/components/design/typography.css";
+import "@/components/design/desktop-preview.css";
+import "@/components/design/ui-version-switch.css";
 import { RootProviders } from "@/components/RootProviders";
 
 export const metadata: Metadata = {
