@@ -46,6 +46,7 @@ function probe(mode: Mode): Probe {
   };
 
   const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
+    import { mock } from 'node:test';
     import { NextRequest } from 'next/server';
 
     const origin = process.env.PROBE_ORIGIN;
@@ -53,6 +54,25 @@ function probe(mode: Mode): Probe {
     const issuer = 'https://accounts.google.com';
     const tokenEndpoint = 'https://oauth2.googleapis.com/token';
     let tokenRequests = 0;
+
+    // 決定的にする。時計は固定の時刻、乱数は固定のシードから作る。ネットワークは下の fetch だけが答える。
+    mock.timers.enable({ apis: ['Date'], now: Date.UTC(2030, 0, 1) });
+    let seed = 0x9e3779b9;
+    const nextByte = () => {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      return seed & 0xff;
+    };
+    globalThis.crypto.getRandomValues = (array) => {
+      const bytes = new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
+      for (let index = 0; index < bytes.length; index += 1) bytes[index] = nextByte();
+      return array;
+    };
+    globalThis.crypto.randomUUID = () => {
+      const hex = Array.from({ length: 16 }, () => nextByte().toString(16).padStart(2, '0')).join('');
+      return [hex.slice(0, 8), hex.slice(8, 12), '4' + hex.slice(13, 16), '8' + hex.slice(17, 20), hex.slice(20)].join('-');
+    };
 
     const part = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
     const json = (body) => new Response(JSON.stringify(body), {
@@ -188,6 +208,13 @@ test('the Google sign-in request carries state and S256 PKCE, and asks only for 
   assert.equal(authorizeParams.redirect_uri, `${origin}/api/auth/callback/google`);
   assert.equal(signinCookies.includes('authjs.state'), true);
   assert.equal(signinCookies.includes('authjs.pkce.code_verifier'), true);
+});
+
+test('the probe runs on a fixed clock and seed, so two runs build the same sign-in request', () => {
+  const first = probe('match');
+  const second = probe('match');
+  assert.notEqual(first.authorizeParams.state ?? '', '');
+  assert.deepEqual(second.authorizeParams, first.authorizeParams);
 });
 
 test('a callback that returns the issued state completes the Google login', () => {
