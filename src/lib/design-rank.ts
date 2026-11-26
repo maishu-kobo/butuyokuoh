@@ -1,10 +1,12 @@
 import type { ReviewProduct } from './design-home';
+import { parsePurchaseTimingInput, type PurchaseTiming } from './purchase-timing';
 
 export type Timing = 'by' | 'around';
 export interface BuyGuide { month: string; timing: Timing; condition: string }
 export type RankScope = 'all' | 'priority';
 export type MoveAction = { action:'move'; itemId:number; targetId:number; side:'before'|'after'; scope:RankScope };
-export type GuideAction = { action:'guide'; itemId:number; priority:number } & BuyGuide &
+export type TimingAction = {action:'timing';itemId:number;purchaseTiming:PurchaseTiming};
+export type GuideAction = { action:'guide'; itemId:number; priority:number; purchaseTiming?:PurchaseTiming } & BuyGuide &
   (Pick<MoveAction,'targetId'|'side'|'scope'> | {targetId?:never;side?:never;scope?:never});
 export const priorityNames = ['', '最高', '高', '普通', '低', '最低'] as const;
 export const priorityLevels = [1,2,3,4,5] as const;
@@ -18,11 +20,14 @@ function validId(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 }
 
-export function parseRankAction(value: unknown): MoveAction | GuideAction | null {
+export function parseRankAction(value: unknown): MoveAction | GuideAction | TimingAction | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const input = value as Record<string,unknown>;
   const {action,itemId,targetId,side,scope,priority,month,timing,condition} = input;
   if (!validId(itemId)) return null;
+  const purchaseTiming=input.purchaseMode===undefined?undefined:parsePurchaseTimingInput(input);
+  if(purchaseTiming===null) return null;
+  if(action==='timing') return purchaseTiming?{action,itemId,purchaseTiming}:null;
   if (action === 'move' && validId(targetId) && (side === 'before' || side === 'after') && (scope === 'all' || scope === 'priority')) {
     return {action,itemId,targetId,side,scope};
   }
@@ -30,6 +35,7 @@ export function parseRankAction(value: unknown): MoveAction | GuideAction | null
     (month === '' || /^[1-9]\d{3}-(0[1-9]|1[012])$/.test(month)) && (timing === 'by' || timing === 'around') &&
     typeof condition === 'string' && condition.length <= 240) {
     const guide: GuideAction = {action,itemId,priority,month,timing,condition:condition.trim()};
+    if(purchaseTiming) guide.purchaseTiming=purchaseTiming;
     if (targetId === undefined && side === undefined && scope === undefined) return guide;
     if (validId(targetId) && (side === 'before' || side === 'after') && (scope === 'all' || scope === 'priority')) {
       return {...guide,targetId,side,scope};

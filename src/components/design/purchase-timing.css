@@ -1,0 +1,17 @@
+.purchase-timing-fields { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 12px; }
+.purchase-mode-options [role=radiogroup] { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+.purchase-mode-option { min-width: 0; min-height: 44px; padding: 10px 6px; font-size: .8rem; }
+.purchase-month-fields { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.purchase-year { display: flex; align-items: center; gap: 5px; }
+.purchase-timing-fields :is(input:not([type=radio]),select) { min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--rv-line); border-radius: 6px; background: var(--rv-paper); color: var(--rv-ink); font: inherit; font-size: .9rem; }
+.purchase-year input { width: 4.6rem; }
+.purchase-day-field { display: grid; gap: 6px; font-size: .82rem; }
+.purchase-day-field input { width: 100%; max-width: 100%; box-sizing: border-box; }
+.purchase-timing-editor { display: grid; gap: 20px; padding-block: 4px; }
+.purchase-timing-editor h4 { font-size: 1rem; font-weight: 600; line-height: 1.5; }
+.purchase-timing-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.purchase-timing-actions button { min-height: 44px; }
+.purchase-timing-fields :is(input,select):focus-visible { outline: 2px solid var(--rv-accent); outline-offset: 2px; }
+.purchase-timing-fields:disabled { opacity: .65; }
+.rank-guide-line .rank-purchase-time { display: inline-flex; flex-wrap: wrap; gap: 0; color: var(--rv-accent); font-weight: 650; }
+.rank-purchase-time > span { white-space: nowrap; }
