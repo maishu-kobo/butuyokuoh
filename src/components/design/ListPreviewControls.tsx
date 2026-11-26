@@ -1,20 +1,37 @@
 'use client';
 
-import { Check, ListFilter, ListOrdered, Rows3 } from 'lucide-react';
+import { useId } from 'react';
+import { Button } from '@astryxdesign/core/Button';
+import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
+import { RadioList, RadioListItem } from '@astryxdesign/core/RadioList';
 import type { ReviewProduct } from '@/lib/design-home';
 import { priorityLevels, priorityNames, rankItem } from '@/lib/design-rank';
-import type { ListDisplay } from '@/lib/design-list-preview';
+import { listDisplayLabel, type ListDisplay } from '@/lib/design-list-preview';
 
-export function ListDisplayOptions({value,products,onChange}:{value:ListDisplay;products:ReviewProduct[];onChange:(value:ListDisplay)=>void}) {
-  const choices:{value:ListDisplay;label:string;count:number;Icon:typeof ListFilter;hint?:string}[]=[
-    {value:'all',label:'すべて',count:products.length,Icon:ListOrdered,hint:'自分で決めた全体順位で表示'},
-    {value:'grouped',label:'優先度でまとめる',count:products.length,Icon:Rows3,hint:'すべての優先度を見出しで区切る'},
-    ...priorityLevels.map(level=>({value:('priority-'+level) as ListDisplay,label:'優先度 '+priorityNames[level]+'のみ',count:products.filter(p=>rankItem(p).priority===level).length,Icon:ListFilter})),
-  ];
-  return <div className="focused-display-options" role="group" aria-label="表示する候補">
-    {choices.map(choice=><button type="button" key={choice.value} aria-pressed={value===choice.value} onClick={()=>onChange(choice.value)}>
-      <choice.Icon size={19} aria-hidden/><span><strong>{choice.label}</strong>{choice.hint&&<small>{choice.hint}</small>}</span>
-      <small>{choice.count}商品</small><span className="focused-choice-check">{value===choice.value&&<Check size={18}/>}</span>
-    </button>)}
+export function ListDisplayOptions({value,products,onChange,priorities,onPriorities,visibleCount,onDone}:{
+  value:ListDisplay;products:ReviewProduct[];onChange:(value:ListDisplay)=>void;
+  priorities:number[];onPriorities:(values:number[])=>void;visibleCount:number;onDone:()=>void;
+}) {
+  const id=useId();
+  const choices:ListDisplay[]=[value==='priority_desc'?value:'priority',value==='date_old'?value:'date_new',value==='planned_date_desc'?value:'planned_date'];
+  // 既存の価格順・名前順を選んだ場合も、現在の並び順を正しく示す。
+  if(!choices.includes(value)) choices.push(value);
+  return <div className="focused-display-options">
+    <RadioList label="並び順" value={value} onChange={next=>onChange(next as ListDisplay)} containerClassName="focused-sort-options">
+      {choices.map(choice=><RadioListItem key={choice} value={choice} label={listDisplayLabel(choice)}
+        endContent={<small>{products.length}商品</small>}/>)}
+    </RadioList>
+    <fieldset className="focused-priority-options">
+      <legend>優先度</legend>
+      {priorities.length>0&&<button type="button" className="focused-priority-reset" onClick={()=>onPriorities([])}>解除</button>}
+      <div className="focused-priority-grid">
+        {priorityLevels.map(level=><div key={level} className="focused-priority-option" data-selected={priorities.includes(level)}>
+          <CheckboxInput label={priorityNames[level]} value={priorities.includes(level)} aria-describedby={id+'-'+level}
+            onChange={checked=>onPriorities(priorityLevels.filter(entry=>entry===level?checked:priorities.includes(entry)))}/>
+          <small id={id+'-'+level}>{products.filter(p=>rankItem(p).priority===level).length}商品</small>
+        </div>)}
+      </div>
+    </fieldset>
+    <div className="focused-display-done"><Button variant="primary" label={visibleCount+'商品を表示'} onClick={onDone}/></div>
   </div>;
 }

@@ -11,6 +11,7 @@ import type { Category, ComparisonGroup, Item } from '@/types';
 import PhotoGroupCard from '../PhotoGroupCard';
 import ItemCard from '../ItemCard';
 import { ProductPicture } from './ProductLayouts';
+import { purchaseTiming, purchaseTimingLabel } from '@/lib/purchase-timing';
 
 export default function ProductDetails({ product, groups, categories, onReload, onDelete, onDate }: {
   product: ReviewProduct; groups: ComparisonGroup[]; categories: Category[];
@@ -46,7 +47,7 @@ export default function ProductDetails({ product, groups, categories, onReload, 
     </div>
     {!!active.notes && <p className="review-detail-note">{active.notes}</p>}
     <button type="button" className="review-detail-date" onClick={e => onDate(active,e.currentTarget)}>
-      <CalendarDays size={18} /><span>購入予定日</span><strong>{active.planned_purchase_date || '日程未定'}</strong>
+      <CalendarDays size={18} /><span>購入時期</span><strong>{purchaseTimingLabel(purchaseTiming(active))}</strong>
     </button>
     <div className="review-offer-heading"><h4>販売候補</h4><span>{product.offers.length}件</span></div>
     <ul className="review-offers">{product.offers.map(item => {

@@ -111,9 +111,9 @@ function compare(a: Row, b: Row, sortBy: HomeSortBy): number {
       return sortBy === 'price_asc' ? av - bv : bv - av;
     }
     case 'date_new':
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime() || b.id - a.id;
     case 'date_old':
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime() || a.id - b.id;
     case 'name':
       return a.name.localeCompare(b.name, 'ja');
     case 'priority':

@@ -74,6 +74,7 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<HomeSortBy>('priority');
   const [selectedPriority, setSelectedPriority] = useState<number | null>(null);
+  const [selectedPriorities, setSelectedPriorities] = useState<number[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
@@ -186,7 +187,15 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
     searchQuery,
     sortBy,
   }), [selectedCategory, selectedPriority, selectedGroup, searchQuery, sortBy]);
-  const filteredItems = useMemo(() => designReview ? filterReviewItems(items, groups, listQuery) : filterHomeItems(items, listQuery), [items, groups, listQuery, designReview]);
+  const priorityOptionsItems = useMemo(() => designReview ? filterReviewItems(items, groups, listQuery, purchasedItems) : filterHomeItems(items, listQuery), [items, groups, listQuery, designReview, purchasedItems]);
+  const filteredItems = useMemo(() => designReview && selectedPriorities.length
+    ? filterReviewItems(items, groups, {...listQuery, priorities:selectedPriorities}, purchasedItems) : priorityOptionsItems,
+  [items,groups,listQuery,designReview,selectedPriorities,priorityOptionsItems,purchasedItems]);
+  const changePriorities = (priorities:number[]) => {
+    setSelectedPriorities(priorities);
+    setSelectedPriority(null);
+    setSelectedItems(new Set());
+  };
   // ドラッグ&ドロップが有効かどうか（優先度順で、絞り込みが無いときだけ）
   const dragEnabled = homeDragEnabled(listQuery);
   const wishlist = useMemo(
@@ -372,6 +381,7 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
     setSearchQuery('');
     setSelectedCategory(null);
     setSelectedPriority(null);
+    setSelectedPriorities([]);
     setSelectedGroup(null);
     setSortBy('priority');
     // 選択モードを解除（クリア後に見えないアイテムへの一括操作を防ぐ）
@@ -418,6 +428,7 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
     items, filteredItems, wishlist, totalAmount, productCount, loading, loadError, categories, groups,
     searchQuery, onSearchQuery: setSearchQuery, sortBy, onSortBy: setSortBy,
     selectedPriority, onSelectedPriority: setSelectedPriority, selectedCategory, onSelectedCategory: setSelectedCategory,
+    priorityFilters: designReview ? selectedPriorities : undefined,
     selectedGroup, onSelectedGroup: setSelectedGroup, isFilterOpen, onToggleFilter: () => setIsFilterOpen(!isFilterOpen),
     selectionMode, selectedCount: selectedItems.size, selectedItems, onToggleSelectionMode: toggleSelectionMode,
     onSelectAll: selectAll, onDeselectAll: deselectAll, onClearFilters: clearFilters, onRetry: handleRetry,
@@ -436,7 +447,8 @@ export default function HomeClient({ mcpUrl, designReview = false }: { mcpUrl: s
     return <><DesignWorkbench budgetRevision={budgetRevision} view={designTab === 'budget' ? 'plan' : reviewView} palette={palette} appearance={appearance} items={items} purchased={purchasedItems} groups={groups}
       categories={categories} loading={loading} loadError={loadError} onRetry={handleRetry}
       onReload={reloadReview} onDelete={handleDelete} onLogout={logout} isGuest={isGuest}
-      management={{ search: searchQuery, onSearch: setSearchQuery, matching: filteredItems, sortBy, filterOpen: isFilterOpen,
+      management={{ search: searchQuery, onSearch: setSearchQuery, matching: filteredItems, priorityOptionsItems,
+        sortBy, onSortBy:setSortBy, priorities:selectedPriorities, onPriorities:changePriorities, filterOpen: isFilterOpen,
         onToggleFilter: () => setIsFilterOpen(!isFilterOpen), selection: selectionMode ? { ids: selectedItems, toggle: toggleMatchingSelection } : undefined,
         render: (compactList,visibleIds,active) => <ListManagementView {...listProps} embedded activeIntegration={active} compactList={compactList}
           onSelectCompact={() => setSelectedItems(new Set(visibleIds))} bulkActions={bulkBar(true)}/> }}/>{importModal}</>;

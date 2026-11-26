@@ -1,5 +1,6 @@
 import type { Item } from '@/types';
-import { idsForSelectAll } from './photo-spend';
+import { idsForSelectAll, lineAmount } from './photo-spend';
+import { comparePurchaseTiming, purchaseTimingMonth } from './purchase-timing';
 
 // Stored dates can predate UI validation. Keep their value intact while rendering safely.
 export function scheduleCalendarDate(value: string | null): Date | null {
@@ -42,6 +43,16 @@ export function reconcileBudgetSelection(previous: readonly Item[] | null, items
 export interface ScheduleBudgetData {
   [month: string]: { items: Item[]; total: number };
 }
+export function timingBudget(items:readonly Item[]):ScheduleBudgetData {
+  const result:ScheduleBudgetData={};
+  for(const item of items) {
+    const key=purchaseTimingMonth(item)||'undated';
+    const section=result[key]??={items:[],total:0};
+    section.items.push(item);
+    if(item.countsInTotal!==false) section.total+=lineAmount(item.current_price,item.quantity);
+  }
+  return result;
+}
 export interface ScheduleBudgetRow {
   key: string;
   name: string;
@@ -67,5 +78,5 @@ export function scheduleBudgetRows(entries: readonly Item[], all: readonly Item[
     const item = monthItems.find(item => item.countsInTotal !== false) ?? first;
     return { key, name: (photo && (first.comparison_group_name || item.comparison_group_name)) || item.name,
       item, monthItems, offers, chooseGroupId: photo && offers.length > 1 ? first.comparison_group_id : null };
-  }).sort((a,b) => (a.item.planned_purchase_date || '9999').localeCompare(b.item.planned_purchase_date || '9999') || a.item.id - b.item.id);
+  }).sort((a,b) => comparePurchaseTiming(a.item,b.item) || a.item.id-b.item.id);
 }
