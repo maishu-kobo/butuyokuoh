@@ -2,7 +2,7 @@
 
 物欲王（butuyokuoh）のエージェント向けルール。正本はこのファイルだけで、他の指示ファイルはここを指す。本文を複製しない。
 
-複数の EC のほしいものリストをまとめる Next.js アプリ。本番は https://butsuyokuoh.exe.xyz/ 。作業は `feature/<名前>` へ向ける。`develop` へ入れるのは Sota（sota009）の承認があるときだけ。`main` は昇格用で、ここへ直接作業しない。
+複数の EC のほしいものリストをまとめる Next.js アプリ。本番は https://butsuyokuoh.exe.xyz/ 。作業は `feature/<名前>` へ向ける。`develop` への取り込みは、完了条件・独立レビュー・CI の確認を行う。`main` は昇格用で、ここへ直接作業しない。
 
 Next.js 16 / React 19 は、古い学習データと違うことがある。迷ったら https://nextjs.org/docs の該当ページを見る。Markdown が要るときは URL の末尾に `.md` を足す。
 
@@ -65,7 +65,7 @@ PR を出す前に `npm test`、`npx tsc --noEmit`、`npm run build` を通し�
 
 ## マージ
 
-作業ブランチは `feature/<名前>` から切り、PR も `feature/<名前>` へ向ける。`feature/<名前>` は `develop` から切る。完了の条件を満たし、作者とは別のエージェントか人がレビューした PR は、`feature/<名前>` へのものに限ってマージしてよい。`develop` へのマージは Sota（sota009）の承認があるときだけ行う。CI の結果も見る。次に触る PR は、それに加えて人間の承認が必要。
+作業ブランチは `feature/<名前>` から切り、PR も `feature/<名前>` へ向ける。`feature/<名前>` は `develop` から切る。完了の条件を満たし、作者とは別のエージェントか人がレビューした PR は、`feature/<名前>` または `develop` へのものをマージしてよい。特定の個人による承認は必須としない。CI の結果も確認し、失敗があればマージしない。次に触る PR は、それに加えて人間の承認が必要。
 
 - AI / API キーや秘密情報の扱い
 - 利用量・費用の上限
