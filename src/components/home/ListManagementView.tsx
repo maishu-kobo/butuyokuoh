@@ -44,6 +44,7 @@ export default function ListManagementView({
   sortBy,
   onSortBy,
   selectedPriority,
+  priorityFilters = [],
   onSelectedPriority,
   selectedCategory,
   onSelectedCategory,
@@ -94,6 +95,7 @@ export default function ListManagementView({
   sortBy: HomeSortBy;
   onSortBy: (value: HomeSortBy) => void;
   selectedPriority: number | null;
+  priorityFilters?: number[];
   onSelectedPriority: (value: number | null) => void;
   selectedCategory: number | null;
   onSelectedCategory: (value: number | null) => void;
@@ -155,7 +157,7 @@ export default function ListManagementView({
     selectedGroup,
     searchQuery,
     sortBy,
-  });
+  })+'|'+priorityFilters.join(',');
   const [listWindow, setListWindow] = useState(() => ({ key: queryKey, page: createHomeListPage() }));
   const alignedWindow = alignHomeListPage(listWindow, queryKey);
   if (alignedWindow !== listWindow) setListWindow(alignedWindow);
@@ -213,7 +215,7 @@ export default function ListManagementView({
           </details>
         </div>
       </div>}
-      {embedded && activeIntegration && (searchQuery || selectedCategory || selectedPriority || selectedGroup || sortBy!=='priority') &&
+      {embedded && activeIntegration && (searchQuery || selectedCategory || selectedPriority || priorityFilters.length>0 || selectedGroup || sortBy!=='priority') &&
         <div className="integrated-filter-status"><span>{wishlist.length}商品</span><button type="button" onClick={onClearFilters}><X size={14}/>条件をクリア</button></div>}
 
       {!embedded && <><div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">

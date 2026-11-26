@@ -4,7 +4,11 @@ export const HOME_TABS = ['list', 'budget', 'purchased', 'stats', 'trash'] as co
 
 export type HomeTab = (typeof HOME_TABS)[number];
 
-export type HomeSortBy = 'priority' | 'price_asc' | 'price_desc' | 'date_new' | 'date_old' | 'name';
+export type HomeSortBy = 'priority' | 'priority_desc' | 'price_asc' | 'price_desc' | 'date_new' | 'date_old' | 'name' | 'name_desc' | 'planned_date' | 'planned_date_desc';
+
+export function isPrioritySort(sortBy: HomeSortBy): boolean {
+  return sortBy === 'priority' || sortBy === 'priority_desc';
+}
 
 export type HomeListQuery = {
   selectedCategory: number | null;
@@ -15,6 +19,8 @@ export type HomeListQuery = {
 };
 
 type HomeFilterItem = {
+  id: number;
+  registrationId?: number;
   name: string;
   notes?: string | null;
   category_name?: string | null;
@@ -23,6 +29,7 @@ type HomeFilterItem = {
   comparison_group_id: number | null;
   current_price?: number | null;
   created_at: string;
+  planned_purchase_date?: string | null;
   sort_order?: number;
 };
 
@@ -46,6 +53,15 @@ export function filterHomeItems<T extends HomeFilterItem>(items: readonly T[], q
     })
     .sort((a, b) => {
       switch (sortBy) {
+        case 'planned_date':
+        case 'planned_date_desc': {
+          const av = a.planned_purchase_date;
+          const bv = b.planned_purchase_date;
+          if (!av && !bv) return 0;
+          if (!av) return 1;
+          if (!bv) return -1;
+          return sortBy === 'planned_date' ? av.localeCompare(bv) : bv.localeCompare(av);
+        }
         case 'price_asc':
         case 'price_desc': {
           const av = a.current_price;
@@ -56,21 +72,27 @@ export function filterHomeItems<T extends HomeFilterItem>(items: readonly T[], q
           return sortBy === 'price_asc' ? av - bv : bv - av;
         }
         case 'date_new':
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        case 'date_old':
-          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'date_old': {
+          // 同じ秒に登録した商品も、手動順位とは独立した登録順で反転する。
+          const order = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            || (a.registrationId ?? a.id) - (b.registrationId ?? b.id);
+          return sortBy === 'date_old' ? order : -order;
+        }
         case 'name':
           return a.name.localeCompare(b.name, 'ja');
+        case 'name_desc':
+          return b.name.localeCompare(a.name, 'ja');
         case 'priority':
+        case 'priority_desc':
         default:
-          if (a.priority !== b.priority) return a.priority - b.priority;
+          if (a.priority !== b.priority) return sortBy === 'priority_desc' ? b.priority - a.priority : a.priority - b.priority;
           return (a.sort_order ?? 0) - (b.sort_order ?? 0);
       }
     });
 }
 
 export function homeDragEnabled(query: HomeListQuery): boolean {
-  return query.sortBy === 'priority'
+  return isPrioritySort(query.sortBy)
     && !query.selectedCategory
     && !query.selectedGroup
     && !query.selectedPriority
