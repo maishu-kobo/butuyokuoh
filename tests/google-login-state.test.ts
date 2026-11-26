@@ -9,8 +9,9 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const origin = 'http://localhost:3000';
 
-// match: Google が state をそのまま返す。missing: state が無い。tampered: 別の値が付いている。
-type Mode = 'match' | 'missing' | 'tampered';
+// match: Google が state をそのまま返す。missing: state が無い。tampered: でたらめな値が付いている。
+// foreign: 同じサーバが別のブラウザに発行した本物の state が付いている（ログイン CSRF の形）。
+type Mode = 'match' | 'missing' | 'tampered' | 'foreign';
 
 type Probe = {
   authorizeHost: string;
@@ -100,40 +101,54 @@ function probe(mode: Mode): Probe {
     const handlers = loaded.handlers ?? loaded.default?.handlers;
     if (!handlers?.GET || !handlers?.POST) throw new Error('auth handlers missing');
 
-    const jar = new Map();
-    const keep = (response) => {
-      for (const line of response.headers.getSetCookie()) {
-        const pair = line.split(';')[0];
-        const at = pair.indexOf('=');
-        const name = pair.slice(0, at);
-        const value = pair.slice(at + 1);
-        if (value === '' || /max-age=0/i.test(line)) jar.delete(name);
-        else jar.set(name, value);
-      }
+    // ブラウザ1つ分の Cookie。
+    const browser = () => {
+      const jar = new Map();
+      const keep = (response) => {
+        for (const line of response.headers.getSetCookie()) {
+          const pair = line.split(';')[0];
+          const at = pair.indexOf('=');
+          const name = pair.slice(0, at);
+          const value = pair.slice(at + 1);
+          if (value === '' || /max-age=0/i.test(line)) jar.delete(name);
+          else jar.set(name, value);
+        }
+      };
+      const cookieHeader = () => [...jar].map(([name, value]) => name + '=' + value).join('; ');
+      return { jar, keep, cookieHeader };
     };
-    const cookieHeader = () => [...jar].map(([name, value]) => name + '=' + value).join('; ');
 
-    const csrf = await handlers.GET(new NextRequest(origin + '/api/auth/csrf'));
-    keep(csrf);
-    const { csrfToken } = await csrf.json();
+    // そのブラウザでログインを始め、Google へ送る URL を返す。
+    const begin = async ({ keep, cookieHeader }) => {
+      const csrf = await handlers.GET(new NextRequest(origin + '/api/auth/csrf'));
+      keep(csrf);
+      const { csrfToken } = await csrf.json();
+      const signin = await handlers.POST(new NextRequest(origin + '/api/auth/signin/google', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: cookieHeader() },
+        body: new URLSearchParams({ csrfToken, callbackUrl: '/' }).toString(),
+      }));
+      keep(signin);
+      return new URL(signin.headers.get('location') ?? '');
+    };
 
-    const signin = await handlers.POST(new NextRequest(origin + '/api/auth/signin/google', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: cookieHeader() },
-      body: new URLSearchParams({ csrfToken, callbackUrl: '/' }).toString(),
-    }));
-    keep(signin);
-    const authorize = new URL(signin.headers.get('location') ?? '');
-    const signinCookies = [...jar.keys()].sort();
+    const mine = browser();
+    const authorize = await begin(mine);
+    const signinCookies = [...mine.jar.keys()].sort();
 
     const back = new URL(origin + '/api/auth/callback/google');
     back.searchParams.set('code', 'probe-code');
     const issued = authorize.searchParams.get('state');
     if (mode === 'match' && issued) back.searchParams.set('state', issued);
     if (mode === 'tampered') back.searchParams.set('state', 'state-chosen-by-someone-else');
+    if (mode === 'foreign') {
+      const foreign = (await begin(browser())).searchParams.get('state');
+      if (!foreign || foreign === issued) throw new Error('another browser was not issued its own state');
+      back.searchParams.set('state', foreign);
+    }
 
-    const callback = await handlers.GET(new NextRequest(back, { headers: { cookie: cookieHeader() } }));
-    keep(callback);
+    const callback = await handlers.GET(new NextRequest(back, { headers: { cookie: mine.cookieHeader() } }));
+    mine.keep(callback);
 
     const database = await import('./src/lib/db.ts');
     const getDb = database.getDb ?? database.default?.getDb;
@@ -146,7 +161,7 @@ function probe(mode: Mode): Probe {
       signinCookies,
       callbackStatus: callback.status,
       callbackLocation: callback.headers.get('location') ?? '',
-      sessionCookie: jar.has('authjs.session-token'),
+      sessionCookie: mine.jar.has('authjs.session-token'),
       tokenRequests,
       members,
     }));
@@ -185,7 +200,7 @@ test('a callback that returns the issued state completes the Google login', () =
 });
 
 test('a callback with a missing or different state is refused before the token exchange', () => {
-  for (const mode of ['missing', 'tampered'] as const) {
+  for (const mode of ['missing', 'tampered', 'foreign'] as const) {
     const result = probe(mode);
     assert.equal(result.tokenRequests, 0, mode);
     assert.equal(result.sessionCookie, false, mode);
