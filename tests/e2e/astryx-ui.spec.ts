@@ -44,7 +44,7 @@ test('invalid stored dates keep the new list and budget usable without rewriting
   await page.getByRole('link', {name: '出費予定', exact: true}).click();
   await expect(page.getByTestId('spend-selected-total')).toHaveText('¥1,200');
   await expect(page.getByRole('button', {name: '以前の日付の商品の詳細'})).toBeVisible();
-  await expect(page.getByRole('button', {name: '以前の日付の商品の予定日を変更'})).toContainText('決める');
+  await expect(page.getByRole('button', {name: '以前の日付の商品の購入時期を変更'})).toContainText('決める');
   expect(errors).toEqual([]);
   const rows = await (await page.request.get('/api/items')).json();
   expect(rows.find((entry: {id: number}) => entry.id === saved.id).planned_purchase_date).toBe('2027-13-01');
@@ -121,11 +121,12 @@ test('priority and rough timing are independent, same-priority keyboard drag per
     const rows = await (await page.request.get('/api/items')).json();
     return rows.find((x: {id: number}) => x.id === second.id).sort_order < rows.find((x: {id: number}) => x.id === first.id).sort_order;
   }).toBeTruthy();
-  await page.getByRole('button', {name: '次の商品の優先度・買いどきを編集'}).click();
-  const dialog = page.getByRole('dialog', {name: '優先度と買いどき'});
+  await page.getByRole('button', {name: '次の商品の優先度・購入時期を編集'}).click();
+  const dialog = page.getByRole('dialog', {name: '優先度と購入時期'});
   await dialog.getByRole('radio', {name: '低', exact: true}).check();
-  await dialog.getByRole('textbox', {name: '目安の年'}).fill('2027');
-  await dialog.getByRole('combobox', {name: '目安の月'}).selectOption('02');
+  await dialog.getByRole('radio', {name: '月', exact: true}).check();
+  await dialog.getByRole('textbox', {name: '購入する年'}).fill('2027');
+  await dialog.getByRole('combobox', {name: '購入する月'}).selectOption('02');
   await dialog.getByRole('combobox', {name: '時期の表し方'}).selectOption('around');
   await dialog.getByRole('textbox', {name: /どんなときに買う/}).fill('値下がりしたら');
   await dialog.getByRole('button', {name: '保存', exact: true}).click();

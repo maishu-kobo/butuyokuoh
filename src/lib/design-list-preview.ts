@@ -9,7 +9,7 @@ export function readListPreview(value?:string|null):ListPreview|undefined {
 }
 export function listDisplayLabel(display:ListDisplay):string {
   const labels:Record<ListDisplay,string>={priority:'優先度順',priority_desc:'優先度順',date_new:'登録順',date_old:'登録順',
-    planned_date:'購入日順',planned_date_desc:'購入日順',price_asc:'価格順',price_desc:'価格順',name:'名前順',name_desc:'名前順'};
+    planned_date:'購入時期順',planned_date_desc:'購入時期順',price_asc:'価格順',price_desc:'価格順',name:'名前順',name_desc:'名前順'};
   return labels[display];
 }
 export function reverseListSort(display:ListDisplay):ListDisplay {
@@ -21,7 +21,7 @@ export function listSortDirection(display:ListDisplay):{ascending:boolean;label:
   const directions:Record<ListDisplay,{ascending:boolean;label:string}>={
     priority:{ascending:false,label:'優先度が高い順'},priority_desc:{ascending:true,label:'優先度が低い順'},
     date_new:{ascending:false,label:'登録が新しい順'},date_old:{ascending:true,label:'登録が古い順'},
-    planned_date:{ascending:true,label:'購入日が近い順'},planned_date_desc:{ascending:false,label:'購入日が遠い順'},
+    planned_date:{ascending:true,label:'購入時期が近い順'},planned_date_desc:{ascending:false,label:'購入時期が遠い順'},
     price_asc:{ascending:true,label:'価格が安い順'},price_desc:{ascending:false,label:'価格が高い順'},
     name:{ascending:true,label:'名前の昇順'},name_desc:{ascending:false,label:'名前の降順'},
   };

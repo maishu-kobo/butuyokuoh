@@ -7,6 +7,7 @@ import { lineAmount, sumCountedPrices } from './photo-spend';
 import type { ListPreview } from './design-list-preview';
 import { filterHomeItems, type HomeListQuery, type HomeSortBy } from './home-wishlist';
 import { rankedProducts, rankItem } from './design-rank';
+import { comparePurchaseTiming } from './purchase-timing';
 
 export type ReviewView = 'rank' | 'plan';
 const reviewTabs = ['budget','manage','purchased','stats','trash','agents'] as const;
@@ -92,6 +93,9 @@ export function managedProducts(products: ReviewProduct[], matchingItems: Item[]
   const visible = rankedProducts(products.filter(product => product.offers.some(offer => ids.has(offer.id))));
   if (sortBy === 'priority' || sortBy === 'priority_desc') {
     return visible.sort((a,b)=>(rankItem(a).priority-rankItem(b).priority)*(sortBy==='priority'?1:-1));
+  }
+  if(sortBy==='planned_date'||sortBy==='planned_date_desc') {
+    return visible.sort((a,b)=>comparePurchaseTiming(a.active,b.active,sortBy==='planned_date'?1:-1));
   }
   return filterHomeItems(visible.map(product => ({ ...product.active, product, name: product.name, created_at: product.addedAt,
     // 写真商品は、予算に採用する店を変えても登録順を変えない。

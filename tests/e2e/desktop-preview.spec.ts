@@ -76,8 +76,8 @@ for (const width of [320, 390, 1440]) {
     await expect(page.getByRole('button',{name:'順位を編集',exact:true})).toHaveCount(0);
     const orderedNames = page.locator('.rank-product strong');
     await expect(orderedNames).toHaveText(['読書灯','折りたたみ傘','小さなカメラ']);
-    await page.getByRole('button',{name:'小さなカメラの優先度・買いどきを編集',exact:true}).click();
-    const editor=page.getByRole('dialog',{name:'優先度と買いどき',exact:true});
+    await page.getByRole('button',{name:'小さなカメラの優先度・購入時期を編集',exact:true}).click();
+    const editor=page.getByRole('dialog',{name:'優先度と購入時期',exact:true});
     const position=editor.getByRole('combobox',{name:'移動先の順位',exact:true});
     await expect(position.locator('option:checked')).toHaveText('3位');
     await editor.getByRole('radio',{name:'低',exact:true}).check();
@@ -104,7 +104,7 @@ for (const width of [320, 390, 1440]) {
     const saved=await (await page.request.get('/api/items?with=buy-guide')).json();
     expect(saved.find((item:{name:string})=>item.name==='小さなカメラ')).toMatchObject({priority:4,planned_purchase_date:'2027-02-10',buy_guide:{condition:'セールになったら'}});
     expect([...saved].sort((a,b)=>a.sort_order-b.sort_order)[0].name).toBe('小さなカメラ');
-    await page.getByRole('button',{name:'読書灯の優先度・買いどきを編集',exact:true}).click();
+    await page.getByRole('button',{name:'読書灯の優先度・購入時期を編集',exact:true}).click();
     await editor.getByRole('combobox',{name:'順位の範囲',exact:true}).selectOption('priority');
     await expect(position.locator('option')).toHaveCount(2);
     await position.selectOption({label:'2位'});
@@ -122,8 +122,8 @@ test('rank editor keeps a rejected draft, cancels without saving, and uses all p
   await page.getByRole('button',{name:'縦リスト',exact:true}).click();
   await page.getByRole('searchbox',{name:'商品名・メモ・お店で検索'}).fill('小さなカメラ');
   await expect(page.locator('.rank-product strong')).toHaveCount(1);
-  await page.getByRole('button',{name:'小さなカメラの優先度・買いどきを編集',exact:true}).click();
-  const editor=page.getByRole('dialog',{name:'優先度と買いどき',exact:true});
+  await page.getByRole('button',{name:'小さなカメラの優先度・購入時期を編集',exact:true}).click();
+  const editor=page.getByRole('dialog',{name:'優先度と購入時期',exact:true});
   const position=editor.getByRole('combobox',{name:'移動先の順位',exact:true});
   await expect(position.locator('option')).toHaveCount(3);
   await position.selectOption({label:'1位'});
@@ -133,8 +133,8 @@ test('rank editor keeps a rejected draft, cancels without saving, and uses all p
   await expect(editor.getByRole('alert')).toContainText('商品が移動しました');
   await expect(position.locator('option:checked')).toHaveText('1位');
   await expect(editor.getByRole('radio',{name:'低',exact:true})).toBeChecked();
-  await editor.getByRole('button',{name:'優先度と買いどきを閉じる',exact:true}).click();
-  await page.getByRole('button',{name:'小さなカメラの優先度・買いどきを編集',exact:true}).click();
+  await editor.getByRole('button',{name:'優先度と購入時期を閉じる',exact:true}).click();
+  await page.getByRole('button',{name:'小さなカメラの優先度・購入時期を編集',exact:true}).click();
   await expect(position.locator('option:checked')).toHaveText('3位');
   await expect(editor.getByRole('radio',{name:'普通',exact:true})).toBeChecked();
   await position.selectOption({label:'1位'});
@@ -598,17 +598,18 @@ for (const width of [1100, 1440]) {
     }
     const first = rows.filter({ has: page.getByRole('button', { name: '読書灯の詳細', exact: true }) });
     const second = rows.filter({ has: page.getByRole('button', { name: '折りたたみ傘の詳細', exact: true }) });
-    for (const selector of ['.rank-product', '.rank-meta', '.focused-date']) {
+    for (const selector of ['.rank-product', '.rank-meta', '.rank-purchase-time']) {
       const firstTop = (await first.locator(selector).boundingBox())!.y - (await first.boundingBox())!.y;
       const secondTop = (await second.locator(selector).boundingBox())!.y - (await second.boundingBox())!.y;
       expect(Math.abs(firstTop - secondTop)).toBeLessThan(1);
     }
-    await expect(first.locator('.focused-date')).toHaveText('2026年12月10日');
-    await expect(second.locator('.focused-date')).toHaveText('2027年12月10日');
-    await expect(first.locator('.rank-month')).toHaveText('2026年12月まで');
-    const dateBoxes = await rows.locator('.focused-date-text').evaluateAll(elements => elements.map(element => ({ height: element.getBoundingClientRect().height, lineHeight: parseFloat(getComputedStyle(element).lineHeight) })));
+    await expect(first.locator('.rank-purchase-time')).toHaveText('2026年12月10日');
+    await expect(second.locator('.rank-purchase-time')).toHaveText('2027年12月10日');
+    await expect(first.locator('.rank-meta').getByRole('button')).toHaveCount(1);
+    await expect(first.locator('.rank-month')).toHaveCount(0);
+    const dateBoxes = await rows.locator('.rank-purchase-time').evaluateAll(elements => elements.map(element => ({ height: element.getBoundingClientRect().height, lineHeight: parseFloat(getComputedStyle(element).lineHeight) })));
     for (const box of dateBoxes) expect(box.height).toBeLessThanOrEqual(box.lineHeight + 1);
-    await expect(rows.filter({ has: page.getByRole('button', { name: '小さなカメラの詳細', exact: true }) }).locator('.focused-date')).toHaveCount(0);
+    await expect(rows.filter({ has: page.getByRole('button', { name: '小さなカメラの詳細', exact: true }) }).locator('.rank-purchase-time')).toHaveCount(0);
     const longRow = rows.filter({ has: page.getByRole('button', { name: longName + 'の詳細', exact: true }) });
     const clippedName = await longRow.locator('.rank-product strong').evaluate(element => ({ height: element.getBoundingClientRect().height, lineHeight: parseFloat(getComputedStyle(element).lineHeight), fullText: element.textContent }));
     expect(clippedName.height).toBeLessThanOrEqual(clippedName.lineHeight * 2 + 1);
@@ -643,7 +644,7 @@ for (const width of [1280, 1440, 1920]) {
     const price = await product.locator('.rank-price').boundingBox();
     expect(Math.abs(name!.x - price!.x)).toBeLessThan(2);
     expect(price!.y).toBeGreaterThanOrEqual(name!.y + name!.height);
-    const guide = await page.getByRole('button', { name: '読書灯の優先度・買いどきを編集', exact: true }).boundingBox();
+    const guide = await page.getByRole('button', { name: '読書灯の優先度・購入時期を編集', exact: true }).boundingBox();
     expect(Math.abs(name!.x - guide!.x)).toBeLessThan(2);
     const picture = await page.getByRole('button', { name: '読書灯の写真を拡大', exact: true }).boundingBox();
     expect(picture!.width).toBe(96);
@@ -771,24 +772,24 @@ test('desktop side editor follows the selected product and keeps same-priority o
     expect(saved.ok()).toBeTruthy();
   }
   await page.reload();
-  await page.getByRole('button',{name:'読書灯の優先度・買いどきを編集',exact:true}).click();
-  const editor=page.getByRole('dialog',{name:'優先度と買いどき',exact:true});
+  await page.getByRole('button',{name:'読書灯の優先度・購入時期を編集',exact:true}).click();
+  const editor=page.getByRole('dialog',{name:'優先度と購入時期',exact:true});
   await expect(editor.getByRole('textbox',{name:/どんなときに買う/})).toHaveValue('実物を見てから');
-  await page.getByRole('button',{name:'折りたたみ傘の優先度・買いどきを編集',exact:true}).click();
+  await page.getByRole('button',{name:'折りたたみ傘の優先度・購入時期を編集',exact:true}).click();
   await expect(editor.getByRole('textbox',{name:/どんなときに買う/})).toHaveValue('値下がりしたら');
-  await expect(editor.getByRole('combobox',{name:'目安の月'})).toHaveValue('02');
+  await expect(editor.getByRole('radio',{name:'日付',exact:true})).toBeChecked();
   await editor.getByRole('textbox',{name:/どんなときに買う/}).fill('値下がりを確認してから');
   let releaseSave!:()=>void;
   const saveGate=new Promise<void>(resolve=>{releaseSave=resolve;});
   await page.route('**/api/items/ranking',async route=>{await saveGate;await route.continue();});
   await editor.getByRole('button',{name:'保存',exact:true}).click();
-  await expect(editor.getByRole('button',{name:'優先度と買いどきを閉じる'})).toBeDisabled();
+  await expect(editor.getByRole('button',{name:'優先度と購入時期を閉じる'})).toBeDisabled();
   releaseSave();
   await expect(editor).toHaveCount(0);
-  await expect(page.getByRole('button',{name:'折りたたみ傘の優先度・買いどきを編集',exact:true})).toBeFocused();
+  await expect(page.getByRole('button',{name:'折りたたみ傘の優先度・購入時期を編集',exact:true})).toBeFocused();
   const updatedGuides=await (await page.request.get('/api/items?with=buy-guide')).json();
   expect(updatedGuides.find((row:{id:number})=>row.id===first.id).buy_guide.condition).toBe('実物を見てから');
-  expect(updatedGuides.find((row:{id:number})=>row.id===second.id).buy_guide.condition).toBe('値下がりを確認してから');
+  expect(updatedGuides.find((row:{id:number})=>row.id===second.id).buy_guide).toMatchObject({month:'2027-02',condition:'値下がりを確認してから'});
   await page.getByRole('button',{name:/折りたたみ傘を同じ優先度内で並べ替え/}).focus();
   await page.keyboard.press('Space');
   await page.keyboard.press('ArrowUp');
