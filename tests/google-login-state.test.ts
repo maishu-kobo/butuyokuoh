@@ -17,6 +17,8 @@ type Probe = {
   authorizeHost: string;
   authorizeParams: Record<string, string>;
   signinCookies: string[];
+  stateCookieExpires: string;
+  memberTimes: string[];
   callbackStatus: number;
   callbackLocation: string;
   sessionCookie: boolean;
@@ -73,6 +75,12 @@ function probe(mode: Mode): Probe {
       const hex = Array.from({ length: 16 }, () => nextByte().toString(16).padStart(2, '0')).join('');
       return [hex.slice(0, 8), hex.slice(8, 12), '4' + hex.slice(13, 16), '8' + hex.slice(17, 20), hex.slice(20)].join('-');
     };
+    // jose は Cookie を復号するたびに比較用の HMAC 鍵を作る。その鍵も同じシードから作り、ほかの鍵生成は止める。
+    globalThis.crypto.subtle.generateKey = (algorithm, extractable, usages) => {
+      if (algorithm?.name !== 'HMAC') return Promise.reject(new Error('unexpected generateKey: ' + algorithm?.name));
+      const raw = globalThis.crypto.getRandomValues(new Uint8Array(32));
+      return globalThis.crypto.subtle.importKey('raw', raw, algorithm, extractable, usages);
+    };
 
     const part = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
     const json = (body) => new Response(JSON.stringify(body), {
@@ -121,21 +129,33 @@ function probe(mode: Mode): Probe {
     const handlers = loaded.handlers ?? loaded.default?.handlers;
     if (!handlers?.GET || !handlers?.POST) throw new Error('auth handlers missing');
 
-    // ブラウザ1つ分の Cookie。
+    // SQLite の datetime('now') も同じ固定時刻にする。ほかの呼び方は想定外として止める。
+    const database = await import('./src/lib/db.ts');
+    const getDb = database.getDb ?? database.default?.getDb;
+    if (!getDb) throw new Error('getDb missing');
+    getDb().function('datetime', { varargs: true, deterministic: true }, (...args) => {
+      if (args.length === 1 && args[0] === 'now') return '2030-01-01 00:00:00';
+      throw new Error('unexpected datetime(' + args.join(', ') + ')');
+    });
+
+    // ブラウザ1つ分の Cookie。expires には、サーバが付けた期限を残す。
     const browser = () => {
       const jar = new Map();
+      const expires = new Map();
       const keep = (response) => {
         for (const line of response.headers.getSetCookie()) {
           const pair = line.split(';')[0];
           const at = pair.indexOf('=');
           const name = pair.slice(0, at);
           const value = pair.slice(at + 1);
+          const until = /;\\s*expires=([^;]+)/i.exec(line);
+          if (until) expires.set(name, new Date(until[1]).toISOString());
           if (value === '' || /max-age=0/i.test(line)) jar.delete(name);
           else jar.set(name, value);
         }
       };
       const cookieHeader = () => [...jar].map(([name, value]) => name + '=' + value).join('; ');
-      return { jar, keep, cookieHeader };
+      return { jar, expires, keep, cookieHeader };
     };
 
     // そのブラウザでログインを始め、Google へ送る URL を返す。
@@ -155,6 +175,7 @@ function probe(mode: Mode): Probe {
     const mine = browser();
     const authorize = await begin(mine);
     const signinCookies = [...mine.jar.keys()].sort();
+    const stateCookieExpires = mine.expires.get('authjs.state') ?? '';
 
     const back = new URL(origin + '/api/auth/callback/google');
     back.searchParams.set('code', 'probe-code');
@@ -170,15 +191,16 @@ function probe(mode: Mode): Probe {
     const callback = await handlers.GET(new NextRequest(back, { headers: { cookie: mine.cookieHeader() } }));
     mine.keep(callback);
 
-    const database = await import('./src/lib/db.ts');
-    const getDb = database.getDb ?? database.default?.getDb;
-    if (!getDb) throw new Error('getDb missing');
-    const members = getDb().prepare("SELECT COUNT(*) AS n FROM users WHERE account_type = 'member'").get().n;
+    const rows = getDb().prepare("SELECT created_at, updated_at FROM users WHERE account_type = 'member'").all();
+    const members = rows.length;
+    const memberTimes = [...new Set(rows.flatMap((row) => [row.created_at, row.updated_at]))];
 
     process.stdout.write(JSON.stringify({
       authorizeHost: authorize.host,
       authorizeParams: Object.fromEntries(authorize.searchParams),
       signinCookies,
+      stateCookieExpires,
+      memberTimes,
       callbackStatus: callback.status,
       callbackLocation: callback.headers.get('location') ?? '',
       sessionCookie: mine.jar.has('authjs.session-token'),
@@ -210,11 +232,14 @@ test('the Google sign-in request carries state and S256 PKCE, and asks only for 
   assert.equal(signinCookies.includes('authjs.pkce.code_verifier'), true);
 });
 
-test('the probe runs on a fixed clock and seed, so two runs build the same sign-in request', () => {
+test('the probe runs on a fixed clock and seed: the fixed time shows up, and two runs give the same result', () => {
   const first = probe('match');
   const second = probe('match');
   assert.notEqual(first.authorizeParams.state ?? '', '');
-  assert.deepEqual(second.authorizeParams, first.authorizeParams);
+  // 時計は 2030-01-01T00:00:00Z。state の Cookie は 15 分後に切れ、会員の日時は SQLite 側も同じ時刻になる。
+  assert.equal(first.stateCookieExpires, '2030-01-01T00:15:00.000Z');
+  assert.deepEqual(first.memberTimes, ['2030-01-01 00:00:00']);
+  assert.deepEqual(second, first);
 });
 
 test('a callback that returns the issued state completes the Google login', () => {
