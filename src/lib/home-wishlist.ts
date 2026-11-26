@@ -19,6 +19,8 @@ export type HomeListQuery = {
 };
 
 type HomeFilterItem = {
+  id: number;
+  registrationId?: number;
   name: string;
   notes?: string | null;
   category_name?: string | null;
@@ -70,9 +72,12 @@ export function filterHomeItems<T extends HomeFilterItem>(items: readonly T[], q
           return sortBy === 'price_asc' ? av - bv : bv - av;
         }
         case 'date_new':
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        case 'date_old':
-          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'date_old': {
+          // 同じ秒に登録した商品も、手動順位とは独立した登録順で反転する。
+          const order = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            || (a.registrationId ?? a.id) - (b.registrationId ?? b.id);
+          return sortBy === 'date_old' ? order : -order;
+        }
         case 'name':
           return a.name.localeCompare(b.name, 'ja');
         case 'name_desc':

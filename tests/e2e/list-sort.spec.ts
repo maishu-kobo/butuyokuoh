@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import Database from 'better-sqlite3';
 
 const origin={Origin:'http://localhost:3107'};
-async function prepare(page:Page) {
+async function prepare(page:Page,sameTimestamp=false) {
   await page.clock.setFixedTime(new Date('2026-11-26T03:00:00Z'));
   expect((await page.request.post('/api/auth/register',{data:{email:`sort-${crypto.randomUUID()}@example.test`,password:'test-password'}})).ok()).toBeTruthy();
   const names=['読書灯','折りたたみ傘','小さなカメラ','ノート'];
@@ -16,7 +16,7 @@ async function prepare(page:Page) {
     ids.push((await response.json()).id);
   }
   const db=new Database(process.env.E2E_DB_PATH!);
-  try { ids.forEach((id,index)=>db.prepare('UPDATE items SET created_at = ?, sort_order = ? WHERE id = ?').run(`2026-11-0${index+1} 12:00:00`,index,id)); }
+  try { ids.forEach((id,index)=>db.prepare('UPDATE items SET created_at = ?, sort_order = ? WHERE id = ?').run(sameTimestamp?'2026-11-26 12:00:00':`2026-11-0${index+1} 12:00:00`,index,id)); }
   finally { db.close(); }
   await page.goto('/design');
   await expect(page.locator('.rank-product strong')).toHaveCount(4);
@@ -24,6 +24,26 @@ async function prepare(page:Page) {
 }
 
 for(const width of [320,390,1440]) {
+  test(`registration direction reverses products added in the same second at ${width}px`,async({page})=>{
+    await page.setViewportSize({width,height:844});
+    await prepare(page,true);
+    const writes:unknown[]=[];
+    await page.route('**/api/items/ranking',async route=>{writes.push(route.request().postDataJSON());await route.continue();});
+    await page.getByRole('button',{name:'リストの表示: 優先度順',exact:true}).click();
+    const panel=page.getByRole('dialog',{name:'リストの表示',exact:true});
+    await panel.getByRole('radio',{name:'登録順',exact:true}).check();
+    await panel.getByRole('button',{name:'4商品を表示',exact:true}).click();
+    const names=page.locator('.rank-product strong');
+    await expect(names).toHaveText(['ノート','小さなカメラ','折りたたみ傘','読書灯']);
+    await page.getByRole('button',{name:'登録が新しい順。登録が古い順に切り替え',exact:true}).click();
+    await expect(names).toHaveText(['読書灯','折りたたみ傘','小さなカメラ','ノート']);
+    await page.getByRole('button',{name:'登録が古い順。登録が新しい順に切り替え',exact:true}).click();
+    await expect(names).toHaveText(['ノート','小さなカメラ','折りたたみ傘','読書灯']);
+    await expect(page.locator('.rank-number')).toHaveCount(0);
+    await expect(page.locator('.rank-grip')).toHaveCount(0);
+    expect(writes).toHaveLength(0);
+  });
+
   test(`priority sorting and multi-select controls preserve dates, counts and saved ranks at ${width}px`,async({page},info)=>{
     await page.setViewportSize({width,height:844});
     await prepare(page);

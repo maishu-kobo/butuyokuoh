@@ -93,7 +93,10 @@ export function managedProducts(products: ReviewProduct[], matchingItems: Item[]
   if (sortBy === 'priority' || sortBy === 'priority_desc') {
     return visible.sort((a,b)=>(rankItem(a).priority-rankItem(b).priority)*(sortBy==='priority'?1:-1));
   }
-  return filterHomeItems(visible.map(product => ({ ...product.active, product, name: product.name, created_at: product.addedAt })), {
+  return filterHomeItems(visible.map(product => ({ ...product.active, product, name: product.name, created_at: product.addedAt,
+    // 写真商品は、予算に採用する店を変えても登録順を変えない。
+    registrationId: Math.max(...product.offers.map(offer=>offer.id)),
+  })), {
     sortBy, searchQuery: '', selectedCategory: null, selectedPriority: null, selectedGroup: null,
   }).map(entry => entry.product);
 }

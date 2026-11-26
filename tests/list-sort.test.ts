@@ -4,6 +4,7 @@ import fc from 'fast-check';
 import type { ComparisonGroup, Item } from '../src/types';
 import { buildReviewProducts, filterReviewItems, managedProducts } from '../src/lib/design-home';
 import { focusedListSections } from '../src/lib/design-list-preview';
+import { filterHomeItems } from '../src/lib/home-wishlist';
 import { rankItem } from '../src/lib/design-rank';
 import { wishlistRows } from '../src/lib/capture/list-card';
 import { reverseListSort, listSortDirection } from '../src/lib/design-list-preview';
@@ -128,4 +129,44 @@ test('direction toggles are reversible and preserve ties, membership and stored 
     }
     assert.deepEqual(items,before);
   }),{seed:440,numRuns:150});
+});
+
+test('registration ties reverse by insertion order without consulting manual ranks',()=>{
+  fc.assert(fc.property(fc.array(fc.record({second:fc.integer({min:0,max:2}),rank:fc.integer({min:0,max:20})}),{minLength:2,maxLength:20}),rows=>{
+    const items=rows.map((r,index)=>item(index+1,2,{created_at:'2026-11-26 12:00:0'+r.second,sort_order:r.rank})).reverse();
+    const before=structuredClone(items);
+    const products=buildReviewProducts(items,[],[]);
+    const ascending=managedProducts(products,items,'date_old').map(product=>product.active);
+    const descending=managedProducts(products,items,'date_new').map(product=>product.active);
+    assert.deepEqual(descending.map(i=>i.id),ascending.map(i=>i.id).reverse());
+    for(let index=1;index<ascending.length;index++) {
+      const a=ascending[index-1],b=ascending[index];
+      assert.ok(a.created_at<b.created_at || (a.created_at===b.created_at && a.id<b.id));
+    }
+    for(const sortBy of ['date_old','date_new'] as const) {
+      const expected=sortBy==='date_old'?ascending:descending;
+      assert.deepEqual(filterHomeItems(items,{...query,sortBy}).map(i=>i.id),expected.map(i=>i.id));
+      assert.deepEqual(filterReviewItems(items,[],{...query,sortBy}).map(i=>i.id),expected.map(i=>i.id));
+    }
+    assert.deepEqual(items,before);
+  }),{seed:441,numRuns:150});
+});
+
+test('photo products break registration ties using their latest registered offer, not the selected shop',()=>{
+  const created_at='2026-11-26 12:00:00';
+  const groups=[{id:9,name:'照明',origin:'photo'} as ComparisonGroup];
+  const items=[item(1,2,{comparison_group_id:9,created_at,countsInTotal:true}),
+    item(5,2,{comparison_group_id:9,created_at,countsInTotal:false}),item(3,2,{created_at})];
+  for(const selectedId of [1,5]) {
+    const selected=items.map(offer=>offer.comparison_group_id?{...offer,countsInTotal:offer.id===selectedId}:offer);
+    const products=buildReviewProducts(selected,groups,[]);
+    assert.equal(products.find(product=>product.key==='group-9')!.active.id,selectedId);
+    for(const sortBy of ['date_old','date_new'] as const) {
+      const expected=sortBy==='date_old'?['item-3','group-9']:['group-9','item-3'];
+      assert.deepEqual(managedProducts(products,selected,sortBy).map(product=>product.key),expected);
+      const matching=filterReviewItems(selected,groups,{...query,sortBy});
+      assert.deepEqual(wishlistRows(matching,groups).map(row=>row.kind==='item'?'item-'+row.item.id:'group-'+row.groupId),expected);
+    }
+    assert.equal(products.find(product=>product.key==='group-9')!.active.id,selectedId);
+  }
 });
