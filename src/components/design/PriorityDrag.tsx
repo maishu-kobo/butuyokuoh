@@ -87,9 +87,10 @@ export function PriorityDrag({ children, onMove }: {
   </DndContext></RankDragState.Provider>;
 }
 
-export function PriorityRow({product,priority,position,peers,busy,rank,leading,rankInHandle=false,children,disableDrag=false}: {
+export function PriorityRow({product,priority,position,peers,busy,rank,leading,rankInHandle=false,rankLabel,children,disableDrag=false}: {
   product:ReviewProduct; priority:number; position:number; peers:ReviewProduct[]; busy:boolean; rank:ReactNode;leading?:ReactNode;rankInHandle?:boolean; children:ReactNode;
   disableDrag?:boolean;
+  rankLabel?:string;
 }) {
   const keyboard = useContext(RankDragState)!;
   const canDrag = !disableDrag && peers.length > 1;
@@ -110,7 +111,7 @@ export function PriorityRow({product,priority,position,peers,busy,rank,leading,r
         {...attributes} {...listeners} disabled={busy} ref={setActivatorNodeRef}
         aria-pressed={picked || isDragging} aria-describedby={keyboard.id+'-keys'}
         onKeyDown={e => keyboard.onKey(e,product,peers,priority)} onBlur={() => {if (picked) keyboard.cancel();}}
-        aria-label={(rankInHandle?'全体'+position+'位、':'')+product.name+'を同じ優先度内で並べ替え'}>{rankInHandle&&rank}<GripVertical aria-hidden size={18}/></button>}
+        aria-label={(rankInHandle?(rankLabel??'全体'+position+'位')+'、':'')+product.name+'を同じ優先度内で並べ替え'}>{rankInHandle&&rank}<GripVertical aria-hidden size={18}/></button>}
     </div></div>
     {children}
   </li>;

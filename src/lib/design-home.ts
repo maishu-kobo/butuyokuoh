@@ -6,7 +6,7 @@ import { photoFaceItemId, photoImageUrl } from './capture/photo-card-view';
 import { lineAmount, sumCountedPrices } from './photo-spend';
 import type { ListPreview } from './design-list-preview';
 import { filterHomeItems, type HomeListQuery, type HomeSortBy } from './home-wishlist';
-import { rankedProducts } from './design-rank';
+import { rankedProducts, rankItem } from './design-rank';
 
 export type ReviewView = 'rank' | 'plan';
 const reviewTabs = ['budget','manage','purchased','stats','trash','agents'] as const;
@@ -68,21 +68,35 @@ export function newestFirst(products: ReviewProduct[]): ReviewProduct[] {
   return [...products].sort((a, b) => b.addedAt.localeCompare(a.addedAt));
 }
 
-export function filterReviewItems(items: Item[], groups: ComparisonGroup[], query: HomeListQuery): Item[] {
+export function filterReviewItems(items: Item[], groups: ComparisonGroup[], query: HomeListQuery & {priorities?:readonly number[]}, purchased: Item[] = []): Item[] {
   const needle = query.searchQuery.trim().toLocaleLowerCase('ja-JP');
   const groupNames = new Map(groups.map(group => [group.id, group.name]));
-  return filterHomeItems(items, { ...query, searchQuery: '' }).filter(item => !needle ||
+  const products = buildReviewProducts(items,groups,purchased);
+  // 優先度は商品単位。写真の別店舗を別の優先度として絞り込まない。
+  const priorityIds = query.priorities?.length ? new Set(products
+    .filter(product=>query.priorities!.includes(rankItem(product).priority))
+    .flatMap(product=>product.offers.map(offer=>offer.id))) : null;
+  const matching = filterHomeItems(items, { ...query, searchQuery: '' }).filter(item => (!priorityIds || priorityIds.has(item.id)) && (!needle ||
     [item.name, item.notes, item.category_name, item.source_name, item.buy_guide?.condition,
       item.comparison_group_id && groupNames.get(item.comparison_group_id)]
-      .some(value => typeof value === 'string' && value.toLocaleLowerCase('ja-JP').includes(needle)));
+      .some(value => typeof value === 'string' && value.toLocaleLowerCase('ja-JP').includes(needle))));
+  // 写真棚も一覧と同じ商品順にする。検索に合わない店舗は選択対象に戻さない。
+  const positions = new Map(managedProducts(products,matching,query.sortBy)
+    .flatMap((product,index)=>product.offers.map(offer=>[offer.id,index] as const)));
+  return matching.sort((a,b)=>positions.get(a.id)!-positions.get(b.id)!);
 }
 
 // Filter products without discarding their other shops or changing the budgeted offer.
 export function managedProducts(products: ReviewProduct[], matchingItems: Item[], sortBy: HomeSortBy): ReviewProduct[] {
   const ids = new Set(matchingItems.map(item => item.id));
-  const visible = products.filter(product => product.offers.some(offer => ids.has(offer.id)));
-  if (sortBy === 'priority') return rankedProducts(visible);
-  return filterHomeItems(visible.map(product => ({ ...product.active, product, name: product.name, created_at: product.addedAt })), {
+  const visible = rankedProducts(products.filter(product => product.offers.some(offer => ids.has(offer.id))));
+  if (sortBy === 'priority' || sortBy === 'priority_desc') {
+    return visible.sort((a,b)=>(rankItem(a).priority-rankItem(b).priority)*(sortBy==='priority'?1:-1));
+  }
+  return filterHomeItems(visible.map(product => ({ ...product.active, product, name: product.name, created_at: product.addedAt,
+    // 写真商品は、予算に採用する店を変えても登録順を変えない。
+    registrationId: Math.max(...product.offers.map(offer=>offer.id)),
+  })), {
     sortBy, searchQuery: '', selectedCategory: null, selectedPriority: null, selectedGroup: null,
   }).map(entry => entry.product);
 }
