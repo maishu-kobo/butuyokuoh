@@ -12,7 +12,12 @@ const google = googleClientConfig();
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
   providers: [
-    ...(google ? [Google({ clientId: google.clientId, clientSecret: google.clientSecret })] : []),
+    // Auth.js の既定は PKCE だけ。state も照合し、自分が始めていない戻りをトークン交換の前に落とす。
+    ...(google ? [Google({
+      clientId: google.clientId,
+      clientSecret: google.clientSecret,
+      checks: ['pkce', 'state'],
+    })] : []),
     Credentials({
       credentials: {
         email: { label: 'Email', type: 'email' },
