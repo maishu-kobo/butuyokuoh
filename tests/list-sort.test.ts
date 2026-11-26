@@ -6,6 +6,7 @@ import { buildReviewProducts, filterReviewItems, managedProducts } from '../src/
 import { focusedListSections } from '../src/lib/design-list-preview';
 import { rankItem } from '../src/lib/design-rank';
 import { wishlistRows } from '../src/lib/capture/list-card';
+import { reverseListSort, listSortDirection } from '../src/lib/design-list-preview';
 
 const query = { selectedCategory:null, selectedPriority:null, selectedGroup:null, searchQuery:'', sortBy:'priority' as const };
 function item(id:number, priority:number, fields:Partial<Item>={}):Item {
@@ -75,4 +76,56 @@ test('sorting and multi-priority filtering preserve membership, stable same-prio
       }
       assert.deepEqual(items,before);
     }),{seed:439,numRuns:150});
+});
+
+test('reversing priority only reverses the groups and keeps manual ranks inside them',()=>{
+  const items=[item(1,4),item(2,2,{sort_order:8}),item(3,1),item(4,2,{sort_order:2})];
+  const products=buildReviewProducts(items,[],[]);
+  const reverse=managedProducts(products,items,'priority_desc');
+  assert.deepEqual(reverse.map(p=>p.active.id),[1,4,2,3]);
+  const sections=focusedListSections(reverse,reverse,'priority_desc');
+  assert.deepEqual(sections.map(s=>[s.level,s.rows.map(r=>r.rank)]),[[4,[1]],[2,[1,2]],[1,[1]]]);
+});
+
+test('reverse sorts agree between list and shelf and keep unknown dates and prices last',()=>{
+  const groups=[{id:9,name:'照明',origin:'photo'} as ComparisonGroup];
+  const items=[item(1,2,{comparison_group_id:9,countsInTotal:false,planned_purchase_date:'2026-11-01'}),
+    item(2,2,{comparison_group_id:9,countsInTotal:true,planned_purchase_date:'2027-02-01'}),
+    item(3,1,{current_price:null}),item(4,4,{planned_purchase_date:'2027-01-01'})];
+  const products=buildReviewProducts(items,groups,[]);
+  assert.deepEqual(managedProducts(products,items,'planned_date_desc').map(p=>p.key),['group-9','item-4','item-3']);
+  for(const sortBy of ['priority_desc','planned_date_desc','name_desc','date_old','price_desc'] as const) {
+    const matching=filterReviewItems(items,groups,{...query,sortBy});
+    assert.deepEqual(wishlistRows(matching,groups).map(row=>row.kind==='item'?'item-'+row.item.id:'group-'+row.groupId),
+      managedProducts(products,matching,sortBy).map(p=>p.key));
+  }
+});
+
+test('direction toggles are reversible and preserve ties, membership and stored ranks',()=>{
+  const modes=['priority','planned_date','date_new','name','price_asc'] as const;
+  fc.assert(fc.property(fc.array(fc.record({priority:fc.integer({min:1,max:5}),rank:fc.integer({min:0,max:30}),
+    date:fc.option(fc.integer({min:1,max:28}),{nil:null}),price:fc.option(fc.integer({min:0,max:5}),{nil:null})}),{minLength:1,maxLength:20}),rows=>{
+    const items=rows.map((r,index)=>item(index+1,r.priority,{sort_order:r.rank,current_price:r.price,
+      planned_purchase_date:r.date===null?null:'2027-01-'+String(r.date).padStart(2,'0')}));
+    const before=structuredClone(items);
+    const products=buildReviewProducts(items,[],[]);
+    for(const mode of modes) {
+      const opposite=reverseListSort(mode);
+      assert.equal(reverseListSort(opposite),mode);
+      assert.notEqual(listSortDirection(mode).ascending,listSortDirection(opposite).ascending);
+      const down=managedProducts(products,items,opposite);
+      assert.deepEqual(new Set(down.map(p=>p.key)),new Set(products.map(p=>p.key)));
+      for(let index=1;index<down.length;index++) {
+        const a=down[index-1].active,b=down[index].active;
+        if(mode==='priority') {
+          assert.ok(a.priority>=b.priority);
+          if(a.priority===b.priority) assert.ok(a.sort_order!<b.sort_order!||(a.sort_order===b.sort_order&&a.id<b.id));
+        } else if(mode==='planned_date') assert.ok(b.planned_purchase_date===null || (a.planned_purchase_date!==null&&a.planned_purchase_date!>=b.planned_purchase_date!));
+        else if(mode==='price_asc') assert.ok(b.current_price===null || (a.current_price!==null&&a.current_price!>=b.current_price!));
+        else if(mode==='date_new') assert.ok(a.created_at<=b.created_at);
+        else assert.ok(a.name.localeCompare(b.name,'ja')>=0);
+      }
+    }
+    assert.deepEqual(items,before);
+  }),{seed:440,numRuns:150});
 });

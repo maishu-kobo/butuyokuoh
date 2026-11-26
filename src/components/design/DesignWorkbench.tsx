@@ -104,7 +104,7 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
       {priorityFilter && <button type="button" onClick={()=>management.onPriorities([])}>優先度の絞り込みを解除</button>}
       {term && <button type="button" onClick={()=>setSearch('')}>検索をクリア</button>}</div> : null;
   const ranked=loading||loadError||!products.length ? empty : <RankedList products={products} visible={visible} onReload={reload}
-    focused display={listDisplay} priorities={management.priorities} openDisplay={()=>openPanel({kind:'display'})} onDate={openDate} empty={empty}
+    focused display={listDisplay} priorities={management.priorities} openDisplay={()=>openPanel({kind:'display'})} onSort={management.onSortBy} onDate={openDate} empty={empty}
     orderedProducts={ordered}
     selection={integrated&&management.selection?{...management.selection,matchingIds}:undefined}
     openProduct={p=>openPanel({kind:'product',key:p.key})} openGuide={p=>openPanel({kind:'guide',key:p.key})}/>;

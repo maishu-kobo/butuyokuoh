@@ -90,7 +90,9 @@ export function filterReviewItems(items: Item[], groups: ComparisonGroup[], quer
 export function managedProducts(products: ReviewProduct[], matchingItems: Item[], sortBy: HomeSortBy): ReviewProduct[] {
   const ids = new Set(matchingItems.map(item => item.id));
   const visible = rankedProducts(products.filter(product => product.offers.some(offer => ids.has(offer.id))));
-  if (sortBy === 'priority') return visible.sort((a,b)=>rankItem(a).priority-rankItem(b).priority);
+  if (sortBy === 'priority' || sortBy === 'priority_desc') {
+    return visible.sort((a,b)=>(rankItem(a).priority-rankItem(b).priority)*(sortBy==='priority'?1:-1));
+  }
   return filterHomeItems(visible.map(product => ({ ...product.active, product, name: product.name, created_at: product.addedAt })), {
     sortBy, searchQuery: '', selectedCategory: null, selectedPriority: null, selectedGroup: null,
   }).map(entry => entry.product);

@@ -99,10 +99,11 @@ for (const width of [320, 390, 1440]) {
     await editor.getByRole('button',{name:'保存',exact:true}).click();
     await expect(editor).toHaveCount(0);
     await expect(orderedNames).toHaveText(['読書灯','折りたたみ傘','小さなカメラ']);
-    await expect(page.getByLabel('全体1位',{exact:true})).toBeVisible();
+    await expect(page.getByLabel('優先度 低の1位',{exact:true})).toBeVisible();
     expect(requests).toHaveLength(1);
     const saved=await (await page.request.get('/api/items?with=buy-guide')).json();
     expect(saved.find((item:{name:string})=>item.name==='小さなカメラ')).toMatchObject({priority:4,planned_purchase_date:'2027-02-10',buy_guide:{condition:'セールになったら'}});
+    expect([...saved].sort((a,b)=>a.sort_order-b.sort_order)[0].name).toBe('小さなカメラ');
     await page.getByRole('button',{name:'読書灯の優先度・買いどきを編集',exact:true}).click();
     await editor.getByRole('combobox',{name:'順位の範囲',exact:true}).selectOption('priority');
     await expect(position.locator('option')).toHaveCount(2);

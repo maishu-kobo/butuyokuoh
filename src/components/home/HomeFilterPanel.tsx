@@ -80,12 +80,15 @@ export default function HomeFilterPanel({
                 className="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
               >
                 <option value="priority">優先度順</option>
+                {sortBy==='priority_desc' && <option value="priority_desc">優先度が低い順</option>}
                 {(inline || sortBy==='planned_date') && <option value="planned_date">購入日順</option>}
+                {sortBy==='planned_date_desc' && <option value="planned_date_desc">購入日が遠い順</option>}
                 <option value="price_asc">価格が安い順</option>
                 <option value="price_desc">価格が高い順</option>
                 <option value="date_new">新しい順</option>
                 <option value="date_old">古い順</option>
                 <option value="name">名前順</option>
+                {sortBy==='name_desc' && <option value="name_desc">名前の降順</option>}
               </select>
             </div>
 

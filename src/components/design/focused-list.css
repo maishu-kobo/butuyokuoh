@@ -2,15 +2,16 @@
 .rank-meta { display: contents; }
 .rank-desktop-head { display: none; }
 .focused-list { padding-inline: 18px; }
-.focused-list .rank-controls { border-bottom: 1px solid var(--rv-line); gap: 12px; padding-bottom: 8px; }
+.focused-list .rank-controls { justify-content: flex-start; border-bottom: 1px solid var(--rv-line); gap: 12px; padding-bottom: 8px; }
 .focused-display { display: inline-flex; align-items: center; gap: 7px; min-width: 0; min-height: 44px; font-size: .8rem; font-weight: 600; }
 .focused-display > span { overflow-wrap: anywhere; text-align: left; }
 .focused-display > svg { flex: none; }
 .focused-display > svg:first-child { color: var(--rv-accent); }
-.focused-order-note { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 3px 8px; padding: 9px 0 3px; margin: 0; font-size: .64rem; line-height: 1.5; color: var(--rv-muted); }
+.focused-sort-direction { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; border: 1px solid var(--rv-line); border-radius: 6px; color: var(--rv-accent); }
 .rank-list.focused-list .rank-row { grid-template-columns: 64px minmax(0,1fr); align-items: start; gap: 14px; padding: 8px 0; transition: background .1s,opacity .1s; }
 .focused-list .rank-position { gap: 0; }
 .focused-list .rank-position-controls { display: flex; align-items: center; width: 64px; min-height: 44px; }
+.focused-list .rank-position-controls:empty { display: none; }
 .focused-list .rank-number { font-size: 1.05rem; line-height: 1.2; padding: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .focused-list .rank-grip { display: flex; justify-content: space-between; gap: 4px; width: 64px; padding: 0; flex: none; }
 .focused-list .rank-grip svg { flex: none; }
@@ -60,7 +61,6 @@
 @media(max-width:350px) {
   .focused-list { padding-inline: 12px; }
   .rank-list.focused-list .rank-row { gap: 10px; }
-  .focused-order-note { font-size: .61rem; }
 }
 @media(prefers-reduced-motion:reduce) { .focused-list .rank-row { transition: none; } }
 
@@ -70,7 +70,6 @@
   .combined-home[data-screen=list] .review-sheet { width: min(680px,100%); }
   .combined-home[data-screen=list] .review-home-heading { padding-inline: 24px; }
   .focused-list { padding-inline: 24px; }
-  .focused-list .focused-order-note { font-size: .73rem; padding-block: 12px; }
   .rank-desktop-head { display: grid; grid-template-columns: 120px minmax(0,1fr) 8rem 18rem; gap: 20px; padding: 8px 0; border-bottom: 1px solid var(--rv-line); font-size: .75rem; color: var(--rv-muted); }
   .rank-desktop-head > :nth-child(3) { text-align: right; }
   .rank-list.focused-list .rank-row { grid-template-columns: 120px minmax(0,1fr); gap: 20px; padding-block: 16px; }

@@ -1,13 +1,14 @@
 'use client';
 
 import { useRef, useState, type ReactNode } from 'react';
-import { CalendarCheck2, ChevronDown, ChevronRight, CircleDollarSign, ListFilter, SlidersHorizontal } from 'lucide-react';
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, CalendarCheck2, ChevronDown, ChevronRight, CircleDollarSign, ListFilter, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@astryxdesign/core/Button';
 import { Lightbox } from '@astryxdesign/core/Lightbox';
 import { apiFetch } from '@/lib/api-fetch';
 import { amountText, type ReviewProduct } from '@/lib/design-home';
 import { monthCaption, priorityLevels, priorityNames, rankedProducts, rankItem, type GuideAction, type MoveAction, type RankScope, type Timing } from '@/lib/design-rank';
-import { focusedListSections, listDisplayLabel, type ListDisplay } from '@/lib/design-list-preview';
+import { focusedListSections, listDisplayLabel, listSortDirection, reverseListSort, type ListDisplay } from '@/lib/design-list-preview';
+import { isPrioritySort } from '@/lib/home-wishlist';
 import type { Item } from '@/types';
 import { ProductPicture } from './ProductLayouts';
 import { PriorityDrag, PriorityRow } from './PriorityDrag';
@@ -22,10 +23,11 @@ async function writeRank(action: GuideAction | MoveAction) {
   }
 }
 
-export default function RankedList({products,visible,openGuide,openProduct,onReload,focused=false,display='priority',priorities=[],openDisplay,onDate,empty,orderedProducts,selection}: {
+export default function RankedList({products,visible,openGuide,openProduct,onReload,focused=false,display='priority',priorities=[],openDisplay,onSort,onDate,empty,orderedProducts,selection}: {
   products:ReviewProduct[]; visible:ReviewProduct[]; openGuide:(p:ReviewProduct) => void; openProduct:(p:ReviewProduct) => void;
   onReload:() => Promise<void>;
   focused?:boolean;display?:ListDisplay;priorities?:number[];openDisplay:()=>void;
+  onSort?:(display:ListDisplay)=>void;
   onDate:(item:Item,trigger:HTMLButtonElement)=>void;empty?:ReactNode;
   orderedProducts?:ReviewProduct[];
   selection?:{ids:Set<number>;matchingIds:Set<number>;toggle:(ids:number[])=>void};
@@ -48,9 +50,14 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
     peers.push(product);
     visiblePeers.set(level,peers);
   }
-  const sections = focused ? focusedListSections(orderedProducts ?? ordered,visible,display) : scope === 'all' ? [{level:0,entries:ordered}] :
+  const focusedSections = focusedListSections(orderedProducts ?? ordered,visible,display);
+  const localNumbers = new Map(focusedSections.flatMap(section=>section.rows.map(row=>[row.product.key,row.rank] as const)));
+  const sections = focused ? focusedSections : scope === 'all' ? [{level:0,entries:ordered}] :
     priorityLevels.map(level => ({level,entries:ordered.filter(p => rankItem(p).priority === level)}));
-  const showPriority=!focused || display!=='priority';
+  const showPriority=!focused || !isPrioritySort(display);
+  const direction=listSortDirection(display);
+  const reverse=reverseListSort(display);
+  const directionLabel=direction.label+'。'+listSortDirection(reverse).label+'に切り替え';
   async function move(source:ReviewProduct,target:ReviewProduct,side:'before'|'after') {
     if (writing.current || source === target) return;
     writing.current = true;
@@ -74,16 +81,16 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
   }
   return <div className={'rank-list'+(focused?' focused-list':'')}>
     <div className="rank-controls">
-      {focused ? <button type="button" className="focused-display" aria-label={'リストの表示: '+listDisplayLabel(display)} aria-haspopup="dialog" onClick={openDisplay}>
+      {focused ? <><button type="button" className="focused-display" aria-label={'リストの表示: '+listDisplayLabel(display)} aria-haspopup="dialog" onClick={openDisplay}>
         <ListFilter size={17}/><span>{listDisplayLabel(display)}</span><ChevronDown size={14}/>
         {priorities.length>0&&<span className="focused-active-priorities">{priorities.map(level=>priorityNames[level]).join('・')}</span>}
-      </button> : <div className="rank-tabs" role="group" aria-label="リストの見方">
+      </button>{onSort && <button type="button" className="focused-sort-direction" aria-label={directionLabel} title={directionLabel}
+        onClick={()=>onSort(reverse)}>{direction.ascending ? <ArrowUpNarrowWide aria-hidden size={19}/> : <ArrowDownWideNarrow aria-hidden size={19}/>}</button>}</> : <div className="rank-tabs" role="group" aria-label="リストの見方">
         <button type="button" aria-pressed={scope==='all'} onClick={() => setScope('all')}>買いそうな順</button>
         <button type="button" aria-pressed={scope==='priority'} onClick={() => setScope('priority')}>優先度別</button>
       </div>}
     </div>
-    {focused && <p className="focused-order-note">全体順位を表示<span>優先度と順位は別々に調整できます</span></p>}
-    {focused && <div className="rank-desktop-head" aria-hidden="true"><span>写真 / 順位</span><span>商品</span><span>価格</span><span>優先度・買いどき / 予定日</span></div>}
+    {focused && <div className="rank-desktop-head" aria-hidden="true"><span>{isPrioritySort(display)?'写真 / 順位':'写真'}</span><span>商品</span><span>価格</span><span>優先度・買いどき / 予定日</span></div>}
     {error && <p className="rank-error" role="alert">{error}</p>}
     <p className="sr-only" role="status">{result}</p>
     {!visible.length ? empty : null}
@@ -98,16 +105,18 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
           const caption = guide && monthCaption(guide.month,guide.timing);
           const date = product.active.planned_purchase_date;
           const place = entries.indexOf(product);
+          const displayNumber=focused ? localNumbers.get(product.key) : level ? place+1 : numbers.get(product.key);
+          const rankLabel=focused ? '優先度 '+priorityNames[item.priority]+'の'+displayNumber+'位' : level ? 'この優先度で'+(place+1)+'位、全体'+numbers.get(product.key)+'位' : '全体'+numbers.get(product.key)+'位';
           const selectedIds = selection ? product.offers.filter(offer=>selection.matchingIds.has(offer.id)).map(offer=>offer.id) : [];
           const checked = !!selection && selectedIds.length>0 && selectedIds.every(id=>selection.ids.has(id));
           const partial = !!selection && !checked && selectedIds.some(id=>selection.ids.has(id));
           return <PriorityRow key={product.key} product={product} priority={item.priority} position={numbers.get(product.key)!}
-            peers={visiblePeers.get(item.priority)!} busy={busy} disableDrag={(focused&&display!=='priority') || !!selection}
-            rankInHandle={focused}
+            peers={visiblePeers.get(item.priority)!} busy={busy} disableDrag={(focused&&!isPrioritySort(display)) || !!selection}
+            rankInHandle={focused} rankLabel={rankLabel}
             leading={focused?picture(product):undefined}
             rank={selection ? <input type="checkbox" className="integrated-select-item" aria-label={product.name+'を選択'} checked={checked}
-              ref={node=>{if(node)node.indeterminate=partial;}} onChange={()=>selection.toggle(selectedIds)}/> : <span className="rank-number" aria-label={!focused&&level ? 'この優先度で'+(place+1)+'位、全体'+numbers.get(product.key)+'位' : '全体'+numbers.get(product.key)+'位'}>
-              {String(!focused&&level ? place+1 : numbers.get(product.key)).padStart(2,'0')}
+              ref={node=>{if(node)node.indeterminate=partial;}} onChange={()=>selection.toggle(selectedIds)}/> : displayNumber==null ? null : <span className="rank-number" aria-label={rankLabel}>
+              {String(displayNumber).padStart(2,'0')}
               {!focused && level > 0 && <small>全体{numbers.get(product.key)}位</small>}
             </span>}>
             <div className="rank-body">

@@ -13,7 +13,7 @@ export function ListDisplayOptions({value,products,onChange,priorities,onPriorit
   priorities:number[];onPriorities:(values:number[])=>void;visibleCount:number;onDone:()=>void;
 }) {
   const id=useId();
-  const choices:ListDisplay[]=['priority','date_new','planned_date'];
+  const choices:ListDisplay[]=[value==='priority_desc'?value:'priority',value==='date_old'?value:'date_new',value==='planned_date_desc'?value:'planned_date'];
   // 既存の価格順・名前順を選んだ場合も、現在の並び順を正しく示す。
   if(!choices.includes(value)) choices.push(value);
   return <div className="focused-display-options">
