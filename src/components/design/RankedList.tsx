@@ -1,21 +1,22 @@
 'use client';
 
 import { useRef, useState, type ReactNode } from 'react';
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, CalendarCheck2, ChevronDown, ChevronRight, CircleDollarSign, ListFilter, SlidersHorizontal } from 'lucide-react';
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, ChevronDown, ChevronRight, CircleDollarSign, ListFilter, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@astryxdesign/core/Button';
 import { Lightbox } from '@astryxdesign/core/Lightbox';
 import { apiFetch } from '@/lib/api-fetch';
 import { amountText, type ReviewProduct } from '@/lib/design-home';
-import { monthCaption, priorityLevels, priorityNames, rankedProducts, rankItem, type GuideAction, type MoveAction, type RankScope, type Timing } from '@/lib/design-rank';
+import { priorityLevels, priorityNames, rankedProducts, rankItem, type GuideAction, type MoveAction, type RankScope } from '@/lib/design-rank';
 import { focusedListSections, listDisplayLabel, listSortDirection, reverseListSort, type ListDisplay } from '@/lib/design-list-preview';
 import { isPrioritySort } from '@/lib/home-wishlist';
-import type { Item } from '@/types';
 import { ProductPicture } from './ProductLayouts';
 import { PriorityDrag, PriorityRow } from './PriorityDrag';
+import PurchaseTimingFields, { timingDraft, timingValue } from './PurchaseTimingFields';
+import { purchaseTiming, purchaseTimingLabel, purchaseTimingInput, parsePurchaseTiming } from '@/lib/purchase-timing';
 
 async function writeRank(action: GuideAction | MoveAction) {
   const response = await apiFetch('/api/items/ranking', {
-    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(action),
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(action.action==='guide'&&action.purchaseTiming?{...action,purchaseTiming:undefined,...purchaseTimingInput(action.purchaseTiming)}:action),
   }, {notifyError:false});
   if (!response.ok) {
     const problem = await response.json().catch(() => null);
@@ -23,12 +24,12 @@ async function writeRank(action: GuideAction | MoveAction) {
   }
 }
 
-export default function RankedList({products,visible,openGuide,openProduct,onReload,focused=false,display='priority',priorities=[],openDisplay,onSort,onDate,empty,orderedProducts,selection}: {
+export default function RankedList({products,visible,openGuide,openProduct,onReload,focused=false,display='priority',priorities=[],openDisplay,onSort,empty,orderedProducts,selection}: {
   products:ReviewProduct[]; visible:ReviewProduct[]; openGuide:(p:ReviewProduct) => void; openProduct:(p:ReviewProduct) => void;
   onReload:() => Promise<void>;
   focused?:boolean;display?:ListDisplay;priorities?:number[];openDisplay:()=>void;
   onSort?:(display:ListDisplay)=>void;
-  onDate:(item:Item,trigger:HTMLButtonElement)=>void;empty?:ReactNode;
+  empty?:ReactNode;
   orderedProducts?:ReviewProduct[];
   selection?:{ids:Set<number>;matchingIds:Set<number>;toggle:(ids:number[])=>void};
 }) {
@@ -90,7 +91,7 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
         <button type="button" aria-pressed={scope==='priority'} onClick={() => setScope('priority')}>優先度別</button>
       </div>}
     </div>
-    {focused && <div className="rank-desktop-head" aria-hidden="true"><span>{isPrioritySort(display)?'写真 / 順位':'写真'}</span><span>商品</span><span>価格</span><span>優先度・買いどき / 予定日</span></div>}
+    {focused && <div className="rank-desktop-head" aria-hidden="true"><span>{isPrioritySort(display)?'写真 / 順位':'写真'}</span><span>商品</span><span>価格</span><span>優先度・購入時期</span></div>}
     {error && <p className="rank-error" role="alert">{error}</p>}
     <p className="sr-only" role="status">{result}</p>
     {!visible.length ? empty : null}
@@ -102,8 +103,9 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
         <ol>{shown.map(product => {
           const item = rankItem(product);
           const guide = item.buy_guide ?? product.active.buy_guide;
-          const caption = guide && monthCaption(guide.month,guide.timing);
-          const date = product.active.planned_purchase_date;
+          const period=purchaseTiming({...product.active,buy_guide:guide});
+          const caption=purchaseTimingLabel(period);
+          const periodYear=period.kind==='date'?period.date.slice(0,4):period.kind==='month'?period.month.slice(0,4):'';
           const place = entries.indexOf(product);
           const displayNumber=focused ? localNumbers.get(product.key) : level ? place+1 : numbers.get(product.key);
           const rankLabel=focused ? '優先度 '+priorityNames[item.priority]+'の'+displayNumber+'位' : level ? 'この優先度で'+(place+1)+'位、全体'+numbers.get(product.key)+'位' : '全体'+numbers.get(product.key)+'位';
@@ -126,17 +128,14 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
                 </button>
                 {!focused && picture(product)}
               </div>
-              <div className="rank-meta" data-has-date={!!date}>
-              <button type="button" className="rank-guide" aria-label={product.name+'の優先度・買いどきを編集'} onClick={() => openGuide(product)}>
+              <div className="rank-meta">
+              <button type="button" className="rank-guide" aria-label={product.name+'の優先度・購入時期を編集'} onClick={() => openGuide(product)}>
                 <span className="rank-guide-line">{showPriority && <span className={'rank-priority rank-level-'+item.priority}><i aria-hidden/>優先度 {priorityNames[item.priority]}</span>}
-                  {caption && <span className="rank-month">{guide?.month.startsWith(currentYear+'-') && <span className="rank-month-year">{currentYear}年</span>}{caption}</span>}
-                  {!caption && (focused&&!showPriority || !guide?.condition&&!date) && <span className="rank-no-guide">{focused&&!showPriority?'優先度と時期':guide?.condition?'買う条件':'買いどきを決める'}</span>}
-                  <ChevronRight aria-hidden size={12}/></span>
+                  <span className={period.kind==='undated'?'rank-no-guide':'rank-purchase-time'}>
+                    {periodYear===currentYear&&<span className="rank-month-year">{periodYear}年</span>}<span>{caption}</span>
+                  </span><ChevronRight aria-hidden size={12}/></span>
                 {!focused && guide?.condition && <span className="rank-condition"><CircleDollarSign aria-hidden size={14}/>{guide.condition}</span>}
               </button>
-              {date && (focused ? <button type="button" className="rank-date focused-date" aria-label={product.name+'の予定日を変更'} onClick={event=>onDate(product.active,event.currentTarget)}>
-                <CalendarCheck2 aria-hidden size={14}/><time className="focused-date-text" dateTime={date}><span className="focused-date-year" data-current-year={date.slice(0,4)===currentYear || undefined}>{date.slice(0,4)}年</span><span>{Number(date.slice(5,7))}月{Number(date.slice(8,10))}日</span></time><ChevronRight aria-hidden size={12}/>
-              </button> : <span className="rank-date"><CalendarCheck2 aria-hidden size={13}/> 購入予定 {date.slice(0,4) === String(new Date().getFullYear()) ? '' : date.slice(0,4)+'年'}{Number(date.slice(5,7))}月{Number(date.slice(8,10))}日</span>)}
               </div>
               {focused && guide?.condition && <button type="button" className="rank-condition focused-condition"
                 aria-label={product.name+'の買う条件を編集'} title={guide.condition} onClick={()=>openGuide(product)}>
@@ -158,17 +157,15 @@ export default function RankedList({products,visible,openGuide,openProduct,onRel
   </div>;
 }
 
-export function GuideEditor({product,products,onSaved,onDate,onSavingChange}: {product:ReviewProduct;products:ReviewProduct[]; onSaved:() => Promise<void>;onDate?:(item:Item,trigger:HTMLButtonElement)=>void;onSavingChange?:(busy:boolean)=>void}) {
+export function GuideEditor({product,products,onSaved,onSavingChange}: {product:ReviewProduct;products:ReviewProduct[]; onSaved:() => Promise<void>;onSavingChange?:(busy:boolean)=>void}) {
   const item = rankItem(product);
   const guide = item.buy_guide ?? product.active.buy_guide;
   const [priority,setPriority] = useState(item.priority);
   const [rankScope,setRankScope] = useState<RankScope>('all');
   const [positionKey,setPositionKey] = useState(product.key);
   const entries = rankedProducts(products).filter(entry=>rankScope==='all' || entry.key===product.key || rankItem(entry).priority===priority);
-  const [year,setYear] = useState(guide?.month.slice(0,4) || String(new Date().getFullYear()));
-  const [monthNumber,setMonthNumber] = useState(guide?.month.slice(5,7) || '');
-  const month = monthNumber ? year+'-'+monthNumber : '';
-  const [timing,setTiming] = useState<Timing>(guide?.timing || 'by');
+  const [draft,setDraft] = useState(()=>timingDraft({...product.active,buy_guide:guide}));
+  const [timingChanged,setTimingChanged] = useState(false);
   const [condition,setCondition] = useState(guide?.condition || '');
   const [busy,setBusy] = useState(false);
   const writing = useRef(false);
@@ -180,8 +177,11 @@ export function GuideEditor({product,products,onSaved,onDate,onSavingChange}: {p
     try {
       const target = entries.find(entry=>entry.key===positionKey);
       if (!target) throw new Error('商品が移動しました。順位を選び直してください。');
-      const guide = {action:'guide' as const,itemId:item.id,priority,month,timing,condition};
-      await writeRank(target.key===product.key ? guide : {...guide,targetId:rankItem(target).id,
+      const value=parsePurchaseTiming(timingValue(draft));
+      if(timingChanged&&!value) throw new Error('購入時期を確認してください。');
+      const action = {action:'guide' as const,itemId:product.active.id,priority,month:guide?.month||'',timing:guide?.timing||'by' as const,condition,
+        ...(timingChanged&&value?{purchaseTiming:value}:{})};
+      await writeRank(target.key===product.key ? action : {...action,targetId:rankItem(target).id,
         side:entries.indexOf(target)<entries.findIndex(entry=>entry.key===product.key)?'before':'after',scope:rankScope});
       await onSaved();
     } catch (e) { setError(e instanceof Error ? e.message : '保存に失敗しました。'); }
@@ -204,22 +204,10 @@ export function GuideEditor({product,products,onSaved,onDate,onSavingChange}: {p
         </select>
       </div>
     </fieldset>
-    <fieldset disabled={busy}><legend>買いたい時期 <small>任意</small></legend>
-      <div className="rank-month-input">
-        <label className="rank-year"><input type="text" inputMode="numeric" aria-label="目安の年" maxLength={4}
-          pattern={monthNumber ? '[1-9][0-9]{3}' : undefined} required={!!monthNumber} value={year} onChange={e => setYear(e.target.value)}/> 年</label>
-        <select aria-label="目安の月" value={monthNumber} onChange={e => setMonthNumber(e.target.value)}>
-          <option value="">時期未定</option>
-          {Array.from({length:12},(_,i) => <option key={i} value={String(i+1).padStart(2,'0')}>{i+1}月</option>)}</select>
-        <select aria-label="時期の表し方" disabled={!monthNumber} value={timing} onChange={e => setTiming(e.target.value as Timing)}>
-          <option value="by">までに</option><option value="around">ごろに</option></select></div>
-    </fieldset>
+    <PurchaseTimingFields value={draft} disabled={busy} onChange={next=>{setDraft(next);setTimingChanged(true);}}/>
     <label className="rank-condition-input"><span>どんなときに買う？ <small>任意</small></span>
       <textarea rows={2} maxLength={240} disabled={busy} placeholder="例：状態のよい中古が7,000円以内で見つかったら" value={condition} onChange={e => setCondition(e.target.value)}/>
     </label>
-    {onDate ? <button type="button" className="focused-editor-date" disabled={busy} onClick={event=>onDate(product.active,event.currentTarget)}>
-      <CalendarCheck2 size={17}/><span>購入予定日<small>{product.active.planned_purchase_date || '日程未定'}</small></span><ChevronRight size={16}/>
-    </button> : <p className="rank-date-info">購入日が決まったら、商品詳細の「購入予定日」に登録できます。</p>}
     {error && <p className="rank-error" role="alert">{error}</p>}
     <Button type="submit" variant="primary" label={busy ? '保存中…' : '保存'} isDisabled={busy} icon={<SlidersHorizontal size={16}/>}/>
   </form>;

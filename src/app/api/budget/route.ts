@@ -4,6 +4,8 @@ import { getDb } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { annotateSpend, photoSpendDecisions, userSpendInput, type SpendDecision } from '@/lib/photo-spend';
 import type { Item } from '@/types';
+import { attachBuyGuides } from '@/lib/item-ranking';
+import { timingBudget } from '@/lib/design-budget';
 
 async function handleGET(request: NextRequest) {
   const user = await getCurrentUser();
@@ -15,6 +17,15 @@ async function handleGET(request: NextRequest) {
   const month = searchParams.get('month'); // YYYY-MM format
 
   const db = getDb();
+  if(searchParams.get('with')==='purchase-timing') {
+    const rows=db.prepare(`SELECT i.*,g.name AS comparison_group_name,g.origin AS group_origin,
+      CASE WHEN g.origin='photo' THEN g.budget_item_id ELSE NULL END AS budget_selected_item_id
+      FROM items i LEFT JOIN comparison_groups g ON g.id=i.comparison_group_id AND g.user_id=i.user_id
+      WHERE i.user_id=? AND i.is_purchased=0 AND i.deleted_at IS NULL ORDER BY i.priority,i.created_at DESC,i.id`).all(user.id) as Item[];
+    const decisions=photoSpendDecisions(...userSpendInput(db,user.id));
+    const budget=timingBudget(annotateSpend(attachBuyGuides(db,user.id,rows),decisions));
+    return NextResponse.json(month?Object.fromEntries(Object.entries(budget).filter(([key])=>key===month||key==='undated')):budget);
+  }
   
   // 購入予定日が設定されているアイテム（ゴミ箱に入っていないもの）
   let query = `

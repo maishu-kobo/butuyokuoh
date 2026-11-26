@@ -11,7 +11,7 @@ import type { Category, ComparisonGroup, Item } from '@/types';
 import { buildReviewProducts, managedProducts, reviewHref, reviewSettingsHref, type ReviewTab, type ReviewView } from '@/lib/design-home';
 import type { HomeSortBy } from '@/lib/home-wishlist';
 import type { LightPalette, PreviewAppearance } from '@/lib/design-palettes';
-import BudgetDateEditor from '../BudgetDateEditor';
+import PurchaseTimingEditor from './PurchaseTimingEditor';
 import SiteFooter from '../SiteFooter';
 import ProductDetails from './ProductDetails';
 import BudgetView from '../ScheduleBudgetView';
@@ -104,7 +104,7 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
       {priorityFilter && <button type="button" onClick={()=>management.onPriorities([])}>優先度の絞り込みを解除</button>}
       {term && <button type="button" onClick={()=>setSearch('')}>検索をクリア</button>}</div> : null;
   const ranked=loading||loadError||!products.length ? empty : <RankedList products={products} visible={visible} onReload={reload}
-    focused display={listDisplay} priorities={management.priorities} openDisplay={()=>openPanel({kind:'display'})} onSort={management.onSortBy} onDate={openDate} empty={empty}
+    focused display={listDisplay} priorities={management.priorities} openDisplay={()=>openPanel({kind:'display'})} onSort={management.onSortBy} empty={empty}
     orderedProducts={ordered}
     selection={integrated&&management.selection?{...management.selection,matchingIds}:undefined}
     openProduct={p=>openPanel({kind:'product',key:p.key})} openGuide={p=>openPanel({kind:'guide',key:p.key})}/>;
@@ -143,19 +143,19 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
         presentation={desktop.active?'aside':'modal'} toolbar={comparison} onSavingChange={setPanelBusy}
         onSaved={message=>{closePanel();setNotice(message);void reload();}}
         onExisting={location=>{closePanel();if(location==='list'){setSearch('');void reload();router.push(designHref('rank'));}else router.push(designHref(view,location));}}/>}
-      {panel && panel.kind!=='add' && <ReviewSheet key={panel.kind} title={panel.kind==='menu'?'メニュー':panel.kind==='display'?'リストの表示':panel.kind==='guide'?'優先度と買いどき':'商品と販売候補'} onClose={closePanel}
+      {panel && panel.kind!=='add' && <ReviewSheet key={panel.kind} title={panel.kind==='menu'?'メニュー':panel.kind==='display'?'リストの表示':panel.kind==='guide'?'優先度と購入時期':'商品と販売候補'} onClose={closePanel}
         presentation={desktop.active?'aside':'modal'} toolbar={comparison} lockDismiss={panelBusy}>
         {panel.kind==='display'&&<ListDisplayOptions value={listDisplay} products={priorityOptions} onChange={management.onSortBy}
           priorities={management.priorities} onPriorities={management.onPriorities} visibleCount={visibleCount} onDone={closePanel}/>}
         {panel.kind==='product' && (selected?<ProductDetails key={selected.key} product={selected} groups={groups} categories={categories} onReload={reload} onDelete={onDelete} onDate={openDate}/>:<p>この商品はリストから移動しました。</p>)}
-        {panel.kind==='guide' && (selected?<GuideEditor key={selected.key} product={selected} products={products} onDate={openDate} onSavingChange={setPanelBusy} onSaved={async()=>{await reload();closePanel();setNotice('優先度・順位・買いどきを保存しました');}}/>:<p>この商品はリストから移動しました。</p>)}
+        {panel.kind==='guide' && (selected?<GuideEditor key={selected.key} product={selected} products={products} onSavingChange={setPanelBusy} onSaved={async()=>{await reload();closePanel();setNotice('優先度・購入時期を保存しました');}}/>:<p>この商品はリストから移動しました。</p>)}
         {panel.kind==='menu' && <><div className="review-menu-list">
           {menu.map(({tab,label,Icon})=><Link href={designHref(view,tab)} key={tab} onClick={closePanel}><Icon size={19}/><span>{label}</span><ChevronRight size={15}/></Link>)}
           <Link href={reviewSettingsHref(view,palette,appearance)}><Settings size={19}/><span>設定</span><ChevronRight size={15}/></Link>
           <button type="button" onClick={async()=>{await onLogout();router.push('/');}}><LogOut size={19}/><span>ログアウト</span></button>
         </div><SiteFooter/></>}
       </ReviewSheet>}
-      {dateItem && <BudgetDateEditor item={dateItem} onClose={closeDate} onSaved={async()=>{await reload();closeDate();setNotice('購入予定日を保存しました');}}/>}
+      {dateItem && <PurchaseTimingEditor key={dateItem.id} item={dateItem} onClose={closeDate} onSaved={async()=>{await reload();closeDate();setNotice('購入時期を保存しました');}}/>}
     </div>
   </main>;
 }
