@@ -1,0 +1,70 @@
+import {call,createMember,db,setTestUser} from './regression-harness';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+const route='../src/app/api/items/ranking/route',path='/api/items/ranking',origin={origin:'http://127.0.0.1'};
+test('unified timing saves date, month and undated atomically while retaining priority, rank, condition and memo',async()=>{
+  const owner=await createMember('timing-owner'); process.env.AUTH_URL='http://127.0.0.1';
+  const database=await db();
+  const id=Number(database.prepare("INSERT INTO items(user_id,name,url,priority,sort_order,notes,planned_purchase_date) VALUES(?,'照明','manual://timing',4,7,'メモ','2027-02-01')").run(owner.id).lastInsertRowid);
+  database.prepare("INSERT INTO item_buy_guides(item_id,month,timing,condition) VALUES(?,'2027-01','by','値下がりしたら')").run(id);
+  const save=(value:{kind:string;date?:string;month?:string;timing?:string})=>call(route,'POST',path,{action:'timing',itemId:id,purchaseMode:value.kind,purchaseDate:value.date,purchaseMonth:value.month,purchaseRelation:value.timing},undefined,origin);
+  assert.equal((await save({kind:'date',date:'2027-03-15'})).status,200);
+  assert.equal((database.prepare('SELECT planned_purchase_date FROM items WHERE id=?').get(id) as {planned_purchase_date:string}).planned_purchase_date,'2027-03-15');
+  assert.deepEqual(database.prepare('SELECT month,timing,condition FROM item_buy_guides WHERE item_id=?').get(id),{month:'2027-01',timing:'by',condition:'値下がりしたら'});
+  assert.equal((await save({kind:'month',month:'2027-04',timing:'around'})).status,200);
+  assert.deepEqual(database.prepare('SELECT planned_purchase_date,priority,sort_order,notes FROM items WHERE id=?').get(id),{planned_purchase_date:null,priority:4,sort_order:7,notes:'メモ'});
+  const budget=await call('../src/app/api/budget/route','GET','/api/budget?with=purchase-timing');
+  assert.equal((budget.json as Record<string,{items:{id:number}[]}> )['2027-04'].items[0].id,id);
+  const legacy=await call('../src/app/api/budget/route','GET','/api/budget');
+  assert.equal((legacy.json as Record<string,{items:{id:number}[]}>).undated.items[0].id,id);
+  assert.equal((await save({kind:'undated'})).status,200);
+  assert.equal((database.prepare('SELECT condition FROM item_buy_guides WHERE item_id=?').get(id) as {condition:string}).condition,'値下がりしたら');
+  for(const purchaseTiming of [{kind:'date',date:'2027-02-29'},{kind:'month',month:'2027-00',timing:'by'}]) assert.equal((await save(purchaseTiming)).status,400);
+  assert.equal((await call(route,'POST',path,{action:'timing',itemId:id,purchaseMode:'undated'},undefined,{origin:'https://foreign.example'})).status,403);
+  await createMember('timing-other'); assert.equal((await save({kind:'date',date:'2027-05-01'})).status,404);
+  await setTestUser(null); assert.equal((await save({kind:'undated'})).status,401);
+});
+test('photo timing keeps shared month and condition but preserves other shop dates and purchase history',async()=>{
+  const owner=await createMember('timing-photo');process.env.AUTH_URL='http://127.0.0.1';const database=await db();
+  const group=Number(database.prepare("INSERT INTO comparison_groups(user_id,name,origin,priority) VALUES(?,'照明','photo',3)").run(owner.id).lastInsertRowid);
+  const insert=database.prepare("INSERT INTO items(user_id,name,url,comparison_group_id,planned_purchase_date,is_purchased,purchased_at) VALUES(?,'お店',?,?,?, ?,?)");
+  const a=Number(insert.run(owner.id,'manual://timing-a',group,'2027-01-10',0,null).lastInsertRowid);
+  const b=Number(insert.run(owner.id,'manual://timing-b',group,'2027-02-10',0,null).lastInsertRowid);
+  const c=Number(insert.run(owner.id,'manual://timing-c',group,'2026-10-10',1,'2026-10-10').lastInsertRowid);
+  assert.equal((await call(route,'POST',path,{action:'timing',itemId:a,purchaseMode:'month',purchaseMonth:'2027-03',purchaseRelation:'by'},undefined,origin)).status,200);
+  assert.deepEqual(database.prepare('SELECT id,planned_purchase_date FROM items WHERE comparison_group_id=? ORDER BY id').all(group),[{id:a,planned_purchase_date:null},{id:b,planned_purchase_date:'2027-02-10'},{id:c,planned_purchase_date:'2026-10-10'}]);
+  assert.deepEqual(database.prepare('SELECT month FROM item_buy_guides WHERE item_id IN (?,?,?) ORDER BY item_id').all(a,b,c),Array(3).fill({month:'2027-03'}));
+  assert.deepEqual(database.prepare('SELECT is_purchased,purchased_at FROM items WHERE id=?').get(c),{is_purchased:1,purchased_at:'2026-10-10'});
+});
+test('combined guide and timing rolls back if the destination no longer belongs to the user',async()=>{
+  const owner=await createMember('timing-combined');process.env.AUTH_URL='http://127.0.0.1';const database=await db();
+  const id=Number(database.prepare("INSERT INTO items(user_id,name,url,priority,planned_purchase_date) VALUES(?,'商品','manual://timing-combined',3,'2027-01-01')").run(owner.id).lastInsertRowid);
+  const body={action:'guide',itemId:id,priority:2,month:'2027-02',timing:'by',condition:'条件',purchaseMode:'date',purchaseDate:'2027-02-14'};
+  assert.equal((await call(route,'POST',path,{...body,targetId:987654321,side:'before',scope:'all'},undefined,origin)).status,404);
+  assert.deepEqual(database.prepare('SELECT priority,planned_purchase_date FROM items WHERE id=?').get(id),{priority:3,planned_purchase_date:'2027-01-01'});
+  assert.equal((await call(route,'POST',path,body,undefined,origin)).status,200);
+  assert.deepEqual(database.prepare('SELECT priority,planned_purchase_date FROM items WHERE id=?').get(id),{priority:2,planned_purchase_date:'2027-02-14'});
+});
+
+test('a newly added photo shop inherits the product month in list and budget without rewriting stored data',async()=>{
+  const owner=await createMember('timing-new-shop');process.env.AUTH_URL='http://127.0.0.1';const database=await db();
+  const group=Number(database.prepare("INSERT INTO comparison_groups(user_id,name,origin) VALUES(?,'カメラ','photo')").run(owner.id).lastInsertRowid);
+  const add=database.prepare("INSERT INTO items(user_id,name,url,comparison_group_id,current_price) VALUES(?,'カメラ',?,?,?)");
+  const first=Number(add.run(owner.id,'manual://timing-original-shop',group,2000).lastInsertRowid);
+  assert.equal((await call(route,'POST',path,{action:'timing',itemId:first,purchaseMode:'month',purchaseMonth:'2027-03',purchaseRelation:'around'},undefined,origin)).status,200);
+  database.prepare("UPDATE item_buy_guides SET condition='値下がりしたら' WHERE item_id=?").run(first);
+  const second=Number(add.run(owner.id,'manual://timing-cheaper-shop',group,1000).lastInsertRowid);
+  const list=await call('../src/app/api/items/route','GET','/api/items?with=buy-guide');
+  const rows=list.json as {id:number;buy_guide:unknown}[];
+  assert.deepEqual(rows.find(x=>x.id===second)?.buy_guide,{month:'2027-03',timing:'around',condition:'値下がりしたら'});
+  const budget=(await call('../src/app/api/budget/route','GET','/api/budget?with=purchase-timing')).json as Record<string,{total:number;items:{id:number}[]}>;
+  assert.equal(budget['2027-03'].total,1000);
+  assert.deepEqual(budget['2027-03'].items.map(x=>x.id).sort((a,b)=>a-b),[first,second]);
+  assert.equal(budget.undated,undefined);
+  assert.equal(database.prepare('SELECT * FROM item_buy_guides WHERE item_id=?').get(second),undefined);
+  assert.equal((await call(route,'POST',path,{action:'timing',itemId:second,purchaseMode:'month',purchaseMonth:'2027-04',purchaseRelation:'by'},undefined,origin)).status,200);
+  assert.deepEqual(database.prepare('SELECT condition FROM item_buy_guides WHERE item_id IN (?,?) ORDER BY item_id').all(first,second),[{condition:'値下がりしたら'},{condition:'値下がりしたら'}]);
+  await createMember('timing-budget-other');
+  assert.deepEqual((await call('../src/app/api/budget/route','GET','/api/budget?with=purchase-timing')).json,{});
+});

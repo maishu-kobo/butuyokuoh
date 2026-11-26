@@ -78,7 +78,7 @@
   .spend-summary[data-expanded=false] dl { display: none; }
   .spend-breakdown-toggle { display: inline-flex; align-items: center; justify-content: center; align-self: start; gap: 4px; min-width: 44px; min-height: 44px; padding: 8px 4px; color: var(--rv-accent); font-size: .75rem; }
   .spend-breakdown-toggle[aria-expanded=true] > svg { transform: rotate(180deg); }
-  .spend-summary dl { grid-column: 1/-1; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; padding: 8px 0; }
+  .spend-summary dl { grid-column: 1/-1; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; padding: 8px 0; }
   .spend-summary dd { text-align: left; overflow-wrap: anywhere; }
   .spend-tools { align-items: center; gap: 8px; padding: 6px 0 8px; }
   .spend-tools > label { gap: 0; }
@@ -129,3 +129,5 @@
 @media(min-width:1024px) and (min-height:760px) {
   .spend-overview { position: sticky; top: 8px; }
 }
+
+.spend-line-date .review-day[data-timing=month] strong { font: 600 .8rem/1.5 var(--rv-sans); color: var(--rv-accent); }

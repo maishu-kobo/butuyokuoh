@@ -1,6 +1,7 @@
 'use client';
 
-import BudgetDateEditor from './BudgetDateEditor';
+import PurchaseTimingEditor from './design/PurchaseTimingEditor';
+import { purchaseTimingLabel, type PurchaseTiming } from '@/lib/purchase-timing';
 import ScheduleBudget from './design/ScheduleBudget';
 import { apiFetch } from '@/lib/api-fetch';
 
@@ -56,7 +57,7 @@ export default function ScheduleBudgetView({ presentation = 'legacy', query = ''
 
   const fetchBudget = useCallback(async () => {
     try {
-      const res = await apiFetch('/api/budget');
+      const res = await apiFetch(presentation==='schedule'?'/api/budget?with=purchase-timing':'/api/budget');
       if (!res.ok) throw new Error(`Failed to fetch budget: ${res.status}`);
       const data = await res.json();
       // 月キーのオブジェクト以外（エラーJSON等）を弾く
@@ -125,12 +126,12 @@ export default function ScheduleBudgetView({ presentation = 'legacy', query = ''
     if (trigger) requestAnimationFrame(() => (dateTrigger.current?.isConnected ? dateTrigger.current : document.getElementById(trigger))?.focus({preventScroll:true}));
   }
 
-  async function finishDateEdit(date: string) {
+  async function finishDateEdit(value: PurchaseTiming) {
     await fetchBudget();
     await onChanged?.();
-    const newPeriod = date ? date.slice(0, 7) : 'undated';
+    const newPeriod=value.kind==='date'?value.date.slice(0,7):value.kind==='month'?value.month:'undated';
     if (shownPeriod !== 'all' && shownPeriod !== newPeriod) changePeriod(newPeriod);
-    setSavedDateMessage(date ? `購入予定日を${date}に変更しました。` : '購入予定を日程未定に変更しました。');
+    setSavedDateMessage('購入時期を'+purchaseTimingLabel(value)+'に変更しました。');
     closeDateEditor();
   }
 
@@ -177,7 +178,7 @@ export default function ScheduleBudgetView({ presentation = 'legacy', query = ''
   const totalBudget = datedTotal + (undatedData?.total || 0);
 
   if (presentation === 'schedule' && onProduct) return <>
-    {dateItem && <BudgetDateEditor key={dateItem.id} item={dateItem} onSaved={finishDateEdit} onClose={closeDateEditor}/>}
+    {dateItem && <PurchaseTimingEditor key={dateItem.id} item={dateItem} onSaved={finishDateEdit} onClose={closeDateEditor}/>}
     {savedDateMessage && <p className="spend-message" role="status">{savedDateMessage}</p>}
     {selectionError && <p className="spend-message" role="alert">{selectionError}</p>}
     <ScheduleBudget budget={budget} allItems={allItems} categories={categories} period={shownPeriod} query={query}

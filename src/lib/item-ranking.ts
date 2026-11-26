@@ -1,12 +1,29 @@
 import type Database from 'better-sqlite3';
 import { GuestError } from './guest';
-import type { BuyGuide, GuideAction, MoveAction } from './design-rank';
+import type { BuyGuide, GuideAction, MoveAction, TimingAction } from './design-rank';
 
 export function attachBuyGuides<T extends {id:number}>(db: Database.Database, userId: number, items: T[]): (T & {buy_guide?: BuyGuide})[] {
-  const rows = db.prepare(`SELECT g.* FROM item_buy_guides g JOIN items i ON i.id=g.item_id
-    WHERE i.user_id=? AND i.is_purchased=0 AND i.deleted_at IS NULL`).all(userId) as (BuyGuide & {item_id:number})[];
-  const guides = new Map(rows.map(({item_id,month,timing,condition}) => [item_id,{month,timing,condition}]));
-  return items.map(item => guides.has(item.id) ? {...item,buy_guide:guides.get(item.id)} : item);
+  const rows = db.prepare(`SELECT i.id AS item_id,i.is_purchased,i.deleted_at,g.month,g.timing,g.condition,
+    CASE WHEN c.origin='photo' THEN c.id END AS photo_group
+    FROM items i LEFT JOIN item_buy_guides g ON i.id=g.item_id
+    LEFT JOIN comparison_groups c ON c.id=i.comparison_group_id AND c.user_id=i.user_id
+    WHERE i.user_id=? ORDER BY i.id`).all(userId) as {item_id:number;is_purchased:number;deleted_at:string|null;
+      month:string|null;timing:BuyGuide['timing'];condition:string;photo_group:number|null}[];
+  const byId=new Map(rows.map(row=>[row.item_id,row]));
+  const guides=new Map<number,BuyGuide>();
+  const shared=new Map<number,BuyGuide>();
+  for(const row of rows) if(row.month!==null) {
+    const guide={month:row.month,timing:row.timing,condition:row.condition};
+    guides.set(row.item_id,guide);
+    if(row.photo_group!==null&&!shared.has(row.photo_group)) shared.set(row.photo_group,guide);
+  }
+  // Shops added later inherit the same product guide on read, without rewriting old data.
+  return items.map(item=>{
+    const row=byId.get(item.id);
+    if(!row||row.is_purchased||row.deleted_at) return item;
+    const guide=guides.get(item.id)??(row.photo_group!==null?shared.get(row.photo_group):undefined);
+    return guide?{...item,buy_guide:guide}:item;
+  });
 }
 
 type Offer = {id:number; priority:number; photo_group:number|null; sort_order:number};
@@ -73,8 +90,27 @@ export function saveBuyGuide(db:Database.Database,userId:number,action:GuideActi
       else clear.run(offer.id);
     }
     if (group !== null) db.prepare('UPDATE comparison_groups SET priority=? WHERE id=? AND user_id=?').run(action.priority,group,userId);
+    if(action.purchaseTiming) savePurchaseTiming(db,userId,{action:'timing',itemId:action.itemId,purchaseTiming:action.purchaseTiming});
     // Keep the guide and rank in one transaction. A stale destination must roll back both.
     if (action.targetId !== undefined) moveProduct(db,userId,{action:'move',itemId:action.itemId,
       targetId:action.targetId,side:action.side,scope:action.scope});
+  }).immediate();
+}
+
+export function savePurchaseTiming(db:Database.Database,userId:number,action:TimingAction) {
+  db.transaction(()=>{
+    const {byOffer}=activeProducts(db,userId);
+    const product=requireProduct(byOffer,action.itemId);
+    const value=action.purchaseTiming;
+    // Dates remain per shop; purchase history and other shops' dates are not changed.
+    db.prepare("UPDATE items SET planned_purchase_date=?,updated_at=datetime('now') WHERE id=? AND user_id=?")
+      .run(value.kind==='date'?value.date:null,action.itemId,userId);
+    if(value.kind==='date') return; // Preserve an existing rough month when a day is chosen.
+    const group=product.offers[0].photo_group;
+    const offers=group===null?product.offers:db.prepare('SELECT id FROM items WHERE comparison_group_id=? AND user_id=?').all(group,userId) as {id:number}[];
+    const condition=attachBuyGuides(db,userId,product.offers).find(offer=>offer.buy_guide)?.buy_guide?.condition||'';
+    const put=db.prepare(`INSERT INTO item_buy_guides(item_id,month,timing,condition) VALUES(?,?,?,?)
+      ON CONFLICT(item_id) DO UPDATE SET month=excluded.month,timing=excluded.timing`);
+    for(const offer of offers) put.run(offer.id,value.kind==='month'?value.month:'',value.kind==='month'?value.timing:'by',condition);
   }).immediate();
 }
