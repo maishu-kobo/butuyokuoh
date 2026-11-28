@@ -17,7 +17,7 @@
   .desktop-workspace[data-desktop-enabled=true] > .desktop-workspace-content { display: block; min-width: 0; min-height: 0; }
   .desktop-workspace[data-desktop-enabled=true] + .agenda-footer { display: none; }
   .desktop-secondary-page.design-review .desktop-page-heading { display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 12px 24px; background: var(--rv-paper); }
-  .desktop-page-heading h1,.desktop-page-version { display: none; }
+  .desktop-page-heading h1 { display: none; }
   .desktop-page-heading > div { display: flex; align-items: center; gap: 16px; }
   .desktop-secondary-page[data-desktop-layout=workspace],.desktop-secondary-page[data-desktop-layout=workspace] .desktop-page-frame { display: grid; grid-template-columns: minmax(0,1fr); height: 100%; min-height: 0; min-width: 0; background: var(--rv-paper); }
   .desktop-secondary-page[data-desktop-layout=workspace] .desktop-page-frame[data-panel-open=true] { grid-template-columns: minmax(0,1fr) clamp(360px,29vw,460px); }
@@ -26,7 +26,6 @@
   .desktop-secondary-page[data-desktop-layout=workspace] .desktop-page-surface { display: flex; flex-direction: column; grid-column: 1; grid-row: 1; min-width: 0; min-height: 0; }
   .desktop-secondary-page[data-desktop-layout=workspace] .desktop-page-heading { flex: none; min-height: 92px; padding: 18px var(--desktop-gutter); justify-content: space-between; }
   .desktop-secondary-page[data-desktop-layout=workspace] .desktop-page-heading h1 { display: block; font-size: 1.9rem; font-weight: 650; letter-spacing: -.025em; }
-  .desktop-secondary-page[data-desktop-layout=workspace] .desktop-page-version { display: contents; }
   .desktop-secondary-page[data-desktop-layout=workspace] .desktop-page-content { display: block; flex: 1; overflow-y: auto; min-height: 0; scrollbar-gutter: stable; }
   .desktop-secondary-page[data-desktop-layout=workspace] .desktop-page-notice { margin: 0 var(--desktop-gutter) 12px; padding: 10px 14px; border: 1px solid var(--rv-line); border-radius: 6px; }
   html.agenda .desktop-secondary-page[data-desktop-layout=workspace] :is(.agenda-home,.agenda-settings) { min-height: 0; background: var(--rv-paper); }
@@ -87,6 +86,9 @@
   .desktop-sidebar > div :is(a,button):hover { background: var(--rv-soft); color: var(--rv-ink); }
   .desktop-sidebar .desktop-nav-secondary { padding-top: 20px; border-top: 1px solid var(--rv-line); }
   .desktop-sidebar .desktop-nav-bottom { margin-top: auto; padding-top: 16px; }
+  .desktop-sidebar .ui-version-switch.ui-version-sidebar { width: 100%; justify-content: flex-start; gap: 10px; padding: 8px 12px; border: 0; border-radius: 7px; background: transparent; color: var(--rv-muted); }
+  .desktop-sidebar .ui-version-sidebar > span { flex: 1; }
+  .desktop-sidebar .ui-version-switch.ui-version-sidebar:is(:hover,[aria-expanded=true]) { background: var(--rv-soft); color: var(--rv-ink); }
   .desktop-sidebar :is(a,button):focus-visible { outline: 2px solid var(--rv-accent); outline-offset: 2px; }
   .design-review.combined-home[data-desktop-layout=workspace] .review-frame {
     display: grid; grid-template-columns: minmax(0,1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; border-radius: 0; box-shadow: none;

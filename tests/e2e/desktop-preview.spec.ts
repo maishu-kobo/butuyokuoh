@@ -402,6 +402,8 @@ test('all desktop menus share the same sidebar, including settings', async ({ pa
   const menus = ['リストの管理', '購入履歴', '統計', 'ゴミ箱', '設定', 'ほしいものリスト'];
   for (const name of menus) {
     await nav.getByRole('link', { name, exact: true }).click();
+    await expect(nav.getByRole('button', { name: '画面デザインを切り替える', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '画面デザインを切り替える', exact: true })).toHaveCount(1);
     await expect(nav.getByRole('link', { name, exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.getByRole('heading', { name, exact: true }).first()).toBeVisible();
     expect(await original!.evaluate(node => node.isConnected)).toBeTruthy();

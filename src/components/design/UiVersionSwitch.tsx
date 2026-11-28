@@ -18,7 +18,7 @@ function newUiHref(value: string | null): string {
     readLightPalette(params.get('palette')), readPreviewAppearance(params.get('appearance')),readListPreview(params.get('list')));
 }
 
-export default function UiVersionSwitch({ enabled }: { enabled: boolean }) {
+export default function UiVersionSwitch({ enabled, inSidebar = false }: { enabled: boolean; inSidebar?: boolean }) {
   const router = useRouter();
   const { setUiVersion } = useTheme();
   function choose(version: string) {
@@ -38,10 +38,12 @@ export default function UiVersionSwitch({ enabled }: { enabled: boolean }) {
       router.push(newUiHref(saved));
     }
   }
-  return <DropdownMenu className="ui-version-menu" aria-label="画面デザイン" menuWidth={224} alignment="end"
-    renderTrigger={props => <button {...props} type="button" className="ui-version-switch"
-      aria-label="画面の表示切替" title="画面の表示を切り替える">
-      <PanelsTopLeft size={21} aria-hidden="true" />
+  return <DropdownMenu className="ui-version-menu" aria-label="画面デザイン" menuWidth={224}
+    placement={inSidebar ? 'above' : 'below'} alignment={inSidebar ? 'start' : 'end'}
+    renderTrigger={props => <button {...props} type="button" className={`ui-version-switch${inSidebar ? ' ui-version-sidebar' : ''}`}
+      aria-label="画面デザインを切り替える" title="画面デザインを切り替える">
+      <PanelsTopLeft size={inSidebar ? 19 : 21} aria-hidden="true" />
+      {inSidebar && <span>デザイン</span>}
       <ArrowLeftRight size={13} className="ui-version-arrows" aria-hidden="true" />
     </button>}>
     <DropdownMenuRadioGroup label="画面デザイン" value={enabled ? 'new' : 'legacy'} onChange={choose}>

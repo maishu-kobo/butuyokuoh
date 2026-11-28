@@ -34,12 +34,23 @@ for (const width of [320, 390, 1440]) {
       await member(page);
       await item(page, '切替を確認する本', {planned_purchase_date: '2027-02-03'});
       await newHome(page);
-      const trigger = page.getByRole('button', {name: '画面の表示切替', exact: true});
-      await expect(trigger).toHaveText('');
-      await expect(trigger).toHaveAttribute('title', '画面の表示を切り替える');
+      const trigger = page.getByRole('button', {name: '画面デザインを切り替える', exact: true});
+      const navigation = page.getByRole('navigation', {name: 'PCナビゲーション'});
+      if (width >= 1100) {
+        await expect(navigation.getByRole('button', {name: '画面デザインを切り替える', exact: true})).toBeVisible();
+      } else {
+        await expect(navigation).not.toBeVisible();
+        await expect(page.locator('header').getByRole('button', {name: '画面デザインを切り替える', exact: true})).toBeVisible();
+      }
+      await expect(trigger).toHaveText(width >= 1100 ? 'デザイン' : '');
+      await expect(trigger).toHaveAttribute('title', '画面デザインを切り替える');
       const bounds = await trigger.boundingBox();
       expect(bounds!.width).toBeGreaterThanOrEqual(44);
       expect(bounds!.height).toBeGreaterThanOrEqual(44);
+      if (width >= 1100) {
+        const settings = await navigation.getByRole('link', {name: '設定', exact: true}).boundingBox();
+        expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(settings!.y);
+      }
       await fits(page);
 
       await trigger.focus();
@@ -52,6 +63,8 @@ for (const width of [320, 390, 1440]) {
       const menuBounds = await menu.boundingBox();
       expect(menuBounds!.x).toBeGreaterThanOrEqual(0);
       expect(menuBounds!.x + menuBounds!.width).toBeLessThanOrEqual(width);
+      expect(menuBounds!.y).toBeGreaterThanOrEqual(0);
+      expect(menuBounds!.y + menuBounds!.height).toBeLessThanOrEqual(844);
       await page.screenshot({path: info.outputPath(`display-picker-${width}-${theme}.png`), animations: 'disabled'});
       await page.keyboard.press('Escape');
       await expect(menu).not.toBeVisible();
