@@ -35,7 +35,8 @@ for (const width of [320, 390, 1440]) {
       await item(page, '切替を確認する本', {planned_purchase_date: '2027-02-03'});
       await newHome(page);
       const trigger = page.getByRole('button', {name: '画面の表示切替', exact: true});
-      await expect(trigger).toContainText('表示切替');
+      await expect(trigger).toHaveText('');
+      await expect(trigger).toHaveAttribute('title', '画面の表示を切り替える');
       const bounds = await trigger.boundingBox();
       expect(bounds!.width).toBeGreaterThanOrEqual(44);
       expect(bounds!.height).toBeGreaterThanOrEqual(44);

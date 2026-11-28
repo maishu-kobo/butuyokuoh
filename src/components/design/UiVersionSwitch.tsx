@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@astryxdesign/core/DropdownMenu';
-import { ChevronDown, LayoutGrid, PanelsTopLeft } from 'lucide-react';
+import { ArrowLeftRight, LayoutGrid, PanelsTopLeft } from 'lucide-react';
 import { useTheme } from '../ThemeProvider';
 import { readReviewTab, readReviewView, reviewHref } from '@/lib/design-home';
 import { readLightPalette, readPreviewAppearance } from '@/lib/design-palettes';
@@ -41,9 +41,8 @@ export default function UiVersionSwitch({ enabled }: { enabled: boolean }) {
   return <DropdownMenu className="ui-version-menu" aria-label="画面デザイン" menuWidth={224} alignment="end"
     renderTrigger={props => <button {...props} type="button" className="ui-version-switch"
       aria-label="画面の表示切替" title="画面の表示を切り替える">
-      <PanelsTopLeft size={17} aria-hidden="true" />
-      <span>表示切替</span>
-      <ChevronDown size={13} className="ui-version-chevron" aria-hidden="true" />
+      <PanelsTopLeft size={21} aria-hidden="true" />
+      <ArrowLeftRight size={13} className="ui-version-arrows" aria-hidden="true" />
     </button>}>
     <DropdownMenuRadioGroup label="画面デザイン" value={enabled ? 'new' : 'legacy'} onChange={choose}>
       <DropdownMenuRadioItem value="new" label="新しい表示" icon={<PanelsTopLeft size={19} aria-hidden="true" />} />
