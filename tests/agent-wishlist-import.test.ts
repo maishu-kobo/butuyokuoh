@@ -136,3 +136,14 @@ test('extension import rejects malformed source without writing any items', asyn
   assert.equal(response.status, 400);
   assert.equal((await db()).prepare('SELECT count(*) FROM items WHERE user_id=?').pluck().get(member.id), 0);
 });
+
+test('extension import authenticates before validating a null payload', async () => {
+  const member = await createMember('empty-extension-import');
+  const token = createAgentToken(member.id, { name: 'extension', scopes: ['extension'] }).token;
+  const route = '../src/app/api/extension-import/route.ts';
+  const path = '/api/extension-import';
+  assert.equal((await call(route, 'POST', path, null)).status, 401);
+  const response = await call(route, 'POST', path, null, undefined, { Authorization: `Bearer ${token}` });
+  assert.equal(response.status, 400);
+  assert.equal((await db()).prepare('SELECT count(*) FROM items WHERE user_id=?').pluck().get(member.id), 0);
+});

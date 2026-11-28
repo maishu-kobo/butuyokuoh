@@ -8,7 +8,7 @@ import {
   resolveExtensionAuth,
 } from '@/lib/extension-auth';
 import { recordAgentAudit } from '@/lib/agent-token';
-import { requireExtensionImportItems } from '@/lib/extension-item-input';
+import { requireExtensionImportInput } from '@/lib/extension-item-input';
 import { prepareWishlistImport } from '@/lib/wishlist-import';
 
 // 一括 import はクライアントの価格・画像を保存しない（#276 / #267）。
@@ -20,12 +20,11 @@ const corsHeaders = extensionCorsHeaders('POST, OPTIONS');
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { source, items, token } = body as { source?: unknown; items: unknown; token?: string };
+    const body: { source?: unknown; items?: unknown; token?: string } | null = await request.json();
 
     // 認証を先に通す（偽造トークンは 401）。
     const auth = resolveExtensionAuth(request, {
-      bodyToken: token,
+      bodyToken: body?.token,
       rate: ['add', 'add_day'],
     });
     const userId = auth.userId;
@@ -36,10 +35,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (typeof source !== 'string' || !source.trim()) {
-      throw new GuestError(400, 'INVALID_INPUT', 'インポート元を指定してください');
-    }
-    const importItems = requireExtensionImportItems(items);
+    const { source, items: importItems } = requireExtensionImportInput(body);
 
     const db = getDb();
     const { imported, skipped } = db.transaction(() => {
