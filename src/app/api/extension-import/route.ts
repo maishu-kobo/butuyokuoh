@@ -1,4 +1,4 @@
-import { validateMemberInput, guestErrorResponse } from '@/lib/api-access';
+import { guestErrorResponse } from '@/lib/api-access';
 import { GuestError } from '@/lib/guest';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
@@ -7,14 +7,9 @@ import {
   extensionCorsHeaders,
   resolveExtensionAuth,
 } from '@/lib/extension-auth';
-import { markItemAddedByAgent, recordAgentAudit } from '@/lib/agent-token';
+import { recordAgentAudit } from '@/lib/agent-token';
 import { requireExtensionImportItems } from '@/lib/extension-item-input';
-import {
-  findCleanedStoredUrlRegistration,
-  normalizeItemName,
-  restoreTrashedItem,
-  sanitizeStoredItemUrl,
-} from '@/lib/item-input';
+import { prepareWishlistImport } from '@/lib/wishlist-import';
 
 // 一括 import はクライアントの価格・画像を保存しない（#276 / #267）。
 // 件数が多いとサーバ取得はタイムアウトしやすいので、価格・画像は空で登録する。
@@ -26,7 +21,7 @@ const corsHeaders = extensionCorsHeaders('POST, OPTIONS');
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { source, items, token } = body as { source: string; items: unknown; token?: string };
+    const { source, items, token } = body as { source?: unknown; items: unknown; token?: string };
 
     // 認証を先に通す（偽造トークンは 401）。
     const auth = resolveExtensionAuth(request, {
@@ -41,70 +36,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (typeof source !== 'string' || !source.trim()) {
+      throw new GuestError(400, 'INVALID_INPUT', 'インポート元を指定してください');
+    }
     const importItems = requireExtensionImportItems(items);
 
     const db = getDb();
-    const insertStmt = db.prepare(`
-      INSERT OR IGNORE INTO items (user_id, name, url, image_url, current_price, original_price, source, source_name, priority)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    let imported = 0;
-    let skipped = 0;
-
-    const sourceName = source === 'amazon' ? 'Amazon' : source === 'rakuten' ? '楽天市場' : source;
-
-    for (const item of importItems) {
-      try {
-        const url = typeof item.url === 'string' ? sanitizeStoredItemUrl(item.url) : null;
-        const name = typeof item.name === 'string' ? normalizeItemName(item.name) : null;
-        if (!url || !name) {
-          skipped++;
-          continue;
-        }
-
-        // 価格・画像はクライアント値を渡さない（#267）。
-        validateMemberInput({ url, name }, 'POST');
-
-        // 既存チェック（トラッキング付きの保存 URL もクリーン後で同じならスキップ）。
-        // ゴミ箱のみなら復元して取り込み成功扱いにする（#365）。
-        const urlState = findCleanedStoredUrlRegistration(db, userId, url);
-        if (urlState.kind === 'active') {
-          skipped++;
-          continue;
-        }
-        if (urlState.kind === 'trashed') {
-          restoreTrashedItem(db, userId, urlState.match.id);
-          imported++;
-          continue;
-        }
-
-        const result = insertStmt.run(
-          userId,
-          name,
-          url,
-          null,
-          null,
-          null,
-          source,
-          sourceName,
-          3 // デフォルト優先度
-        );
-
-        if (result.changes > 0) {
-          imported++;
-          if (auth.agent) {
-            markItemAddedByAgent(Number(result.lastInsertRowid), auth.agent.token.id, userId, db);
-          }
-        }
-      } catch (e) {
-        if (e instanceof GuestError) {
-          skipped++;
-          continue;
-        }
-        console.error('Error inserting item:', e);
+    const { imported, skipped } = db.transaction(() => {
+      const save = prepareWishlistImport(db, userId, auth.agent?.token.id);
+      let imported = 0;
+      let skipped = 0;
+      for (const item of importItems) {
+        const result = save(item, source);
+        if (result.status === 'added' || result.status === 'restored') imported++;
+        else skipped++;
       }
-    }
+      return { imported, skipped };
+    }).immediate();
 
     const headers = { ...corsHeaders };
     applyExtensionAuthHeaders(headers, auth);
