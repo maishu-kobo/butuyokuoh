@@ -25,6 +25,7 @@ These rules apply **only when the user asks you to save, keep or add products**.
 | --- | --- | --- | --- |
 | Still deciding between **different products** | 2機種を比べたあと「決めきれない。両方いったん入れて」 | `save_comparison_candidates` once, with every candidate | One comparison group (`origin: null`) holding each product as its own item |
 | Looked at the **same product** at several stores | 同じ型番を2店舗で見たあと「公式と量販店の両方を残して」 | `add_item_by_url` once with `urls` | One product with several stores (`origin: "photo"` group) |
+| Import an Amazon wishlist or Rakuten favorites | 「このほしい物リストを取り込んで」 | `import_wishlist_items` once per batch of up to 100 visible product names and links | Independent items, results in input order |
 | **Independent** products | 「このモニターと、それに使うケーブルを入れて」 | `add_item_by_url` once per product, single `url` | Separate items, no group |
 | Asked to keep them **separate** | 2機種を比べたあと「今回は別々に入れて」 | `add_item_by_url` once per product, single `url` | Separate items, no group. An explicit "separately" always wins, even right after a comparison |
 | Only wants an answer | 「この2台の違いを教えて」 | No write tool | Nothing changes |
@@ -50,7 +51,7 @@ Every item has a memo field `notes` (max 2000 characters; control characters str
 5. Writes are limited to: add, update, mark purchased, move to trash, permanently delete **one** of the member's own trashed items (`purge_item` / `DELETE /api/agent/v1/items/{id}/trash`), create comparison groups and save comparison candidates (MCP only). Items in the list or purchased cannot be hard-deleted (409 `ITEM_NOT_TRASHED`; trash them first). **No empty-trash or bulk delete.** A purge cannot be undone.
 6. Items added by an agent appear in the normal list with an "added by agent" mark.
 7. Any public http(s) product URL is accepted; private/internal targets are rejected (SSRF guard via `fetchPublicMember`).
-8. Rate limits per token: read 60/min, add 20/min, URL-add 10/min, 200 adds/day.
+8. Rate limits per token: read 60/min, add 20/min, URL-add 10/min, 200 ordinary adds/day. Wishlist imports use one add call per batch and have no daily item limit.
 
 ## REST quick map
 
@@ -85,6 +86,7 @@ Connect to `POST /api/mcp` with the same Bearer token. Compatible with MCP proto
 | save_comparison_candidates | write | idempotentHint, openWorldHint; saves 2 or more different products (new URLs and/or existing item IDs) into one comparison group in one all-or-nothing call |
 | get_price_history | read | readOnlyHint |
 | get_budget_summary | read | readOnlyHint |
+| import_wishlist_items | write | Up to 100 independent Amazon/Rakuten links per call. No product fetch. One write call per batch. No daily item quota for wishlist imports. |
 | add_item_by_url | write | openWorldHint; server fetches price/image |
 | add_item | write | additive |
 | update_item | write | idempotentHint, openWorldHint (resolves the `image_url` host); fills a null `current_price` / `image_url` once |
@@ -157,6 +159,16 @@ For saving products the user is comparing, use `save_comparison_candidates` abov
 3. Call `list_comparison_groups` with `{}` to get `data.groups`. Only your groups are listed; item counts exclude purchased/trashed items and other users' items. Empty groups are included. `origin: "photo"` identifies same-product store groups, while `null` identifies manual comparisons.
 
 Created groups appear in the Web comparison view after items are attached. Names are required (1–200 characters). Creation shares the existing add/minute and add/day limits. Rename/delete tools are not provided.
+
+### import_wishlist_items
+
+For a wishlist import, read the names and product links from a public list or a browser the user has granted access to. Send up to 100 per call and keep sending the remaining entries until the list is complete. Report combined counts across all batches. A private list URL alone does not grant access. No price, image or comparison group is added on import.
+
+```json
+{"name":"import_wishlist_items","arguments":{"items":[{"name":"Notebook","url":"https://www.amazon.co.jp/dp/B000000001"},{"name":"Pen","url":"https://item.rakuten.co.jp/example/pen/"}]}}
+```
+
+Report `added`, `restored`, `existing`, and `failed`. The `results` array follows input order. Invalid entries are skipped. Replays skip existing items, including purchases. At the per-minute write limit, wait for `error.data.retry_after_seconds` and resend the pending batch. If the client stops early, report how far it got.
 
 ### add_item_by_url
 
