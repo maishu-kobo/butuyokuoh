@@ -1,6 +1,6 @@
 import './regression-harness';
 import assert from 'node:assert/strict';
-import { after, before, test } from 'node:test';
+import { after, before, mock, test } from 'node:test';
 import { call, createMember, db } from './regression-harness';
 import { installFrozenClock } from './trash-restore-clock';
 import { agentRateUsed, consumeAgentRates, createAgentToken } from '../src/lib/agent-token';
@@ -49,10 +49,10 @@ test('one MCP call saves 100 independent links, restores only owned items and sa
   assert.equal(database.prepare('SELECT count(*) FROM items WHERE added_by_agent_token_id=?').pluck().get(writer.record.id), 98);
   assert.equal(agentRateUsed(writer.record.id, 'add'), 1);
   assert.equal(agentRateUsed(writer.record.id, 'add_url'), 0);
-  assert.equal(agentRateUsed(writer.record.id, 'add_day'), 99);
+  assert.equal(agentRateUsed(writer.record.id, 'add_day'), 0);
   const again = (await importItems(writer.token, rows)).result.structuredContent.data;
   assert.deepEqual([again.added, again.restored, again.existing], [0, 0, 100]);
-  assert.equal(agentRateUsed(writer.record.id, 'add_day'), 99);
+  assert.equal(agentRateUsed(writer.record.id, 'add_day'), 0);
 });
 
 test('MCP discovery, validation and partial results preserve input order', async () => {
@@ -77,16 +77,36 @@ test('MCP discovery, validation and partial results preserve input order', async
     ['added', 'existing', 'invalid', 'invalid', 'invalid', 'invalid', 'invalid']);
 });
 
-test('insufficient daily quota rolls back the whole import and does not consume a write call', async () => {
-  const owner = await createMember('bulk-quota');
+test('a 500-item migration completes on the same day even with the ordinary daily quota exhausted', async () => {
+  const owner = await createMember('large-migration');
   const writer = createAgentToken(owner.id, { name: 'writer', scopes: ['write'] });
-  consumeAgentRates(writer.record.id, ['add_day'], AGENT_RATE_LIMITS.add_day - 1);
-  const denied = await importItems(writer.token, [product(1), product(2)]);
+  consumeAgentRates(writer.record.id, ['add_day'], AGENT_RATE_LIMITS.add_day);
+  const rows = Array.from({ length: 500 }, (_, i) => product(i));
+  for (let offset = 0; offset < rows.length; offset += 100) {
+    const result = await importItems(writer.token, rows.slice(offset, offset + 100));
+    assert.equal(result.result?.structuredContent?.data.added, 100, JSON.stringify(result.error));
+  }
+  assert.equal((await db()).prepare('SELECT count(*) FROM items WHERE user_id=?').pluck().get(owner.id), 500);
+  assert.equal(agentRateUsed(writer.record.id, 'add'), 5);
+  assert.equal(agentRateUsed(writer.record.id, 'add_day'), AGENT_RATE_LIMITS.add_day);
+  const regular = await rpc(writer.token, 'tools/call', { name: 'add_item', arguments: { name: '通常登録' } });
+  assert.equal(regular.error?.data.httpStatus, 429);
+});
+
+test('minute limit lets a client wait and retry the same batch without duplicates', async () => {
+  const owner = await createMember('bulk-resume');
+  const writer = createAgentToken(owner.id, { name: 'writer', scopes: ['write'] });
+  const first = await importItems(writer.token, [product(1)]);
+  assert.equal(first.result.structuredContent.data.added, 1);
+  consumeAgentRates(writer.record.id, ['add'], AGENT_RATE_LIMITS.add - 1);
+  const rows = [product(1), product(2)];
+  const denied = await importItems(writer.token, rows);
   assert.equal(denied.error.data.httpStatus, 429);
-  assert.equal((await db()).prepare('SELECT count(*) FROM items WHERE user_id=?').pluck().get(owner.id), 0);
-  assert.equal(agentRateUsed(writer.record.id, 'add'), 0);
-  assert.equal(agentRateUsed(writer.record.id, 'add_day'), AGENT_RATE_LIMITS.add_day - 1);
-  assert.equal((await importItems(writer.token, [product(2)])).result.structuredContent.data.added, 1);
+  assert.equal(denied.error.data.retry_after_seconds, 60);
+  assert.equal((await db()).prepare('SELECT count(*) FROM items WHERE user_id=?').pluck().get(owner.id), 1);
+  mock.timers.tick(denied.error.data.retry_after_seconds * 1000);
+  const resumed = (await importItems(writer.token, rows)).result.structuredContent.data;
+  assert.deepEqual([resumed.added, resumed.existing], [1, 1]);
 });
 
 test('Amazon wishlist and extension URLs match by marketplace and ASIN across registered, purchased and trashed rows', async () => {

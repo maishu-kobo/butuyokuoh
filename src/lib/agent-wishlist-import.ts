@@ -27,6 +27,7 @@ export function importAgentWishlist(auth: AgentAuthContext, input: Record<string
   const db = getDb();
   try {
     return db.transaction(() => {
+      // リンクだけを移行する呼び出しは、1バッチにつき書き込みの分枠を1回消費する。
       consumeAgentRates(auth.token.id, ['add'], 1, db);
       const save = prepareWishlistImport(db, auth.userId, auth.token.id);
       const results = items.map((item) => {
@@ -38,9 +39,6 @@ export function importAgentWishlist(auth: AgentAuthContext, input: Record<string
         if (result.status === 'invalid') counts.failed++;
         else counts[result.status]++;
       }
-      // 1回の呼び出しで分枠1回。日次枠は新規・復元件数。足りなければ保存と枠消費を両方戻す。
-      const changed = counts.added + counts.restored;
-      if (changed) consumeAgentRates(auth.token.id, ['add_day'], changed, db);
       recordAgentAudit(auth.token.id, auth.userId, 'wishlist.import', counts, db);
       return { ...counts, results };
     }).immediate();

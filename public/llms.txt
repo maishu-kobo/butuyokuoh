@@ -86,7 +86,7 @@ Connect to `POST /api/mcp` with the same Bearer token. Compatible with MCP proto
 | save_comparison_candidates | write | idempotentHint, openWorldHint; saves 2 or more different products (new URLs and/or existing item IDs) into one comparison group in one all-or-nothing call |
 | get_price_history | read | readOnlyHint |
 | get_budget_summary | read | readOnlyHint |
-| import_wishlist_items | write | Up to 100 independent Amazon/Rakuten links per call. No product fetch. One add call; daily quota charged per added/restored item. |
+| import_wishlist_items | write | Up to 100 independent Amazon/Rakuten links per call. No product fetch. One write call per batch. No daily item quota for wishlist imports. |
 | add_item_by_url | write | openWorldHint; server fetches price/image |
 | add_item | write | additive |
 | update_item | write | idempotentHint, openWorldHint (resolves the `image_url` host); fills a null `current_price` / `image_url` once |
@@ -162,13 +162,13 @@ Created groups appear in the Web comparison view after items are attached. Names
 
 ### import_wishlist_items
 
-For a wishlist import, read the names and product links from a public list or a browser the user has granted access to. Send up to 100 per call. A private list URL alone does not grant access. No price, image or comparison group is added on import.
+For a wishlist import, read the names and product links from a public list or a browser the user has granted access to. Send up to 100 per call and keep sending the remaining entries until the list is complete. Report combined counts across all batches. A private list URL alone does not grant access. No price, image or comparison group is added on import.
 
 ```json
 {"name":"import_wishlist_items","arguments":{"items":[{"name":"Notebook","url":"https://www.amazon.co.jp/dp/B000000001"},{"name":"Pen","url":"https://item.rakuten.co.jp/example/pen/"}]}}
 ```
 
-Report `added`, `restored`, `existing`, and `failed`. The `results` array follows input order. Invalid entries are skipped. Replays skip existing items, including purchases. A quota error rolls back the entire batch.
+Report `added`, `restored`, `existing`, and `failed`. The `results` array follows input order. Invalid entries are skipped. Replays skip existing items, including purchases. At the per-minute write limit, wait for `error.data.retry_after_seconds` and resend the pending batch. If the client stops early, report how far it got.
 
 ### add_item_by_url
 

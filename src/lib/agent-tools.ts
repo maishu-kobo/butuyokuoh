@@ -280,7 +280,7 @@ export const AGENT_TOOLS: AgentToolDef[] = [
   {
     name: 'import_wishlist_items',
     title: 'Import wishlist items in bulk',
-    description: 'Amazonのほしい物リスト・楽天のお気に入りを取り込むときに使う。読めるリストから商品名と商品ページURLの配列を作り、1回でまとめて送る。独立した品目としてリンクを保存する。価格・画像は取得しない。登録済み・購入済みはスキップし、ゴミ箱内の同じURLは復元する。結果は入力順。',
+    description: 'Amazonのほしい物リスト・楽天のお気に入りを取り込むときに使う。読めるリストの商品名と商品ページURLを100件ずつ送り、全件の結果をまとめて報告する。日次の移行件数制限はない。分枠に達したら retry_after_seconds 秒待って同じ組を再送する。独立した品目としてリンクを保存する。価格・画像は取得しない。登録済み・購入済みはスキップし、ゴミ箱内の同じURLは復元する。結果は入力順。',
     scope: 'write',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
