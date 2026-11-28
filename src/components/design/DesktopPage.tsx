@@ -8,7 +8,6 @@ import { useTheme } from '../ThemeProvider';
 import DesktopLayoutToggle from './DesktopPreviewControls';
 import { useDesktopPageActions, useDesktopWorkspace } from './DesktopWorkspace';
 import RegistrationSheet from './RegistrationSheet';
-import UiVersionSwitch from './UiVersionSwitch';
 
 interface Props {
   title: string;
@@ -50,7 +49,7 @@ export default function DesktopPage({ title, page, enabled = true, children, gro
       <div className="desktop-page-surface" inert={busy || (open && !active)}>
         {enabled && <header className="desktop-page-heading">
           <h1>{title}</h1>
-          <div>{!open && comparison}<span className="desktop-page-version"><UiVersionSwitch enabled/></span></div>
+          <div>{!open && comparison}</div>
         </header>}
         {notice && <p className="desktop-page-notice" role="status">{notice}</p>}
         <div className="desktop-page-content">{children}</div>
