@@ -63,6 +63,7 @@ test('エージェント連携ヘルプは定数の数字を出し、秘密や�
     assert.match(page, new RegExp(`追加：1分あたり${AGENT_RATE_LIMITS.add}回`));
     assert.match(page, new RegExp(`URLの追加：1分あたり${AGENT_RATE_LIMITS.add_url}回`));
     assert.match(page, new RegExp(`追加の1日上限：${AGENT_RATE_LIMITS.add_day}件`));
+    assert.match(page, /リスト移行には日次の件数上限がありません/);
     assert.match(page, /値は変わることがあります/);
     assert.match(page, /Siri/);
     assert.match(page, /ショートカット/);
