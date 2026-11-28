@@ -29,8 +29,24 @@ function readUsdAmount(value: string): number | null {
 
 const AMAZON_HOSTS = new Set(['amazon.co.jp', 'www.amazon.co.jp', 'amazon.jp', 'www.amazon.jp', 'amazon.com', 'www.amazon.com']);
 export function isAmazonHost(host: string) { return AMAZON_HOSTS.has(host.toLowerCase()); }
+const AMAZON_PRODUCT_PATH = /\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?]|$)/i;
 export function isAmazonProductPage(url: URL) {
-  return isAmazonHost(url.hostname) && /\/(?:dp|gp\/product|gp\/aw\/d)\/[A-Z0-9]{10}(?:[/?]|$)/i.test(url.pathname);
+  return isAmazonHost(url.hostname) && AMAZON_PRODUCT_PATH.test(url.pathname);
+}
+
+/** ほしい物リストの紹介パスや計測クエリが異なっても、同じ市場のASINなら同じ商品。 */
+export function amazonWishlistProductIdentity(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.port || !isAmazonHost(url.hostname)) return null;
+  const asin = AMAZON_PRODUCT_PATH.exec(url.pathname)?.[1];
+  if (!asin) return null;
+  const domain = url.hostname.endsWith('.com') ? 'amazon.com' : 'amazon.co.jp';
+  return `https://www.${domain}/dp/${asin.toUpperCase()}`;
 }
 
 // Keep only the product's title, main image and new buy-box price. A whole-page yen
