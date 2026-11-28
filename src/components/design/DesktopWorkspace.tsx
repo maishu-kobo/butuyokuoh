@@ -10,6 +10,7 @@ import { useAuth } from '../AuthProvider';
 import { useTheme } from '../ThemeProvider';
 import { reviewHref, reviewSettingsHref, type ReviewTab } from '@/lib/design-home';
 import { useDesktopPreview } from './DesktopPreviewControls';
+import UiVersionSwitch from './UiVersionSwitch';
 
 type Workspace = ReturnType<typeof useDesktopPreview> & {
   registerAction: (action: () => void) => () => void;
@@ -86,6 +87,7 @@ export default function DesktopWorkspace({ children }: { children: React.ReactNo
         <div className="desktop-nav-primary">{links(desktop.layout === 'reading' ? primary.filter(entry => entry.tab !== 'manage') : primary)}</div>
         <div className="desktop-nav-secondary">{links(secondary)}</div>
         <div className="desktop-nav-bottom">
+          {enabled && <UiVersionSwitch enabled inSidebar/>}
           <Link href={reviewSettingsHref('rank', palette, resolvedTheme)} aria-current={pathname === '/settings' ? 'page' : undefined}><Settings size={18} aria-hidden/><span>設定</span></Link>
           <button type="button" onClick={async () => { await logout(); router.push('/'); }}><LogOut size={18} aria-hidden/><span>ログアウト</span></button>
         </div>

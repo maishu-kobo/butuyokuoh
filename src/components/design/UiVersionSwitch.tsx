@@ -1,6 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@astryxdesign/core/DropdownMenu';
+import { ArrowLeftRight, LayoutGrid, PanelsTopLeft } from 'lucide-react';
 import { useTheme } from '../ThemeProvider';
 import { readReviewTab, readReviewView, reviewHref } from '@/lib/design-home';
 import { readLightPalette, readPreviewAppearance } from '@/lib/design-palettes';
@@ -16,12 +18,14 @@ function newUiHref(value: string | null): string {
     readLightPalette(params.get('palette')), readPreviewAppearance(params.get('appearance')),readListPreview(params.get('list')));
 }
 
-export default function UiVersionSwitch({ enabled }: { enabled: boolean }) {
+export default function UiVersionSwitch({ enabled, inSidebar = false }: { enabled: boolean; inSidebar?: boolean }) {
   const router = useRouter();
   const { setUiVersion } = useTheme();
-  function toggle() {
-    setUiVersion(enabled ? 'legacy' : 'new');
-    if (enabled) {
+  function choose(version: string) {
+    if (version !== 'new' && version !== 'legacy') return;
+    if ((version === 'new') === enabled) return;
+    setUiVersion(version);
+    if (version === 'legacy') {
       const current = newUiHref(window.location.pathname + window.location.search);
       try { localStorage.setItem(savedLocationKey, current); } catch { /* Navigation also works when storage is unavailable. */ }
       const params = new URLSearchParams(window.location.search);
@@ -34,8 +38,17 @@ export default function UiVersionSwitch({ enabled }: { enabled: boolean }) {
       router.push(newUiHref(saved));
     }
   }
-  return <button type="button" role="switch" aria-checked={enabled} aria-label="新しい表示を使う"
-    title={enabled ? '従来の表示に切り替え' : '新しい表示に切り替え'} className="ui-version-switch" onClick={toggle}>
-    <span className="ui-version-track" aria-hidden="true"><span /></span>
-  </button>;
+  return <DropdownMenu className="ui-version-menu" aria-label="画面デザイン" menuWidth={224}
+    placement={inSidebar ? 'above' : 'below'} alignment={inSidebar ? 'start' : 'end'}
+    renderTrigger={props => <button {...props} type="button" className={`ui-version-switch${inSidebar ? ' ui-version-sidebar' : ''}`}
+      aria-label="画面デザインを切り替える" title="画面デザインを切り替える">
+      <PanelsTopLeft size={inSidebar ? 19 : 21} aria-hidden="true" />
+      {inSidebar && <span>デザイン</span>}
+      <ArrowLeftRight size={13} className="ui-version-arrows" aria-hidden="true" />
+    </button>}>
+    <DropdownMenuRadioGroup label="画面デザイン" value={enabled ? 'new' : 'legacy'} onChange={choose}>
+      <DropdownMenuRadioItem value="new" label="新しい表示" icon={<PanelsTopLeft size={19} aria-hidden="true" />} />
+      <DropdownMenuRadioItem value="legacy" label="従来の表示" icon={<LayoutGrid size={19} aria-hidden="true" />} />
+    </DropdownMenuRadioGroup>
+  </DropdownMenu>;
 }
