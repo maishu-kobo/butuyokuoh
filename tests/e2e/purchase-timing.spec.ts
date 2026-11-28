@@ -1,3 +1,4 @@
+import { switchUiVersion } from './helpers/ui-version';
 import {expect,test} from '@playwright/test';
 
 for(const width of [320,390,1440]) {
@@ -50,10 +51,10 @@ for(const width of [320,390,1440]) {
     await expect(timing).toHaveCount(0);
     await expect(page.getByRole('region',{name:'2027年4月',exact:true})).toBeVisible();
     expect(await read()).toMatchObject({planned_purchase_date:'2027-04-05',priority:4,sort_order:initial.sort_order,buy_guide:{month:'2027-03',timing:'by',condition:'値下がりしたら'}});
-    await page.getByRole('switch',{name:'新しい表示を使う'}).click();
+    await switchUiVersion(page);
     await expect(page).toHaveURL(url=>url.pathname==='/');
     await expect(page.getByText('小さな読書灯',{exact:true})).toBeVisible();
-    await page.getByRole('switch',{name:'新しい表示を使う'}).click();
+    await switchUiVersion(page);
     await page.getByRole('button',{name:'小さな読書灯の購入時期を変更',exact:true}).click();
     await timing.getByRole('radio',{name:'未定',exact:true}).check();
     await timing.getByRole('button',{name:'保存',exact:true}).click();

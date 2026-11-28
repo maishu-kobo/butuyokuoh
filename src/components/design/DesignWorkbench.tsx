@@ -114,7 +114,7 @@ export default function DesignWorkbench({budgetRevision,view,palette,appearance,
       <div className="review-app-surface" inert={(panel!==null&&!desktop.active)||panelBusy}>
         <header className="review-app-bar"><div className="review-brand">
           <Image unoptimized alt="" src="/icons/icon-192.png" width={25} height={25}/><span>物欲王</span></div>
-          <div className="review-app-actions">{!panel&&comparison}<UiVersionSwitch enabled /><button type="button" className="review-icon" aria-label="商品を検索" aria-expanded={searchOpen} onClick={openSearch}>
+          <div className="review-app-actions">{!panel&&comparison}{!desktop.active&&<UiVersionSwitch enabled />}<button type="button" className="review-icon" aria-label="商品を検索" aria-expanded={searchOpen} onClick={openSearch}>
             {searchOpen?<X size={18}/>:<Search size={18}/>}</button>
             <button type="button" className="review-icon" aria-label="メニュー" onClick={()=>openPanel({kind:'menu'})}><Ellipsis size={21}/></button></div>
         </header>
