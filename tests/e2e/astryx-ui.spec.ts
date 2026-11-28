@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { switchUiVersion } from './helpers/ui-version';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import sharp from 'sharp';
 
 const origin = 'http://localhost:3107';
@@ -23,13 +24,105 @@ async function newHome(page: Page) {
 async function fits(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 }
+async function readableDisplayOptions(menu: Locator) {
+  function luminance(color: string) {
+    const rgb = color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(value => {
+      const channel = value / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+  }
+  for (const name of ['新しい表示', '従来の表示']) {
+    const colors = await menu.getByText(name, {exact: true}).evaluate(element => ({
+      foreground: getComputedStyle(element).color,
+      background: getComputedStyle(element.closest('[role="menu"]')!).backgroundColor,
+    }));
+    const light = luminance(colors.foreground);
+    const dark = luminance(colors.background);
+    expect((Math.max(light, dark) + 0.05) / (Math.min(light, dark) + 0.05), `${name}: ${JSON.stringify(colors)}`).toBeGreaterThanOrEqual(4.5);
+  }
+}
+
+for (const width of [320, 390, 1440]) {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`display picker names both interfaces and preserves navigation at ${width}px in ${theme}`, async ({page}, info) => {
+      await page.setViewportSize({width, height: 844});
+      if (width === 390 && theme === 'dark') await page.emulateMedia({reducedMotion: 'reduce'});
+      await page.addInitScript(value => localStorage.setItem('theme', value), theme);
+      await member(page);
+      await item(page, '切替を確認する本', {planned_purchase_date: '2027-02-03'});
+      await newHome(page);
+      const trigger = page.getByRole('button', {name: '画面デザインを切り替える', exact: true});
+      const navigation = page.getByRole('navigation', {name: 'PCナビゲーション'});
+      if (width >= 1100) {
+        await expect(navigation.getByRole('button', {name: '画面デザインを切り替える', exact: true})).toBeVisible();
+      } else {
+        await expect(navigation).not.toBeVisible();
+        await expect(page.locator('header').getByRole('button', {name: '画面デザインを切り替える', exact: true})).toBeVisible();
+      }
+      await expect(trigger).toHaveText(width >= 1100 ? 'デザイン' : '');
+      await expect(trigger).toHaveAttribute('title', '画面デザインを切り替える');
+      const bounds = await trigger.boundingBox();
+      expect(bounds!.width).toBeGreaterThanOrEqual(44);
+      expect(bounds!.height).toBeGreaterThanOrEqual(44);
+      if (width >= 1100) {
+        const settings = await navigation.getByRole('link', {name: '設定', exact: true}).boundingBox();
+        expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(settings!.y);
+      }
+      await fits(page);
+
+      await trigger.focus();
+      await page.keyboard.press('Enter');
+      const menu = page.getByRole('menu', {name: '画面デザイン', exact: true});
+      await expect(menu).toBeVisible();
+      await readableDisplayOptions(menu);
+      await expect(menu.getByRole('menuitemradio', {name: '新しい表示', exact: true})).toHaveAttribute('aria-checked', 'true');
+      await expect(menu.getByRole('menuitemradio', {name: '従来の表示', exact: true})).toHaveAttribute('aria-checked', 'false');
+      await expect(menu.getByRole('menuitemradio', {name: '新しい表示', exact: true})).toBeFocused();
+      const menuBounds = await menu.boundingBox();
+      expect(menuBounds!.x).toBeGreaterThanOrEqual(0);
+      expect(menuBounds!.x + menuBounds!.width).toBeLessThanOrEqual(width);
+      expect(menuBounds!.y).toBeGreaterThanOrEqual(0);
+      expect(menuBounds!.y + menuBounds!.height).toBeLessThanOrEqual(844);
+      await page.screenshot({path: info.outputPath(`display-picker-${width}-${theme}.png`), animations: 'disabled'});
+      await page.keyboard.press('Escape');
+      await expect(menu).not.toBeVisible();
+      await expect(trigger).toBeFocused();
+
+      await trigger.click();
+      await menu.getByRole('menuitemradio', {name: '新しい表示', exact: true}).click();
+      await expect(menu).not.toBeVisible();
+      await expect(page).toHaveURL(/\/design$/);
+      await trigger.click();
+      // On a narrow screen the menu overlaps the heading; use empty page space below it.
+      await page.mouse.click(8, 360);
+      await expect(menu).not.toBeVisible();
+
+      await page.getByRole('link', {name: '出費予定', exact: true}).click();
+      await switchUiVersion(page);
+      await expect(page).toHaveURL(url => url.pathname === '/' && url.searchParams.get('tab') === 'budget');
+      await expect(page.locator('html')).not.toHaveAttribute('data-astryx-theme');
+      await fits(page);
+      await trigger.click();
+      await expect(menu.getByRole('menuitemradio', {name: '従来の表示', exact: true})).toHaveAttribute('aria-checked', 'true');
+      await readableDisplayOptions(menu);
+      await page.screenshot({path: info.outputPath(`display-picker-legacy-${width}-${theme}.png`), animations: 'disabled'});
+      await menu.getByRole('menuitemradio', {name: '新しい表示', exact: true}).click();
+      await expect(page).toHaveURL(url => url.pathname === '/design' && url.searchParams.get('tab') === 'budget');
+      await expect(page.getByTestId('spend-selected-total')).toHaveText('¥1,200');
+      await page.reload();
+      await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /dark/ : /agenda/);
+      await expect(page.getByTestId('spend-selected-total')).toHaveText('¥1,200');
+    });
+  }
+}
 
 test('new UI preserves login and guest entry from an unauthenticated visit', async ({page}) => {
   await page.goto('/design');
   await page.getByRole('button', {name: 'ゲストで試す', exact: true}).click();
   await expect(page.getByRole('heading', {name: 'ほしいものリスト', exact: true})).toBeVisible();
   await expect(page.getByRole('complementary', {name: 'ゲスト体験'})).toBeVisible();
-  await page.getByRole('switch', {name: '新しい表示を使う'}).click();
+  await switchUiVersion(page);
   await expect(page.getByRole('button', {name: '新しいアイテムを追加'})).toBeVisible();
   await expect(page.locator('html')).not.toHaveAttribute('data-astryx-theme');
 });
@@ -48,7 +141,7 @@ test('invalid stored dates keep the new list and budget usable without rewriting
   expect(errors).toEqual([]);
   const rows = await (await page.request.get('/api/items')).json();
   expect(rows.find((entry: {id: number}) => entry.id === saved.id).planned_purchase_date).toBe('2027-13-01');
-  await page.getByRole('switch').click();
+  await switchUiVersion(page);
   await expect(page).toHaveURL(url => url.pathname === '/' && url.searchParams.get('tab') === 'budget');
   await expect(page.getByText('以前の日付の商品', {exact: true})).toBeVisible();
 });
@@ -96,10 +189,10 @@ for (const width of [320, 390, 1440]) {
     await expect(page.getByTestId('spend-selected-total')).toHaveText('¥1,200');
     await fits(page);
     await page.screenshot({path: info.outputPath(`budget-${width}.png`), fullPage: true});
-    await page.getByRole('switch', {name: '新しい表示を使う'}).click();
+    await switchUiVersion(page);
     await expect(page).toHaveURL(/\/\?tab=budget$/);
     await expect(page.locator('html')).not.toHaveClass(/agenda/);
-    await page.getByRole('switch').click();
+    await switchUiVersion(page);
     await expect(page).toHaveURL(/\/design\?tab=budget$/);
     await page.goto('/');
     await expect(page).toHaveURL(/\/design$/);
@@ -134,7 +227,7 @@ test('priority and rough timing are independent, same-priority keyboard drag per
   await page.reload();
   const rows = await (await page.request.get('/api/items?with=buy-guide')).json();
   expect(rows.find((x: {id: number}) => x.id === second.id)).toMatchObject({priority: 4, planned_purchase_date: null, buy_guide: {month: '2027-02', timing: 'around', condition: '値下がりしたら'}});
-  await page.getByRole('switch').click();
+  await switchUiVersion(page);
   await expect(page.getByRole('heading', {name: '次の商品', exact: true})).toBeVisible();
 });
 
@@ -185,7 +278,7 @@ test('appearance and AI settings expand in place; color, dark mode and selected 
   await expect(page.locator('html')).toHaveAttribute('data-light-palette', 'indigo');
   await fits(page);
   await page.goto('/design');
-  await page.getByRole('switch').click();
+  await switchUiVersion(page);
   await page.getByRole('link', {name: '設定', exact: true}).click();
   await page.getByRole('button', {name: 'テーマ', exact: true}).click();
   await expect(page.getByText('カラースキーム', {exact: true})).toBeVisible();
