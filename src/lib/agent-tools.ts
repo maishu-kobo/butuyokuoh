@@ -1,6 +1,8 @@
 // MCP tools / REST で共有するツール定義と実行。店舗検索は公開しない。
 
 import type { NextRequest } from 'next/server';
+import { importAgentWishlist, MAX_WISHLIST_IMPORT_ITEMS } from '@/lib/agent-wishlist-import';
+import { ITEM_URL_MAX } from '@/lib/http-url';
 import { AGENT_RATE_LIMITS } from '@/lib/agent-access-limits';
 import {
   MAX_COMPARISON_CANDIDATES,
@@ -48,6 +50,7 @@ export type AgentToolName =
   | 'save_comparison_candidates'
   | 'get_price_history'
   | 'get_budget_summary'
+  | 'import_wishlist_items'
   | 'add_item_by_url'
   | 'add_item'
   | 'update_item'
@@ -270,6 +273,28 @@ export const AGENT_TOOLS: AgentToolDef[] = [
           type: 'string',
           pattern: '^\\d{4}-\\d{2}$',
           description: 'YYYY-MM。省略時は全月',
+        },
+      },
+    },
+  },
+  {
+    name: 'import_wishlist_items',
+    title: 'Import wishlist items in bulk',
+    description: 'Amazonのほしい物リスト・楽天のお気に入りを取り込むときに使う。読めるリストの商品名と商品ページURLを100件ずつ送り、全件の結果をまとめて報告する。日次の移行件数制限はない。分枠に達したら retry_after_seconds 秒待って同じ組を再送する。独立した品目としてリンクを保存する。価格・画像は取得しない。登録済み・購入済みはスキップし、ゴミ箱内の同じURLは復元する。結果は入力順。',
+    scope: 'write',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: 'object', additionalProperties: false, required: ['items'],
+      properties: {
+        items: {
+          type: 'array', minItems: 1, maxItems: MAX_WISHLIST_IMPORT_ITEMS,
+          items: {
+            type: 'object', required: ['name', 'url'], additionalProperties: false,
+            properties: {
+              name: { type: 'string', minLength: 1 },
+              url: { type: 'string', format: 'uri', maxLength: ITEM_URL_MAX },
+            },
+          },
         },
       },
     },
@@ -556,6 +581,8 @@ export async function executeAgentTool(
         auth.userId,
         typeof input.month === 'string' ? input.month : null,
       ));
+    case 'import_wishlist_items':
+      return withAgentNotice(importAgentWishlist(auth, input));
     case 'add_item_by_url': {
       const addedByUrl = await addAgentItemByUrl(auth, input);
       return withAgentNotice(withMemoFollowUp(addedByUrl, {

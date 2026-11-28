@@ -65,3 +65,12 @@ export function requireExtensionImportItems(items: unknown): ExtensionImportItem
     };
   });
 }
+
+/** 拡張のリクエスト本文から保存用の値だけを取り出す。認証は呼び出し元が先に行う。 */
+export function requireExtensionImportInput(input: { source?: unknown; items?: unknown } | null) {
+  const source = input?.source;
+  if (typeof source !== 'string' || !source.trim()) {
+    throw new GuestError(400, 'INVALID_INPUT', 'インポート元を指定してください');
+  }
+  return { source, items: requireExtensionImportItems(input?.items) };
+}
