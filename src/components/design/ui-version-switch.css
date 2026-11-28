@@ -20,8 +20,8 @@
   color-scheme: light;
 }
 .dark [popover]:has(.ui-version-menu), .dark .ui-version-menu { color-scheme: dark; }
-.ui-version-menu { padding: 6px; font-family: inherit; }
-.ui-version-menu [role=menuitemradio] { min-height: 48px; border-radius: 9px; color: var(--color-text); }
+.ui-version-menu { --_item-label-color: var(--color-text); padding: 6px; font-family: inherit; }
+.ui-version-menu [role=menuitemradio] { min-height: 48px; padding-inline: 8px; border-radius: 9px; color: var(--color-text); }
 .ui-version-menu [role=menuitemradio][aria-checked=true] { background: color-mix(in srgb, var(--color-primary) 9%, transparent); }
 .ui-version-menu [role=menuitemradio]:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 .agenda-header-actions { gap: 6px; }

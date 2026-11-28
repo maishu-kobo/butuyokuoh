@@ -1,5 +1,5 @@
 import { switchUiVersion } from './helpers/ui-version';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import sharp from 'sharp';
 
 const origin = 'http://localhost:3107';
@@ -23,6 +23,24 @@ async function newHome(page: Page) {
 }
 async function fits(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+}
+async function readableDisplayOptions(menu: Locator) {
+  function luminance(color: string) {
+    const rgb = color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(value => {
+      const channel = value / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+  }
+  for (const name of ['新しい表示', '従来の表示']) {
+    const colors = await menu.getByText(name, {exact: true}).evaluate(element => ({
+      foreground: getComputedStyle(element).color,
+      background: getComputedStyle(element.closest('[role="menu"]')!).backgroundColor,
+    }));
+    const light = luminance(colors.foreground);
+    const dark = luminance(colors.background);
+    expect((Math.max(light, dark) + 0.05) / (Math.min(light, dark) + 0.05), `${name}: ${JSON.stringify(colors)}`).toBeGreaterThanOrEqual(4.5);
+  }
 }
 
 for (const width of [320, 390, 1440]) {
@@ -57,6 +75,7 @@ for (const width of [320, 390, 1440]) {
       await page.keyboard.press('Enter');
       const menu = page.getByRole('menu', {name: '画面デザイン', exact: true});
       await expect(menu).toBeVisible();
+      await readableDisplayOptions(menu);
       await expect(menu.getByRole('menuitemradio', {name: '新しい表示', exact: true})).toHaveAttribute('aria-checked', 'true');
       await expect(menu.getByRole('menuitemradio', {name: '従来の表示', exact: true})).toHaveAttribute('aria-checked', 'false');
       await expect(menu.getByRole('menuitemradio', {name: '新しい表示', exact: true})).toBeFocused();
@@ -86,6 +105,7 @@ for (const width of [320, 390, 1440]) {
       await fits(page);
       await trigger.click();
       await expect(menu.getByRole('menuitemradio', {name: '従来の表示', exact: true})).toHaveAttribute('aria-checked', 'true');
+      await readableDisplayOptions(menu);
       await page.screenshot({path: info.outputPath(`display-picker-legacy-${width}-${theme}.png`), animations: 'disabled'});
       await menu.getByRole('menuitemradio', {name: '新しい表示', exact: true}).click();
       await expect(page).toHaveURL(url => url.pathname === '/design' && url.searchParams.get('tab') === 'budget');
