@@ -52,7 +52,7 @@ for (const width of [320, 390, 1440]) {
       const menuBounds = await menu.boundingBox();
       expect(menuBounds!.x).toBeGreaterThanOrEqual(0);
       expect(menuBounds!.x + menuBounds!.width).toBeLessThanOrEqual(width);
-      await page.screenshot({path: info.outputPath(`display-picker-${width}-${theme}.png`)});
+      await page.screenshot({path: info.outputPath(`display-picker-${width}-${theme}.png`), animations: 'disabled'});
       await page.keyboard.press('Escape');
       await expect(menu).not.toBeVisible();
       await expect(trigger).toBeFocused();
@@ -73,7 +73,7 @@ for (const width of [320, 390, 1440]) {
       await fits(page);
       await trigger.click();
       await expect(menu.getByRole('menuitemradio', {name: '従来の表示', exact: true})).toHaveAttribute('aria-checked', 'true');
-      await page.screenshot({path: info.outputPath(`display-picker-legacy-${width}-${theme}.png`)});
+      await page.screenshot({path: info.outputPath(`display-picker-legacy-${width}-${theme}.png`), animations: 'disabled'});
       await menu.getByRole('menuitemradio', {name: '新しい表示', exact: true}).click();
       await expect(page).toHaveURL(url => url.pathname === '/design' && url.searchParams.get('tab') === 'budget');
       await expect(page.getByTestId('spend-selected-total')).toHaveText('¥1,200');
