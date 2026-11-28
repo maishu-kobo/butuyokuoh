@@ -1,3 +1,4 @@
+import { switchUiVersion } from './helpers/ui-version';
 import { expect, test, type Page } from '@playwright/test';
 import Database from 'better-sqlite3';
 import sharp from 'sharp';
@@ -46,10 +47,10 @@ test('the released desktop defaults to reading across menus without comparison c
   await expect(page.locator('.desktop-secondary-page')).toHaveAttribute('data-reading-layout','true');
   await expect(page.getByRole('group',{name:'PCの表示を比較'})).toHaveCount(0);
   await nav.getByRole('link',{name:'ほしいものリスト',exact:true}).click();
-  await page.getByRole('switch',{name:'新しい表示を使う'}).click();
+  await switchUiVersion(page);
   await expect(page).toHaveURL(/\/$/);
   await expect(nav).toBeHidden();
-  await page.getByRole('switch').click();
+  await switchUiVersion(page);
   await expect(page).toHaveURL(/\/design$/);
   await expect(page.locator('.combined-home')).toHaveAttribute('data-list-layout','reading');
   await expect(page.getByRole('group',{name:'PCの表示を比較'})).toHaveCount(0);
@@ -326,7 +327,7 @@ for (const layout of ['list', 'shelf', 'legacy', 'filtered'] as const) {
     await page.reload();
     await expect(page.locator('.rank-product strong')).toHaveText(['机の照明', '小さなカメラ']);
     if (layout === 'legacy') {
-      await page.getByRole('switch', { name: '新しい表示を使う' }).click();
+      await switchUiVersion(page);
       await expect(page).toHaveURL(/\/$/);
     } else if (layout === 'shelf') {
       await page.getByRole('button', { name: '写真棚', exact: true }).click();
@@ -754,9 +755,9 @@ test('registration draft, budget selection and old/new UI survive desktop compar
   await page.getByRole('button', { name: 'PC専用', exact: true }).click();
   await expect(total).toHaveText('¥1,000');
   await page.screenshot({ path: info.outputPath('desktop-budget.png') });
-  await page.getByRole('switch', { name: '新しい表示を使う' }).click();
+  await switchUiVersion(page);
   await expect(page).toHaveURL(url => url.pathname === '/' && url.searchParams.get('tab') === 'budget');
-  await page.getByRole('switch', { name: '新しい表示を使う' }).click();
+  await switchUiVersion(page);
   await expect(page.getByRole('navigation', { name: 'PCナビゲーション' })).toBeVisible();
   await expect(total).toBeVisible();
 });

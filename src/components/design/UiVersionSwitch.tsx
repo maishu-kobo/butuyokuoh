@@ -1,6 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { DropdownMenu, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@astryxdesign/core/DropdownMenu';
+import { ChevronDown, LayoutGrid, PanelsTopLeft } from 'lucide-react';
 import { useTheme } from '../ThemeProvider';
 import { readReviewTab, readReviewView, reviewHref } from '@/lib/design-home';
 import { readLightPalette, readPreviewAppearance } from '@/lib/design-palettes';
@@ -19,9 +21,11 @@ function newUiHref(value: string | null): string {
 export default function UiVersionSwitch({ enabled }: { enabled: boolean }) {
   const router = useRouter();
   const { setUiVersion } = useTheme();
-  function toggle() {
-    setUiVersion(enabled ? 'legacy' : 'new');
-    if (enabled) {
+  function choose(version: string) {
+    if (version !== 'new' && version !== 'legacy') return;
+    if ((version === 'new') === enabled) return;
+    setUiVersion(version);
+    if (version === 'legacy') {
       const current = newUiHref(window.location.pathname + window.location.search);
       try { localStorage.setItem(savedLocationKey, current); } catch { /* Navigation also works when storage is unavailable. */ }
       const params = new URLSearchParams(window.location.search);
@@ -34,8 +38,16 @@ export default function UiVersionSwitch({ enabled }: { enabled: boolean }) {
       router.push(newUiHref(saved));
     }
   }
-  return <button type="button" role="switch" aria-checked={enabled} aria-label="新しい表示を使う"
-    title={enabled ? '従来の表示に切り替え' : '新しい表示に切り替え'} className="ui-version-switch" onClick={toggle}>
-    <span className="ui-version-track" aria-hidden="true"><span /></span>
-  </button>;
+  return <DropdownMenu className="ui-version-menu" aria-label="画面デザイン" menuWidth={224} alignment="end"
+    renderTrigger={props => <button {...props} type="button" className="ui-version-switch"
+      aria-label="画面の表示切替" title="画面の表示を切り替える">
+      <PanelsTopLeft size={17} aria-hidden="true" />
+      <span>表示切替</span>
+      <ChevronDown size={13} className="ui-version-chevron" aria-hidden="true" />
+    </button>}>
+    <DropdownMenuRadioGroup label="画面デザイン" value={enabled ? 'new' : 'legacy'} onChange={choose}>
+      <DropdownMenuRadioItem value="new" label="新しい表示" icon={<PanelsTopLeft size={19} aria-hidden="true" />} />
+      <DropdownMenuRadioItem value="legacy" label="従来の表示" icon={<LayoutGrid size={19} aria-hidden="true" />} />
+    </DropdownMenuRadioGroup>
+  </DropdownMenu>;
 }

@@ -15,11 +15,11 @@ export default function HomeHeader({
     <header className="bg-[var(--ai)] text-white shadow-lg">
       <div className="max-w-4xl mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <Crown size={28} className="text-[var(--kitsune)]" />
             <h1 className="text-xl font-bold">物欲王</h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 sm:gap-3">
             <UiVersionSwitch enabled={false} />
             <div className="hidden sm:flex items-center gap-2 text-amber-100 text-sm">
               <User size={16} />
