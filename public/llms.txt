@@ -51,7 +51,7 @@ Every item has a memo field `notes` (max 2000 characters; control characters str
 5. Writes are limited to: add, update, mark purchased, move to trash, permanently delete **one** of the member's own trashed items (`purge_item` / `DELETE /api/agent/v1/items/{id}/trash`), create comparison groups and save comparison candidates (MCP only). Items in the list or purchased cannot be hard-deleted (409 `ITEM_NOT_TRASHED`; trash them first). **No empty-trash or bulk delete.** A purge cannot be undone.
 6. Items added by an agent appear in the normal list with an "added by agent" mark.
 7. Any public http(s) product URL is accepted; private/internal targets are rejected (SSRF guard via `fetchPublicMember`).
-8. Rate limits per token: read 60/min, add 20/min, URL-add 10/min, 200 adds/day.
+8. Rate limits per token: read 60/min, add 20/min, URL-add 10/min, 200 ordinary adds/day. Wishlist imports use one add call per batch and have no daily item limit.
 
 ## REST quick map
 

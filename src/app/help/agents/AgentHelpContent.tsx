@@ -143,7 +143,7 @@ export default function AgentHelpContent({ mcpUrl }: { mcpUrl: string }) {
           <li>読み取り：1分あたり{AGENT_RATE_LIMITS.read}回</li>
           <li>追加：1分あたり{AGENT_RATE_LIMITS.add}回</li>
           <li>URLの追加：1分あたり{AGENT_RATE_LIMITS.add_url}回</li>
-          <li>追加の1日上限：{AGENT_RATE_LIMITS.add_day}件</li>
+          <li>通常追加の1日上限：{AGENT_RATE_LIMITS.add_day}件。Amazon・楽天のリスト移行には日次の件数上限がありません。</li>
         </ul>
 
         <p className="pt-2 text-sm text-[var(--color-muted)]">
